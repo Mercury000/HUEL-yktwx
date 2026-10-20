@@ -8,16 +8,18 @@ import org.json.JSONObject
 internal object LoginConfiguration {
     fun selectLoginType(data: JSONObject): String {
         try {
-            val config = when (val raw = data.opt("getFrontConfig")) {
-                is String -> JSONObject(raw)
-                is JSONObject -> raw
+            val rawConfig: Any? = data.opt("getFrontConfig")
+            val config = when (rawConfig) {
+                is String -> JSONObject(rawConfig)
+                is JSONObject -> rawConfig
                 else -> throw JSONException("Invalid front config type")
             }
             // Do not call getJSONArray on a JSON string: parse its contents first,
             // exactly as PasswordLoginClient._login_type does in payment_api.py.
-            val methods = when (val raw = config.opt("loginType")) {
-                is String -> JSONArray(raw)
-                is JSONArray -> raw
+            val rawMethods: Any? = config.opt("loginType")
+            val methods = when (rawMethods) {
+                is String -> JSONArray(rawMethods)
+                is JSONArray -> rawMethods
                 else -> throw JSONException("Invalid login type")
             }
             val method = (0 until methods.length()).mapNotNull { methods.optJSONObject(it) }
