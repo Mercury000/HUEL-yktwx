@@ -54,8 +54,11 @@ data class BillUiState(
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
 }
 
-class BillViewModel(app: Application) : AndroidViewModel(app) {
-    private val repository = AccountRepository.shared(app)
+class BillViewModel internal constructor(
+    app: Application,
+    private val repository: AccountRepository,
+) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(BillUiState())
     val state = mutable.asStateFlow()
     private var initialized = false
@@ -105,15 +108,7 @@ class BillViewModel(app: Application) : AndroidViewModel(app) {
             lastStatsLoadedAt = lastLoadedAt
             return
         }
-        viewModelScope.launch {
-            val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-            if (!exists) {
-                mutable.value = mutable.value.copy(needsLogin = true, loaded = false, loading = false, refreshing = false)
-                return@launch
-            }
-            mutable.value = mutable.value.copy(needsLogin = false)
-            load()
-        }
+        load(manualRefresh = true)
     }
 
     fun selectMonth(month: YearMonth) {
@@ -232,9 +227,9 @@ class BillViewModel(app: Application) : AndroidViewModel(app) {
         mutable.value = mutable.value.copy(detail = null)
     }
 
-    private fun load() {
+    private fun load(manualRefresh: Boolean = false) {
         val current = mutable.value
-        if (current.needsLogin) return
+        if (current.needsLogin && !manualRefresh) return
         loadJob?.cancel()
         val month = current.month
         val typeId = current.typeId
@@ -242,9 +237,25 @@ class BillViewModel(app: Application) : AndroidViewModel(app) {
         val amountTo = current.amountToCents
         val info = current.info
         val hasItems = current.items.isNotEmpty()
-        mutable.value = current.copy(loading = !hasItems, refreshing = hasItems, error = null, loadMoreError = null)
+        // PullToRefresh needs the busy state before any suspension, including the credential check.
+        mutable.value = current.copy(
+            loading = !manualRefresh && !hasItems,
+            refreshing = manualRefresh || hasItems,
+            error = null,
+            loadMoreError = null,
+        )
         loadJob = viewModelScope.launch {
             try {
+                if (manualRefresh) {
+                    val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
+                    if (!exists) {
+                        mutable.value = mutable.value.copy(
+                            needsLogin = true, loaded = false, loading = false, refreshing = false,
+                        )
+                        return@launch
+                    }
+                    mutable.value = mutable.value.copy(needsLogin = false)
+                }
                 val range = monthRange(month)
                 val page = withContext(Dispatchers.IO) {
                     repository.bills(1, PAGE_SIZE, range.first, range.second, typeId, amountFrom, amountTo, info.ifBlank { null })
