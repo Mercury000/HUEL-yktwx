@@ -33,7 +33,6 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -79,12 +78,6 @@ fun BillPage(
                         IconButton(onClick = onOpenStats) {
                             Icon(AppIcons.Chart, contentDescription = "账单统计", tint = MiuixTheme.colorScheme.onSurface)
                         }
-                        IconButton(onClick = { if (!state.refreshing) onRefresh() }) {
-                            Icon(
-                                MiuixIcons.Refresh, contentDescription = "刷新账单",
-                                tint = if (state.refreshing) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurface,
-                            )
-                        }
                     },
                 )
             }
@@ -97,7 +90,7 @@ fun BillPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     topAppBarScrollBehavior = scrollBehavior,
                     color = MiuixTheme.colorScheme.primary,
-                    refreshTexts = listOf("下拉刷新", "松开刷新", "正在刷新", "刷新完成"),
+                    refreshTexts = AppRefreshTexts,
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().overScrollVertical(),

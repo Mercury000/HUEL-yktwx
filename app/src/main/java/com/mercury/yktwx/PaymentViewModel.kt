@@ -25,6 +25,7 @@ class PaymentUiState(
     val code: String? = null,
     val secondsLeft: Long = 0,
     val preview: Boolean = false,
+    val refreshing: Boolean = false,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
@@ -87,11 +88,11 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun refresh() {
+    fun refresh(manual: Boolean = false) {
         if (preview || mutable.value.busy || mutable.value.needsLogin) return
         ticker?.cancel()
         val username = mutable.value.username
-        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username)
+        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual)
         request = viewModelScope.launch {
             try { show(withContext(Dispatchers.IO) { repository.refresh() }, username) }
             catch (e: CancellationException) { throw e }

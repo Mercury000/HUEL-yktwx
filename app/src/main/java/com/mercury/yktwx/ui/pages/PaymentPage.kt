@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -32,7 +31,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Show
 import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -50,81 +48,86 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     title = if (state.needsLogin) "登录" else "付款",
                     largeTitle = if (state.needsLogin) "登录" else "付款",
                     scrollBehavior = scrollBehavior, color = Color.Transparent,
-                    actions = {
-                        if (!state.needsLogin) IconButton(onClick = { if (!state.busy) onRefresh() }) {
-                            Icon(MiuixIcons.Refresh, contentDescription = "刷新付款码", tint = if (state.busy) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurface)
-                        }
-                    },
                 )
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection).imePadding(),
-                    contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                PullToRefresh(
+                    isRefreshing = state.refreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
+                    topAppBarScrollBehavior = scrollBehavior,
+                    color = MiuixTheme.colorScheme.primary,
+                    refreshTexts = AppRefreshTexts,
                 ) {
-                    if (state.needsLogin) {
-                        item { LoginCard(state, onLogin) }
-                        item {
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("仅保存于本机", fontWeight = FontWeight.SemiBold)
-                                    Text("密码和登录凭证使用 Android Keystore 加密保存。登录失效时自动重新登录；账户无效时要求你重新输入。", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().overScrollVertical().imePadding(),
+                        contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (state.needsLogin) {
+                            item { LoginCard(state, onLogin) }
+                            item {
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("仅保存于本机", fontWeight = FontWeight.SemiBold)
+                                        Text("密码和登录凭证使用 Android Keystore 加密保存。登录失效时自动重新登录；账户无效时要求你重新输入。", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        if (state.preview) item { Text("界面预览 · 测试码不可用于支付", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary) }
-                        item {
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("付款码", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                                        Spacer(Modifier.weight(1f))
-                                        Text(if (state.code != null) "${state.secondsLeft}s 后刷新" else if (state.busy) "正在获取" else "等待刷新", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                    }
-                                    if (state.code != null) {
-                                        key(state.code) {
-                                        CodeArtwork(state.code, BarcodeFormat.CODE_128, 960, 220, Modifier.fillMaxWidth().height(88.dp), "付款条形码")
-                                        CodeArtwork(state.code, BarcodeFormat.QR_CODE, 600, 600, Modifier.size(232.dp), "付款二维码")
+                        } else {
+                            if (state.preview) item { Text("界面预览 · 测试码不可用于支付", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary) }
+                            item {
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("付款码", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(if (state.code != null) "${state.secondsLeft}s 后刷新" else if (state.busy) "正在获取" else "等待刷新", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
-                                        Text(state.code.take(4) + " •••• •••• ••••", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        Text("向商户出示，切勿分享或截图", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                    } else {
-                                        Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                                if (state.busy) CircularProgressIndicator()
-                                                Text(state.error ?: "请点击右上角刷新获取付款码", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                                if (!state.busy) Button(onClick = onRefresh, colors = ButtonDefaults.buttonColorsPrimary()) { Text("重新获取") }
+                                        if (state.code != null) {
+                                            key(state.code) {
+                                            CodeArtwork(state.code, BarcodeFormat.CODE_128, 960, 220, Modifier.fillMaxWidth().height(88.dp), "付款条形码")
+                                            CodeArtwork(state.code, BarcodeFormat.QR_CODE, 600, 600, Modifier.size(232.dp), "付款二维码")
+                                            }
+                                            Text(state.code.take(4) + " •••• •••• ••••", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                            Text("向商户出示，切勿分享或截图", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        } else {
+                                            Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                                    if (state.busy) CircularProgressIndicator()
+                                                    Text(state.error ?: "请下拉刷新或点击下方按钮重新获取付款码", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                    if (!state.busy) Button(onClick = onRefresh, colors = ButtonDefaults.buttonColorsPrimary()) { Text("重新获取") }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        if (state.batch != null) item {
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(Modifier.fillMaxWidth()) {
-                                        Text(state.batch.account.name, fontWeight = FontWeight.SemiBold)
-                                        Spacer(Modifier.weight(1f))
-                                        Text("余额", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            if (state.batch != null) item {
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(Modifier.fillMaxWidth()) {
+                                            Text(state.batch.account.name, fontWeight = FontWeight.SemiBold)
+                                            Spacer(Modifier.weight(1f))
+                                            Text("余额", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        }
+                                        Text("¥ " + String.format(Locale.CHINA, "%.2f", state.batch.account.balanceCents / 100.0), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(if (state.preview) "界面预览" else "学工号 ${state.username}", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
-                                    Text("¥ " + String.format(Locale.CHINA, "%.2f", state.batch.account.balanceCents / 100.0), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(if (state.preview) "界面预览" else "学工号 ${state.username}", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                 }
                             }
-                        }
-                        if (!state.needsLogin) item {
-                            Card(Modifier.fillMaxWidth()) {
-                                ArrowPreference(title = "账单", summary = "查看交易记录与统计", onClick = onOpenBills)
+                            if (!state.needsLogin) item {
+                                Card(Modifier.fillMaxWidth()) {
+                                    ArrowPreference(title = "账单", summary = "查看交易记录与统计", onClick = onOpenBills)
+                                }
                             }
-                        }
-                        item {
-                            Card(Modifier.fillMaxWidth()) {
-                                ArrowPreference(title = "切换账户", summary = "清除本机登录信息后重新登录", onClick = onLogout)
+                            item {
+                                Card(Modifier.fillMaxWidth()) {
+                                    ArrowPreference(title = "切换账户", summary = "清除本机登录信息后重新登录", onClick = onLogout)
+                                }
                             }
                         }
                     }
