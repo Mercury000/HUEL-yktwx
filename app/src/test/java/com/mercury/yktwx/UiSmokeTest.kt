@@ -2,11 +2,19 @@ package com.mercury.yktwx
 
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
+import com.mercury.yktwx.data.BillRecord
+import com.mercury.yktwx.data.BillSummary
+import com.mercury.yktwx.data.BillType
+import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
+import com.mercury.yktwx.ui.pages.BillPage
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -29,8 +37,14 @@ class UiSmokeTest {
     }
     private fun content(preview: Boolean = true) {
         val model = PaymentViewModel(compose.activity.application)
+        val bills = BillViewModel(compose.activity.application)
         model.initialize(preview)
-        compose.setContent { YktApp(settings, model) }
+        bills.initialize(preview)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                YktApp(settings, model, bills)
+            }
+        }
         compose.waitForIdle()
     }
     @Test fun firstLaunchShowsLoginAndSystemPasswordField() {
@@ -49,11 +63,60 @@ class UiSmokeTest {
         compose.onNodeWithContentDescription("付款条形码").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertExists()
     }
+    @Test fun billPageRendersPreview() {
+        val record = BillRecord(
+            orderId = "TEST-01", resume = "第一餐厅-扫码支付", payName = "扫码支付",
+            turnoverType = "二维码支付", icon = "qrCode-payment", typeId = "4", typeFrom = "2",
+            amountCents = 800, balanceCents = 8236, feeCents = 0,
+            effectTime = "2026-10-20 12:05:00", bookTime = "2026-10-20 12:06:00",
+            fromAccount = "校园卡", position = "POS-01", remark = "测试", merchant = "第一餐厅",
+            serialNumber = "20260001", labelName = "",
+        )
+        compose.setContent {
+            AppTheme {
+                BillPage(
+                    state = BillUiState(
+                        preview = true, items = listOf(record), total = 1,
+                        currentPage = 1, pages = 1, loaded = true,
+                        summary = BillSummary(20000, 20540),
+                        types = listOf(BillType("4", "二维码支付", "qrCode-payment")),
+                    ),
+                    settings = settings,
+                    onBack = {}, onActivate = {}, onRefresh = {}, onLoadMore = {},
+                    onMonthSelected = {}, onFiltersApplied = { _, _, _ -> },
+                    onSearch = {}, onOpenStats = {}, onOpenDetail = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("第一餐厅-扫码支付").assertExists()
+        compose.onNodeWithContentDescription("筛选账单").assertExists()
+    }
+
+    @Test fun billEntryOpensBillPage() {
+        content()
+        compose.onNodeWithText("查看交易记录与统计").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("账单统计").assertExists()
+        compose.onNodeWithContentDescription("刷新账单").assertExists()
+        compose.onNodeWithContentDescription("筛选账单")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithText("筛选账单").assertExists()
+        compose.onNodeWithText("应用").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("付款条形码").assertExists()
+    }
     @Test fun aboutSettingsThemeNavigateAndPersist() {
         content()
-        compose.onNodeWithText("关于").performClick()
-        compose.onNodeWithText("设置").performScrollTo().performClick()
-        compose.onNodeWithText("主题").performClick()
+        compose.onNode(hasText("关于") and hasClickAction())
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("设置").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("主题").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("预测性返回动画").assertExists()
         compose.onNodeWithText("顶栏模糊").assertExists()
         compose.runOnIdle { settings.setTheme(2); settings.setAccent(1); settings.setFloating(true); settings.setFloatingStyle(1) }
@@ -63,7 +126,7 @@ class UiSmokeTest {
         assertEquals(2, restored.themeMode.value)
         assertEquals(1, restored.accentMode.value)
         assertTrue(restored.floatingBottomBar.value)
-        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onAllNodesWithContentDescription("返回").onLast().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertExists()
     }

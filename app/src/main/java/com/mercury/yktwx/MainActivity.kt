@@ -17,6 +17,7 @@ import com.mercury.yktwx.ui.YktApp
 
 class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
+    private val billViewModel: BillViewModel by viewModels()
     private val latestConfig = mutableStateOf<Configuration?>(null)
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
         viewModel.initialize(preview)
+        billViewModel.initialize(preview)
         setContent {
             val secure = !preview && settings.preventScreenshots.value
             SideEffect {
@@ -46,7 +48,7 @@ class MainActivity : ComponentActivity() {
                     )
                     onDispose {}
                 }
-                YktApp(settings, viewModel)
+                YktApp(settings, viewModel, billViewModel)
             }
         }
     }

@@ -30,7 +30,7 @@ class PaymentUiState(
 }
 
 class PaymentViewModel(app: Application) : AndroidViewModel(app) {
-    private val repository = AccountRepository(YktApi(), SecureVault(app))
+    private val repository = AccountRepository.shared(app)
     private val mutable = MutableStateFlow(PaymentUiState())
     val state = mutable.asStateFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)

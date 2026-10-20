@@ -12,6 +12,22 @@ import javax.net.ssl.HttpsURLConnection
 interface YktService {
     suspend fun login(credentials: Credentials): Session
     suspend fun payment(token: String): PaymentBatch
+    suspend fun bills(
+        token: String,
+        current: Int,
+        size: Int,
+        timeFrom: String,
+        timeTo: String,
+        typeId: String?,
+        amountFromCents: Long?,
+        amountToCents: Long?,
+        info: String?,
+    ): BillPageData
+    suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary
+    suspend fun billTypes(token: String): List<BillType>
+    suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory>
+    suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint>
+    suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord>
 }
 
 /** First-party HTTPS only; no cookie jar, redirects, insecure TLS or automatic login retries. */
@@ -87,6 +103,57 @@ class YktApi(
         val expiry = data.optLong("expires")
         if (expiry <= 0) throw YktException("付款码有效期异常")
         return PaymentBatch(codes, expiry, started, account)
+    }
+    override suspend fun bills(
+        token: String,
+        current: Int,
+        size: Int,
+        timeFrom: String,
+        timeTo: String,
+        typeId: String?,
+        amountFromCents: Long?,
+        amountToCents: Long?,
+        info: String?,
+    ): BillPageData {
+        val params = buildMap {
+            put("current", current.toString()); put("size", size.toString())
+            put("timeFrom", timeFrom); put("timeTo", timeTo)
+            typeId?.takeIf { it.isNotBlank() }?.let { put("typeId", it) }
+            amountFromCents?.let { put("amountFrom", it.toString()) }
+            amountToCents?.let { put("amountTo", it.toString()) }
+            info?.trim()?.takeIf { it.isNotEmpty() }?.let { put("info", it) }
+        }
+        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data"))
+    }
+    override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+        val data = request(
+            "/berserker-search/statistics/turnover/count",
+            mapOf("timeFrom" to timeFrom, "timeTo" to timeTo), token,
+        ).getJSONObject("data")
+        return BillParser.summary(data)
+    }
+    override suspend fun billTypes(token: String): List<BillType> =
+        BillParser.types(request("/berserker-search/search/turnoverType", token = token).getJSONArray("data"))
+    override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+        val data = request(
+            "/berserker-search/statistics/turnover",
+            mapOf("type" to type.toString(), "timeFrom" to timeFrom, "timeTo" to timeTo), token,
+        ).getJSONArray("data")
+        return BillParser.categories(data)
+    }
+    override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> {
+        val data = request(
+            "/berserker-search/statistics/turnover/sum/user",
+            mapOf("dateStr" to month, "dateType" to "month", "statisticsDateStr" to "day", "type" to type.toString()), token,
+        ).getJSONObject("data")
+        return BillParser.daily(data)
+    }
+    override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+        val params = mapOf(
+            "current" to "1", "size" to limit.toString(), "timeFrom" to timeFrom, "timeTo" to timeTo,
+            "type" to type.toString(), "sortFields" to "tranamt", "sortType" to "desc",
+        )
+        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data")).items
     }
     private fun escape(value: String) = URLEncoder.encode(value, Charsets.UTF_8)
     private companion object { const val BASE = "https://yktwx2.huel.edu.cn" }
