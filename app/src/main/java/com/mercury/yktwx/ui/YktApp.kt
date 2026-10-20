@@ -35,6 +35,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -193,7 +194,17 @@ private fun SecondaryPage(screen: Screen, settings: ThemeSettings, onBack: () ->
                     bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp)
                 when (screen) {
                     Screen.Settings -> LazyColumn(modifier = modifier, contentPadding = contentPadding) {
-                        item { Card(Modifier.fillMaxWidth()) { ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme) } }
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)
+                                SwitchPreference(
+                                    title = stringResource(R.string.prevent_screenshots),
+                                    summary = stringResource(R.string.prevent_screenshots_summary),
+                                    checked = settings.preventScreenshots.value,
+                                    onCheckedChange = settings::setPreventScreenshots,
+                                )
+                            }
+                        }
                     }
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, contentPadding = contentPadding,

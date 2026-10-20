@@ -22,6 +22,8 @@
     <string name="predictive_back_summary">Follow the finger during the back gesture, previewing the page underneath</string>
     <string name="predictive_back_distance">Back Travel Distance</string>
     <string name="predictive_back_distance_summary">Adjust the maximum horizontal travel of the page during the back gesture</string>
+    <string name="prevent_screenshots">Prevent Screenshots</string>
+    <string name="prevent_screenshots_summary">Block app content from appearing in screenshots, screen recordings, and recent task previews</string>
     <string name="link_open_failed">No app available to open this link</string>
     <string name="about_developer">Developer</string>
     <string name="about_source_code">Source Code</string>
