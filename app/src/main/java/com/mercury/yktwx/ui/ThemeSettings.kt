@@ -15,6 +15,7 @@ class ThemeSettings(context: Context) {
     val blurTopBar = mutableStateOf(prefs.getBoolean("blur_top_bar", false))
     val predictiveBack = mutableStateOf(prefs.getBoolean("predictive_back", true))
     val predictiveBackDistance = mutableStateOf(prefs.getInt("predictive_back_distance", 50).coerceIn(0, 100))
+    val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }
     fun setAccent(v: Int) { accentMode.value = v; prefs.edit().putInt("accent_mode", v).apply() }
     fun setFloating(v: Boolean) { floatingBottomBar.value = v; prefs.edit().putBoolean("floating_bottom_bar", v).apply() }
@@ -23,4 +24,5 @@ class ThemeSettings(context: Context) {
     fun setBlurTop(v: Boolean) { blurTopBar.value = v; prefs.edit().putBoolean("blur_top_bar", v).apply() }
     fun setPredictive(v: Boolean) { predictiveBack.value = v; prefs.edit().putBoolean("predictive_back", v).apply() }
     fun setDistance(v: Int) { predictiveBackDistance.value = v.coerceIn(0, 100); prefs.edit().putInt("predictive_back_distance", predictiveBackDistance.value).apply() }
+    fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
 }

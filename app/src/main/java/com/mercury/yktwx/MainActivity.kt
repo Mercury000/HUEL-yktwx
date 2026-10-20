@@ -24,12 +24,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val preview = BuildConfig.DEBUG && intent.getBooleanExtra("ui_preview", false)
+        val settings = ThemeSettings(this)
         // Payments and password screens must not leak through screenshots or task previews.
-        if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (!preview && settings.preventScreenshots.value) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         viewModel.initialize(preview)
         setContent {
+            val secure = !preview && settings.preventScreenshots.value
+            SideEffect {
+                if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
             CompositionLocalProvider(LocalConfiguration provides (latestConfig.value ?: LocalConfiguration.current)) {
-                val settings = remember { ThemeSettings(this) }
                 val systemDark = isSystemInDarkTheme()
                 val dark = when (settings.themeMode.value) { 1 -> false; 2 -> true; else -> systemDark }
                 DisposableEffect(dark) {
