@@ -51,7 +51,6 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
 
@@ -73,17 +72,8 @@ jobs:
 
           VERSION_CHANGED=false
           if [ "$EVENT_NAME" = "push" ] &&
-             [ -n "$BEFORE_SHA" ] &&
-             [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] &&
-             git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
-            PREVIOUS_FILE=$(git show "${BEFORE_SHA}:app/build.gradle.kts" 2>/dev/null || true)
-            PREVIOUS_VERSION_CODE=$(printf '%s\n' "$PREVIOUS_FILE" | read_version_code)
-            PREVIOUS_VERSION_NAME=$(printf '%s\n' "$PREVIOUS_FILE" | read_version_name)
-
-            if [ "$VERSION_CODE" != "$PREVIOUS_VERSION_CODE" ] ||
-               [ "$VERSION_NAME" != "$PREVIOUS_VERSION_NAME" ]; then
-              VERSION_CHANGED=true
-            fi
+             ! git rev-parse -q --verify "refs/tags/${VERSION_CODE}" >/dev/null; then
+            VERSION_CHANGED=true
           fi
 
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
@@ -207,7 +197,7 @@ jobs:
         uses: ncipollo/release-action@v1.21.0
         with:
           token: ${{ github.token }}
-          tag: v${{ steps.version.outputs.version_name }}
+          tag: ${{ steps.version.outputs.version_code }}
           commit: ${{ github.sha }}
           name: ${{ steps.version.outputs.version_name }}
           bodyFile: release-notes.md
