@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import android.content.Context
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -16,7 +17,8 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         try { service.payment(session.accessToken) }
         catch (e: AuthenticationRequired) { vault.clear(); throw e }
     }
-    suspend fun refresh(): PaymentBatch = mutex.withLock {
+    suspend fun refresh(): PaymentBatch = withSession { service.payment(it) }
+    internal suspend fun <T> withSession(block: suspend (String) -> T): T = mutex.withLock {
         val credentials = vault.credentials() ?: throw AuthenticationRequired()
         var session = vault.session()
         var loggedIn = false
@@ -26,14 +28,47 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
             catch (e: CaptchaRequired) { vault.clear(); throw e }
         }
         if (session == null || !session.isFresh()) { session = relogin(); loggedIn = true }
-        try { service.payment(session.accessToken) }
+        try { block(session.accessToken) }
         catch (e: AuthenticationRequired) {
             vault.clearSession()
             if (loggedIn) { vault.clear(); throw e }
             val next = relogin()
-            try { service.payment(next.accessToken) }
+            try { block(next.accessToken) }
             catch (e: AuthenticationRequired) { vault.clear(); throw e }
         }
     }
+    suspend fun bills(
+        current: Int,
+        size: Int,
+        timeFrom: String,
+        timeTo: String,
+        typeId: String?,
+        amountFromCents: Long?,
+        amountToCents: Long?,
+        info: String?,
+    ): BillPageData = withSession {
+        service.bills(it, current, size, timeFrom, timeTo, typeId, amountFromCents, amountToCents, info)
+    }
+    suspend fun billSummary(timeFrom: String, timeTo: String): BillSummary = withSession {
+        service.billSummary(it, timeFrom, timeTo)
+    }
+    suspend fun billTypes(): List<BillType> = withSession { service.billTypes(it) }
+    suspend fun billCategories(type: Int, timeFrom: String, timeTo: String): List<BillCategory> = withSession {
+        service.billCategories(it, type, timeFrom, timeTo)
+    }
+    suspend fun billDaily(type: Int, month: String): List<BillDailyPoint> = withSession {
+        service.billDaily(it, type, month)
+    }
+    suspend fun billRanking(type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = withSession {
+        service.billRanking(it, type, timeFrom, timeTo, limit)
+    }
     suspend fun logout() = mutex.withLock { vault.clear() }
+
+    companion object {
+        @Volatile private var sharedInstance: AccountRepository? = null
+
+        fun shared(context: Context): AccountRepository = sharedInstance ?: synchronized(this) {
+            sharedInstance ?: AccountRepository(YktApi(), SecureVault(context.applicationContext)).also { sharedInstance = it }
+        }
+    }
 }

@@ -21,8 +21,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mercury.yktwx.BillViewModel
 import com.mercury.yktwx.PaymentViewModel
 import com.mercury.yktwx.R
+import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.components.liquid.IosLiquidGlassNavigationBar
 import com.mercury.yktwx.ui.nav.*
@@ -40,10 +42,10 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { Settings, Theme, References }
+private enum class Screen { Bill, BillStats, BillDetail, Settings, Theme, References }
 
 @Composable
-fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
+fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel) {
     val mode = when (settings.themeMode.value) {
         1 -> ColorSchemeMode.Light
         2 -> ColorSchemeMode.Dark
@@ -51,6 +53,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
     }
     AppTheme(mode, settings.accentMode.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
+        val billState by billViewModel.state.collectAsStateWithLifecycle()
         val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
         val scope = rememberCoroutineScope()
         val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
@@ -58,6 +61,9 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
         val context = LocalContext.current
         LaunchedEffect(viewModel) {
             viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
+        LaunchedEffect(billState.needsLogin) {
+            if (billState.needsLogin) viewModel.refresh()
         }
         var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
         val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
@@ -74,6 +80,18 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
         }
         fun close() {
             if (layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
+        }
+        fun openBill() {
+            billViewModel.onActivate()
+            open(Screen.Bill)
+        }
+        fun openBillStats() {
+            billViewModel.openStats()
+            open(Screen.BillStats)
+        }
+        fun openBillDetail(record: BillRecord) {
+            billViewModel.openDetail(record)
+            open(Screen.BillDetail)
         }
         repeat(MAX_LAYERS) { k ->
             val shown = layers.size > k
@@ -118,9 +136,11 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
                                 state = pagerState, modifier = Modifier.fillMaxSize(),
                                 beyondViewportPageCount = 1, key = { it },
                             ) { page ->
-                                if (page == 0) PaymentPage(state, settings, bottom,
-                                    viewModel::refresh, viewModel::login, viewModel::logout)
-                                else AboutTabPage(
+                                if (page == 0) PaymentPage(
+                                    state, settings, bottom,
+                                    viewModel::refresh, viewModel::login, viewModel::logout,
+                                    onOpenBills = ::openBill,
+                                ) else AboutTabPage(
                                     isActive = pagerState.currentPage == 1 && layers.isEmpty(),
                                     pageBottomContentPadding = bottom,
                                     onOpenReferences = { open(Screen.References) },
@@ -138,7 +158,37 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel) {
             )
             BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
                 IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
-                    SecondaryPage(screen, settings, onBack = { close() }, onTheme = { open(Screen.Theme) })
+                    when (screen) {
+                        Screen.Bill -> BillPage(
+                            state = billState,
+                            settings = settings,
+                            onBack = { close() },
+                            onActivate = billViewModel::onActivate,
+                            onRefresh = billViewModel::refresh,
+                            onLoadMore = billViewModel::loadMore,
+                            onMonthSelected = billViewModel::selectMonth,
+                            onFiltersApplied = billViewModel::applyFilters,
+                            onSearch = billViewModel::search,
+                            onOpenStats = ::openBillStats,
+                            onOpenDetail = ::openBillDetail,
+                        )
+                        Screen.BillStats -> BillStatsPage(
+                            state = billState,
+                            settings = settings,
+                            onBack = { close() },
+                            onMonthChange = billViewModel::selectStatsMonth,
+                            onTypeChange = billViewModel::selectStatsType,
+                            onRetry = billViewModel::refreshStats,
+                            onOpenDetail = ::openBillDetail,
+                        )
+                        Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
+                        else -> SecondaryPage(
+                            screen = screen,
+                            settings = settings,
+                            onBack = { close() },
+                            onTheme = { open(Screen.Theme) },
+                        )
+                    }
                 }
             }
         }
@@ -174,11 +224,17 @@ private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected:
 }
 
 @Composable
-private fun SecondaryPage(screen: Screen, settings: ThemeSettings, onBack: () -> Unit, onTheme: () -> Unit) {
+private fun SecondaryPage(
+    screen: Screen,
+    settings: ThemeSettings,
+    onBack: () -> Unit,
+    onTheme: () -> Unit,
+) {
     val title = when (screen) {
         Screen.Settings -> stringResource(R.string.settings_title)
         Screen.Theme -> stringResource(R.string.theme_title)
         Screen.References -> stringResource(R.string.about_references)
+        else -> ""
     }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
@@ -218,6 +274,7 @@ private fun SecondaryPage(screen: Screen, settings: ThemeSettings, onBack: () ->
                         predictiveBackDistance = settings.predictiveBackDistance, onPredictiveBackDistanceChange = settings::setDistance,
                     )
                     Screen.References -> ReferencesPage(modifier, contentPadding)
+                    else -> Unit
                 }
             }
         }

@@ -31,3 +31,7 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 业务请求使用 `synjones-auth: bearer <access_token>` 与 `synAccessSource: h5`，取码失败清除旧码并显示服务端原因，不记录完整付款码。
 
+## 账单
+
+账单列表使用 `/berserker-search/search/personal/turnover`，汇总使用 `/berserker-search/statistics/turnover/count`，分类与趋势通过对应 statistics 接口读取。金额以分处理，收入与支出方向由响应字段决定。
+

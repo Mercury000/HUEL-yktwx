@@ -23,7 +23,7 @@ interface Vault {
 /** AES-256-GCM, randomized IV and a non-exportable Android Keystore key. Backups are disabled. */
 class SecureVault(context: Context) : Vault {
     private val prefs = context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE)
-    private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    private val keyStore by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
     private fun key(): SecretKey {
         (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {

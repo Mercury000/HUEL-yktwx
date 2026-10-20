@@ -32,6 +32,22 @@ class AccountRepositoryTest {
             if (paymentFailures.isNotEmpty()) throw paymentFailures.removeAt(0)
             return PaymentBatch(listOf("00000000000000000000"), 60, 0, PaymentAccount("0", "0", "0", "Demo", 0))
         }
+        override suspend fun bills(
+            token: String,
+            current: Int,
+            size: Int,
+            timeFrom: String,
+            timeTo: String,
+            typeId: String?,
+            amountFromCents: Long?,
+            amountToCents: Long?,
+            info: String?,
+        ) = BillPageData(emptyList(), 0, current, 0, size)
+        override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
+        override suspend fun billTypes(token: String): List<BillType> = emptyList()
+        override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()
+        override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> = emptyList()
+        override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = emptyList()
     }
     private suspend fun fails(type: Class<out YktException>, action: suspend () -> Unit) {
         try { action(); fail("Expected error") } catch (e: YktException) { assertTrue(type.isInstance(e)) }

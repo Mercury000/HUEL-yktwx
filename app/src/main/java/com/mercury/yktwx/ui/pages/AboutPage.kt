@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +92,7 @@ fun AboutPage(
     val context = LocalContext.current
     val sourceUrl = stringResource(R.string.source_code_url)
     val density = LocalDensity.current
+    val inspectionMode = LocalInspectionMode.current
     val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val lazyListState = rememberLazyListState()
 
@@ -142,7 +144,7 @@ fun AboutPage(
         val contentTopPadding = innerPadding.calculateTopPadding()
 
         BgEffectBackground(
-            dynamicBackground = isActive,
+            dynamicBackground = isActive && !inspectionMode,
             isFullSize = true,
             isDarkTheme = darkMode,
             modifier = Modifier.fillMaxSize(),

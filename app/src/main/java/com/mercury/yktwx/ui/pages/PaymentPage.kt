@@ -41,7 +41,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogin: (String, String) -> Unit, onLogout: () -> Unit) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogin: (String, String) -> Unit, onLogout: () -> Unit, onOpenBills: () -> Unit) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -115,6 +115,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                     Text("¥ " + String.format(Locale.CHINA, "%.2f", state.batch.account.balanceCents / 100.0), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
                                     Text(if (state.preview) "界面预览" else "学工号 ${state.username}", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                 }
+                            }
+                        }
+                        if (!state.needsLogin) item {
+                            Card(Modifier.fillMaxWidth()) {
+                                ArrowPreference(title = "账单", summary = "查看交易记录与统计", onClick = onOpenBills)
                             }
                         }
                         item {
