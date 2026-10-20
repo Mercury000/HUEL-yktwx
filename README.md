@@ -51,7 +51,15 @@ macOS / Linux 使用 `./gradlew`。
 | preview | `com.mercury.yktwx.preview` | `app/build/outputs/apk/preview/app-preview.apk` |
 | personal | `com.mercury.yktwx` | `app/build/outputs/apk/personal/app-personal.apk` |
 
-`release` 未配置发布签名；`personal` **不是正式发布签名构建**。正式分发时自行配置签名，私钥和密码保存在本机或安全的 CI secret 中。APK、签名文件和构建输出不提交 Git。
+本地 `release` 构建不配置签名；`personal` **不是正式发布签名构建**。不要把私钥、密码或签名配置提交到 Git。
+
+### 自动发布
+
+`.github/workflows/build.yml` 在推送 `main` 时读取 `app/build.gradle.kts` 的 `versionCode` / `versionName`：
+
+- 版本未变化：构建 debug APK 并上传为 workflow artifact。
+- 版本变化：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 `v<versionName>` GitHub Release。
+- 也可手动触发 workflow，选择 debug 或 release。
 
 ### 安装与 UI 预览
 
