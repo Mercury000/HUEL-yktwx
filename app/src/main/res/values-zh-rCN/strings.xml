@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="about_tab">关于</string>
+    <string name="theme_title">主题</string>
+    <string name="theme_follow_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_color">主题颜色</string>
+    <string name="theme_color_summary">选择应用强调色样式</string>
+    <string name="color_default">默认</string>
+    <string name="color_monet">动态取色</string>
+    <string name="floating_bottom_bar">悬浮底栏</string>
+    <string name="floating_bottom_bar_summary">让底部导航栏悬浮在屏幕边缘上方</string>
+    <string name="blur_bottom_bar">底栏模糊</string>
+    <string name="blur_bottom_bar_summary">使用半透明底部导航背景</string>
+    <string name="floating_bottom_bar_style">悬浮底栏样式</string>
+    <string name="floating_bottom_bar_style_default">默认</string>
+    <string name="floating_bottom_bar_style_ios">iOS</string>
+    <string name="blur_top_bar">顶栏模糊</string>
+    <string name="blur_top_bar_summary">使用半透明顶部栏背景</string>
+    <string name="predictive_back">预测性返回动画</string>
+    <string name="predictive_back_summary">返回手势跟随手指移动，并预览下层页面</string>
+    <string name="predictive_back_distance">返回跟手距离</string>
+    <string name="predictive_back_distance_summary">调整返回手势中页面的最大横移距离</string>
+    <string name="link_open_failed">没有可打开链接的应用</string>
+    <string name="about_developer">开发者</string>
+    <string name="about_source_code">源码</string>
+    <string name="about_references">引用</string>
+</resources>

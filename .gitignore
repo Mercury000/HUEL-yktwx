@@ -1,0 +1,74 @@
+# Gradle / Kotlin caches and build output
+.gradle/
+.kotlin/
+**/build/
+/out/
+/dist/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE and machine-local Android SDK configuration
+.idea/
+.vscode/
+*.iml
+/local.properties
+
+# Installers and extracted dependency inspection files
+*.apk
+*.aab
+*.apks
+*.aar
+*.dex
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.zip
+*.7z
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local diagnostics, downloaded docs and preview screenshots
+/tools/
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Account material and signing secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties
+credentials.json
+credentials.*.json
+session.json
+session.*.json
+barcode.json
+barcode.*.json
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo
+*.tmp
