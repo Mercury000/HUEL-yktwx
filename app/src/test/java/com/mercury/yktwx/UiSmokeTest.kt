@@ -57,9 +57,9 @@ class UiSmokeTest {
         compose.onNodeWithText("打开官网处理验证码 / 账户问题").assertDoesNotExist()
         compose.onNodeWithText("登录并获取付款码").assertIsNotEnabled()
     }
-    @Test fun paymentPreviewAndRefreshButtonExist() {
+    @Test fun paymentPreviewShowsCodesWithoutRefreshButton() {
         content()
-        compose.onNodeWithContentDescription("刷新付款码").assertExists()
+        compose.onNodeWithContentDescription("刷新付款码").assertDoesNotExist()
         compose.onNodeWithContentDescription("付款条形码").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertExists()
     }
@@ -99,7 +99,7 @@ class UiSmokeTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         compose.onNodeWithContentDescription("账单统计").assertExists()
-        compose.onNodeWithContentDescription("刷新账单").assertExists()
+        compose.onNodeWithContentDescription("刷新账单").assertDoesNotExist()
         compose.onNodeWithContentDescription("筛选账单")
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()

@@ -33,6 +33,8 @@ internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRec
     val key: String get() = date?.toString() ?: "unknown:${records.firstOrNull()?.orderId.orEmpty()}"
 }
 
+internal val AppRefreshTexts = listOf("下拉刷新", "松开刷新", "正在刷新", "刷新完成")
+
 internal fun money(cents: Long): String = String.format(Locale.CHINA, "%.2f", cents / 100.0)
 
 internal fun signedMoney(record: BillRecord): String =

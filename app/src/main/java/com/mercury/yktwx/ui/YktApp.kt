@@ -138,7 +138,9 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                             ) { page ->
                                 if (page == 0) PaymentPage(
                                     state, settings, bottom,
-                                    viewModel::refresh, viewModel::login, viewModel::logout,
+                                    onRefresh = { viewModel.refresh(manual = true) },
+                                    onLogin = viewModel::login,
+                                    onLogout = viewModel::logout,
                                     onOpenBills = ::openBill,
                                 ) else AboutTabPage(
                                     isActive = pagerState.currentPage == 1 && layers.isEmpty(),
