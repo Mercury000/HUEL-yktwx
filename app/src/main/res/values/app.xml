@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name" translatable="false">YktWx</string>
+    <string name="settings_title">Settings</string>
+    <string name="about_developer_name" translatable="false">Mercury</string>
+    <string name="about_developer_id" translatable="false">Mercury000</string>
+    <style name="Theme.YktWx" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#F7F7F7</item>
+    </style>
+    <string name="about_references_description">The implementation of YktWx references the following open-source projects.</string>
+    <string name="about_reference_projects">Reference projects</string>
+    <string name="unknown_generic">Unknown</string>
+    <string name="source_repository" translatable="false">GitHub</string>
+    <string name="source_code_url" translatable="false">https://github.com/Mercury000/HUEL-yktwx</string>
+</resources>

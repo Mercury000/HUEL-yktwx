@@ -1,0 +1,70 @@
+# Gradle / Kotlin caches and build output
+.gradle/
+.kotlin/
+**/build/
+/out/
+/dist/
+/captures/
+.externalNativeBuild/
+.cxx/
+__pycache__/
+*.py[cod]
+
+# IDE and machine-local Android SDK configuration
+.idea/
+.vscode/
+*.iml
+/local.properties
+/build-version.properties
+/build-metadata.json
+
+# Installers and extracted dependency inspection files
+*.apk
+*.aab
+*.apks
+*.aar
+!app/libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar
+*.dex
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+!app/libs/unionpay-sdk-mini-3.5.16.jar
+*.zip
+*.7z
+
+# Local diagnostics, downloaded docs and preview screenshots
+/.agent/
+/tools/
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Account material and signing secrets
+*.har
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties
+credentials.json
+credentials.*.json
+session.json
+session.*.json
+barcode.json
+barcode.*.json
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo
+*.tmp

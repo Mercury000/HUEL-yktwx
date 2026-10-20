@@ -1,0 +1,123 @@
+package com.mercury.yktwx.ui.pages
+
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.mercury.yktwx.R
+import com.mikepenz.aboutlibraries.Libs
+import com.mikepenz.aboutlibraries.util.withJson
+import com.mercury.yktwx.ui.components.SectionTitle
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private data class ReferenceProject(
+    val name: String,
+    val url: String,
+    val developers: String,
+    val licenses: String?,
+)
+
+@Composable
+fun ReferencesPage(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+) {
+    val context = LocalContext.current
+    val unknownDeveloper = stringResource(R.string.unknown_generic)
+    val referenceProjects = remember(context, unknownDeveloper) {
+        runCatching {
+            Libs.Builder()
+                .withJson(context, R.raw.aboutlibraries)
+                .build()
+                .libraries
+                .mapNotNull { library ->
+                    val url = library.website?.takeIf { it.isNotBlank() }
+                        ?: library.scm?.url?.takeIf { it.isNotBlank() }
+                    url?.let {
+                        ReferenceProject(
+                            name = library.name,
+                            url = it,
+                            developers = library.developers
+                                .mapNotNull { developer -> developer.name?.takeIf(String::isNotBlank) }
+                                .joinToString()
+                                .ifBlank { unknownDeveloper },
+                            licenses = library.licenses
+                                .map { license -> license.name }
+                                .filter(String::isNotBlank)
+                                .sortedWith(String.CASE_INSENSITIVE_ORDER)
+                                .joinToString()
+                                .takeIf(String::isNotBlank),
+                        )
+                    }
+                }
+                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        }.getOrElse { fallbackReferenceProjects }
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding() + 12.dp,
+            bottom = contentPadding.calculateBottomPadding() + 12.dp,
+            start = 16.dp,
+            end = 16.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(R.string.about_references_description),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
+        item {
+            SectionTitle(stringResource(R.string.about_reference_projects))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                referenceProjects.forEach { project ->
+                    BasicComponent(
+                        title = "${project.developers}/${project.name}",
+                        summary = project.licenses ?: "Unknown",
+                        onClick = { context.openLink(project.url) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val fallbackReferenceProjects = emptyList<ReferenceProject>()
+
+/**
+ * Opens a link without letting a missing browser take the app down: with Android 11
+ * package visibility an unresolvable VIEW intent throws instead of doing nothing.
+ */
+private fun Context.openLink(url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(this, R.string.link_open_failed, Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(this, R.string.link_open_failed, Toast.LENGTH_SHORT).show()
+    }
+}
