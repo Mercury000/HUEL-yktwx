@@ -53,11 +53,11 @@ macOS / Linux 使用 `./gradlew`。
 
 ### 自动发布
 
-`.github/workflows/build.yml` 在推送 `main` 时读取 `app/build.gradle.kts` 的 `versionCode` / `versionName`：
+`.github/workflows/build.yml` 在推送 `main` 时读取 `app/build.gradle.kts` 的 `versionCode` / `versionName`，并检查 `versionCode` 对应的 tag 是否存在：
 
-- 版本未变化：构建 debug APK 并上传为 workflow artifact。
-- 版本变化：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 `v<versionName>` GitHub Release。
-- 也可手动触发 workflow，选择 debug 或 release。
+- 已存在：构建 debug APK 并上传为 workflow artifact。
+- 不存在：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 tag 为 `versionCode`、名称为 `versionName` 的 GitHub Release。
+- 也可手动触发 workflow，选择 debug 或 release；手动 release 只构建签名 APK，不创建 Release。
 
 ### 安装与 UI 预览
 
