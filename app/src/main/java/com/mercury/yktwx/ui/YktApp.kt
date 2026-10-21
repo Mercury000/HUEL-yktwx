@@ -258,6 +258,14 @@ private fun MainContent(
         billViewModel.openDetail(record)
         open(Screen.BillDetail)
     }
+    // Root tabs return to payment; secondary pages and popups keep their own back handling.
+    BackHandler(
+        enabled = isActive && layers.isEmpty() &&
+            (tabs.selectedPage != 0 || pagerState.currentPage != 0),
+    ) {
+        tabs.animateToPage(0)
+    }
+
     repeat(MAX_LAYERS) { k ->
         val shown = layers.size > k
         LaunchedEffect(shown, motion[k].predictiveActive) {
