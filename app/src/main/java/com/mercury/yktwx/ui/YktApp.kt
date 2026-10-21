@@ -49,7 +49,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { Bill, BillStats, BillDetail, Settings, Theme, References }
+private enum class Screen { BillStats, BillDetail, Settings, Theme, References }
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel) {
@@ -110,7 +110,7 @@ private fun MainContent(
     rechargeModel: RechargeViewModel,
 ) {
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
@@ -132,10 +132,6 @@ private fun MainContent(
     }
     fun close() {
         if (layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
-    }
-    fun openBill() {
-        billViewModel.onActivate()
-        open(Screen.Bill)
     }
     fun openBillStats() {
         billViewModel.openStats()
@@ -188,19 +184,37 @@ private fun MainContent(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
                             beyondViewportPageCount = 1, key = { it },
                         ) { page ->
-                            if (page == 0) PaymentPage(
-                                state, settings, bottom,
-                                onRefresh = { viewModel.refresh(manual = true) },
-                                onLogout = viewModel::logout,
-                                onOpenBills = ::openBill,
-                                onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
-                                rechargeLoading = rechargeState.loading && !rechargeState.visible,
-                            ) else AboutTabPage(
-                                isActive = pagerState.currentPage == 1 && layers.isEmpty(),
-                                pageBottomContentPadding = bottom,
-                                onOpenReferences = { open(Screen.References) },
-                                onOpenSettings = { open(Screen.Settings) },
-                            )
+                            when (page) {
+                                0 -> PaymentPage(
+                                    state, settings, bottom,
+                                    onRefresh = { viewModel.refresh(manual = true) },
+                                    onLogout = viewModel::logout,
+                                    onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
+                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                )
+                                1 -> BillPage(
+                                    state = billState,
+                                    settings = settings,
+                                    onBack = { tabs.animateToPage(0) },
+                                    onActivate = billViewModel::onActivate,
+                                    onRefresh = billViewModel::refresh,
+                                    onLoadMore = billViewModel::loadMore,
+                                    onMonthSelected = billViewModel::selectMonth,
+                                    onFiltersApplied = billViewModel::applyFilters,
+                                    onSearch = billViewModel::search,
+                                    onOpenStats = ::openBillStats,
+                                    onOpenDetail = ::openBillDetail,
+                                    isActive = pagerState.currentPage == 1 && layers.isEmpty(),
+                                    showBack = false,
+                                    bottomPadding = bottom,
+                                )
+                                2 -> AboutTabPage(
+                                    isActive = pagerState.currentPage == 2 && layers.isEmpty(),
+                                    pageBottomContentPadding = bottom,
+                                    onOpenReferences = { open(Screen.References) },
+                                    onOpenSettings = { open(Screen.Settings) },
+                                )
+                            }
                         }
                     }
                     // Miuix registers overlays with the nearest Scaffold's popup host.
@@ -224,19 +238,6 @@ private fun MainContent(
         BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
             IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
                 when (screen) {
-                    Screen.Bill -> BillPage(
-                        state = billState,
-                        settings = settings,
-                        onBack = { close() },
-                        onActivate = billViewModel::onActivate,
-                        onRefresh = billViewModel::refresh,
-                        onLoadMore = billViewModel::loadMore,
-                        onMonthSelected = billViewModel::selectMonth,
-                        onFiltersApplied = billViewModel::applyFilters,
-                        onSearch = billViewModel::search,
-                        onOpenStats = ::openBillStats,
-                        onOpenDetail = ::openBillDetail,
-                    )
                     Screen.BillStats -> BillStatsPage(
                         state = billState,
                         settings = settings,
@@ -261,8 +262,8 @@ private fun MainContent(
 
 @Composable
 private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected: (Int) -> Unit) {
-    val icons = listOf(MiuixIcons.Scan, MiuixIcons.Info)
-    val labels = listOf("付款", "关于")
+    val icons = listOf(MiuixIcons.Scan, AppIcons.Bill, MiuixIcons.Info)
+    val labels = listOf("付款", "账单", "关于")
     val floating = settings.floatingBottomBar.value
     val blur = settings.blurBottomBar.value
     if (floating && settings.floatingBottomBarStyle.value == 1) {

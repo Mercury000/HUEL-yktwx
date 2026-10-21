@@ -27,6 +27,13 @@ object AppIcons {
             moveTo(12f, 7f); lineTo(12f, 8f)
         }
     }.build()
+    val Logout = ImageVector.Builder("Logout", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(10f, 4f); lineTo(4f, 4f); lineTo(4f, 20f); lineTo(10f, 20f)
+            moveTo(9f, 12f); lineTo(20f, 12f)
+            moveTo(16f, 8f); lineTo(20f, 12f); lineTo(16f, 16f)
+        }
+    }.build()
     val Bill = ImageVector.Builder("Bill", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(5f, 3f); lineTo(19f, 3f); lineTo(19f, 21f)

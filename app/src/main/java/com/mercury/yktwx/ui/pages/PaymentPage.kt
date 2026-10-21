@@ -23,14 +23,13 @@ import com.mercury.yktwx.ui.ThemeSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onOpenBills: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false) {
     var showLogoutConfirmation by remember(state.username, state.needsLogin) { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
@@ -40,6 +39,14 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     title = "付款",
                     largeTitle = "付款",
                     scrollBehavior = scrollBehavior, color = Color.Transparent,
+                    actions = {
+                        IconButton(
+                            onClick = { showLogoutConfirmation = true },
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(AppIcons.Logout, contentDescription = "退出登录", tint = MiuixTheme.colorScheme.onSurface)
+                        }
+                    },
                 )
             }
         }) { padding ->
@@ -100,16 +107,6 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge, enabled = !rechargeLoading)
                                     }
                                 }
-                            }
-                        }
-                        if (!state.needsLogin) item {
-                            Card(Modifier.fillMaxWidth()) {
-                                ArrowPreference(title = "账单", summary = "查看交易记录与统计", onClick = onOpenBills)
-                            }
-                        }
-                        item {
-                            Card(Modifier.fillMaxWidth()) {
-                                ArrowPreference(title = "退出登录", summary = "清除本机保存的登录信息", onClick = { showLogoutConfirmation = true })
                             }
                         }
                     }
