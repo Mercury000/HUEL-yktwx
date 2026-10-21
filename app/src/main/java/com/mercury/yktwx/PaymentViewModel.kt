@@ -133,7 +133,8 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         if (logoutJob?.isActive == true) return
         ticker?.cancel(); request?.cancel()
-        // Unmount the main UI immediately, and disable login until storage clears.
+        // Revoke access and clear payment codes immediately; only an inert shell
+        // may remain briefly for the page exit animation. Login waits for storage.
         mutable.value = PaymentUiState(busy = true)
         logoutJob = viewModelScope.launch {
             try { withContext(Dispatchers.IO) { repository.logout() } }

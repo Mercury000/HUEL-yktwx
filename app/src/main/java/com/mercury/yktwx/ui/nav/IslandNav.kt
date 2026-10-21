@@ -71,6 +71,15 @@ internal const val BACKGROUND_SCALE_REDUCTION = 0.035f
 internal const val BACKGROUND_PARALLAX = 0.025f
 internal const val EFFECT_VISIBILITY_THRESHOLD = 0.001f
 
+/** Shared page motion for both detail navigation and the authentication boundary. */
+internal fun islandPageEnter(offsetFraction: Float = 1f): EnterTransition = slideInHorizontally(
+    tween(LAYER_ENTER_DURATION, easing = FastOutSlowInEasing),
+) { (it * offsetFraction).roundToInt() }
+
+internal fun islandPageExit(offsetFraction: Float = 1f): ExitTransition = slideOutHorizontally(
+    tween(LAYER_EXIT_DURATION, easing = FastOutSlowInEasing),
+) { (it * offsetFraction).roundToInt() }
+
 private const val PREDICTIVE_SETTLE_DURATION = 420
 private const val PREDICTIVE_MIN_SETTLE_DURATION = 24
 private const val PREDICTIVE_MIN_EFFECT_INTENSITY = 0.5f
@@ -161,15 +170,11 @@ internal fun IslandLayerHost(
                 scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
                 scaleY = scaleX
             },
-        enter = slideInHorizontally(
-            tween(LAYER_ENTER_DURATION, easing = FastOutSlowInEasing),
-        ) { it },
+        enter = islandPageEnter(),
         exit = if (predictiveActive) {
             ExitTransition.None
         } else {
-            slideOutHorizontally(
-                tween(LAYER_EXIT_DURATION, easing = FastOutSlowInEasing),
-            ) { it }
+            islandPageExit()
         },
     ) {
         content()
