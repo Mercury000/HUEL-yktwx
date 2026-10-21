@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -75,36 +76,70 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         Spacer(Modifier.weight(1f))
                                         Text(if (state.code != null) "${state.secondsLeft}s 后刷新" else if (state.busy) "正在获取" else "等待刷新", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
-                                    if (state.code != null) {
-                                        key(state.code) {
-                                        CodeArtwork(state.code, BarcodeFormat.CODE_128, 960, 220, Modifier.fillMaxWidth().height(88.dp), "付款条形码")
-                                        CodeArtwork(state.code, BarcodeFormat.QR_CODE, 600, 600, Modifier.size(232.dp), "付款二维码")
-                                        }
-                                        Text(state.code.take(4) + " •••• •••• ••••", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        Text("向商户出示，切勿分享或截图", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                    } else {
-                                        Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                                if (state.busy) CircularProgressIndicator()
-                                                Text(state.error ?: "请下拉刷新或点击下方按钮重新获取付款码", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                                if (!state.busy) Button(onClick = onRefresh, colors = ButtonDefaults.buttonColorsPrimary()) { Text("重新获取") }
+                                    // Keep identical slots in success/loading/error states.
+                                    // Only swap their content: old codes must not remain visible.
+                                    Box(Modifier.fillMaxWidth().height(88.dp), contentAlignment = Alignment.Center) {
+                                        state.code?.let { code ->
+                                            key(code) {
+                                                CodeArtwork(code, BarcodeFormat.CODE_128, 960, 220, Modifier.fillMaxSize(), "付款条形码")
                                             }
                                         }
                                     }
+                                    Box(Modifier.size(232.dp), contentAlignment = Alignment.Center) {
+                                        val code = state.code
+                                        if (code != null) {
+                                            key(code) {
+                                                CodeArtwork(code, BarcodeFormat.QR_CODE, 600, 600, Modifier.fillMaxSize(), "付款二维码")
+                                            }
+                                        } else if (state.busy) {
+                                            CircularProgressIndicator()
+                                        } else {
+                                            Column(
+                                                Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            ) {
+                                                Text(
+                                                    state.error ?: "付款码暂不可用，请刷新",
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                                    fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                )
+                                                Button(onClick = onRefresh, colors = ButtonDefaults.buttonColorsPrimary()) { Text("重新获取") }
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        state.code?.let { it.take(4) + " •••• •••• ••••" } ?: " ",
+                                        fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                    Text("向商户出示，切勿分享或截图", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                 }
                             }
                         }
-                        if (state.batch != null) item {
+                        item {
                             Card(Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(state.batch.account.name, fontWeight = FontWeight.SemiBold)
+                                        Text(state.account?.name ?: "统一账户", fontWeight = FontWeight.SemiBold)
                                         Spacer(Modifier.weight(1f))
                                         Text(if (state.preview) "202600000000" else state.username, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("¥ " + String.format(Locale.CHINA, "%.2f", state.batch.account.balanceCents / 100.0), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge, enabled = !rechargeLoading)
+                                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                            // A fixed text baseline reserves the balance row's
+                                            // height even while only a small spinner is shown.
+                                            Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
+                                                color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
+                                            if (state.busy) {
+                                                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                                            } else {
+                                                Text(
+                                                    state.account?.let { "¥ " + String.format(Locale.CHINA, "%.2f", it.balanceCents / 100.0) } ?: "¥ —",
+                                                    fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
+                                        }
+                                        TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge,
+                                            enabled = !rechargeLoading && state.account != null)
                                     }
                                 }
                             }

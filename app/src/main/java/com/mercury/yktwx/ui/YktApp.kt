@@ -252,7 +252,7 @@ private fun MainContent(
                                     state, settings, bottom,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onLogout = { if (isActive) viewModel.logout() },
-                                    onRecharge = { if (isActive) rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
+                                    onRecharge = { if (isActive) rechargeModel.open(state.username, state.account?.account, state.preview) },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                 )
                                 1 -> BillPage(
