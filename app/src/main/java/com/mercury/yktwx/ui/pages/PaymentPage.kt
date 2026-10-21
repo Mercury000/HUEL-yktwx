@@ -109,16 +109,15 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             if (state.batch != null) item {
                                 Card(Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Row(Modifier.fillMaxWidth()) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text(state.batch.account.name, fontWeight = FontWeight.SemiBold)
                                             Spacer(Modifier.weight(1f))
-                                            Text("余额", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                            Text(if (state.preview) "202600000000" else state.username, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text("¥ " + String.format(Locale.CHINA, "%.2f", state.batch.account.balanceCents / 100.0), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                             TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge, enabled = !rechargeLoading)
                                         }
-                                        Text(if (state.preview) "界面预览" else "学工号 ${state.username}", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                 }
                             }
