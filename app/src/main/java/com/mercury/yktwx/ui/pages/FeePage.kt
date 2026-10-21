@@ -154,7 +154,7 @@ fun FeePage(
             }
             FeePasswordDialog(
                 show = interactive && state.stage == FeeStage.Password,
-                amountCents = orderAmount, preparation = state.preparation, loading = state.loading,
+                amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
                 onDismiss = onCancelPayment, onPay = onPayAccount,
             )
             OverlayBottomSheet(show = interactive && state.stage == FeeStage.Result, title = null,
@@ -169,7 +169,7 @@ fun FeePage(
 }
 
 @Composable
-private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean,
+private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,
     onDismiss: () -> Unit, onPay: (String, String) -> Unit) {
     var password by remember(preparation, show) { mutableStateOf("") }
     var type by remember(preparation) { mutableStateOf(preparation?.accounts?.firstOrNull()?.type.orEmpty()) }
@@ -187,7 +187,7 @@ private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fee
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("¥ " + RechargeMoney.yuan(amountCents), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             if ((preparation?.accounts?.size ?: 0) > 1) preparation?.accounts?.forEach { account ->
-                Button(onClick = { type = account.type }, modifier = Modifier.fillMaxWidth(),
+                Button(onClick = { type = account.type }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
                     colors = if (type == account.type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(account.name) }
             }
             preparation?.accounts?.firstOrNull { it.type == type }?.let { Text("可用余额 ¥ " + RechargeMoney.yuan(it.balanceCents), fontSize = 13.sp,
@@ -197,8 +197,10 @@ private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fee
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.fillMaxWidth())
+            if (error != null) Text(error, color = MiuixTheme.colorScheme.error, fontSize = 13.sp,
+                textAlign = TextAlign.Center)
             Button(onClick = { pay() }, enabled = password.length == 6 && !loading && type.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("确定支付") }
+                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (loading) "正在支付…" else "确定支付") }
         }
     }
 }
