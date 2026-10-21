@@ -26,13 +26,14 @@ class PaymentUiState(
     val secondsLeft: Long = 0,
     val preview: Boolean = false,
     val refreshing: Boolean = false,
+    val restoringLogin: Boolean = false,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
 
 class PaymentViewModel(app: Application) : AndroidViewModel(app) {
     private val repository = AccountRepository.shared(app)
-    private val mutable = MutableStateFlow(PaymentUiState())
+    private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
@@ -40,6 +41,7 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
     private var foreground = false
     private var ticker: Job? = null
     private var request: Job? = null
+    private var logoutJob: Job? = null
     private var preview = false
 
     fun initialize(uiPreview: Boolean = false) {
@@ -53,23 +55,29 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-            val username = withContext(Dispatchers.IO) { repository.username() }
-            mutable.value = PaymentUiState(needsLogin = !exists, username = username)
-            if (exists && foreground) refresh()
+            try {
+                val username = withContext(Dispatchers.IO) { repository.username() }
+                val exists = username.isNotBlank()
+                mutable.value = PaymentUiState(needsLogin = !exists, username = username)
+                if (exists && foreground) refresh()
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                mutable.value = PaymentUiState()
+                notifications.send("无法读取本机登录信息，请重新登录")
+            }
         }
     }
     fun onForeground() {
         foreground = true
-        if (initialized && !preview && !mutable.value.needsLogin && !mutable.value.busy) refresh()
+        if (initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
     }
     fun onBackground() {
         foreground = false; ticker?.cancel(); request?.cancel()
         val old = mutable.value
-        mutable.value = PaymentUiState(old.needsLogin, false, old.error, old.username, preview = preview)
+        mutable.value = PaymentUiState(old.needsLogin, logoutJob?.isActive == true, old.error, old.username, preview = preview, restoringLogin = old.restoringLogin)
     }
     fun login(username: String, password: String) {
-        if (mutable.value.busy) return
+        if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
         val old = mutable.value
         mutable.value = PaymentUiState(true, true, username = username)
         request = viewModelScope.launch {
@@ -89,7 +97,7 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun refresh(manual: Boolean = false) {
-        if (preview || mutable.value.busy || mutable.value.needsLogin) return
+        if (preview || mutable.value.restoringLogin || mutable.value.busy || mutable.value.needsLogin) return
         ticker?.cancel()
         val username = mutable.value.username
         mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual)
@@ -123,10 +131,15 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun logout() {
+        if (logoutJob?.isActive == true) return
         ticker?.cancel(); request?.cancel()
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) { repository.logout() }
-            mutable.value = PaymentUiState()
+        // Unmount the main UI immediately, and disable login until storage clears.
+        mutable.value = PaymentUiState(busy = true)
+        logoutJob = viewModelScope.launch {
+            try { withContext(Dispatchers.IO) { repository.logout() } }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { notifications.send("清除登录信息失败，请稍后重试") }
+            finally { mutable.value = PaymentUiState() }
         }
     }
 }

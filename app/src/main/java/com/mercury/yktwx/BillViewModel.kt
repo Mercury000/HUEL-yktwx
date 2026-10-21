@@ -67,6 +67,8 @@ class BillViewModel internal constructor(
     private var loadMoreJob: Job? = null
     private var statsJob: Job? = null
     private var loginCheck: Job? = null
+    private var initializationJob: Job? = null
+    private var accountOwner: String? = null
     private var lastLoadedAt = 0L
     private var lastStatsLoadedAt = 0L
 
@@ -80,10 +82,25 @@ class BillViewModel internal constructor(
             lastStatsLoadedAt = lastLoadedAt
             return
         }
-        viewModelScope.launch {
+        initializationJob = viewModelScope.launch {
             val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
             mutable.value = mutable.value.copy(needsLogin = !exists)
         }
+    }
+
+    /** Authentication owns the cache lifetime, including logging back into the same ID. */
+    fun accountChanged(username: String?) {
+        if (accountOwner == username) return
+        initializationJob?.cancel()
+        cancelListJobs()
+        statsJob?.cancel()
+        loginCheck?.cancel()
+        loginCheck = null
+        accountOwner = username
+        lastLoadedAt = 0L
+        lastStatsLoadedAt = 0L
+        mutable.value = if (preview && username != null) previewState()
+            else BillUiState(needsLogin = username == null)
     }
 
     fun onActivate() {
