@@ -6,7 +6,7 @@
 
 `https://yktwx2.huel.edu.cn`
 
-Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发送，不依赖网页登录 Cookie，不跟随重定向发送账密，不关闭 TLS 校验。
+Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发送，不依赖网页登录 Cookie，不跟随重定向发送账密，不关闭 TLS 校验。微信 H5 支付桥接另允许经校验的 `https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb` 与 `weixin://wap/pay` 跳转，校验预支付标识及官方订单回跳，不携带学校 Token。
 
 ## 登录
 
@@ -34,4 +34,8 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 ## 账单
 
 账单列表使用 `/berserker-search/search/personal/turnover`，汇总使用 `/berserker-search/statistics/turnover/count`，分类与趋势通过对应 statistics 接口读取。金额以分处理，收入与支出方向由响应字段决定。
+
+## 充值
+
+读取充值项目与当前账户，创建订单并获取当前订单付款方式。微信 H5 支付只允许经校验的官方跳转。支付返回后查询同一订单，回跳或 HTTP 成功不作为到账依据。
 

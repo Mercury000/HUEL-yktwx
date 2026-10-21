@@ -12,6 +12,11 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mercury.yktwx.RechargeViewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -54,11 +59,27 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
     AppTheme(mode, settings.accentMode.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
         val billState by billViewModel.state.collectAsStateWithLifecycle()
+        val rechargeModel: RechargeViewModel = viewModel()
+        val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
         val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
         val scope = rememberCoroutineScope()
         val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
         LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
         val context = LocalContext.current
+        LaunchedEffect(state.username) { rechargeModel.accountChanged(state.username) }
+        LaunchedEffect(rechargeModel, state.username) {
+            rechargeModel.events.collect { launch ->
+                if (!rechargeModel.canLaunchWechat()) return@collect
+                try {
+                    rechargeModel.wechatLaunched()
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(launch.uri)).setPackage("com.tencent.mm"))
+                } catch (_: ActivityNotFoundException) { rechargeModel.launchFailed() }
+                catch (_: SecurityException) { rechargeModel.launchFailed() }
+            }
+        }
+        LaunchedEffect(rechargeModel) {
+            rechargeModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
         LaunchedEffect(viewModel) {
             viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
         }
@@ -142,6 +163,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                                     onLogin = viewModel::login,
                                     onLogout = viewModel::logout,
                                     onOpenBills = ::openBill,
+                                    onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
+                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                 ) else AboutTabPage(
                                     isActive = pagerState.currentPage == 1 && layers.isEmpty(),
                                     pageBottomContentPadding = bottom,
@@ -150,6 +173,16 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                                 )
                             }
                         }
+                        // Miuix registers overlays with the nearest Scaffold's popup host.
+                        // Keep this inside the root Scaffold so the recharge dialog can render.
+                        RechargeDialog(
+                            rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
+                            onFinish = {
+                                val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
+                                rechargeModel.finish()
+                                if (paid) viewModel.refresh()
+                            },
+                        )
                     }
                 }
             }
