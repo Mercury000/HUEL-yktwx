@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
@@ -10,7 +11,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
     private suspend fun get(path: String, token: String, params: Map<String, String>) =
         http.json(http.request(path, token, params, chargeClient = true))
     private suspend fun post(path: String, token: String, fields: Map<String, String>, sign: Boolean = false) =
-        http.json(http.request(path, token, form = if (sign) RechargeProtocol.signed(fields) else fields, chargeClient = true))
+        http.json(http.request(path, token, form = if (sign) RechargeProtocol.signed(fields) else fields, chargeClient = true), feePayment = true)
 
     override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
         val item = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to project.id)).getJSONObject("feeitem")
@@ -93,6 +94,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
     )
     private suspend fun verifyMethod(token: String, order: PendingRecharge, method: FeeMethod) {
         val info = orderInfo(token, order)
+        requireUnpaid(info.getJSONObject("order"))
         val methods = info.optJSONArray("payList") ?: throw YktException("支付方式不可用")
         val selected = (0 until methods.length()).map { methods.getJSONObject(it) }.firstOrNull {
             it.rechargeText("payid") == method.id && it.rechargeText("code") == method.code && !it.optBoolean("chooseAccount", false)
@@ -100,19 +102,25 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         if (!method.wechat && (selected.optInt("nopassword", 0) != method.noPassword ||
             selected.optJSONArray("tradVerificationCombox")?.let { it.length() > 0 && it.getJSONObject(0).optInt("key", -1) != 0 } == true))
             throw YktException("支付验证方式已变化，请使用官网缴费")
-        if (info.getJSONObject("order").optInt("status", -1) == 1) throw YktException("订单已完成，请查询结果")
+        requirePayable(token, info.getJSONObject("order"))
+    }
+
+    private fun requireUnpaid(order: JSONObject) {
+        when (order.optInt("status", -1)) {
+            1 -> throw FeeOrderAlreadyPaid()
+            2 -> throw FeeOrderExpired()
+            0 -> Unit
+            else -> throw YktException("订单状态已变化，请在官网核实")
+        }
+    }
+    private suspend fun requirePayable(token: String, order: JSONObject) {
+        val current = get("/charge/order/getCurrentTime", token, emptyMap()).rechargeText("currentTime")
+        FeeOrderValidity.requireCurrent(order.rechargeText("payexpdate"), current)
     }
 
     override suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation {
         if (method.code != "ACCOUNTTSM" || method.chooseAccount) throw YktException("暂不支持该账户支付方式")
-        val info = orderInfo(token, order)
-        val methods = info.optJSONArray("payList") ?: throw YktException("支付方式不可用")
-        val selected = (0 until methods.length()).map { methods.getJSONObject(it) }.firstOrNull {
-            it.rechargeText("payid") == method.id && it.rechargeText("code") == method.code
-        } ?: throw YktException("一卡通支付不可用")
-        // Do not bypass a newly enabled SMS or alternative verification rule.
-        if (selected.optJSONArray("tradVerificationCombox")?.let { it.length() > 0 && it.getJSONObject(0).optInt("key", -1) != 0 } == true)
-            throw YktException("该账户要求其他验证，请使用官网缴费")
+        verifyMethod(token, order, method)
         val data = post("/blade-pay/pay", token, payFields(order, method), sign = true).getJSONObject("data")
         val array = data.optJSONArray("ccctype") ?: throw YktException("没有可支付电子账户")
         val returnedOrder = data.rechargeText("orderid")
@@ -132,9 +140,20 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
     override suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String) {
         if (method.code != "ACCOUNTTSM" || method.chooseAccount || preparation.orderId != order.orderId || preparation.methodId != method.id || preparation.accounts.none { it.type == type })
             throw YktException("支付账户不匹配")
-        // Always require user-entered payment password for the observed keyboard path.
-        verifyMethod(token, order, method)
-        val payload = post("/blade-pay/pay", token, payFields(order, method) + mapOf("ccctype" to type, "isWX" to "0") + preparation.paymentFields(password), sign = true)
+        // Everything in this block is read-only. A failure here cannot have submitted the password.
+        val passwordFields = preparation.paymentFields(password)
+        try {
+            verifyMethod(token, order, method)
+        } catch (e: CancellationException) { throw e }
+        catch (e: FeeOrderExpired) { throw e }
+        catch (e: FeeOrderAlreadyPaid) { throw e }
+        catch (e: AuthenticationRequired) { throw e }
+        catch (e: YktException) { throw FeePaymentNotStarted(e.message ?: "支付检查未完成，请稍后重试") }
+        catch (_: Exception) { throw FeePaymentNotStarted("支付检查未完成，请稍后重试") }
+        val account = preparation.accounts.first { it.type == type }
+        if (account.balanceCents < order.amountCents) throw FeePaymentRejected(FeeRejectionReason.Balance)
+        // Only this request may debit the account; never retry it automatically.
+        val payload = post("/blade-pay/pay", token, payFields(order, method) + mapOf("ccctype" to type, "isWX" to "0") + passwordFields, sign = true)
         if (payload.opt("data") != order.orderId) throw YktException("付款结果未确认，请查询订单")
     }
 
@@ -143,7 +162,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         verifyMethod(token, order, method)
         val data = post("/blade-pay/pay", token, payFields(order, method) + ("isWX" to "0"), sign = true).getJSONObject("data")
         if (data.rechargeText("orderid") != order.orderId) throw YktException("支付订单不匹配")
-        val linked = order.withOrder(order.orderId!!, method.id)
+        val linked = order.withOrder(order.orderId, method.id)
         return http.wechatLaunch(data.rechargeText("paysubmit"), linked, feePayment = true)
     }
 
@@ -152,7 +171,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             put("orderid", order.orderId ?: throw YktException("订单未确认")); order.payId?.let { put("payid", it) }
         })
         val list = payload.optJSONArray("orderList") ?: throw YktException("订单结果未确认")
-        if (list.length() == 0) return RechargeResult(false, order.amountCents, null, 0)
+        if (list.length() == 0) return RechargeResult(false, order.amountCents, null, null)
         if (list.length() != 1) throw YktException("订单结果异常")
         val o = list.getJSONObject(0)
         val status = o.rechargeText("status").toIntOrNull() ?: -1

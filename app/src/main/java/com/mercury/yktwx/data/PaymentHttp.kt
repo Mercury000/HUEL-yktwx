@@ -45,9 +45,12 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
         catch (_: java.io.IOException) { throw NetworkFailure() }
         finally { connection.disconnect() }
     }
-    fun json(response: Response): JSONObject {
+    fun json(response: Response, feePayment: Boolean = false): JSONObject {
         val body = runCatching { JSONObject(response.body) }.getOrNull()
         if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
+        if (feePayment && response.status == 200 && body != null) {
+            FeePaymentErrors.rejection(body)?.let { throw it }
+        }
         if (response.status !in 200..299 || body?.optInt("code") != 200) throw YktException("缴费服务不可用，请在官网核实账户或已有订单")
         return body
     }
