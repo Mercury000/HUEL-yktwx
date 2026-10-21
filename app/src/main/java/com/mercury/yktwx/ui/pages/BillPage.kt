@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BillUiState
@@ -55,13 +56,19 @@ fun BillPage(
     onSearch: (String) -> Unit,
     onOpenStats: () -> Unit,
     onOpenDetail: (BillRecord) -> Unit,
+    isActive: Boolean = true,
+    showBack: Boolean = true,
+    bottomPadding: Dp = 0.dp,
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current
     var showFilter by remember { mutableStateOf(false) }
     var query by remember(state.info) { mutableStateOf(state.info) }
     val groups = remember(state.items) { state.items.groupByDay() }
-    LaunchedEffect(Unit) { onActivate() }
+    // Adjacent tabs may be precomposed. Load only when the bill tab is active.
+    LaunchedEffect(isActive) {
+        if (isActive) onActivate() else showFilter = false
+    }
 
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -72,7 +79,7 @@ fun BillPage(
                     scrollBehavior = scrollBehavior,
                     color = Color.Transparent,
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
+                        if (showBack) IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
                     },
                     actions = {
                         IconButton(onClick = onOpenStats) {
@@ -96,7 +103,7 @@ fun BillPage(
                         modifier = Modifier.fillMaxSize().overScrollVertical(),
                         contentPadding = PaddingValues(
                             top = padding.calculateTopPadding() + 16.dp,
-                            bottom = padding.calculateBottomPadding() + 28.dp,
+                            bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
                             start = 16.dp,
                             end = 16.dp,
                         ),
@@ -105,9 +112,9 @@ fun BillPage(
                         if (state.needsLogin) {
                             item(key = "login") {
                                 BillErrorCard(
-                                    "登录已失效，请返回付款页重新登录。",
-                                    actionLabel = "返回",
-                                    onAction = onBack,
+                                    "登录已失效，请重新登录。",
+                                    actionLabel = "重试",
+                                    onAction = onActivate,
                                 )
                             }
                         } else {
