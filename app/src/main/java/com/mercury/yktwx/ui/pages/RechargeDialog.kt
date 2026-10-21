@@ -117,7 +117,6 @@ private fun RechargeResultContent(state: RechargeUiState, onFinish: () -> Unit) 
     val busy = state.loading || phase == RechargePhase.AwaitingPayment
     val title = when (phase) {
         RechargePhase.Paid -> "充值成功"
-        RechargePhase.Unpaid -> "支付未完成"
         RechargePhase.Failed -> "充值失败"
         RechargePhase.Unknown -> "结果待确认"
         RechargePhase.Checking -> "正在确认结果"
@@ -145,10 +144,11 @@ private fun RechargeResultContent(state: RechargeUiState, onFinish: () -> Unit) 
             "¥ " + RechargeMoney.yuan(state.pending?.amountCents ?: 0),
             fontSize = 36.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
         )
-        if (!busy && phase != RechargePhase.Paid && phase != RechargePhase.Unpaid) {
+        val resultDetail = state.error ?: if (phase == RechargePhase.Unknown) "稍后可在账单中核实" else null
+        if (!busy && phase != RechargePhase.Paid && resultDetail != null) {
             Spacer(Modifier.height(12.dp))
             Text(
-                state.error ?: "稍后可在账单中核实",
+                resultDetail,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 13.sp, textAlign = TextAlign.Center,
             )
@@ -171,7 +171,7 @@ private fun ResultMark(phase: RechargePhase, color: Color) {
         )
         when (phase) {
             RechargePhase.Paid -> { line(.28f, .50f, .44f, .65f); line(.44f, .65f, .73f, .35f) }
-            RechargePhase.Unpaid, RechargePhase.Failed -> { line(.34f, .34f, .66f, .66f); line(.66f, .34f, .34f, .66f) }
+            RechargePhase.Failed -> { line(.34f, .34f, .66f, .66f); line(.66f, .34f, .34f, .66f) }
             else -> {
                 drawCircle(color, radius = size.width * .25f, style = Stroke(stroke))
                 line(.50f, .34f, .50f, .50f); line(.50f, .50f, .62f, .57f)

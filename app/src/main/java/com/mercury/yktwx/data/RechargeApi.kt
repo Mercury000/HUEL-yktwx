@@ -154,16 +154,35 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val order = pending.orderId ?: throw YktException("订单号未确认，请在官网核实，勿重复充值")
         val payload = json(request("/charge/order/personal_data", token, buildMap { put("orderid", order); pending.payId?.let { put("payid", it) } }))
         val list = payload.optJSONArray("orderList") ?: throw YktException("订单结果未确认")
+        // The official result page synthesizes status=0 for an empty orderList.
+        // Only a valid successful response with an actual empty array uses this
+        // fallback; HTTP errors, malformed responses and mismatches stay unknown.
+        if (list.length() == 0) return RechargeResult(false, pending.amountCents, null, 0)
         if (list.length() != 1) throw YktException("订单结果未确认")
         val o = list.getJSONObject(0)
+        if (o.rechargeText("orderid") != order) throw YktException("订单结果与本次充值不匹配，请在官网核实")
+        // Unlike the empty-list fallback, null status on an existing record is
+        // NOT explicitly normalized by the official normal H5 result flow.
+        val status = o.rechargeText("status").toIntOrNull() ?: -1
+        val paid = status == 1
+        fun textMatches(key: String, expected: String): Boolean {
+            val value = o.rechargeText(key)
+            return (!paid && value.isBlank()) || value == expected
+        }
+        val amountText = o.rechargeText("tranamt")
+        val amountMatches = (!paid && amountText.isBlank()) ||
+            RechargeMoney.responseCents(o.opt("tranamt")) == pending.amountCents
         val fees = o.optJSONArray("feeitemlist")
-        val matches = o.rechargeText("orderid") == order && o.rechargeText("third_party") == pending.targetId &&
-            RechargeMoney.responseCents(o.opt("tranamt")) == pending.amountCents &&
-            (pending.payId == null || o.rechargeText("payid") == pending.payId) &&
-            fees != null && (0 until fees.length()).any { fees.getJSONObject(it).rechargeText("feeitemid") == pending.feeItemId }
+        val feesAbsent = o.isNull("feeitemlist") || fees?.length() == 0
+        val feeMatches = (!paid && feesAbsent) ||
+            (fees != null && (0 until fees.length()).any { fees.getJSONObject(it).rechargeText("feeitemid") == pending.feeItemId })
+        // Payment completion fields may be absent on a provisional/unpaid order.
+        // Present conflicting fields are still rejected; a successful order must
+        // include all fields needed to prove its account, amount and fee item.
+        val matches = textMatches("third_party", pending.targetId) && amountMatches &&
+            (pending.payId == null || textMatches("payid", pending.payId)) && feeMatches
         if (!matches) throw YktException("订单结果与本次充值不匹配，请在官网核实")
-        val status = o.optInt("status", -1)
-        if (status != 1) return RechargeResult(false, pending.amountCents, null, status)
+        if (!paid) return RechargeResult(false, pending.amountCents, null, status)
         if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常，请在官网核实")
         return RechargeResult(true, pending.amountCents, null, status)
     }

@@ -7,12 +7,13 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
-enum class RechargePhase { Amount, Creating, AwaitingPayment, Checking, Paid, Unpaid, Failed, Unknown }
+enum class RechargePhase { Amount, Creating, AwaitingPayment, Checking, Paid, Failed, Unknown }
 class RechargeUiState(
     val visible: Boolean = false,
     val loading: Boolean = false,
@@ -44,6 +45,8 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
     private var attempt = 0L
     private var awaitingWechatReturn = false
     private var leftForWechat = false
+    private var resultQueriesCompleted = 0
+    private var resumeResultCheck = false
 
     fun open(username: String, preferredCard: String?, preview: Boolean) {
         // Opening recharge is always a new amount selection, never an old result.
@@ -116,28 +119,50 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
     fun checkResult() {
         val pending = mutable.value.pending ?: return
         if (pending.orderId == null || mutable.value.preview || task?.isActive == true) return
+        if (mutable.value.phase != RechargePhase.Checking) resultQueriesCompleted = 0
         awaitingWechatReturn = false
         leftForWechat = false
+        resumeResultCheck = false
         val current = attempt
         update(visible = true, loading = true, phase = RechargePhase.Checking, error = null)
         task = viewModelScope.launch {
-            try {
-                requireOwner(pending)
-                // One query for this return only: no polling, archived orders, or restart recovery.
-                val result = repository.rechargeResult(pending)
-                if (current != attempt) return@launch
-                requireOwner(pending)
-                when {
-                    result.paid -> showResult(RechargePhase.Paid)
-                    // The matched order currently has no completed payment. This
-                    // is not an SDK cancellation callback or a closed-order claim.
-                    result.serverStatus == 0 -> showResult(RechargePhase.Unpaid)
-                    result.serverStatus == 2 -> showResult(RechargePhase.Failed, "支付已超时")
-                    else -> showResult(RechargePhase.Unknown, "暂时无法确认订单状态")
+            while (resultQueriesCompleted < 3) {
+                try {
+                    // Completed attempts keep their budget across pause/resume.
+                    // Interrupted read-only requests may be repeated, but no
+                    // create/pay POST is retried here.
+                    if (resultQueriesCompleted > 0) delay(5_000)
+                    if (current != attempt) return@launch
+                    requireOwner(pending)
+                    val result = repository.rechargeResult(pending)
+                    if (current != attempt) return@launch
+                    requireOwner(pending)
+                    resultQueriesCompleted++
+                    if (result.paid) {
+                        showResult(RechargePhase.Paid)
+                        return@launch
+                    }
+                    if (resultQueriesCompleted == 3) {
+                        when (result.serverStatus) {
+                            0 -> showResult(RechargePhase.Failed)
+                            2 -> showResult(RechargePhase.Failed, "支付已超时")
+                            else -> showResult(RechargePhase.Unknown, "暂时无法确认订单状态")
+                        }
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    if (current != attempt) return@launch
+                    // Login/owner changes cannot be repaired by further reads.
+                    // Other failed reads count as attempts and may recover on
+                    // the next query instead of aborting the whole loop.
+                    if (repository.username() != pending.username ||
+                        e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) {
+                        showResult(RechargePhase.Unknown, resultError(e))
+                        return@launch
+                    }
+                    resultQueriesCompleted++
+                    if (resultQueriesCompleted == 3) showResult(RechargePhase.Unknown, resultError(e))
                 }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) {
-                if (current == attempt) showResult(RechargePhase.Unknown, resultError(e))
             }
         }
     }
@@ -160,6 +185,8 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
         task = null
         returnCheck?.cancel()
         returnCheck = null
+        resultQueriesCompleted = 0
+        resumeResultCheck = false
         awaitingWechatReturn = false
         leftForWechat = false
         owner = ""
@@ -178,42 +205,46 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
         returnCheck?.cancel()
         // A translucent WeChat payment activity may pause us without stopping us.
         if (awaitingWechatReturn) leftForWechat = true
+        pauseResultCheck()
     }
     fun onWindowFocusChanged(hasFocus: Boolean) {
         windowFocused = hasFocus
         if (!hasFocus) {
             returnCheck?.cancel()
             if (awaitingWechatReturn) leftForWechat = true
+            pauseResultCheck()
         } else {
             // Also handle payment windows that only take and restore window focus.
             checkWechatReturn()
         }
     }
     private fun checkWechatReturn() {
-        if (!foreground || !resumed || !windowFocused || !awaitingWechatReturn || !leftForWechat) return
+        if (!foreground || !resumed || !windowFocused || !needsResultCheck()) return
         if (returnCheck?.isActive == true) return
         val current = attempt
         val launchTask = task
         returnCheck = viewModelScope.launch {
-            // A very quick cancel can resume us before the launch coroutine exits.
-            // Wait for it rather than silently dropping that return notification.
+            // A quick cancel can return before the launch coroutine exits.
+            // A paused result read must also finish cancelling before resuming.
             launchTask?.join()
-            if (current == attempt && foreground && resumed && windowFocused && awaitingWechatReturn && leftForWechat) {
-                // checkResult consumes the return flags: resume and focus cannot
-                // issue duplicate queries for the same payment window.
+            if (current == attempt && foreground && resumed && windowFocused && needsResultCheck()) {
                 checkResult()
             }
         }
+    }
+    private fun needsResultCheck() = resumeResultCheck || (awaitingWechatReturn && leftForWechat)
+    private fun pauseResultCheck() {
+        if (mutable.value.phase != RechargePhase.Checking) return
+        resumeResultCheck = true
+        task?.cancel()
+        // Keep the job reference so a returning foreground waits for its
+        // cancellation; keep Checking rather than inventing an unknown outcome.
     }
     fun onBackground() {
         foreground = false
         returnCheck?.cancel()
         if (awaitingWechatReturn) leftForWechat = true
-        if (mutable.value.phase == RechargePhase.Checking) {
-            task?.cancel()
-            task = null
-            showResult(RechargePhase.Unknown, "结果待确认")
-        }
+        pauseResultCheck()
     }
     private fun resultError(e: Exception) = when (e) {
         is NetworkFailure -> "网络异常，请稍后查看账单"
