@@ -27,6 +27,9 @@ class PaymentUiState(
     val preview: Boolean = false,
     val refreshing: Boolean = false,
     val restoringLogin: Boolean = false,
+    // Account presentation outlives a code batch; never keep old payment codes
+    // merely to preserve the card while a refresh is in flight.
+    val account: PaymentAccount? = batch?.account,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
@@ -74,7 +77,11 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
     fun onBackground() {
         foreground = false; ticker?.cancel(); request?.cancel()
         val old = mutable.value
-        mutable.value = PaymentUiState(old.needsLogin, logoutJob?.isActive == true, old.error, old.username, preview = preview, restoringLogin = old.restoringLogin)
+        mutable.value = PaymentUiState(
+            old.needsLogin, logoutJob?.isActive == true, old.error, old.username,
+            preview = preview, restoringLogin = old.restoringLogin,
+            account = old.account.takeUnless { old.needsLogin },
+        )
     }
     fun login(username: String, password: String) {
         if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
@@ -100,21 +107,28 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
         if (preview || mutable.value.restoringLogin || mutable.value.busy || mutable.value.needsLogin) return
         ticker?.cancel()
         val username = mutable.value.username
-        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual)
+        val account = mutable.value.account
+        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account)
         request = viewModelScope.launch {
             try { show(withContext(Dispatchers.IO) { repository.refresh() }, username) }
             catch (e: CancellationException) { throw e }
             catch (e: YktException) {
                 val requireLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
                 if (requireLogin) notifications.send(e.message ?: "登录已失效，请重新登录")
-                mutable.value = PaymentUiState(needsLogin = requireLogin, error = if (requireLogin) null else e.message, username = username)
+                mutable.value = PaymentUiState(
+                    needsLogin = requireLogin, error = if (requireLogin) null else e.message,
+                    username = username, account = account.takeUnless { requireLogin },
+                )
             } catch (_: Exception) {
-                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username)
+                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = account)
             }
         }
     }
     private fun show(batch: PaymentBatch, username: String) {
-        if (!foreground) { mutable.value = PaymentUiState(needsLogin = false, username = username); return }
+        if (!foreground) {
+            mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)
+            return
+        }
         val interval = batch.displayIntervalSeconds
         mutable.value = PaymentUiState(false, username = username, batch = batch, code = batch.codes[0], secondsLeft = interval)
         ticker?.cancel()
