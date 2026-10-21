@@ -19,6 +19,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.mercury.yktwx.PaymentUiState
+import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +31,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onOpenFee: (FeeProject) -> Unit = {}, feeOpening: FeeProject? = null) {
     var showLogoutConfirmation by remember(state.username, state.needsLogin) { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
@@ -144,6 +145,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                 }
                             }
                         }
+                        item { LifeFeesCard(feeOpening, onOpenFee) }
                     }
                 }
             }
@@ -174,6 +176,38 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColorsPrimary(),
                     ) { Text("确定") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LifeFeesCard(opening: FeeProject?, onOpen: (FeeProject) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("生活缴费", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            FeeProject.entries.chunked(3).forEach { projects ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    projects.forEach { project ->
+                        val loading = opening == project
+                        Surface(onClick = { if (opening == null) onOpen(project) }, color = Color.Transparent, modifier = Modifier.weight(1f)) {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                IconButton(onClick = { if (opening == null) onOpen(project) }, modifier = Modifier.size(48.dp),
+                                    backgroundColor = MiuixTheme.colorScheme.secondaryContainer) {
+                                    if (loading) CircularProgressIndicator(Modifier.size(24.dp))
+                                    else Icon(when (project) {
+                                        FeeProject.Network -> AppIcons.Network
+                                        FeeProject.FamilyWater -> AppIcons.Water
+                                        else -> AppIcons.Electricity
+                                    }, contentDescription = project.label, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
+                                }
+                                Text(project.label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                        }
+                    }
+                    repeat(3 - projects.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

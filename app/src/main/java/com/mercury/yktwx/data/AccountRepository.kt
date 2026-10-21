@@ -5,7 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** All requests share one lock, so multiple expired-token callers cannot trigger a login storm. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi()) {
+class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi()) {
     private val mutex = Mutex()
     fun hasCredentials() = vault.credentials() != null
     fun username() = vault.credentials()?.username.orEmpty()
@@ -68,6 +68,18 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun createRecharge(username: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder = withSession(retryAuthentication = false, expectedUsername = username) { rechargeService.createRecharge(it, config, amountCents) }
     suspend fun launchRecharge(pending: PendingRecharge): WechatRechargeLaunch = withSession(retryAuthentication = false, expectedUsername = pending.username) { rechargeService.launchRecharge(it, pending) }
     suspend fun rechargeResult(pending: PendingRecharge): RechargeResult = withSession(expectedUsername = pending.username) { rechargeService.rechargeResult(it, pending) }
+    suspend fun feeConfiguration(username: String, project: FeeProject) = withSession(expectedUsername = username) { feeService.feeConfiguration(it, project) }
+    suspend fun feeQuery(username: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
+        withSession(expectedUsername = username) { feeService.feeQuery(it, project, level, selections, detail) }
+    suspend fun createFee(username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long) =
+        withSession(retryAuthentication = false, expectedUsername = username) { feeService.createFee(it, username, config, query, amountCents) }
+    suspend fun prepareFeeAccount(order: PendingRecharge, method: FeeMethod) =
+        withSession(expectedUsername = order.username) { feeService.prepareFeeAccount(it, order, method) }
+    suspend fun payFeeAccount(order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String) =
+        withSession(retryAuthentication = false, expectedUsername = order.username) { feeService.payFeeAccount(it, order, method, preparation, type, password) }
+    suspend fun launchFeeWechat(order: PendingRecharge, method: FeeMethod) =
+        withSession(retryAuthentication = false, expectedUsername = order.username) { feeService.launchFeeWechat(it, order, method) }
+    suspend fun feeResult(order: PendingRecharge) = withSession(expectedUsername = order.username) { feeService.feeResult(it, order) }
     suspend fun logout() = mutex.withLock { vault.clear() }
 
     companion object {

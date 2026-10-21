@@ -34,6 +34,27 @@ object AppIcons {
             moveTo(16f, 8f); lineTo(20f, 12f); lineTo(16f, 16f)
         }
     }.build()
+    val Electricity = ImageVector.Builder("Electricity", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(13f, 3f); lineTo(5f, 13f); lineTo(11f, 13f)
+            lineTo(10f, 21f); lineTo(19f, 10f); lineTo(13f, 10f); close()
+        }
+    }.build()
+    val Water = ImageVector.Builder("Water", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(12f, 3f); curveTo(9f, 7f, 5f, 11f, 5f, 15f)
+            curveTo(5f, 23f, 19f, 23f, 19f, 15f)
+            curveTo(19f, 11f, 15f, 7f, 12f, 3f); close()
+        }
+    }.build()
+    val Network = ImageVector.Builder("Network", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(3f, 8f); curveTo(8f, 3f, 16f, 3f, 21f, 8f)
+            moveTo(6f, 12f); curveTo(9f, 9f, 15f, 9f, 18f, 12f)
+            moveTo(9f, 16f); curveTo(11f, 14f, 13f, 14f, 15f, 16f)
+            moveTo(12f, 19f); lineTo(12f, 20f)
+        }
+    }.build()
     val Bill = ImageVector.Builder("Bill", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(5f, 3f); lineTo(19f, 3f); lineTo(19f, 21f)

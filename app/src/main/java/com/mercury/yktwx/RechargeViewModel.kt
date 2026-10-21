@@ -37,16 +37,12 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
     private var task: Job? = null
-    private var returnCheck: Job? = null
-    private var foreground = false
-    private var resumed = false
-    private var windowFocused = false
     private var owner = ""
     private var attempt = 0L
-    private var awaitingWechatReturn = false
-    private var leftForWechat = false
     private var resultQueriesCompleted = 0
-    private var resumeResultCheck = false
+    private val paymentReturn = PaymentReturnObserver(
+        viewModelScope, { task }, { mutable.value.phase == RechargePhase.Checking }, ::checkResult,
+    )
 
     fun open(username: String, preferredCard: String?, preview: Boolean) {
         // Opening recharge is always a new amount selection, never an old result.
@@ -90,7 +86,7 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
                 requireOwner(created)
                 val launch = repository.launchRecharge(created)
                 if (current != attempt) return@launch
-                if (!foreground) {
+                if (!paymentReturn.canLaunch) {
                     showResult(RechargePhase.Unknown, "支付未完成，请重新发起充值")
                     return@launch
                 }
@@ -103,16 +99,10 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun canLaunchWechat(): Boolean = foreground && owner.isNotEmpty() && repository.username() == owner && mutable.value.phase == RechargePhase.AwaitingPayment
-    fun wechatLaunched() {
-        returnCheck?.cancel()
-        awaitingWechatReturn = true
-        leftForWechat = false
-    }
+    fun canLaunchWechat(): Boolean = paymentReturn.canLaunch && owner.isNotEmpty() && repository.username() == owner && mutable.value.phase == RechargePhase.AwaitingPayment
+    fun wechatLaunched() = paymentReturn.launched()
     fun launchFailed() {
-        returnCheck?.cancel()
-        awaitingWechatReturn = false
-        leftForWechat = false
+        paymentReturn.consume()
         showResult(RechargePhase.Failed, "无法打开微信，请确认已安装微信")
     }
 
@@ -120,9 +110,7 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
         val pending = mutable.value.pending ?: return
         if (pending.orderId == null || mutable.value.preview || task?.isActive == true) return
         if (mutable.value.phase != RechargePhase.Checking) resultQueriesCompleted = 0
-        awaitingWechatReturn = false
-        leftForWechat = false
-        resumeResultCheck = false
+        paymentReturn.consume()
         val current = attempt
         update(visible = true, loading = true, phase = RechargePhase.Checking, error = null)
         task = viewModelScope.launch {
@@ -183,69 +171,16 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
         attempt++
         task?.cancel()
         task = null
-        returnCheck?.cancel()
-        returnCheck = null
         resultQueriesCompleted = 0
-        resumeResultCheck = false
-        awaitingWechatReturn = false
-        leftForWechat = false
+        paymentReturn.reset()
         owner = ""
         while (launches.tryReceive().isSuccess) { /* no stale payment launch */ }
     }
-    fun onForeground() {
-        foreground = true
-    }
-    fun onResumed(hasWindowFocus: Boolean) {
-        resumed = true
-        windowFocused = hasWindowFocus
-        checkWechatReturn()
-    }
-    fun onPaused() {
-        resumed = false
-        returnCheck?.cancel()
-        // A translucent WeChat payment activity may pause us without stopping us.
-        if (awaitingWechatReturn) leftForWechat = true
-        pauseResultCheck()
-    }
-    fun onWindowFocusChanged(hasFocus: Boolean) {
-        windowFocused = hasFocus
-        if (!hasFocus) {
-            returnCheck?.cancel()
-            if (awaitingWechatReturn) leftForWechat = true
-            pauseResultCheck()
-        } else {
-            // Also handle payment windows that only take and restore window focus.
-            checkWechatReturn()
-        }
-    }
-    private fun checkWechatReturn() {
-        if (!foreground || !resumed || !windowFocused || !needsResultCheck()) return
-        if (returnCheck?.isActive == true) return
-        val current = attempt
-        val launchTask = task
-        returnCheck = viewModelScope.launch {
-            // A quick cancel can return before the launch coroutine exits.
-            // A paused result read must also finish cancelling before resuming.
-            launchTask?.join()
-            if (current == attempt && foreground && resumed && windowFocused && needsResultCheck()) {
-                checkResult()
-            }
-        }
-    }
-    private fun needsResultCheck() = resumeResultCheck || (awaitingWechatReturn && leftForWechat)
-    private fun pauseResultCheck() {
-        if (mutable.value.phase != RechargePhase.Checking) return
-        resumeResultCheck = true
-        task?.cancel()
-        // Keep the job reference so a returning foreground waits for its
-        // cancellation; keep Checking rather than inventing an unknown outcome.
-    }
-    fun onBackground() {
-        foreground = false
-        returnCheck?.cancel()
-        if (awaitingWechatReturn) leftForWechat = true
-        pauseResultCheck()
-    }
+    fun onForeground() = paymentReturn.foreground()
+    fun onResumed(hasWindowFocus: Boolean) = paymentReturn.resumed(hasWindowFocus)
+    fun onPaused() = paymentReturn.paused()
+    fun onWindowFocusChanged(hasFocus: Boolean) = paymentReturn.focus(hasFocus)
+    fun onBackground() = paymentReturn.background()
     private fun resultError(e: Exception) = when (e) {
         is NetworkFailure -> "网络异常，请稍后查看账单"
         is AuthenticationRequired, is InvalidCredentials, is CaptchaRequired -> "登录已失效，请重新登录"

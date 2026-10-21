@@ -45,7 +45,7 @@ object RechargeProtocol {
         require(matches.map { it.groupValues[1].lowercase() }.distinct().size == matches.size)
         return matches.associate { it.groupValues[1].lowercase() to htmlDecode(it.groupValues[2].ifEmpty { it.groupValues[3] }) }
     }
-    fun paymentFormAction(html: String, pending: PendingRecharge): URI = runCatching {
+    fun paymentFormAction(html: String, pending: PendingRecharge, feePayment: Boolean = false): URI = runCatching {
         require(html.length <= 65_536)
         val forms = Regex("<form\\b[^>]*>", RegexOption.IGNORE_CASE).findAll(html).toList()
         require(forms.size == 1)
@@ -63,9 +63,10 @@ object RechargeProtocol {
         require(q.keys == setOf("prepay_id", "ct", "sign", "package", "redirect_url"))
         require(q.values.all { it.isNotBlank() })
         val back = URI(q.getValue("redirect_url"))
-        require(back.scheme == "https" && back.host == "yktwx2.huel.edu.cn" && back.port == -1 && back.userInfo == null && back.fragment == null && back.path == "/payment/")
+        val returnPath = if (feePayment) "/charge-app" else "/payment/"
+        require(back.scheme == "https" && back.host == "yktwx2.huel.edu.cn" && back.port == -1 && back.userInfo == null && back.fragment == null && back.path == returnPath)
         val bq = query(back)
-        require(bq.keys == setOf("name", "orderid", "payid") && bq["name"] == "result" && bq["orderid"] == pending.orderId && bq["payid"] == pending.payId)
+        require(bq.keys == setOf("name", "orderid", "payid") && bq["name"] == (if (feePayment) "payResult" else "result") && bq["orderid"] == pending.orderId && bq["payid"] == pending.payId)
         uri
     }.getOrElse { throw YktException("暂不支持该微信支付响应，请在官网核实已有订单，勿重复充值") }
     fun wechatUri(html: String, expectedPrepayId: String? = null): WechatRechargeLaunch = runCatching {

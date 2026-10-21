@@ -21,6 +21,10 @@ import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.RechargeViewModel
+import com.mercury.yktwx.FeeViewModel
+import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.data.WechatRechargeLaunch
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -57,7 +61,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { BillStats, BillDetail, Settings, Theme, References }
+private enum class Screen { Fee, BillStats, BillDetail, Settings, Theme, References }
 private enum class AuthPage { Restoring, Login, Main }
 
 @Composable
@@ -71,24 +75,18 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val state by viewModel.state.collectAsStateWithLifecycle()
         val billState by billViewModel.state.collectAsStateWithLifecycle()
         val rechargeModel: RechargeViewModel = viewModel()
+        val feeModel: FeeViewModel = viewModel()
         val context = LocalContext.current
         LaunchedEffect(state.restoringLogin, state.needsLogin, state.username) {
             if (!state.restoringLogin) {
                 val owner = state.username.takeUnless { state.needsLogin }
                 rechargeModel.accountChanged(owner.orEmpty())
+                feeModel.accountChanged(owner.orEmpty())
                 billViewModel.accountChanged(owner)
             }
         }
-        LaunchedEffect(rechargeModel, state.username) {
-            rechargeModel.events.collect { launch ->
-                if (!rechargeModel.canLaunchWechat()) return@collect
-                try {
-                    rechargeModel.wechatLaunched()
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(launch.uri)).setPackage("com.tencent.mm"))
-                } catch (_: ActivityNotFoundException) { rechargeModel.launchFailed() }
-                catch (_: SecurityException) { rechargeModel.launchFailed() }
-            }
-        }
+        WechatLaunchEffect(rechargeModel.events, rechargeModel::canLaunchWechat, rechargeModel::wechatLaunched, rechargeModel::launchFailed)
+        WechatLaunchEffect(feeModel.events, feeModel::canLaunchWechat, feeModel::wechatLaunched, feeModel::launchFailed)
         LaunchedEffect(rechargeModel) {
             rechargeModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
         }
@@ -148,12 +146,32 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                             MainContent(
                                 settings, state,
                                 if (interactive) billState else BillUiState(),
-                                viewModel, billViewModel, rechargeModel,
+                                viewModel, billViewModel, rechargeModel, feeModel,
                                 isActive = interactive,
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Shared allowlisted launch for recharge and living fees; payment results are server-queried. */
+@Composable
+private fun WechatLaunchEffect(events: Flow<WechatRechargeLaunch>, canLaunch: () -> Boolean, onLaunched: () -> Unit, onFailed: () -> Unit) {
+    val context = LocalContext.current
+    val allowed by rememberUpdatedState(canLaunch)
+    val launched by rememberUpdatedState(onLaunched)
+    val failed by rememberUpdatedState(onFailed)
+    LaunchedEffect(events) {
+        events.collect { request ->
+            if (allowed()) {
+                try {
+                    launched()
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(request.uri)).setPackage("com.tencent.mm"))
+                } catch (_: ActivityNotFoundException) { failed() }
+                catch (_: SecurityException) { failed() }
             }
         }
     }
@@ -168,9 +186,13 @@ private fun MainContent(
     viewModel: PaymentViewModel,
     billViewModel: BillViewModel,
     rechargeModel: RechargeViewModel,
+    feeModel: FeeViewModel,
     isActive: Boolean,
 ) {
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
+    val feeState by feeModel.state.collectAsStateWithLifecycle()
+    var feeProject by remember { mutableStateOf<FeeProject?>(null) }
+    var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
@@ -179,6 +201,10 @@ private fun MainContent(
         if (isActive && billState.needsLogin) viewModel.refresh()
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
+    val feeActive = isActive && layers.contains(Screen.Fee)
+    DisposableEffect(feeActive) {
+        onDispose { if (feeActive) feeModel.dismiss() }
+    }
     val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
     val lastScreens = remember { mutableStateListOf<Screen?>(null, null, null) }
     SideEffect {
@@ -193,6 +219,34 @@ private fun MainContent(
     }
     fun close() {
         if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
+    }
+    fun openFee(project: FeeProject) {
+        if (!isActive || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        feeOpening = project
+        rechargeModel.dismiss()
+        feeModel.open(project, state.username, state.preview)
+    }
+    fun closeFee() {
+        feeModel.dismiss()
+        close()
+    }
+    val entryContext = LocalContext.current
+    LaunchedEffect(feeOpening, feeState.loading, feeState.config, feeState.error, isActive) {
+        val project = feeOpening ?: return@LaunchedEffect
+        if (!isActive) {
+            feeOpening = null
+            feeModel.dismiss()
+        } else if (!feeState.loading) {
+            if (feeState.config != null && feeState.error == null) {
+                feeProject = project
+                open(Screen.Fee)
+                feeOpening = null
+            } else if (feeState.error != null) {
+                Toast.makeText(entryContext, feeState.error, Toast.LENGTH_SHORT).show()
+                feeOpening = null
+                feeModel.dismiss()
+            }
+        }
     }
     fun openBillStats() {
         if (!isActive) return
@@ -254,6 +308,8 @@ private fun MainContent(
                                     onLogout = { if (isActive) viewModel.logout() },
                                     onRecharge = { if (isActive) rechargeModel.open(state.username, state.account?.account, state.preview) },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                    onOpenFee = ::openFee,
+                                    feeOpening = feeOpening,
                                 )
                                 1 -> BillPage(
                                     state = billState,
@@ -300,6 +356,19 @@ private fun MainContent(
         BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
             IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
                 when (screen) {
+                    Screen.Fee -> FeePage(
+                        state = feeState, settings = settings, onBack = ::closeFee,
+                        onSelect = feeModel::select, onRefreshQuery = feeModel::refreshQuery,
+                        onRetry = { if (feeActive) feeProject?.let { feeModel.open(it, state.username, state.preview) } },
+                        onCreate = feeModel::create, onMethod = feeModel::chooseMethod,
+                        onPayAccount = feeModel::payAccount,
+                        onCancelPayment = feeModel::cancelPayment,
+                        onFinish = {
+                            val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
+                            feeModel.cancelPayment()
+                            if (paid) { feeModel.refreshQuery(); viewModel.refresh(); billViewModel.refresh() }
+                        }, interactive = feeActive,
+                    )
                     Screen.BillStats -> BillStatsPage(
                         state = billState,
                         settings = settings,
