@@ -58,7 +58,7 @@ class UiSmokeTest {
         compose.onNodeWithContentDescription("显示密码").assertExists().performClick()
         compose.onNodeWithContentDescription("隐藏密码").assertExists()
         compose.onNodeWithText("打开官网处理验证码 / 账户问题").assertDoesNotExist()
-        compose.onNodeWithText("登录并获取付款码").assertIsNotEnabled()
+        compose.onNodeWithText("登录").assertIsNotEnabled()
     }
     @Test fun paymentPreviewShowsCodesWithoutRefreshButton() {
         content()

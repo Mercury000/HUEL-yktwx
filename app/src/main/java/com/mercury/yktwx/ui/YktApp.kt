@@ -28,6 +28,8 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mercury.yktwx.BillViewModel
 import com.mercury.yktwx.PaymentViewModel
+import com.mercury.yktwx.PaymentUiState
+import com.mercury.yktwx.BillUiState
 import com.mercury.yktwx.R
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.components.*
@@ -60,13 +62,14 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val state by viewModel.state.collectAsStateWithLifecycle()
         val billState by billViewModel.state.collectAsStateWithLifecycle()
         val rechargeModel: RechargeViewModel = viewModel()
-        val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
-        val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
-        val scope = rememberCoroutineScope()
-        val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
-        LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
         val context = LocalContext.current
-        LaunchedEffect(state.username) { rechargeModel.accountChanged(state.username) }
+        LaunchedEffect(state.restoringLogin, state.needsLogin, state.username) {
+            if (!state.restoringLogin) {
+                val owner = state.username.takeUnless { state.needsLogin }
+                rechargeModel.accountChanged(owner.orEmpty())
+                billViewModel.accountChanged(owner)
+            }
+        }
         LaunchedEffect(rechargeModel, state.username) {
             rechargeModel.events.collect { launch ->
                 if (!rechargeModel.canLaunchWechat()) return@collect
@@ -83,147 +86,173 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         LaunchedEffect(viewModel) {
             viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
         }
-        LaunchedEffect(billState.needsLogin) {
-            if (billState.needsLogin) viewModel.refresh()
-        }
-        var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
-        val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
-        val lastScreens = remember { mutableStateListOf<Screen?>(null, null, null) }
-        SideEffect {
-            layers.forEachIndexed { index, screen ->
-                if (lastScreens[index] != screen) lastScreens[index] = screen
+        when {
+            state.restoringLogin -> Box(
+                Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) { CircularProgressIndicator() }
+            state.needsLogin -> LoginPage(state, viewModel::login)
+            else -> key(state.username) {
+                MainContent(settings, state, billState, viewModel, billViewModel, rechargeModel)
             }
         }
-        val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
-        val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
-        fun open(screen: Screen) {
-            if (layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
-        }
-        fun close() {
-            if (layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
-        }
-        fun openBill() {
-            billViewModel.onActivate()
-            open(Screen.Bill)
-        }
-        fun openBillStats() {
-            billViewModel.openStats()
-            open(Screen.BillStats)
-        }
-        fun openBillDetail(record: BillRecord) {
-            billViewModel.openDetail(record)
-            open(Screen.BillDetail)
-        }
-        repeat(MAX_LAYERS) { k ->
-            val shown = layers.size > k
-            LaunchedEffect(shown, motion[k].predictiveActive) {
-                if (!motion[k].predictiveActive) {
-                    val target = if (shown) 1f else 0f
-                    val duration = if (shown) LAYER_ENTER_DURATION else LAYER_EXIT_DURATION
-                    coroutineScope {
-                        launch { motion[k].backdropIntensity.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
-                        launch { motion[k].coveredDepth.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
-                    }
-                }
-            }
-            IslandLayerBackHandlers(
-                enabled = settings.predictiveBack.value && layers.size == k + 1,
-                motion = motion[k], maxTranslationPercent = distance,
-                onDismissed = { lastScreens[k] = null; layers = layers.take(k) },
-            )
-        }
-        if (!settings.predictiveBack.value) BackHandler(enabled = layers.isNotEmpty()) { close() }
+    }
+}
 
-        BarBlurHost(
-            bottomBarBlurEnabled = settings.blurBottomBar.value,
-            topBarBlurEnabled = false,
-            captureForEffects = motion.isBoundaryEngaged(0, layers.size) ||
-                (settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1),
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize().graphicsLayer {
-                    val depth = motion[0].coveredDepth.value.coerceIn(0f, 1f)
-                    translationX = -size.width * depth * BACKGROUND_PARALLAX
-                    scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
-                    scaleY = scaleX
-                }) {
-                    Scaffold(
-                        bottomBar = { BottomNavigation(settings, tabs.selectedPage, tabs::animateToPage) },
-                    ) { padding ->
-                        // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
-                        val bottom = padding.calculateBottomPadding() + 28.dp
-                        BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                            HorizontalPager(
-                                state = pagerState, modifier = Modifier.fillMaxSize(),
-                                beyondViewportPageCount = 1, key = { it },
-                            ) { page ->
-                                if (page == 0) PaymentPage(
-                                    state, settings, bottom,
-                                    onRefresh = { viewModel.refresh(manual = true) },
-                                    onLogin = viewModel::login,
-                                    onLogout = viewModel::logout,
-                                    onOpenBills = ::openBill,
-                                    onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
-                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
-                                ) else AboutTabPage(
-                                    isActive = pagerState.currentPage == 1 && layers.isEmpty(),
-                                    pageBottomContentPadding = bottom,
-                                    onOpenReferences = { open(Screen.References) },
-                                    onOpenSettings = { open(Screen.Settings) },
-                                )
-                            }
-                        }
-                        // Miuix registers overlays with the nearest Scaffold's popup host.
-                        // Keep this inside the root Scaffold so the recharge dialog can render.
-                        RechargeDialog(
-                            rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
-                            onFinish = {
-                                val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
-                                rechargeModel.finish()
-                                if (paid) viewModel.refresh()
-                            },
-                        )
-                    }
+/** Only composed after authentication, so tabs and their navigation cannot leak into login. */
+@Composable
+private fun MainContent(
+    settings: ThemeSettings,
+    state: PaymentUiState,
+    billState: BillUiState,
+    viewModel: PaymentViewModel,
+    billViewModel: BillViewModel,
+    rechargeModel: RechargeViewModel,
+) {
+    val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+    val scope = rememberCoroutineScope()
+    val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
+    LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
+    LaunchedEffect(billState.needsLogin) {
+        if (billState.needsLogin) viewModel.refresh()
+    }
+    var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
+    val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
+    val lastScreens = remember { mutableStateListOf<Screen?>(null, null, null) }
+    SideEffect {
+        layers.forEachIndexed { index, screen ->
+            if (lastScreens[index] != screen) lastScreens[index] = screen
+        }
+    }
+    val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
+    val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
+    fun open(screen: Screen) {
+        if (layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
+    }
+    fun close() {
+        if (layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
+    }
+    fun openBill() {
+        billViewModel.onActivate()
+        open(Screen.Bill)
+    }
+    fun openBillStats() {
+        billViewModel.openStats()
+        open(Screen.BillStats)
+    }
+    fun openBillDetail(record: BillRecord) {
+        billViewModel.openDetail(record)
+        open(Screen.BillDetail)
+    }
+    repeat(MAX_LAYERS) { k ->
+        val shown = layers.size > k
+        LaunchedEffect(shown, motion[k].predictiveActive) {
+            if (!motion[k].predictiveActive) {
+                val target = if (shown) 1f else 0f
+                val duration = if (shown) LAYER_ENTER_DURATION else LAYER_EXIT_DURATION
+                coroutineScope {
+                    launch { motion[k].backdropIntensity.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
+                    launch { motion[k].coveredDepth.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
                 }
             }
-            PredictiveBackBackdrop(
-                intensity = motion[0].backdropIntensity.value,
-                visible = motion[0].backdropIntensity.value > EFFECT_VISIBILITY_THRESHOLD,
-                modifier = Modifier.fillMaxSize(),
-            )
-            BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
-                IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
-                    when (screen) {
-                        Screen.Bill -> BillPage(
-                            state = billState,
-                            settings = settings,
-                            onBack = { close() },
-                            onActivate = billViewModel::onActivate,
-                            onRefresh = billViewModel::refresh,
-                            onLoadMore = billViewModel::loadMore,
-                            onMonthSelected = billViewModel::selectMonth,
-                            onFiltersApplied = billViewModel::applyFilters,
-                            onSearch = billViewModel::search,
-                            onOpenStats = ::openBillStats,
-                            onOpenDetail = ::openBillDetail,
-                        )
-                        Screen.BillStats -> BillStatsPage(
-                            state = billState,
-                            settings = settings,
-                            onBack = { close() },
-                            onMonthChange = billViewModel::selectStatsMonth,
-                            onTypeChange = billViewModel::selectStatsType,
-                            onRetry = billViewModel::refreshStats,
-                            onOpenDetail = ::openBillDetail,
-                        )
-                        Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
-                        else -> SecondaryPage(
-                            screen = screen,
-                            settings = settings,
-                            onBack = { close() },
-                            onTheme = { open(Screen.Theme) },
-                        )
+        }
+        IslandLayerBackHandlers(
+            enabled = settings.predictiveBack.value && layers.size == k + 1,
+            motion = motion[k], maxTranslationPercent = distance,
+            onDismissed = { lastScreens[k] = null; layers = layers.take(k) },
+        )
+    }
+    if (!settings.predictiveBack.value) BackHandler(enabled = layers.isNotEmpty()) { close() }
+
+    BarBlurHost(
+        bottomBarBlurEnabled = settings.blurBottomBar.value,
+        topBarBlurEnabled = false,
+        captureForEffects = motion.isBoundaryEngaged(0, layers.size) ||
+            (settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                val depth = motion[0].coveredDepth.value.coerceIn(0f, 1f)
+                translationX = -size.width * depth * BACKGROUND_PARALLAX
+                scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
+                scaleY = scaleX
+            }) {
+                Scaffold(
+                    bottomBar = { BottomNavigation(settings, tabs.selectedPage, tabs::animateToPage) },
+                ) { padding ->
+                    // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
+                    val bottom = padding.calculateBottomPadding() + 28.dp
+                    BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+                        HorizontalPager(
+                            state = pagerState, modifier = Modifier.fillMaxSize(),
+                            beyondViewportPageCount = 1, key = { it },
+                        ) { page ->
+                            if (page == 0) PaymentPage(
+                                state, settings, bottom,
+                                onRefresh = { viewModel.refresh(manual = true) },
+                                onLogout = viewModel::logout,
+                                onOpenBills = ::openBill,
+                                onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
+                                rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                            ) else AboutTabPage(
+                                isActive = pagerState.currentPage == 1 && layers.isEmpty(),
+                                pageBottomContentPadding = bottom,
+                                onOpenReferences = { open(Screen.References) },
+                                onOpenSettings = { open(Screen.Settings) },
+                            )
+                        }
                     }
+                    // Miuix registers overlays with the nearest Scaffold's popup host.
+                    // Keep this inside the root Scaffold so the recharge dialog can render.
+                    RechargeDialog(
+                        rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
+                        onFinish = {
+                            val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
+                            rechargeModel.finish()
+                            if (paid) viewModel.refresh()
+                        },
+                    )
+                }
+            }
+        }
+        PredictiveBackBackdrop(
+            intensity = motion[0].backdropIntensity.value,
+            visible = motion[0].backdropIntensity.value > EFFECT_VISIBILITY_THRESHOLD,
+            modifier = Modifier.fillMaxSize(),
+        )
+        BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
+            IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
+                when (screen) {
+                    Screen.Bill -> BillPage(
+                        state = billState,
+                        settings = settings,
+                        onBack = { close() },
+                        onActivate = billViewModel::onActivate,
+                        onRefresh = billViewModel::refresh,
+                        onLoadMore = billViewModel::loadMore,
+                        onMonthSelected = billViewModel::selectMonth,
+                        onFiltersApplied = billViewModel::applyFilters,
+                        onSearch = billViewModel::search,
+                        onOpenStats = ::openBillStats,
+                        onOpenDetail = ::openBillDetail,
+                    )
+                    Screen.BillStats -> BillStatsPage(
+                        state = billState,
+                        settings = settings,
+                        onBack = { close() },
+                        onMonthChange = billViewModel::selectStatsMonth,
+                        onTypeChange = billViewModel::selectStatsType,
+                        onRetry = billViewModel::refreshStats,
+                        onOpenDetail = ::openBillDetail,
+                    )
+                    Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
+                    else -> SecondaryPage(
+                        screen = screen,
+                        settings = settings,
+                        onBack = { close() },
+                        onTheme = { open(Screen.Theme) },
+                    )
                 }
             }
         }
