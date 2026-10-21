@@ -34,12 +34,14 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Show
 import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogin: (String, String) -> Unit, onLogout: () -> Unit, onOpenBills: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false) {
+    var showLogoutConfirmation by remember(state.username, state.needsLogin) { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -128,11 +130,40 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                             item {
                                 Card(Modifier.fillMaxWidth()) {
-                                    ArrowPreference(title = "切换账户", summary = "清除本机登录信息后重新登录", onClick = onLogout)
+                                    ArrowPreference(title = "退出登录", summary = "清除本机保存的登录信息", onClick = { showLogoutConfirmation = true })
                                 }
                             }
                         }
                     }
+                }
+            }
+            // Match the miuix demo: the root popup host renders above the app's
+            // bottom navigation, with only the component's system-safe insets.
+            OverlayDialog(
+                show = showLogoutConfirmation && !state.needsLogin,
+                title = "退出登录",
+                summary = "退出后将清除本机保存的登录信息。",
+                onDismissRequest = { showLogoutConfirmation = false },
+                defaultWindowInsetsPadding = true,
+                renderInRootScaffold = true,
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Button(onClick = { showLogoutConfirmation = false }, modifier = Modifier.weight(1f)) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = {
+                            if (showLogoutConfirmation) {
+                                showLogoutConfirmation = false
+                                onLogout()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text("确定") }
                 }
             }
         }
