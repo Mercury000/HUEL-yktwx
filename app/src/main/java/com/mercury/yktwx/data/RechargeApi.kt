@@ -1,54 +1,15 @@
 package com.mercury.yktwx.data
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.URI
 import java.net.URL
-import java.net.URLEncoder
 import javax.net.ssl.HttpsURLConnection
 
 /** No browser, Cookie, redirect following, JS execution, or side-effect retries. */
 class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : RechargeService {
-    private class Response(val status: Int, val body: String, val location: String?)
-    private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null): Response =
-        exchange(URI(RechargeProtocol.SCHOOL + path + if (form == null) "?" + encode(params + ("synAccessSource" to "h5")) else ""), token, form)
-    private suspend fun exchange(uri: URI, token: String?, form: Map<String, String>?, bridge: Boolean = false): Response = withContext(Dispatchers.IO) {
-        val connection = openConnection(uri.toURL())
-        try {
-            connection.connectTimeout = 15_000; connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false; connection.useCaches = false
-            connection.setRequestProperty("Cache-Control", "no-store")
-            if (bridge) {
-                connection.setRequestProperty("Referer", RechargeProtocol.SCHOOL + "/")
-                connection.setRequestProperty("Accept", "text/html")
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
-            } else {
-                connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("synAccessSource", "h5")
-                connection.setRequestProperty("synjones-auth", "bearer " + token)
-            }
-            if (form != null) {
-                connection.requestMethod = "POST"; connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                val bytes = encode(form).toByteArray(Charsets.UTF_8)
-                connection.setFixedLengthStreamingMode(bytes.size)
-                connection.outputStream.use { it.write(bytes) }
-            }
-            val status = connection.responseCode
-            val bytes = (if (status in 200..299) connection.inputStream else connection.errorStream)?.use { it.readNBytes(1_048_577) } ?: byteArrayOf()
-            if (bytes.size > 1_048_576) throw YktException("充值响应异常，请在官网核实订单")
-            Response(status, String(bytes, Charsets.UTF_8), connection.getHeaderField("Location"))
-        } catch (e: YktException) { throw e }
-        catch (_: java.io.IOException) { throw NetworkFailure() }
-        finally { connection.disconnect() }
-    }
-    private fun json(response: Response): JSONObject {
-        val body = runCatching { JSONObject(response.body) }.getOrNull()
-        if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
-        if (response.status !in 200..299 || body?.optInt("code") != 200) throw YktException("充值服务不可用，请在官网核实账户或已有订单")
-        return body
-    }
+    private val http = PaymentHttp(openConnection)
+    private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null) =
+        http.request(path, token, params, form)
+    private fun json(response: PaymentHttp.Response) = http.json(response)
     override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
         val data = json(request("/berserker-app/frontInfo", token)).getJSONObject("data")
         val front = JSONObject(data.getString("getFrontConfig"))
@@ -145,10 +106,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         )) + ("synAccessSource" to "h5")
         val payload = json(request("/blade-pay/pay", token, form = form)).getJSONObject("data")
         if (payload.rechargeText("orderid") != order) throw YktException("支付订单响应不匹配")
-        val action = RechargeProtocol.paymentFormAction(payload.rechargeText("paysubmit"), pending)
-        val bridge = exchange(action, null, emptyMap(), bridge = true)
-        if (bridge.status != 200) throw YktException("微信支付跳转未确认，请查询已有订单")
-        return RechargeProtocol.wechatUri(bridge.body, RechargeProtocol.query(action).getValue("prepay_id"))
+        return http.wechatLaunch(payload.rechargeText("paysubmit"), pending)
     }
     override suspend fun rechargeResult(token: String, pending: PendingRecharge): RechargeResult {
         val order = pending.orderId ?: throw YktException("订单号未确认，请在官网核实，勿重复充值")
@@ -186,5 +144,4 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常，请在官网核实")
         return RechargeResult(true, pending.amountCents, null, status)
     }
-    private fun encode(params: Map<String, String>) = params.entries.joinToString("&") { URLEncoder.encode(it.key, Charsets.UTF_8) + "=" + URLEncoder.encode(it.value, Charsets.UTF_8) }
 }

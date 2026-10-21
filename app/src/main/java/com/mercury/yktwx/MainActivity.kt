@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
     private val billViewModel: BillViewModel by viewModels()
     private val rechargeViewModel: RechargeViewModel by viewModels()
+    private val feeViewModel: FeeViewModel by viewModels()
     private val latestConfig = mutableStateOf<Configuration?>(null)
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
@@ -53,18 +54,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    override fun onStart() { super.onStart(); viewModel.onForeground(); rechargeViewModel.onForeground() }
+    override fun onStart() { super.onStart(); viewModel.onForeground(); rechargeViewModel.onForeground(); feeViewModel.onForeground() }
     override fun onResume() {
         super.onResume()
         rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
+        feeViewModel.onResumed(window.decorView.hasWindowFocus())
     }
     override fun onPause() {
         rechargeViewModel.onPaused()
+        feeViewModel.onPaused()
         super.onPause()
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         rechargeViewModel.onWindowFocusChanged(hasFocus)
+        feeViewModel.onWindowFocusChanged(hasFocus)
     }
-    override fun onStop() { rechargeViewModel.onBackground(); viewModel.onBackground(); super.onStop() }
+    override fun onStop() { feeViewModel.onBackground(); rechargeViewModel.onBackground(); viewModel.onBackground(); super.onStop() }
 }
