@@ -7,6 +7,23 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object AppIcons {
+    val SaveRoom = ImageVector.Builder("SaveRoom", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(4f, 4f); lineTo(17f, 4f); lineTo(20f, 7f); lineTo(20f, 20f)
+            lineTo(4f, 20f); close()
+            moveTo(8f, 4f); lineTo(8f, 9f); lineTo(16f, 9f); lineTo(16f, 4f)
+            moveTo(8f, 20f); lineTo(8f, 14f); lineTo(16f, 14f); lineTo(16f, 20f)
+        }
+    }.build()
+    val UnbindRoom = ImageVector.Builder("UnbindRoom", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(9f, 14f); lineTo(7f, 16f); curveTo(5f, 18f, 2f, 15f, 4f, 13f); lineTo(7f, 10f)
+            moveTo(15f, 10f); lineTo(17f, 8f); curveTo(19f, 6f, 22f, 9f, 20f, 11f); lineTo(17f, 14f)
+            moveTo(10f, 7f); lineTo(9f, 4f)
+            moveTo(14f, 17f); lineTo(15f, 20f)
+            moveTo(3f, 3f); lineTo(21f, 21f)
+        }
+    }.build()
     val Payment = ImageVector.Builder("Payment", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(4f, 9f); lineTo(4f, 4f); lineTo(9f, 4f)

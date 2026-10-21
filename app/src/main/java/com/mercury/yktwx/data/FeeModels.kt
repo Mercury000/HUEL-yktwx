@@ -8,7 +8,11 @@ enum class FeeProject(val id: String, val label: String, val network: Boolean = 
     Wenbei("409", "文北电费"), FamilyElectric("448", "家属区电费"),
     FamilyWater("449", "家属区水费"), Commercial("408", "商业街水电费"),
 }
-class FeeConfiguration(val project: FeeProject, val name: String, val amountRules: RechargeConfiguration) {
+class FeeConfiguration(
+    val project: FeeProject, val name: String, val amountRules: RechargeConfiguration,
+    val roomBindingEnabled: Boolean = false, val roomBinding: FeeRoomBinding? = null,
+    val invalidRoomBinding: Boolean = false,
+) {
     override fun toString() = "FeeConfiguration([redacted])"
 }
 data class FeeLevel(val key: String, val number: Int, val name: String)
@@ -39,6 +43,7 @@ class FeeAccountPreparation(val orderId: String, val methodId: String, val accou
 interface FeeService {
     suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration
     suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery
+    suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?)
     suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder
     suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation
     suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String)

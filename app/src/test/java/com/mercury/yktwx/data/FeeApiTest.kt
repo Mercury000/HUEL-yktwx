@@ -60,6 +60,65 @@ class FeeApiTest {
         assertEquals("服务端摘要", target.getString("myCustomInfo"))
     }
 
+    private fun roomConfig(project: FeeProject, status: Int = 1, bindInfo: Int = 1, scene: String? = null): String =
+        JSONObject().put("code", 200).put("sceneinfo", scene ?: JSONObject.NULL).put("feeitem", JSONObject()
+            .put("feeitemid", project.id.toInt()).put("name", "示例缴费").put("flag", "0000000000")
+            .put("bindStatus", status).put("feeitemImplBean", JSONObject().put("bindinfo", bindInfo))).toString()
+
+    @Test fun bindingConfigurationIsDynamicAcrossAllSupportedProjects() = runBlocking {
+        val scene = "xiaoqu_id:demo-campus&示例校区#\$#示例校区;room_id:demo-room&示例水表#\$#示例水表"
+        for (project in listOf(FeeProject.Zhengdong, FeeProject.Wenbei, FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+            val calls = mutableListOf<FakeHttps>()
+            val api = FeeApi { url -> FakeHttps(url, roomConfig(project, scene = scene)).also(calls::add) }
+            val config = api.feeConfiguration("fake-token", project)
+            assertTrue(config.roomBindingEnabled)
+            assertEquals("demo-room&示例水表", config.roomBinding?.selections?.get("room_id"))
+            assertEquals(project.id, URLDecoder.decode(calls.single().url.query, "UTF-8").substringAfter("feeitemid=").substringBefore('&'))
+        }
+    }
+    @Test fun disabledAndMultiRoomConfigurationsDoNotEnableSingleRoomActions() = runBlocking {
+        for ((project, status, info) in listOf(Triple(FeeProject.Commercial, 0, 0),
+            Triple(FeeProject.Wenbei, 2, 1), Triple(FeeProject.Network, 1, 1))) {
+            val config = FeeApi { url -> FakeHttps(url, roomConfig(project, status, info)) }.feeConfiguration("fake-token", project)
+            assertFalse(config.roomBindingEnabled)
+            assertNull(config.roomBinding)
+        }
+    }
+    @Test fun malformedSavedRoomIsNotTreatedAsUnbound() = runBlocking {
+        val config = FeeApi { url -> FakeHttps(url, roomConfig(FeeProject.Wenbei, scene = "room:x;room:y")) }
+            .feeConfiguration("fake-token", FeeProject.Wenbei)
+        assertTrue(config.roomBindingEnabled)
+        assertTrue(config.invalidRoomBinding)
+        assertNull(config.roomBinding)
+    }
+    @Test fun saveAndUnbindUseUtf8JsonProjectIdAndNoSceneOnUnbind() = runBlocking {
+        val calls = mutableListOf<FakeHttps>()
+        val api = FeeApi { url -> FakeHttps(url, "{\"code\":200}").also(calls::add) }
+        val room = FeeRoomBinding.parse("room_id:demo-room&示例水表#\$#示例水表")!!
+        api.setFeeRoom("fake-token", FeeProject.FamilyWater, room)
+        api.setFeeRoom("fake-token", FeeProject.FamilyWater, null)
+        assertEquals(2, calls.size)
+        calls.forEach {
+            assertEquals("/charge/sceneBind/add", it.url.path)
+            assertEquals("POST", it.requestMethod)
+            assertEquals("application/json;charset=UTF-8", it.getRequestProperty("Content-Type"))
+            assertEquals("bearer fake-token", it.getRequestProperty("synjones-auth"))
+            assertTrue(it.getRequestProperty("Authorization").startsWith("Basic "))
+            assertNull(it.getRequestProperty("Cookie"))
+            assertFalse(it.instanceFollowRedirects)
+            assertEquals(449, JSONObject(it.sent.toString("UTF-8")).getInt("feeitemid"))
+        }
+        assertEquals(room.sceneInfo(), JSONObject(calls.first().sent.toString("UTF-8")).getString("sceneinfo"))
+        assertEquals(setOf("feeitemid"), JSONObject(calls.last().sent.toString("UTF-8")).keys().asSequence().toSet())
+    }
+    @Test fun bindingRejectionIsNotRetriedOrMistakenForPayment() = runBlocking {
+        var requests = 0
+        val api = FeeApi { url -> requests++; FakeHttps(url, "{\"code\":500,\"msg\":\"失败\"}") }
+        try { api.setFeeRoom("fake-token", FeeProject.Wenbei, null); fail("Expected rejection") }
+        catch (_: YktException) { }
+        assertEquals(1, requests)
+    }
+
     private fun pending() = PendingRecharge("test-user", "{\"room\":\"demo-room\"}", "410", 100, 0, "FAKE-ORDER", "64")
     private fun method() = FeeMethod("64", "ACCOUNTTSM", "一卡通", false, 0)
     private fun preparation() = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 1000)), "fake-uuid", "9876543210")
