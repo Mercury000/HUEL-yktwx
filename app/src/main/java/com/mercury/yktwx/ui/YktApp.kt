@@ -1,6 +1,10 @@
 package com.mercury.yktwx.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -18,6 +22,10 @@ import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.RechargeViewModel
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -50,6 +58,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 private enum class Screen { BillStats, BillDetail, Settings, Theme, References }
+private enum class AuthPage { Restoring, Login, Main }
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel) {
@@ -86,14 +95,65 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         LaunchedEffect(viewModel) {
             viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
         }
-        when {
-            state.restoringLogin -> Box(
-                Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
-                contentAlignment = androidx.compose.ui.Alignment.Center,
-            ) { CircularProgressIndicator() }
-            state.needsLogin -> LoginPage(state, viewModel::login)
-            else -> key(state.username) {
-                MainContent(settings, state, billState, viewModel, billViewModel, rechargeModel)
+        val authPage = when {
+            state.restoringLogin -> AuthPage.Restoring
+            state.needsLogin -> AuthPage.Login
+            else -> AuthPage.Main
+        }
+        AnimatedContent(
+            // Route-only target: never retain a payment batch, code or password
+            // as an animation snapshot. Normal refreshes do not change screens.
+            targetState = authPage,
+            modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
+            transitionSpec = {
+                if (initialState == AuthPage.Restoring || targetState == AuthPage.Restoring) {
+                    (EnterTransition.None togetherWith ExitTransition.None).using(null)
+                } else if (targetState == AuthPage.Main) {
+                    (islandPageEnter() togetherWith islandPageExit(-BACKGROUND_PARALLAX))
+                        .apply { targetContentZIndex = 1f }.using(null)
+                } else {
+                    // Main slides away like a popped detail layer; login is the
+                    // uncovered background, using the same timings and easing.
+                    (islandPageEnter(-BACKGROUND_PARALLAX) togetherWith islandPageExit())
+                        .apply { targetContentZIndex = 0f }.using(null)
+                }
+            },
+            label = "AuthenticationPageTransition",
+        ) { page ->
+            val interactive = page == authPage
+            Box(
+                Modifier.fillMaxSize()
+                    .then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})
+                    .pointerInput(interactive) {
+                        if (!interactive) awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    },
+            ) {
+                when (page) {
+                    AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    AuthPage.Login -> LoginPage(state) { username, password ->
+                        if (interactive) viewModel.login(username, password)
+                    }
+                    AuthPage.Main -> {
+                        // Keep only shell identity for the outgoing animation.
+                        // Latest logged-out state has already removed payment codes.
+                        val shellOwner = remember { state.username }
+                        key(shellOwner) {
+                            MainContent(
+                                settings, state,
+                                if (interactive) billState else BillUiState(),
+                                viewModel, billViewModel, rechargeModel,
+                                isActive = interactive,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -108,14 +168,15 @@ private fun MainContent(
     viewModel: PaymentViewModel,
     billViewModel: BillViewModel,
     rechargeModel: RechargeViewModel,
+    isActive: Boolean,
 ) {
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
-    LaunchedEffect(billState.needsLogin) {
-        if (billState.needsLogin) viewModel.refresh()
+    LaunchedEffect(isActive, billState.needsLogin) {
+        if (isActive && billState.needsLogin) viewModel.refresh()
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
@@ -128,16 +189,18 @@ private fun MainContent(
     val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
     val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
     fun open(screen: Screen) {
-        if (layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
+        if (isActive && layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
     }
     fun close() {
-        if (layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
+        if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
     }
     fun openBillStats() {
+        if (!isActive) return
         billViewModel.openStats()
         open(Screen.BillStats)
     }
     fun openBillDetail(record: BillRecord) {
+        if (!isActive) return
         billViewModel.openDetail(record)
         open(Screen.BillDetail)
     }
@@ -154,12 +217,12 @@ private fun MainContent(
             }
         }
         IslandLayerBackHandlers(
-            enabled = settings.predictiveBack.value && layers.size == k + 1,
+            enabled = isActive && settings.predictiveBack.value && layers.size == k + 1,
             motion = motion[k], maxTranslationPercent = distance,
             onDismissed = { lastScreens[k] = null; layers = layers.take(k) },
         )
     }
-    if (!settings.predictiveBack.value) BackHandler(enabled = layers.isNotEmpty()) { close() }
+    if (!settings.predictiveBack.value) BackHandler(enabled = isActive && layers.isNotEmpty()) { close() }
 
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
@@ -187,9 +250,9 @@ private fun MainContent(
                             when (page) {
                                 0 -> PaymentPage(
                                     state, settings, bottom,
-                                    onRefresh = { viewModel.refresh(manual = true) },
-                                    onLogout = viewModel::logout,
-                                    onRecharge = { rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
+                                    onRefresh = { if (isActive) viewModel.refresh(manual = true) },
+                                    onLogout = { if (isActive) viewModel.logout() },
+                                    onRecharge = { if (isActive) rechargeModel.open(state.username, state.batch?.account?.account, state.preview) },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                 )
                                 1 -> BillPage(
@@ -204,12 +267,12 @@ private fun MainContent(
                                     onSearch = billViewModel::search,
                                     onOpenStats = ::openBillStats,
                                     onOpenDetail = ::openBillDetail,
-                                    isActive = pagerState.currentPage == 1 && layers.isEmpty(),
+                                    isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
                                     showBack = false,
                                     bottomPadding = bottom,
                                 )
                                 2 -> AboutTabPage(
-                                    isActive = pagerState.currentPage == 2 && layers.isEmpty(),
+                                    isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
                                     pageBottomContentPadding = bottom,
                                     onOpenReferences = { open(Screen.References) },
                                     onOpenSettings = { open(Screen.Settings) },
