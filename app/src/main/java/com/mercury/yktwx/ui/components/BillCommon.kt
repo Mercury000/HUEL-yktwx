@@ -179,7 +179,7 @@ internal fun BillMonthSelector(
         show = showSheet,
         title = "选择月份",
         onDismissRequest = { showSheet = false },
-        renderInRootScaffold = false,
+        renderInRootScaffold = true,
     ) {
         val months = remember(month) {
             val current = YearMonth.now()

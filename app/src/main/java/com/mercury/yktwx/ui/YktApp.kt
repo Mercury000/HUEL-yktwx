@@ -280,8 +280,7 @@ private fun MainContent(
                             }
                         }
                     }
-                    // Miuix registers overlays with the nearest Scaffold's popup host.
-                    // Keep this inside the root Scaffold so the recharge dialog can render.
+                    // Keep recharge under the root Scaffold so its overlay has a popup host.
                     RechargeDialog(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
                         onFinish = {
