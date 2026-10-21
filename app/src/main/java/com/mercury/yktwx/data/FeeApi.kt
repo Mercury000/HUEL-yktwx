@@ -43,9 +43,19 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             levels.map { it.key }.distinct().size != levels.size || levels.map { it.number }.distinct().size != levels.size)
             throw YktException("缴费查询层级配置异常")
         val display = map.optJSONObject("showData")?.let { d -> d.keys().asSequence().map { it to d.rechargeText(it) }.toList() }.orEmpty()
-        val target = if (detail) map.optJSONObject("data")?.takeIf { it.length() > 0 }?.toString() else null
+        val target = if (detail) map.optJSONObject("data")?.takeIf { it.length() > 0 }?.withRoomInfo()?.toString() else null
         val tip = map.rechargeText("tipinfo").ifBlank { null }
         return FeeQuery(levels, items, target, display, tip, tip == null && !map.optBoolean("notPay", false))
+    }
+
+    /** The old frontend adds this client-side; the server derives the bill abstract from it. */
+    private fun JSONObject.withRoomInfo(): JSONObject {
+        if (optString("myCustomInfo").isNotBlank()) return this
+        val names = listOf("areaName", "buildingName", "floorName", "roomName").map { optString(it) }
+            .takeIf { parts -> parts.all { it.isNotBlank() } }
+            ?: listOf("xiaoqu_id", "loudong_id", "louceng_id", "room_id").map { optString(it).substringAfter('&', "") }
+        if (names.all { it.isNotBlank() }) put("myCustomInfo", "房间：" + names.joinToString(" "))
+        return this
     }
 
     override suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder {
