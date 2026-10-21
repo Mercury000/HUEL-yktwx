@@ -15,6 +15,9 @@ import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.pages.BillPage
+import com.mercury.yktwx.ui.pages.RechargeDialog
+import com.mercury.yktwx.data.RechargeConfiguration
+import com.mercury.yktwx.data.PendingRecharge
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -129,5 +132,39 @@ class UiSmokeTest {
         compose.onAllNodesWithContentDescription("返回").onLast().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertExists()
+    }
+    @Test fun rechargeDialogShowsConfiguredAmountsAndExactCustomInput() {
+        var submitted: Long? = null
+        val state = RechargeUiState(visible = true, config = RechargeConfiguration("fake-fee", "fake-account", "统一账户", 0, listOf(1000, 5000, 10000), 1, 50000, true, false))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme {
+                    RechargeDialog(state, {}, { submitted = it }, {})
+                }
+            }
+        }
+        compose.onNodeWithText("¥ 10").assertExists().performClick()
+        compose.onNodeWithText("¥ 50").assertExists()
+        compose.onNodeWithText("¥ 100").assertExists()
+        compose.onNodeWithText("微信充值 ¥ 10.00").performClick()
+        assertEquals(1000L, submitted)
+        compose.onNodeWithText("自定义金额（元）").performTextReplacement("12.34")
+        compose.onNodeWithText("微信充值 ¥ 12.34").performClick()
+        assertEquals(1234L, submitted)
+        compose.onNodeWithText("自定义金额（元）").performTextReplacement("12.345")
+        compose.onNodeWithText("微信充值").assertIsNotEnabled()
+    }
+    @Test fun rechargeSuccessShowsOnlyServerConfirmedState() {
+        val pending = PendingRecharge("123456", "fake-account", "401", 1000, 0, "fake-order", "81")
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme {
+                    RechargeDialog(RechargeUiState(visible = true, pending = pending, phase = RechargePhase.Paid), {}, {}, {})
+                }
+            }
+        }
+        compose.onNodeWithText("充值成功").assertExists()
+        compose.onNodeWithText("¥ 10.00").assertExists()
+        compose.onNodeWithText("完成").assertExists()
     }
 }

@@ -18,6 +18,7 @@ import com.mercury.yktwx.ui.YktApp
 class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
     private val billViewModel: BillViewModel by viewModels()
+    private val rechargeViewModel: RechargeViewModel by viewModels()
     private val latestConfig = mutableStateOf<Configuration?>(null)
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
@@ -52,6 +53,18 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    override fun onStart() { super.onStart(); viewModel.onForeground() }
-    override fun onStop() { viewModel.onBackground(); super.onStop() }
+    override fun onStart() { super.onStart(); viewModel.onForeground(); rechargeViewModel.onForeground() }
+    override fun onResume() {
+        super.onResume()
+        rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
+    }
+    override fun onPause() {
+        rechargeViewModel.onPaused()
+        super.onPause()
+    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        rechargeViewModel.onWindowFocusChanged(hasFocus)
+    }
+    override fun onStop() { rechargeViewModel.onBackground(); viewModel.onBackground(); super.onStop() }
 }

@@ -69,6 +69,19 @@ synAccessSource: h5
 - Token 过期或被拒绝时映射为 `AuthenticationRequired`，由账户仓库最多重登一次；不在此处保存账单响应。
 - Android 的账单预览模式只注入虚构记录、金额和账户名，不读取真实账单。
 
+## 卡片充值与微信支付（接入调查）
+
+详见 [卡片充值调查](recharge.md)。2026-10-21 通过 MCP 只读验证接口，并离线分析用户本人 10 元充值 HAR：已确认微信内网页下单 302、微信 JSAPI 参数、两次订单成功查询和余额增加 10 元。外部 Android App 调起微信及自定义回跳仍未验证，**当前客户端已接入原生充值界面，微信实际唤起仍需真机验证**。
+
+- 充值项目：`GET /charge/feeitem/singleFeeitem`，解析顶层 `feeitem`。
+- 可充值卡：`GET /berserker-app/ykt/tsm/queryCard?scene=recharge`。
+- 下单：官网表单 `POST /charge/order/thirdOrder`，用户微信内 HAR 已确认返回 302；`POST /charge/cashier/toPayment` 分支仍未调用。
+- 支付方式：`GET /charge/pay/getpayinfo?orderid=<本人订单>&userAgent=h5`，解析顶层 `order`、`payList`。
+- 支付：`POST /blade-pay/pay`，用户 `wechat-mp` HAR 已确认返回 JSAPI 参数，不是 H5 支付链接；外部 App/H5 返回分支未验证。
+- 结果：`GET /charge/order/personal_data?orderid=<本人订单>`，解析顶层 `orderList`；`status=1` 是支付成功，不仅凭回跳或请求成功展示“充值到账”。
+- **充值/收银台金额是元，卡片余额和账单金额是分**，不能混用。
+- 不保存原始支付配置，不将 Token 放进外部跳转 URL，不自动重试创建订单。
+
 ## 刷新与错误边界
 
 - Android 使用加密保存的 Token；过期或被拒绝时，在账户仓库互斥锁中最多自动重登一次。账密无效或需要验证码时清除保存登录状态并要求重新登录，网络故障不等同于账密错误。

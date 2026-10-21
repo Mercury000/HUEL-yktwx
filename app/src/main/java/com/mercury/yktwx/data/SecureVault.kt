@@ -21,8 +21,8 @@ interface Vault {
 }
 
 /** AES-256-GCM, randomized IV and a non-exportable Android Keystore key. Backups are disabled. */
-class SecureVault(context: Context) : Vault {
-    private val prefs = context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE)
+class SecureVault(context: Context, preferencesName: String = "encrypted_account") : Vault {
+    private val prefs = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
     private val keyStore by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
     private fun key(): SecretKey {
         (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
@@ -33,7 +33,7 @@ class SecureVault(context: Context) : Vault {
                 .setRandomizedEncryptionRequired(true).build())
         }.generateKey()
     }
-    @Synchronized private fun write(name: String, plain: String) {
+    @Synchronized internal fun write(name: String, plain: String) {
         try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()); updateAAD(name.toByteArray()) }
             val data = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
@@ -41,7 +41,7 @@ class SecureVault(context: Context) : Vault {
             if (!prefs.edit().putString(name, value).commit()) throw IllegalStateException()
         } catch (_: Exception) { throw YktException("无法加密保存账户，请检查设备安全设置") }
     }
-    @Synchronized private fun read(name: String): JSONObject? {
+    @Synchronized internal fun read(name: String, strict: Boolean = false): JSONObject? {
         val saved = prefs.getString(name, null) ?: return null
         return try {
             val bytes = Base64.decode(saved, Base64.NO_WRAP)
@@ -52,9 +52,13 @@ class SecureVault(context: Context) : Vault {
             }
             JSONObject(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
         } catch (_: Exception) {
+            if (strict) throw YktException("充值记录无法读取，请先在官网核实，勿重复充值")
             prefs.edit().remove(name).commit()
             null // Key lost, corrupt data or restoring on a new device: ask for login.
         }
+    }
+    @Synchronized internal fun remove(name: String) {
+        if (!prefs.edit().remove(name).commit()) throw YktException("无法更新充值记录，请先核实订单")
     }
     override fun credentials() = read("credentials")?.let { Credentials(it.optString("username"), it.optString("password")) }
     override fun session() = read("session")?.let { Session(it.optString("token"), it.optLong("expires")) }
