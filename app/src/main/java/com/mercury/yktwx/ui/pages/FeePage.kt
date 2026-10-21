@@ -11,7 +11,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -21,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.FeeRoomAction
 import com.mercury.yktwx.FeeStage
 import com.mercury.yktwx.FeeUiState
 import com.mercury.yktwx.RechargePhase
@@ -49,6 +55,10 @@ fun FeePage(
     onPayAccount: (String, String) -> Unit,
     onFinish: () -> Unit,
     onCancelPayment: () -> Unit,
+    onRoomAction: () -> Unit = {},
+    onConfirmRoomAction: () -> Unit = {},
+    onDismissRoomDialog: () -> Unit = {},
+    onConsumeRoomNotice: () -> Unit = {},
     interactive: Boolean = true,
 ) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
@@ -57,6 +67,14 @@ fun FeePage(
     val cents = RechargeMoney.cents(amount)
     val orderAmount = state.order?.pending?.amountCents ?: cents ?: 0
     val error = state.error
+    val roomInteractive = interactive && !state.roomBusy && state.roomDialog == null
+    val context = LocalContext.current
+    LaunchedEffect(state.roomNotice, interactive) {
+        if (interactive) state.roomNotice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            onConsumeRoomNotice()
+        }
+    }
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
@@ -64,13 +82,31 @@ fun FeePage(
                     title = config?.name ?: "生活缴费", largeTitle = config?.name ?: "生活缴费",
                     scrollBehavior = scroll, color = Color.Transparent,
                     navigationIcon = { IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") } },
+                    actions = {
+                        if (config?.roomBindingEnabled == true) {
+                            val enabled = interactive && state.roomActionEnabled && state.roomDialog == null
+                            val description = if (state.roomAction == FeeRoomAction.Unbind) "解绑房间" else "保存房间"
+                            IconButton(onClick = onRoomAction, enabled = enabled,
+                                modifier = Modifier.size(48.dp).semantics(mergeDescendants = true) {
+                                    contentDescription = description
+                                    if (!enabled) disabled()
+                                }) {
+                                if (state.roomBusy) CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                                else Icon(
+                                    if (state.roomAction == FeeRoomAction.Unbind) AppIcons.UnbindRoom else AppIcons.SaveRoom,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+                                )
+                            }
+                        }
+                    },
                 )
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 PullToRefresh(
                     isRefreshing = state.refreshing,
-                    onRefresh = { if (interactive) { if (config == null) onRetry() else onRefreshQuery() } },
+                    onRefresh = { if (roomInteractive) { if (config == null) onRetry() else onRefreshQuery() } },
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     topAppBarScrollBehavior = scroll,
@@ -98,7 +134,7 @@ fun FeePage(
                             val visibleLevels = state.levels.filterNot { it.key in state.hiddenLevels }
                             if (visibleLevels.isNotEmpty()) item {
                                 Card(Modifier.fillMaxWidth()) {
-                                    FeeTargetOptions(state, onSelect, interactive && state.stage == FeeStage.Query)
+                                    FeeTargetOptions(state, onSelect, roomInteractive && state.stage == FeeStage.Query)
                                 }
                             }
                             state.query?.let { query ->
@@ -119,11 +155,11 @@ fun FeePage(
                                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                         Text("缴费金额", fontWeight = FontWeight.SemiBold)
                                         PaymentAmountInput(config.amountRules, amount, { amount = it },
-                                            enabled = interactive && !state.loading && state.stage == FeeStage.Query)
+                                            enabled = roomInteractive && !state.loading && !state.selecting && state.stage == FeeStage.Query)
                                         if (config.amountRules.maximumCents < 999900L) Text("最高 ¥ " + RechargeMoney.label(config.amountRules.maximumCents),
                                             fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         Button(onClick = { cents?.let(onCreate) }, modifier = Modifier.fillMaxWidth(),
-                                            enabled = interactive && !state.preview && !state.loading && state.stage == FeeStage.Query && config.amountRules.amountError(cents) == null,
+                                            enabled = roomInteractive && !state.preview && !state.loading && !state.selecting && state.stage == FeeStage.Query && config.amountRules.amountError(cents) == null,
                                             colors = ButtonDefaults.buttonColorsPrimary()) {
                                             Text(if (cents != null && config.amountRules.amountError(cents) == null) "缴费 ¥ " + RechargeMoney.yuan(cents) else "缴费")
                                         }
@@ -150,6 +186,41 @@ fun FeePage(
                         }
                     }
                     if (state.error != null) Text(state.error, color = MiuixTheme.colorScheme.error, fontSize = 13.sp)
+                }
+            }
+            val roomDialog = state.roomDialog
+            val replacing = roomDialog?.action == FeeRoomAction.Save && roomDialog.previous != null
+            OverlayDialog(
+                show = interactive && roomDialog != null && state.stage == FeeStage.Query,
+                title = when {
+                    roomDialog?.action == FeeRoomAction.Unbind -> "解绑房间"
+                    replacing -> "更换房间"
+                    else -> "保存房间"
+                },
+                summary = roomDialog?.let {
+                    when {
+                        it.action == FeeRoomAction.Unbind -> "解绑「${it.target.dialogLabel}」"
+                        replacing -> "将「${it.previous!!.dialogLabel}」更换为「${it.target.dialogLabel}」"
+                        else -> "保存「${it.target.dialogLabel}」，下次自动选择"
+                    }
+                },
+                onDismissRequest = onDismissRoomDialog,
+                renderInRootScaffold = true,
+            ) {
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onDismissRoomDialog, modifier = Modifier.weight(1f)) {
+                        Text("取消")
+                    }
+                    Button(onClick = onConfirmRoomAction, modifier = Modifier.weight(1f),
+                        colors = if (roomDialog?.action == FeeRoomAction.Unbind)
+                            ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.error, contentColor = Color.White)
+                        else ButtonDefaults.buttonColorsPrimary()) {
+                        Text(when {
+                            roomDialog?.action == FeeRoomAction.Unbind -> "解绑"
+                            replacing -> "更换"
+                            else -> "保存"
+                        })
+                    }
                 }
             }
             FeePasswordDialog(

@@ -11,9 +11,14 @@ import javax.net.ssl.HttpsURLConnection
 /** Shared first-party transport; no Cookie jar, redirects or retries of POSTs. */
 internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnection) {
     internal class Response(val status: Int, val body: String, val location: String?)
-    suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null, chargeClient: Boolean = false): Response =
-        exchange(URI(RechargeProtocol.SCHOOL + path + if (form == null) "?" + encode(params + ("synAccessSource" to "h5")) else ""), token, form, chargeClient = chargeClient)
-    private suspend fun exchange(uri: URI, token: String?, form: Map<String, String>?, bridge: Boolean = false, chargeClient: Boolean = false): Response = withContext(Dispatchers.IO) {
+    suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null,
+        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response {
+        require(form == null || jsonBody == null)
+        return exchange(URI(RechargeProtocol.SCHOOL + path + if (form == null && jsonBody == null)
+            "?" + encode(params + ("synAccessSource" to "h5")) else ""), token, form, chargeClient = chargeClient, jsonBody = jsonBody)
+    }
+    private suspend fun exchange(uri: URI, token: String?, form: Map<String, String>?, bridge: Boolean = false,
+        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response = withContext(Dispatchers.IO) {
         val connection = openConnection(uri.toURL())
         try {
             connection.connectTimeout = 15_000; connection.readTimeout = 15_000
@@ -30,10 +35,10 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
                 if (chargeClient) connection.setRequestProperty("Authorization", "Basic " + java.util.Base64.getEncoder()
                     .encodeToString("charge:charge_secret".toByteArray(Charsets.UTF_8)))
             }
-            if (form != null) {
+            if (form != null || jsonBody != null) {
                 connection.requestMethod = "POST"; connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                val bytes = encode(form).toByteArray(Charsets.UTF_8)
+                connection.setRequestProperty("Content-Type", if (jsonBody != null) "application/json;charset=UTF-8" else "application/x-www-form-urlencoded")
+                val bytes = (jsonBody?.toString() ?: encode(form!!)).toByteArray(Charsets.UTF_8)
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.outputStream.use { it.write(bytes) }
             }

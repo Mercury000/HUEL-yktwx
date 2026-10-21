@@ -14,7 +14,8 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         http.json(http.request(path, token, form = if (sign) RechargeProtocol.signed(fields) else fields, chargeClient = true), feePayment = true)
 
     override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
-        val item = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to project.id)).getJSONObject("feeitem")
+        val response = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to project.id))
+        val item = response.getJSONObject("feeitem")
         if (item.rechargeText("feeitemid") != project.id) throw YktException("缴费项目不匹配")
         val min = item.rechargeText("retain_money").ifBlank { "0.01" }.let { RechargeMoney.cents(it) ?: throw YktException("缴费限额异常") }
         // Match the old frontend's local ceiling, not the recharge-specific 500 yuan cap.
@@ -23,7 +24,19 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         val options = item.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }.distinct().filter { it in min..max }
         if (min > max || (flag == '1' && options.isEmpty())) throw YktException("没有可用的缴费金额")
         val rules = RechargeConfiguration(project.id, "", "", 0, options, min, max, flag != '1', flag == '2')
-        return FeeConfiguration(project, item.rechargeText("name").ifBlank { project.label }, rules)
+        val enabled = !project.network && item.optInt("bindStatus") == 1 &&
+            item.optJSONObject("feeitemImplBean")?.optInt("bindinfo") == 1
+        val scene = response.rechargeText("sceneinfo")
+        val binding = if (enabled) FeeRoomBinding.parse(scene) else null
+        return FeeConfiguration(project, item.rechargeText("name").ifBlank { project.label }, rules,
+            enabled, binding, enabled && scene.isNotBlank() && binding == null)
+    }
+
+    override suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?) {
+        if (project.network) throw YktException("当前项目不支持房间绑定")
+        val body = JSONObject().put("feeitemid", project.id.toInt())
+        room?.let { body.put("sceneinfo", it.sceneInfo()) }
+        http.json(http.request("/charge/sceneBind/add", token, chargeClient = true, jsonBody = body))
     }
 
     override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {

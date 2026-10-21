@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 enum class FeeStage { Query, Methods, Password, Result }
+enum class FeeRoomAction { Save, Unbind }
+class FeeRoomDialog(val action: FeeRoomAction, val target: FeeRoomBinding, val previous: FeeRoomBinding?) {
+    override fun toString() = "FeeRoomDialog([redacted])"
+}
 class FeeUiState(
     val config: FeeConfiguration? = null, val loading: Boolean = false, val error: String? = null,
     val levels: List<FeeLevel> = emptyList(), val options: Map<Int, List<FeeOption>> = emptyMap(),
@@ -25,7 +29,18 @@ class FeeUiState(
     val resultPhase: RechargePhase = RechargePhase.Creating, val preview: Boolean = false,
     val hiddenLevels: Set<String> = emptySet(), val refreshing: Boolean = false,
     val selecting: Boolean = false,
-) { override fun toString() = "FeeUiState([redacted])" }
+    val roomBinding: FeeRoomBinding? = config?.roomBinding,
+    val roomBindingKnown: Boolean = config?.invalidRoomBinding != true,
+    val roomBusy: Boolean = false, val roomDialog: FeeRoomDialog? = null,
+    val roomNotice: String? = null,
+) {
+    val currentRoom get() = FeeRoomBinding.from(levels, selections, names)
+    val roomAction get() = if (currentRoom?.sameTarget(roomBinding) == true) FeeRoomAction.Unbind else FeeRoomAction.Save
+    val roomActionEnabled get() = config?.roomBindingEnabled == true && roomBindingKnown &&
+        stage == FeeStage.Query && !loading && !selecting && !refreshing && !roomBusy && currentRoom != null &&
+        (roomAction == FeeRoomAction.Unbind || (query?.thirdParty != null && query.tip == null))
+    override fun toString() = "FeeUiState([redacted])"
+}
 
 class FeeViewModel internal constructor(
     app: Application,
@@ -56,7 +71,8 @@ class FeeViewModel internal constructor(
         launchTask {
             try {
                 val config = if (preview) FeeConfiguration(project, project.label,
-                    RechargeConfiguration(project.id, "", "", 0, if (project.network) listOf(1500,3000,4500) else listOf(1000,5000,10000), 1, 200000, true, false))
+                    RechargeConfiguration(project.id, "", "", 0, if (project.network) listOf(1500,3000,4500) else listOf(1000,5000,10000), 1, 200000, true, false),
+                    roomBindingEnabled = !project.network && project != FeeProject.Commercial)
                     else repository.feeConfiguration(username, project)
                 if (attempt != generation) return@launchTask
                 val initial = if (preview) previewQuery(project, false, 0)
@@ -75,10 +91,14 @@ class FeeViewModel internal constructor(
                     val entrance = FeeUiState(config, levels = initial.levels,
                         options = mapOf(first.number to initial.options), preview = preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
-                    if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
+                    if (config.roomBinding != null) {
+                        restoreRoom(entrance, config.roomBinding, generation)
+                    } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
                         mutable.value = copy(entrance, loading = true)
                         loadSelection(entrance, first, initial.options.single(), generation)
                     } else mutable.value = entrance
+                    if (config.invalidRoomBinding) mutable.value = copy(mutable.value,
+                        roomBindingKnown = false, error = "已保存的房间信息无法识别，请先在官网解绑或更正")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -89,7 +109,7 @@ class FeeViewModel internal constructor(
 
     fun select(level: FeeLevel, option: FeeOption) {
         val state = mutable.value
-        if (state.config == null || state.loading || state.selecting || state.stage != FeeStage.Query ||
+        if (state.config == null || state.loading || state.selecting || state.roomBusy || state.roomDialog != null || state.stage != FeeStage.Query ||
             state.options[level.number]?.none { it.id == option.id } != false) return
         val generation = attempt
         mutable.value = copy(state, selecting = true, error = null, refreshing = false)
@@ -102,7 +122,8 @@ class FeeViewModel internal constructor(
         }
     }
 
-    private suspend fun loadSelection(state: FeeUiState, level: FeeLevel, option: FeeOption, generation: Long) {
+    private suspend fun loadSelection(state: FeeUiState, level: FeeLevel, option: FeeOption, generation: Long,
+        allowRoomPrompt: Boolean = true, continueLoading: Boolean = false) {
         val config = state.config ?: return
         val keep = state.levels.filter { it.number < level.number }.map { it.key }.toSet()
         val selections = state.selections.filterKeys { it in keep } + (level.key to option.id)
@@ -115,15 +136,97 @@ class FeeViewModel internal constructor(
         val query = if (state.preview) previewQuery(config.project, next == null, level.number)
             else repository.feeQuery(owner, config.project, level.number, selections, next == null)
         if (generation != attempt) return
-        mutable.value = copy(mutable.value, loading = false, selecting = false, error = query.tip, stage = state.stage,
+        mutable.value = copy(mutable.value, loading = continueLoading, selecting = false, error = query.tip, stage = state.stage,
             options = if (next == null) mutable.value.options else mutable.value.options + (next.number to query.options),
             query = if (next == null) query else null)
+        if (next == null && allowRoomPrompt) offerRoomSave()
+    }
+
+    private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long) {
+        mutable.value = copy(entrance, loading = true)
+        if (binding.selections.keys != entrance.levels.map { it.key }.toSet()) {
+            mutable.value = copy(entrance, error = "已保存的房间选项已失效，请重新选择后保存")
+            return
+        }
+        try {
+            for ((index, level) in entrance.levels.withIndex()) {
+                val current = mutable.value
+                val option = current.options[level.number]?.firstOrNull { it.id == binding.selections[level.key] }
+                if (option == null) {
+                    mutable.value = copy(current, loading = false, error = "已保存的房间选项已失效，请重新选择后保存")
+                    return
+                }
+                loadSelection(current, level, option, generation, allowRoomPrompt = false,
+                    continueLoading = index != entrance.levels.lastIndex)
+                if (attempt != generation) return
+                if (mutable.value.error != null) {
+                    mutable.value = copy(mutable.value, loading = false)
+                    return
+                }
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (attempt == generation) mutable.value = copy(mutable.value, loading = false, error = message(e))
+        }
+    }
+
+    private fun offerRoomSave() {
+        val state = mutable.value
+        if (state.preview || state.roomBinding != null || !state.roomActionEnabled || state.roomDialog != null) return
+        mutable.value = copy(state, roomDialog = FeeRoomDialog(FeeRoomAction.Save, state.currentRoom!!, null))
+    }
+
+    fun requestRoomAction() {
+        val state = mutable.value
+        if (!state.roomActionEnabled || state.roomDialog != null || task?.isActive == true) return
+        mutable.value = copy(state, roomDialog = FeeRoomDialog(state.roomAction, state.currentRoom!!, state.roomBinding))
+    }
+
+    fun dismissRoomDialog() {
+        if (!mutable.value.roomBusy) mutable.value = copy(mutable.value, roomDialog = null)
+    }
+
+    fun consumeRoomNotice() { mutable.value = copy(mutable.value, roomNotice = null) }
+
+    fun confirmRoomAction() {
+        val state = mutable.value
+        val config = state.config ?: return
+        val dialog = state.roomDialog ?: return
+        if (!state.roomActionEnabled || state.roomBusy || task?.isActive == true ||
+            !dialog.target.sameTarget(state.currentRoom) || dialog.action != state.roomAction) return
+        val generation = attempt
+        val target = if (dialog.action == FeeRoomAction.Save) dialog.target else null
+        mutable.value = copy(state, roomBusy = true, roomDialog = null, error = null, roomNotice = null)
+        launchTask {
+            var failure: Exception? = null
+            try {
+                if (!state.preview) repository.setFeeRoom(owner, config.project, target)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { failure = e }
+            if (generation != attempt) return@launchTask
+            // Even a lost write response must be reconciled by a read, never by replaying the write.
+            try {
+                val fresh = if (state.preview) target else repository.feeConfiguration(owner, config.project).let {
+                    if (!it.roomBindingEnabled || it.invalidRoomBinding) throw YktException("房间绑定状态无法确认")
+                    it.roomBinding
+                }
+                if (generation != attempt) return@launchTask
+                val confirmed = if (target == null) fresh == null else target.sameTarget(fresh)
+                mutable.value = copy(mutable.value, roomBusy = false, roomBinding = fresh, roomBindingKnown = true,
+                    error = if (confirmed) null else failure?.let(::message) ?: "房间绑定未更新，请稍后重试",
+                    roomNotice = if (confirmed) (if (target == null) "已解绑" else "已保存为我的房间") else null)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (generation == attempt) mutable.value = copy(mutable.value, roomBusy = false, roomBindingKnown = false,
+                    error = "无法确认保存或解绑结果，请重新打开页面核实，勿重复提交")
+            }
+        }
     }
 
     fun refreshQuery() {
         val state = mutable.value
         val config = state.config ?: return
-        if (state.loading || state.stage != FeeStage.Query || task?.isActive == true) return
+        if (state.loading || state.roomBusy || state.roomDialog != null || state.stage != FeeStage.Query || task?.isActive == true) return
         val generation = attempt
         val last = state.levels.lastOrNull { state.selections.containsKey(it.key) }
         val detail = config.project.network || state.levels.isEmpty() || last == state.levels.lastOrNull()
@@ -134,9 +237,11 @@ class FeeViewModel internal constructor(
             try {
                 val query = if (state.preview) previewQuery(config.project, detail, requestLevel)
                     else repository.feeQuery(owner, config.project, requestLevel, state.selections, detail)
-                if (generation == attempt) mutable.value = copy(mutable.value, loading = false, refreshing = false,
-                    error = query.tip, query = if (detail) query else null,
-                    options = if (!detail && next != null) mutable.value.options + (next.number to query.options) else mutable.value.options)
+                if (generation == attempt) {
+                    mutable.value = copy(mutable.value, loading = false, refreshing = false,
+                        error = query.tip, query = if (detail) query else null,
+                        options = if (!detail && next != null) mutable.value.options + (next.number to query.options) else mutable.value.options)
+                }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == attempt) mutable.value = copy(mutable.value, loading = false, refreshing = false, error = message(e))
@@ -162,7 +267,7 @@ class FeeViewModel internal constructor(
     }
     fun create(amount: Long) {
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
-        if (s.preview || s.loading || s.stage != FeeStage.Query || task?.isActive == true) return
+        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || s.stage != FeeStage.Query || task?.isActive == true) return
         config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it); return }
         val generation=attempt
         accountPaymentSubmitted = false
@@ -347,6 +452,12 @@ class FeeViewModel internal constructor(
         hiddenLevels: Set<String> = s.hiddenLevels,
         refreshing: Boolean = s.refreshing,
         selecting: Boolean = s.selecting,
+        roomBinding: FeeRoomBinding? = s.roomBinding,
+        roomBindingKnown: Boolean = s.roomBindingKnown,
+        roomBusy: Boolean = s.roomBusy,
+        roomDialog: FeeRoomDialog? = s.roomDialog,
+        roomNotice: String? = s.roomNotice,
     ) = FeeUiState(s.config, loading, error, levels, options, selections, names, query, order,
-        method, preparation, stage, resultPhase, s.preview, hiddenLevels, refreshing, selecting)
+        method, preparation, stage, resultPhase, s.preview, hiddenLevels, refreshing, selecting,
+        roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice)
 }

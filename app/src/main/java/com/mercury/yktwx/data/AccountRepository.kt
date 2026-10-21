@@ -71,6 +71,8 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun feeConfiguration(username: String, project: FeeProject) = withSession(expectedUsername = username) { feeService.feeConfiguration(it, project) }
     suspend fun feeQuery(username: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
         withSession(expectedUsername = username) { feeService.feeQuery(it, project, level, selections, detail) }
+    suspend fun setFeeRoom(username: String, project: FeeProject, room: FeeRoomBinding?) =
+        withSession(retryAuthentication = false, expectedUsername = username) { feeService.setFeeRoom(it, project, room) }
     suspend fun createFee(username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long) =
         withSession(retryAuthentication = false, expectedUsername = username) { feeService.createFee(it, username, config, query, amountCents) }
     suspend fun prepareFeeAccount(order: PendingRecharge, method: FeeMethod) =

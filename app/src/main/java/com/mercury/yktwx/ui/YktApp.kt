@@ -363,6 +363,10 @@ private fun MainContent(
                         onCreate = feeModel::create, onMethod = feeModel::chooseMethod,
                         onPayAccount = feeModel::payAccount,
                         onCancelPayment = feeModel::cancelPayment,
+                        onRoomAction = feeModel::requestRoomAction,
+                        onConfirmRoomAction = feeModel::confirmRoomAction,
+                        onDismissRoomDialog = feeModel::dismissRoomDialog,
+                        onConsumeRoomNotice = feeModel::consumeRoomNotice,
                         onFinish = {
                             val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
                             feeModel.cancelPayment()

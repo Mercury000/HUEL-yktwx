@@ -197,6 +197,7 @@ class FeeViewModelTest {
             RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false))
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
             FeeQuery(thirdParty = if (detail) "{\"userId\":\"test-user\"}" else null)
+        override suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?) = Unit
         override suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long) =
             FeeOrder(PendingRecharge(username, query.thirdParty!!, config.project.id, amountCents, 0, "FAKE-ORDER"), listOf(accountMethod, wechatMethod))
         override suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod) =
