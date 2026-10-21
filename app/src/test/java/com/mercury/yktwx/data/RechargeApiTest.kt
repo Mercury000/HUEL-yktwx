@@ -115,10 +115,22 @@ class RechargeApiTest {
         assertNull(paid.balanceCents)
         val unpaid = RechargeApi { url -> FakeHttps(url, 200, result(0).toString()) }.rechargeResult("fake-token", pending())
         assertFalse(unpaid.paid)
-        try {
-            RechargeApi { url -> FakeHttps(url, 200, result(1, 20).toString()) }.rechargeResult("fake-token", pending())
-            fail("Mismatched amount")
-        } catch (_: YktException) { }
+        val conflictingFields = listOf<Pair<String, Any>>(
+            "orderid" to "OTHER-ORDER",
+            "third_party" to "other-account",
+            "payid" to 99,
+            "tranamt" to 20,
+            "actulamt" to 20,
+            "feeitemlist" to JSONArray().put(JSONObject().put("feeitemid", 999)),
+        )
+        for ((field, value) in conflictingFields) {
+            val response = result(1)
+            response.getJSONArray("orderList").getJSONObject(0).put(field, value)
+            try {
+                RechargeApi { url -> FakeHttps(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
+                fail("Successful response must match the submitted $field")
+            } catch (_: YktException) { }
+        }
     }
     @Test fun ambiguousCreationIsNotRetried() = runBlocking {
         var calls = 0

@@ -28,8 +28,12 @@ class RechargeUiState(
 }
 
 /** One foreground recharge attempt; closed or cancelled attempts never lock the next one. */
-class RechargeViewModel(app: Application) : AndroidViewModel(app) {
-    private val repository = AccountRepository.shared(app)
+class RechargeViewModel internal constructor(
+    app: Application,
+    private val repository: AccountRepository,
+    private val checkDelayMillis: Long = 5_000,
+) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(RechargeUiState())
     val state = mutable.asStateFlow()
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
@@ -119,7 +123,7 @@ class RechargeViewModel(app: Application) : AndroidViewModel(app) {
                     // Completed attempts keep their budget across pause/resume.
                     // Interrupted read-only requests may be repeated, but no
                     // create/pay POST is retried here.
-                    if (resultQueriesCompleted > 0) delay(5_000)
+                    if (resultQueriesCompleted > 0) delay(checkDelayMillis)
                     if (current != attempt) return@launch
                     requireOwner(pending)
                     val result = repository.rechargeResult(pending)
