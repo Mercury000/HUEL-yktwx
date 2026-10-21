@@ -48,7 +48,7 @@ fun RechargeDialog(
         show = state.visible,
         title = if (isResult) null else "卡片充值",
         onDismissRequest = onDismiss,
-        renderInRootScaffold = false,
+        renderInRootScaffold = true,
         // The result has its own spacing; avoid adding the sheet's defaults again.
         insideMargin = if (isResult) DpSize(0.dp, 0.dp) else DpSize(20.dp, 12.dp),
     ) {

@@ -376,7 +376,8 @@ private fun BillFilterSheet(
         show = show,
         title = "筛选账单",
         onDismissRequest = onDismiss,
-        renderInRootScaffold = false,
+        // Cover the main tab bar, not just the nested bill page.
+        renderInRootScaffold = true,
     ) {
         Column(
             Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
