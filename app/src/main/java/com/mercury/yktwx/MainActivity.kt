@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
         if (!preview && settings.preventScreenshots.value) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-        viewModel.initialize(preview)
+        viewModel.initialize(preview, previewLost = preview && intent.getBooleanExtra("ui_preview_lost", false))
         billViewModel.initialize(preview)
         setContent {
             val secure = !preview && settings.preventScreenshots.value
