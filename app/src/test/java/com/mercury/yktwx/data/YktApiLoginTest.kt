@@ -34,7 +34,9 @@ class YktApiLoginTest {
         override fun getPeerPrincipal(): Principal? = null
         override fun getLocalPrincipal(): Principal? = null
     }
-    private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JSONObject? = null) {
+    private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JSONObject? = null,
+        private val paymentStatus: Int = 1, private val lost: Int = 0, private val frozen: Int = 0,
+        private val barcodeBody: JSONObject? = null, private val barcodeHttpStatus: Int = 200) {
         val calls = mutableListOf<FakeHttps>()
         private val methods = JSONArray().put(JSONObject().put("key", "snoNew").put("encryption", "keyboard").put("openCaptcha", captcha))
         private val config = JSONObject().put("getFrontConfig", JSONObject().put("loginType", methods.toString()).toString())
@@ -48,12 +50,14 @@ class YktApiLoginTest {
                 "/berserker-secure/keyboard" -> JSONObject().put("code", 200).put("data", keyboard)
                 "/berserker-auth/oauth/token" -> tokenBody ?: JSONObject().put("access_token", "fake-token").put("token_type", "bearer").put("expires_in", 3600)
                 "/berserker-app/ykt/tsm/codebarPayinfo" -> JSONObject().put("code", 200).put("data", JSONArray().put(
-                    JSONObject().put("code", "ACCOUNT").put("status", 1).put("lostflag", 0).put("freezeflag", 0)
+                    JSONObject().put("code", "ACCOUNT").put("status", paymentStatus).put("lostflag", lost).put("freezeflag", frozen)
                         .put("account", "fake-account").put("payacc", "fake-payacc").put("paytype", "1").put("name", "Demo").put("accinfo_balance", 1234)))
-                "/berserker-app/ykt/tsm/batchGetBarCodeGet" -> JSONObject().put("code", 200).put("data", JSONObject().put("barcode", JSONArray().put("00000000000000000000")).put("expires", 17280))
+                "/berserker-app/ykt/tsm/batchGetBarCodeGet" -> barcodeBody ?: JSONObject().put("code", 200).put("data", JSONObject().put("barcode", JSONArray().put("00000000000000000000")).put("expires", 17280))
                 else -> error("Unexpected request path")
             }
-            FakeHttps(url, if (url.path.endsWith("/oauth/token")) tokenStatus else 200, body).also { calls.add(it) }
+            FakeHttps(url, when { url.path.endsWith("/oauth/token") -> tokenStatus
+                url.path.endsWith("/batchGetBarCodeGet") -> barcodeHttpStatus
+                else -> 200 }, body).also { calls.add(it) }
         }
     }
     private fun form(value: String): Map<String, String> = value.split('&').associate {
@@ -109,4 +113,47 @@ class YktApiLoginTest {
             assertNull(request.getRequestProperty("Authorization")); assertNull(request.getRequestProperty("Cookie"))
         }
     }
+    @Test fun lossOrFreezeDoesNotOverrideServerActivatedPaymentStatus() = runBlocking {
+        for ((lost, frozen) in listOf(1 to 0, 0 to 1, 1 to 1)) {
+            val fake = ScriptedApi(lost = lost, frozen = frozen)
+            val batch = fake.api.payment("fake-token")
+            assertEquals(1234L, batch.account.balanceCents)
+            assertEquals(1, batch.codes.size)
+            assertEquals(2, fake.calls.size)
+            assertEquals("/berserker-app/ykt/tsm/batchGetBarCodeGet", fake.calls.last().url.path)
+        }
+    }
+
+    @Test fun serverInactiveStatusKeepsBalanceWithoutRequestingBarcode() = runBlocking {
+        val fake = ScriptedApi(paymentStatus = 0, lost = 1)
+        val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        assertEquals(1234L, error.account.balanceCents)
+        assertEquals("fake-account", error.account.account)
+        assertEquals(1, fake.calls.size)
+    }
+
+    @Test fun serverBarcodeRejectionKeepsCurrentAccountAndOriginalMessage() = runBlocking {
+        val message = "  持卡人已挂失！\n"
+        val fake = ScriptedApi(lost = 1, barcodeBody = JSONObject().put("code", 60050)
+            .put("success", false).put("msg", message))
+        val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        assertEquals(message, error.message)
+        assertEquals(1234L, error.account.balanceCents)
+        assertEquals(2, fake.calls.size)
+    }
+
+    @Test fun emptyBarcodePreservesInnerServerReasonAndBalance() = runBlocking {
+        val fake = ScriptedApi(barcodeBody = JSONObject().put("code", 200).put("data", JSONObject()
+            .put("barcode", JSONArray()).put("errmsg", "账户状态提示")))
+        val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        assertEquals("账户状态提示", error.message)
+        assertEquals(1234L, error.account.balanceCents)
+    }
+
+    @Test fun barcodeAuthenticationFailureStillRequiresAuthentication() = runBlocking {
+        val fake = ScriptedApi(barcodeHttpStatus = 401, barcodeBody = JSONObject().put("code", 401))
+        assertThrows(AuthenticationRequired::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        Unit
+    }
+
 }

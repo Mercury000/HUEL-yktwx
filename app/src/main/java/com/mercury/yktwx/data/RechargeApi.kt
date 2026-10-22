@@ -17,7 +17,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val id = front.rechargeText("recharge")
         if (!id.matches(Regex("[0-9]{1,12}"))) throw YktException("充值项目配置异常")
         val fee = json(request("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id))).getJSONObject("feeitem")
-        val account = selectedAccount(token, preferredTarget, ecard.rechargeText("type"), allowCardMatch = true)
+        val account = selectedAccount(token, preferredTarget, ecard, allowCardMatch = true)
         return amountConfiguration(id, account.first, account.second.first, account.second.second, front, fee)
     }
     companion object {
@@ -40,9 +40,10 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
     private suspend fun selectedAccount(
         token: String,
         preferredTarget: String?,
-        cardType: String = "1",
+        ecard: JSONObject,
         allowCardMatch: Boolean = false,
     ): Pair<String, Pair<String, Long>> {
+        val cardType = ecard.rechargeText("type")
         val data = json(request("/berserker-app/ykt/tsm/queryCard", token, mapOf("scene" to "recharge"))).getJSONObject("data")
         if (data.rechargeText("retcode") != "0") throw YktException("没有可充值账户")
         val cards = data.optJSONArray("card") ?: throw YktException("没有可充值账户")
@@ -55,7 +56,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
                 card.optJSONArray("accinfo")?.let { a -> (0 until a.length()).any {
                     a.optJSONObject(it)?.rechargeText("type") == preferredTarget
                 } } == true)
-            try { RechargeErrors.requireAvailable(card) }
+            try { RechargeErrors.requireAvailable(card, ecard) }
             catch (e: RechargeTargetUnavailable) {
                 if (matches) throw e
                 unavailable = unavailable ?: e
@@ -91,36 +92,9 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         }
         return candidates.firstOrNull() ?: throw (unavailable ?: RechargeTargetUnavailable("没有可充值的正常账户"))
     }
-    private suspend fun requireOwnTargetAvailable(token: String, target: String) {
-        val data = json(request("/berserker-app/ykt/tsm/queryCard", token, mapOf("scene" to "recharge"))).getJSONObject("data")
-        if (data.rechargeText("retcode") != "0") throw RechargeTargetUnavailable("充值前账户检查未完成，请稍后重试")
-        val cards = data.optJSONArray("card") ?: throw RechargeTargetUnavailable("没有可充值账户")
-        for (i in 0 until cards.length()) {
-            val card = cards.getJSONObject(i)
-            val accounts = card.optJSONArray("accinfo")
-            if (card.rechargeText("account") == target || accounts?.let { a ->
-                    (0 until a.length()).any { a.optJSONObject(it)?.rechargeText("type") == target }
-                } == true) {
-                RechargeErrors.requireAvailable(card)
-                return
-            }
-        }
-        throw RechargeTargetUnavailable("原充值账户不可用，请在官网核实")
-    }
     override suspend fun createRecharge(token: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder {
         config.amountError(amountCents)?.let { throw YktException(it) }
         if (config.recipient != null && config.recipient.targetId != config.targetId) throw YktException("收款账户不匹配，请重新查询")
-        // Own-account queries cannot validate a recipient. Do not query the payer for others.
-        // Recipient re-query requires a fresh user captcha; the server rejection remains the fallback.
-        if (config.recipient == null) {
-            try { requireOwnTargetAvailable(token, config.targetId) }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: InvalidCredentials) { throw e }
-            catch (e: CaptchaRequired) { throw e }
-            catch (e: AuthenticationRequired) { throw e }
-            catch (e: RechargeTargetUnavailable) { throw e }
-            catch (_: Exception) { throw RechargeTargetUnavailable("充值前账户检查未完成，请稍后重试") }
-        }
         val form = RechargeProtocol.signed(mapOf(
             "feeitemid" to config.feeItemId, "appid" to "56321", "tranamt" to RechargeMoney.yuan(amountCents),
             "source" to "app", "synjones-auth" to "bearer " + token, "yktcard" to config.targetId,

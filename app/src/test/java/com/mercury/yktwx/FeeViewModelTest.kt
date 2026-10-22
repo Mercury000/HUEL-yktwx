@@ -230,12 +230,14 @@ class FeeViewModelTest {
         assertEquals(1, fees.payments)
     }
 
-    @Test fun numericPreflightBalanceStillSuggestsAnAlternative() {
+    @Test fun backendBalanceFailureDoesNotInventRechargeAdvice() {
         openPassword()
-        fees.failure = FeePaymentRejected(FeeRejectionReason.Balance)
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Rejected, "后端账户余额提示")
         model.payAccount("demo-type", "123456")
-        await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
-        assertEquals("一卡通余额不足，请选择其他支付方式", model.state.value.error)
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals("后端账户余额提示", model.state.value.error)
+        assertEquals(1, fees.payments)
         assertEquals(0, fees.resultQueries)
     }
 

@@ -64,7 +64,9 @@ class YktApi(
                 if (status !in 200..299 || payload?.has("access_token") != true) throw InvalidCredentials()
             } else {
                 if (status in listOf(401, 403) || code in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
-                if (status !in 200..299 || code != 200) throw YktException("服务暂不可用，请在官网检查账户状态")
+                if (status !in 200..299 || code != 200 || payload?.opt("success") == false) throw YktException(
+                    (payload?.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "服务暂不可用，请在官网检查账户状态",
+                )
             }
             payload ?: throw YktException("服务器响应异常")
         } catch (e: YktException) { throw e }
@@ -91,18 +93,33 @@ class YktApi(
     }
     override suspend fun payment(token: String): PaymentBatch {
         val list = request("/berserker-app/ykt/tsm/codebarPayinfo", token = token).getJSONArray("data")
+        // Keep the account and its balance regardless of loss/freeze flags, as the official UI does.
         val selected = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull {
-            it.optString("code") == "ACCOUNT" && it.optInt("status") == 1 && it.optInt("lostflag") == 0 && it.optInt("freezeflag") == 0
-        } ?: throw YktException("没有可用的统一账户，请在官网检查挂失或冻结状态")
+            it.optString("code") == "ACCOUNT"
+        } ?: throw YktException("没有统一账户，请在官网检查账户状态")
         val account = PaymentAccount(selected.getString("account"), selected.getString("payacc"), selected.getString("paytype"), selected.optString("name", "统一账户"), selected.optLong("accinfo_balance"))
+        // This is the backend's payment-method activation status, not a client-side loss check.
+        if (selected.optInt("status", -1) == 0) throw PaymentCodeUnavailable(account,
+            (selected.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
+                ?: (selected.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "付款码暂不可用")
         val started = System.currentTimeMillis()
-        val data = request("/berserker-app/ykt/tsm/batchGetBarCodeGet", mapOf("account" to account.account, "payacc" to account.payacc, "paytype" to account.paytype), token).getJSONObject("data")
-        val array = data.optJSONArray("barcode") ?: throw YktException("未取得付款码，请刷新或在官网检查账户")
-        val codes = (0 until array.length()).map { array.getString(it) }
-        if (codes.isEmpty() || codes.any { code -> code.length != 20 || code.any { it !in '0'..'9' } }) throw YktException("付款码数据异常")
-        val expiry = data.optLong("expires")
-        if (expiry <= 0) throw YktException("付款码有效期异常")
-        return PaymentBatch(codes, expiry, started, account)
+        try {
+            val response = request("/berserker-app/ykt/tsm/batchGetBarCodeGet", mapOf("account" to account.account, "payacc" to account.payacc, "paytype" to account.paytype), token)
+            val data = response.optJSONObject("data")
+            val array = data?.optJSONArray("barcode")
+            if (array == null || array.length() == 0) throw YktException(
+                (data?.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
+                    ?: (response.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "未取得付款码，请刷新或在官网检查账户",
+            )
+            val codes = (0 until array.length()).map { array.getString(it) }
+            if (codes.any { code -> code.length != 20 || code.any { it !in '0'..'9' } }) throw YktException("付款码数据异常")
+            val expiry = data.optLong("expires")
+            if (expiry <= 0) throw YktException("付款码有效期异常")
+            return PaymentBatch(codes, expiry, started, account)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: AuthenticationRequired) { throw e }
+        catch (e: YktException) { throw PaymentCodeUnavailable(account, e.message ?: "付款码暂不可用") }
+        catch (_: Exception) { throw PaymentCodeUnavailable(account, "付款码数据异常") }
     }
     override suspend fun bills(
         token: String,

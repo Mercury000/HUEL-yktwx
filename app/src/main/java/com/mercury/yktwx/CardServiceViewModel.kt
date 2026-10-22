@@ -101,12 +101,14 @@ class CardServiceViewModel internal constructor(app: Application, private val re
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (attempt != current) return@launch
-                if (e is CardOperationRejected) {
+                if (e !is CardOperationUnconfirmed) {
+                    // Preflight failures and explicit server rejections keep their original message.
+                    // Do not query or claim that a write was submitted for these errors.
                     mutable.value = mutable.value.copy(loading = false, error = null)
                     notifications.send(safeError(e))
                     return@launch
                 }
-                // Never replay the POST. A read can establish the outcome after an ambiguous transport error.
+                // Only an explicitly ambiguous write is checked. Never replay the POST.
                 val refreshed = try { repository.cardConfiguration(username).cards } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
                 if (attempt != current) return@launch
                 val confirmed = refreshed.singleOrNull { it.account == card.account }?.lost == (operation == CampusCardAction.Lost)
@@ -116,7 +118,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
                     mutable.value = mutable.value.copy(visible = false, loading = false, cards = refreshed.ifEmpty { s.cards }, selectedCard = null, error = null)
                     // Clear stale payment codes and require a fresh read before another write.
                     changed.send(Unit)
-                    notifications.send("操作结果待确认，请重新查看卡状态")
+                    notifications.send(safeError(e) + "。操作结果待确认，请重新查看卡状态")
                 }
             }
         }

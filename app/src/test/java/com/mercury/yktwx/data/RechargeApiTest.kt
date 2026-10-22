@@ -65,8 +65,7 @@ class RechargeApiTest {
     @Test fun createUsesSignedPostAndDoesNotFollowTokenRedirect() = runBlocking {
         lateinit var call: FakeHttps
         val api = RechargeApi { url ->
-            if (url.path.endsWith("queryCard")) FakeHttps(url, 200, cards().toString())
-            else FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it }
+            FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it }
         }
         val o = api.createRecharge("fake-token", config(), 1000)
         assertEquals("FAKE-ORDER", o.orderId)
@@ -138,8 +137,7 @@ class RechargeApiTest {
     @Test fun ambiguousCreationIsNotRetried() = runBlocking {
         var calls = 0
         val api = RechargeApi { url ->
-            if (url.path.endsWith("queryCard")) FakeHttps(url, 200, cards().toString())
-            else { calls++; FakeHttps(url, 200, "{}") }
+            calls++; FakeHttps(url, 200, "{}")
         }
         try { api.createRecharge("fake-token", config(), 1000); fail("Expected unknown outcome") } catch (_: YktException) { }
         assertEquals(1, calls)
@@ -192,25 +190,15 @@ class RechargeApiTest {
             "{\"code\":60007,\"success\":false,\"data\":null}", null))
     }
 
-    @Test fun ownAccountPreflightBlocksLostAndFrozenWithoutCreatingAnOrder() = runBlocking {
-        for (field in listOf("lostflag", "freezeflag")) {
-            val calls = mutableListOf<FakeHttps>()
-            val response = cards().apply { getJSONObject("data").getJSONArray("card").getJSONObject(0).put(field, 1) }
-            val api = RechargeApi { url ->
-                assertTrue(url.path.endsWith("queryCard"))
-                FakeHttps(url, 200, response.toString()).also(calls::add)
-            }
-            val error = assertThrows(RechargeTargetUnavailable::class.java) { runBlocking { api.createRecharge("fake-token", config(), 1000) } }
-            assertTrue(error.message!!.contains(if (field == "lostflag") "挂失" else "冻结"))
-            assertEquals(1, calls.size)
-            assertEquals("GET", calls.single().requestMethod)
+    @Test fun creationDoesNotAddAnUnofficialAccountPrecheck() = runBlocking {
+        val calls = mutableListOf<FakeHttps>()
+        val api = RechargeApi { url ->
+            assertEquals("/charge/order/thirdOrder", url.path)
+            FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also(calls::add)
         }
-    }
-
-    @Test fun preflightNetworkFailureIsNotAnAmbiguousCreatedOrder() = runBlocking {
-        val api = RechargeApi { throw java.io.IOException("fake outage") }
-        assertThrows(RechargeTargetUnavailable::class.java) { runBlocking { api.createRecharge("fake-token", config(), 1000) } }
-        Unit
+        api.createRecharge("fake-token", config(), 1000)
+        assertEquals(1, calls.size)
+        assertEquals("POST", calls.single().requestMethod)
     }
 
     @Test fun lostPaymentKeepsOriginalMessageAndOfficialEmptyFallback() {
@@ -238,6 +226,40 @@ class RechargeApiTest {
         assertThrows(YktException::class.java) {
             http.json(PaymentHttp.Response(200, "{\"code\":200,\"success\":false,\"msg\":\"未成功\"}", null))
         }
+    }
+
+    @Test fun ownRechargeSelectionHonorsOfficialLossAndFreezeConfiguration() = runBlocking {
+        for ((key, blocked) in listOf("showLost" to "已挂失", "freezeRecharge" to "已冻结")) {
+            for (allow in listOf(true, false)) {
+                val response = cards().apply { getJSONObject("data").getJSONArray("card").getJSONObject(0)
+                    .put(if (key == "showLost") "lostflag" else "freezeflag", 1) }
+                val settings = JSONObject().put("type", "1").put(key, if (allow) "1" else "0")
+                val api = RechargeApi { url ->
+                    val payload = when (url.path) {
+                        "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", JSONObject()
+                            .put("getFrontConfig", "{\"recharge\":\"401\"}").put("getEcardConfig", settings.toString()))
+                        "/charge/feeitem/singleFeeitem" -> JSONObject().put("code", 200).put("feeitem", JSONObject().put("layout", "10").put("flag", "1100000000"))
+                        else -> response
+                    }
+                    FakeHttps(url, 200, payload.toString())
+                }
+                if (allow) assertEquals("fake-account", api.rechargeConfiguration("fake-token", "fake-card").targetId)
+                else {
+                    val error = assertThrows(RechargeTargetUnavailable::class.java) { runBlocking { api.rechargeConfiguration("fake-token", "fake-card") } }
+                    assertTrue(error.message!!.contains(blocked))
+                }
+            }
+        }
+    }
+
+    @Test fun officialFreezeOverrideAndMissingFlagsAreNotGuessed() {
+        val card = JSONObject().put("lostflag", 1).put("freezeflag", 1).put("acc_status", 99)
+        val error = assertThrows(RechargeTargetUnavailable::class.java) {
+            RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "0").put("freezeRecharge", "0"))
+        }
+        assertEquals("已冻结，禁止充值，请先解冻", error.message)
+        RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "1")) // Missing freeze setting does not block.
+        RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "1").put("freezeRecharge", "1"))
     }
 
 }

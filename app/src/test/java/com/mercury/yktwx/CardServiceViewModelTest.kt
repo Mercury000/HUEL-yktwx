@@ -89,7 +89,7 @@ class CardServiceViewModelTest {
     }
     @Test fun unconfirmedWriteToastsAndRequiresReopeningBeforeAnotherWrite() {
         openCards()
-        service.writeFailure = NetworkFailure()
+        service.writeFailure = CardOperationUnconfirmed("网络连接失败")
         service.cardFailure = NetworkFailure()
         model.changeCard("")
         await { !model.state.value.loading }
@@ -98,7 +98,7 @@ class CardServiceViewModelTest {
         assertNull(model.state.value.selectedCard)
         assertNull(model.state.value.error)
         assertEquals(1, service.writes)
-        assertOneResult("操作结果待确认，请重新查看卡状态")
+        assertOneResult("网络连接失败。操作结果待确认，请重新查看卡状态")
         model.changeCard("")
         assertEquals(1, service.writes)
     }
@@ -334,7 +334,7 @@ class CardServiceViewModelTest {
             withContext(NonCancellable) { writeGate.await() }; writeResponses++
             writeFailure?.let { throw it }
             lost = action == CampusCardAction.Lost
-            if (failAfterWrite) throw NetworkFailure()
+            if (failAfterWrite) throw CardOperationUnconfirmed("网络连接失败")
             return cards()
         }
         override suspend fun recipientCaptcha(token: String): RecipientCaptcha { captchas++; return RecipientCaptcha("fake-key-$captchas", byteArrayOf(1)) }
@@ -349,4 +349,52 @@ class CardServiceViewModelTest {
             return RechargeConfiguration("401", recipient.targetId, recipient.accountName, 0, listOf(1000, 5000), 1, 50000, true, false, recipient)
         }
     }
+    @Test fun preflightAndBusinessFailuresStayInDialogWithOriginalMessageAndNoReadback() {
+        for (failure in listOf(CardOperationNotStarted("安全键盘读取失败"),
+            CardOperationRejected("  后端密码错误提示\n"), AuthenticationRequired(),
+            YktException("未分类客户端错误"))) {
+            model.dismiss()
+            openCards()
+            val reads = service.cardReads
+            service.writeFailure = failure
+            model.changeCard("")
+            await { !model.state.value.loading }
+            assertTrue(model.state.value.visible)
+            assertNotNull(model.state.value.selectedCard)
+            assertEquals(reads, service.cardReads)
+            assertEquals(failure.message, runBlocking { withTimeout(1_000) { model.messages.first() } })
+            assertNoResult()
+        }
+    }
+
+    @Test fun ambiguousWriteWithUnchangedStatePreservesCauseWithoutReplaying() {
+        service.lost = true
+        openCards()
+        val reads = service.cardReads
+        service.writeFailure = CardOperationUnconfirmed("上游响应超时")
+        model.changeCard("")
+        await { !model.state.value.loading }
+        assertFalse(model.state.value.visible)
+        assertFalse(model.state.value.completed)
+        assertEquals(reads + 1, service.cardReads)
+        assertEquals(1, service.writes)
+        assertOneResult("上游响应超时。操作结果待确认，请重新查看卡状态")
+    }
+
+    @Test fun userRetryAfterExplicitRejectionCanSucceedWithoutAutomaticRetry() {
+        service.lost = true
+        openCards()
+        service.writeFailure = CardOperationRejected("查询密码错误")
+        model.changeCard("")
+        await { !model.state.value.loading }
+        assertEquals(1, service.writes)
+        assertEquals("查询密码错误", runBlocking { withTimeout(1_000) { model.messages.first() } })
+        assertNoResult()
+        service.writeFailure = null
+        model.changeCard("")
+        await { model.state.value.completed }
+        assertEquals(2, service.writes)
+        assertOneResult("解挂成功")
+    }
+
 }

@@ -239,14 +239,26 @@ class FeeApiTest {
         }
     }
 
-    @Test fun knownInsufficientBalanceStopsBeforePasswordSubmission() = runBlocking {
+    @Test fun lowOrStaleBalanceDoesNotOverrideBackendRejectionPriority() = runBlocking {
+        for (message in listOf("持卡人已挂失！", "账户余额不足！")) {
+            val calls = mutableListOf<FakeHttps>()
+            val lowBalance = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 0)), "fake-uuid", "9876543210")
+            val rejection = "{\"code\":60050,\"success\":false,\"data\":null,\"msg\":\"$message\"}"
+            val error = assertThrows(FeePaymentRejected::class.java) {
+                runBlocking { api(calls, rejection).payFeeAccount("fake-token", pending(), method(), lowBalance, "demo-type", "123456") }
+            }
+            assertEquals(message, error.message)
+            assertEquals(FeeRejectionReason.Rejected, error.reason)
+            assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
+        }
+    }
+
+    @Test fun staleZeroBalanceDoesNotPreventServerConfirmedPayment() = runBlocking {
         val calls = mutableListOf<FakeHttps>()
-        val lowBalance = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 99)), "fake-uuid", "9876543210")
-        try {
-            api(calls, "{}").payFeeAccount("fake-token", pending(), method(), lowBalance, "demo-type", "123456")
-            fail("Expected balance rejection")
-        } catch (e: FeePaymentRejected) { assertEquals(FeeRejectionReason.Balance, e.reason) }
-        assertTrue(calls.none { it.url.path == "/blade-pay/pay" })
+        val lowBalance = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 0)), "fake-uuid", "9876543210")
+        api(calls, "{\"code\":200,\"success\":true,\"data\":\"FAKE-ORDER\"}")
+            .payFeeAccount("fake-token", pending(), method(), lowBalance, "demo-type", "123456")
+        assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
     }
 
     @Test fun emptyOrderResultDoesNotMeanPaymentFailed() = runBlocking {
