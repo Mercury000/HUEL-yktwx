@@ -68,6 +68,27 @@ class MainTabBackNavigationTest {
         }
     }
 
+    @Test fun hallBackGestureReturnsToPayment() {
+        selectTab("大厅")
+        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+        back(commitGesture = true)
+        assertPaymentRoot()
+    }
+
+    @Test fun feePageBackReturnsToHallBeforePayment() {
+        compose.runOnIdle { settings.setPredictive(false) }
+        selectTab("大厅")
+        compose.onNodeWithContentDescription("校园网费").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("返回").assertIsDisplayed()
+        compose.onNodeWithText("界面预览 · 不发起缴费").assertIsDisplayed()
+        back()
+        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+        compose.onNode(hasText("大厅") and hasClickAction()).assertIsSelected()
+        back()
+        assertPaymentRoot()
+    }
+
     @Test fun billBackGestureReturnsToPayment() {
         selectTab("账单")
         compose.onNodeWithContentDescription("账单统计").assertIsDisplayed()
@@ -83,7 +104,7 @@ class MainTabBackNavigationTest {
     }
 
     @Test fun cancelledBackGestureKeepsCurrentTab() {
-        for (tab in listOf("账单", "关于")) {
+        for (tab in listOf("大厅", "账单", "关于")) {
             selectTab(tab)
             compose.runOnIdle {
                 val dispatcher = compose.activity.onBackPressedDispatcher
@@ -99,7 +120,7 @@ class MainTabBackNavigationTest {
 
     @Test fun rootBackWorksWithPredictiveAnimationsDisabled() {
         compose.runOnIdle { settings.setPredictive(false) }
-        for (tab in listOf("账单", "关于")) {
+        for (tab in listOf("大厅", "账单", "关于")) {
             selectTab(tab)
             back()
             assertPaymentRoot()

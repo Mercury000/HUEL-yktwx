@@ -59,7 +59,7 @@ class CardServiceUiTest {
     private fun page(mode: ColorSchemeMode) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme(mode) { PaymentPage(PaymentUiState(needsLogin = false, username = "预览", preview = true), settings, 0.dp, {}, {}) }
+                AppTheme(mode) { HallPage(settings, 0.dp) }
             }
         }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("校园卡服务"))

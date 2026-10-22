@@ -1,6 +1,9 @@
 package com.mercury.yktwx
 
 import android.content.Context
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -93,6 +96,34 @@ class UiSmokeTest {
         compose.onNodeWithContentDescription("筛选账单").assertExists()
     }
 
+    @Test fun hallIsSecondTabAndOwnsServicesAcrossBottomBarStyles() {
+        content()
+        for (style in 0..2) {
+            compose.runOnIdle {
+                settings.setFloating(style != 0)
+                settings.setFloatingStyle(if (style == 2) 1 else 0)
+            }
+            compose.waitForIdle()
+            val labels = listOf("付款", "大厅", "账单", "关于")
+            val centers = labels.map { label ->
+                compose.onNode((hasText(label) or hasContentDescription(label)) and hasClickAction()).fetchSemanticsNode().boundsInRoot.center.x
+            }
+            assertTrue(centers.zipWithNext().all { (left, right) -> left < right })
+            compose.onNode((hasText("大厅") or hasContentDescription("大厅")) and hasClickAction()).performClick()
+            compose.onNodeWithText("生活缴费").assertIsDisplayed()
+            compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+            compose.onNodeWithContentDescription("付款条形码").assertIsNotDisplayed()
+            compose.onAllNodes(hasContentDescription("付款条形码") and hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("生活缴费"))))
+                .assertCountEquals(0)
+            val image = compose.onRoot().captureToImage().asAndroidBitmap()
+            File("../tools/hall-tab-style-$style.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            compose.onNode((hasText("付款") or hasContentDescription("付款")) and hasClickAction()).performClick()
+            compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
+            compose.onAllNodes((hasText("生活缴费") or hasText("校园卡服务")) and
+                hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("付款码")))).assertCountEquals(0)
+        }
+    }
+
     @Test fun billTabOpensBillsAndPaymentTabReturnsToCodes() {
         content()
         // Adjacent pager pages can already exist: verify visibility, not just existence.
@@ -124,8 +155,8 @@ class UiSmokeTest {
     }
     @Test fun campusCardEntriesOpenStateDialogAndReuseRechargeSheet() {
         content()
-        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("付款码")))
-            .performScrollToNode(hasText("校园卡服务"))
+        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
+        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
         compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("确认挂失").assertExists()
