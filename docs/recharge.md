@@ -280,3 +280,17 @@ https://pay.weixin.qq.com/docs/merchant/products/h5-payment/development.html
 https://pay.weixin.qq.com/docs/merchant/products/in-app-payment/development.html
 https://pay.weixin.qq.com/docs/partner/apis/partner-h5-payment/h5-transfer-payment.html
 ```
+
+
+## 挂失充值拒绝与官方提示（2026-10-22）
+
+用户代充值 HAR 已确认：查询成功但目标 `lostflag=1`，10 元下单返回 302；随后 `POST /blade-pay/pay`（`CAMPUSCARD`、`paystep=2`）返回 HTTP 200、`code=60007`、`success=false`、`data=null`、`msg=账户已挂失`。同笔订单、金额与收款目标均匹配。此处是在获取支付参数时被拒绝，没有可拉起的微信参数；不是等待付款结果。
+
+- 本人／代充值复用此支付处理。已验证的外层 `60007` 且失败结构一致时，直接结束本次尝试、显示原始 `msg`；缺失／空串按官网使用 `Error`，不通过正则或文案关键词分类。
+- 获取支付参数期间继续显示创建中，只有获得合法微信参数才进入待支付。明确拒绝不发送拉起事件、不等待微信返回、不自动查单、不重发支付。已生成订单仅在本次结果内存对象中保留编号，点击完成即清除，不提供继续支付／自动取消；不宣称该订单已取消。
+- 非法／矛盾响应、超时、断网仍保留已有订单并允许只读核验，不自动重新下单或重发支付。未知业务错误也原样显示 `msg`，但不根据文字断言未扣款。
+- 原生继续已有的保守策略：挂失／冻结目标不可选。状态提示采用官网语言包 `lostNotRchargeDescription`／`freezeNotRchargeDescription`（省略账户前缀）。官网当前 `showLost="1"` 可能允许进入流程，但本 HAR 证明支付阶段仍可能拒绝。
+- 本人下单前增加一次只读目标状态检查，精确匹配卡片／电子账户，发现挂失／冻结或检查失败时不下单。代充值不拿付款人 `queryCard` 验证收款人，也不偷偷重用验证码查询目标，保留用户查询时的检查及服务端拒绝兜底。
+- `60007` 的含义按接口及层级限定：不得把这里的外层失败码与挂失接口的内层 `data.retcode=60007` 混用。本人充值同码通过共用代码离线覆盖；本份实际 HAR 直接证明的仅是代充值拒绝。
+
+本次只读核对官网 JS／语言包及用户提供 HAR，离线测试不连接学校、不发起真实充值、消费、挂失或解挂。未修改登录／锁定逻辑，也不清除 Cookie 或自动重登。

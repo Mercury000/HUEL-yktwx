@@ -166,4 +166,15 @@ class CardServiceApiTest {
         assertEquals("RechargeRecipient([redacted])", recipient.toString())
     }
 
+    @Test fun lostRecipientShowsSpecificReasonWithoutCreatingOrPaying() = runBlocking {
+        val calls = mutableListOf<FakeHttps>()
+        val api = CardServiceApi { url -> FakeHttps(url,
+            if (url.path.endsWith("frontInfo")) configuration() else cardResponse(1)).also(calls::add) }
+        val error = assertThrows(RecipientLookupRejected::class.java) { lookup(api) }
+        assertFalse(error.invalidCaptcha)
+        assertEquals("已挂失，禁止充值，请先解挂", error.message)
+        assertTrue(calls.all { it.requestMethod == "GET" })
+        assertTrue(calls.none { it.url.path.endsWith("queryCard") })
+    }
+
 }
