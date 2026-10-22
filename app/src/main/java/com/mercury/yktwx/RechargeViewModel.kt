@@ -44,6 +44,7 @@ class RechargeViewModel internal constructor(
     private var owner = ""
     private var attempt = 0L
     private var resultQueriesCompleted = 0
+    private var paymentExplicitlyRejected = false
     private val paymentReturn = PaymentReturnObserver(
         viewModelScope, { task }, { mutable.value.phase == RechargePhase.Checking }, ::checkResult,
     )
@@ -107,14 +108,9 @@ class RechargeViewModel internal constructor(
             } catch (e: CancellationException) { throw e }
             catch (e: RechargePaymentRejected) {
                 if (current == attempt) {
+                    paymentExplicitlyRejected = true
                     paymentReturn.reset()
                     showResult(RechargePhase.Failed, e.message)
-                }
-            }
-            catch (e: RechargeTargetUnavailable) {
-                if (current == attempt) {
-                    paymentReturn.reset()
-                    update(loading = false, pending = null, phase = RechargePhase.Amount, error = e.message)
                 }
             }
             catch (e: Exception) {
@@ -133,7 +129,7 @@ class RechargeViewModel internal constructor(
     fun checkResult() {
         val pending = mutable.value.pending ?: return
         if (pending.orderId == null || mutable.value.preview ||
-            mutable.value.phase in listOf(RechargePhase.Failed, RechargePhase.Paid) || task?.isActive == true) return
+            (paymentExplicitlyRejected || mutable.value.phase == RechargePhase.Paid) || task?.isActive == true) return
         if (mutable.value.phase != RechargePhase.Checking) resultQueriesCompleted = 0
         paymentReturn.consume()
         val current = attempt
@@ -197,6 +193,7 @@ class RechargeViewModel internal constructor(
         task?.cancel()
         task = null
         resultQueriesCompleted = 0
+        paymentExplicitlyRejected = false
         paymentReturn.reset()
         owner = ""
         while (launches.tryReceive().isSuccess) { /* no stale payment launch */ }

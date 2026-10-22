@@ -14,6 +14,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.data.BillSummary
 import com.mercury.yktwx.data.BillType
+import com.mercury.yktwx.data.PaymentAccount
+import com.mercury.yktwx.ui.pages.PaymentPage
+import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
@@ -177,6 +180,32 @@ class UiSmokeTest {
         compose.onNodeWithText("收款人：示例同学").assertExists()
         compose.onNodeWithText("¥ 10").performClick()
         compose.onNodeWithText("微信充值 ¥ 10.00").assertIsNotEnabled()
+    }
+
+    @Test fun rechargeEntryDoesNotDependOnBarcodeOrLoadedAccount() {
+        var clicked = false
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { PaymentPage(PaymentUiState(needsLogin = false, username = "123", error = "付款码暂不可用"),
+                    settings, 0.dp, {}, {}, onRecharge = { clicked = true }) }
+            }
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("充值"))
+        compose.onNodeWithText("充值").assertIsEnabled().performClick()
+        assertTrue(clicked)
+    }
+
+    @Test fun codeFailureOrRefreshDoesNotHideKnownBalance() {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { PaymentPage(PaymentUiState(needsLogin = false, busy = true, username = "123",
+                    account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)), settings, 0.dp, {}, {}) }
+            }
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("充值"))
+        compose.onNodeWithText("¥ 64.96").assertIsDisplayed()
+        compose.onNodeWithText("充值").assertIsEnabled()
+        compose.onAllNodesWithContentDescription("付款条形码").assertCountEquals(0)
     }
 
 }

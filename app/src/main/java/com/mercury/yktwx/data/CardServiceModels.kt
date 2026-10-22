@@ -16,6 +16,11 @@ class RechargeRecipient(val cardAccount: String, val targetId: String, val name:
     override fun toString() = "RechargeRecipient([redacted])"
 }
 class CardOperationRejected(message: String) : YktException(message)
+/** No state-changing request was started; the user can retry after correcting the error. */
+internal class CardOperationNotStarted(message: String) : YktException(message)
+/** A write may have run or was accepted, but its final state could not be established. */
+internal class CardOperationUnconfirmed(message: String) : YktException(message)
+
 class RecipientLookupRejected(val invalidCaptcha: Boolean, message: String) : YktException(message)
 interface CardService {
     suspend fun cardConfiguration(token: String): CardServiceConfiguration

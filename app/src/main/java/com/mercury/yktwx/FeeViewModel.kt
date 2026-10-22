@@ -336,12 +336,7 @@ class FeeViewModel internal constructor(
                 if (generation == attempt) mutable.value = copy(s, loading = false, error = e.message)
             }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) when (e.reason) {
-                    FeeRejectionReason.Balance -> mutable.value = copy(s, loading = false, preparation = null,
-                        stage = FeeStage.Methods, error = if (s.order.methods.any { it.id != method.id })
-                            "一卡通余额不足，请选择其他支付方式" else "一卡通余额不足，请先充值")
-                    else -> mutable.value = copy(s, loading = false, error = e.message)
-                }
+                if (generation == attempt) mutable.value = copy(s, loading = false, error = e.message)
             }
             catch (e: AuthenticationRequired) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
             catch (e: InvalidCredentials) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }

@@ -310,19 +310,6 @@ class RechargeViewModelTest {
         }
     }
 
-    @Test fun failedPreflightReturnsToAmountWithoutPhantomPendingOrder() {
-        open()
-        service.creationFailure = RechargeTargetUnavailable("已挂失，禁止充值，请先解挂")
-        model.submit(1000)
-        await { !model.state.value.loading }
-        assertEquals(RechargePhase.Amount, model.state.value.phase)
-        assertNull(model.state.value.pending)
-        assertNotNull(model.state.value.config)
-        assertEquals("已挂失，禁止充值，请先解挂", model.state.value.error)
-        assertEquals(0, service.launches)
-        assertEquals(0, service.resultQueries)
-    }
-
     @Test fun lostLaunchResponseStaysUnknownAndKeepsOrderForManualReadOnlyCheck() {
         open()
         service.launchFailure = NetworkFailure()
@@ -361,6 +348,30 @@ class RechargeViewModelTest {
         assertEquals("新的业务提示", model.state.value.error)
         assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
         assertEquals(0, service.resultQueries)
+    }
+
+    @Test fun nonExplicitFailureDoesNotPermanentlyDisableReadOnlyOrderChecks() {
+        prepareOrder()
+        model.launchFailed()
+        assertEquals(RechargePhase.Failed, model.state.value.phase)
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        assertEquals(1, service.resultQueries)
+        assertEquals(1, service.creations)
+        assertEquals(1, service.launches)
+    }
+
+    @Test fun unpaidResultCanBeRecheckedWithoutRepeatingCreationOrPayment() {
+        prepareOrder()
+        service.resultStatus = 0
+        model.checkResult()
+        await { !model.state.value.loading && model.state.value.phase == RechargePhase.Failed }
+        service.resultStatus = 1
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        assertEquals(4, service.resultQueries)
+        assertEquals(1, service.creations)
+        assertEquals(1, service.launches)
     }
 
 }

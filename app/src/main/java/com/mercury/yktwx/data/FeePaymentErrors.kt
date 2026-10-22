@@ -5,15 +5,11 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
 
-internal enum class FeeRejectionReason { Password, Balance, Rejected, Other }
+internal enum class FeeRejectionReason { Password, Rejected, Other }
 
 /** Preserve official business text; numeric codes only determine the verified interaction. */
 internal class FeePaymentRejected(val reason: FeeRejectionReason, hint: String? = null) : YktException(
-    hint?.takeIf { it.isNotEmpty() } ?: when (reason) {
-        // Only a local numeric precheck has no backend message.
-        FeeRejectionReason.Balance -> "一卡通余额不足"
-        else -> "Error" // Same fallback as the official cashier: msg || "Error".
-    },
+    hint?.takeIf { it.isNotEmpty() } ?: "Error", // Official cashier: msg || "Error".
 )
 internal class FeeOrderExpired : YktException("订单已过期，请重新发起缴费")
 internal class FeeOrderAlreadyPaid : YktException("订单已完成，正在确认结果")
@@ -22,7 +18,6 @@ internal class FeePaymentNotStarted(message: String) : YktException(message)
 
 internal object FeePaymentErrors {
     // 60050 covers multiple rejections (including lost cards), not just balance.
-    // Balance is reserved for a local numeric balance precheck.
     // Do not infer rejection from unknown codes or contradictory success data.
     fun rejection(body: JSONObject): FeePaymentRejected? {
         val code = body.opt("code")

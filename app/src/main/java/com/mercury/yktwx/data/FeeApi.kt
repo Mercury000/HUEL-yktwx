@@ -163,8 +163,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         catch (e: AuthenticationRequired) { throw e }
         catch (e: YktException) { throw FeePaymentNotStarted(e.message ?: "支付检查未完成，请稍后重试") }
         catch (_: Exception) { throw FeePaymentNotStarted("支付检查未完成，请稍后重试") }
-        val account = preparation.accounts.first { it.type == type }
-        if (account.balanceCents < order.amountCents) throw FeePaymentRejected(FeeRejectionReason.Balance)
+        // Displayed balance may be stale; let the backend choose rejection priority (e.g. lost card).
         // Only this request may debit the account; never retry it automatically.
         val payload = post("/blade-pay/pay", token, payFields(order, method) + mapOf("ccctype" to type, "isWX" to "0") + passwordFields, sign = true)
         if (payload.opt("data") != order.orderId) throw YktException("付款结果未确认，请查询订单")

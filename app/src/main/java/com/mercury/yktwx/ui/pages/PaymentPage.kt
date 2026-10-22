@@ -129,7 +129,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                             // height even while only a small spinner is shown.
                                             Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
-                                            if (state.busy) {
+                                            if (state.busy && state.account == null) {
                                                 Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                                             } else {
                                                 Text(
@@ -139,7 +139,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                             }
                                         }
                                         TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge,
-                                            enabled = !rechargeLoading && state.account != null)
+                                            enabled = !rechargeLoading)
                                     }
                                 }
                             }

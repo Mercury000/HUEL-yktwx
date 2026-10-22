@@ -34,8 +34,8 @@ class PaymentUiState(
     override fun toString() = "PaymentUiState([redacted])"
 }
 
-class PaymentViewModel(app: Application) : AndroidViewModel(app) {
-    private val repository = AccountRepository.shared(app)
+class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
@@ -93,6 +93,10 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
                 notifications.send("登录成功")
                 show(batch, username.trim())
             } catch (e: CancellationException) { throw e
+            } catch (e: PaymentCodeUnavailable) {
+                // Credentials were accepted; an unavailable barcode must not hide the account.
+                notifications.send("登录成功")
+                mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, error = e.message)
             } catch (e: YktException) {
                 val stored = withContext(Dispatchers.IO) { repository.hasCredentials() }
                 notifications.send(e.message ?: "登录失败，请重试")
@@ -112,6 +116,9 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
         request = viewModelScope.launch {
             try { show(withContext(Dispatchers.IO) { repository.refresh() }, username) }
             catch (e: CancellationException) { throw e }
+            catch (e: PaymentCodeUnavailable) {
+                mutable.value = PaymentUiState(needsLogin = false, username = username, account = e.account, error = e.message)
+            }
             catch (e: YktException) {
                 val requireLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
                 if (requireLogin) notifications.send(e.message ?: "登录已失效，请重新登录")

@@ -19,6 +19,8 @@ class AuthenticationRequired : YktException("登录已失效，请重新登录")
 class InvalidCredentials : YktException("学号或密码无效，请重新输入")
 class CaptchaRequired : YktException("官网要求验证码，请在官方页面完成验证后重新登录")
 class NetworkFailure : YktException("网络连接失败，请检查网络后刷新")
+/** Account presentation remains usable even when the code endpoint declines or fails. */
+internal class PaymentCodeUnavailable(val account: PaymentAccount, message: String) : YktException(message)
 
 object KeyboardEncoder {
     val layouts = linkedMapOf(

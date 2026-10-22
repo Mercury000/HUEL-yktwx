@@ -28,11 +28,11 @@ Python 与 Android 均只向该 HTTPS 源站请求，不依赖网页登录 Cooki
 ## 获取付款码
 
 1. `GET /berserker-app/ykt/tsm/codebarPayinfo?synAccessSource=h5`
-   - 选择可用、未挂失、未冻结的统一账户 `ACCOUNT`。
+   - Android 读取统一账户 `ACCOUNT` 及余额，不按 `lostflag`／`freezeflag` 过滤账户。官网先展示余额，再依据服务端 `status` 判断取码可用性；`status=0` 时只停取码，不阻止账户展示或充值入口。
    - 从响应读取 `account`、`payacc`、`paytype`，不硬编码个人账户字段。
 2. `GET /berserker-app/ykt/tsm/batchGetBarCodeGet`
    - 参数：前一步的 `account`、`payacc`、`paytype`，加 `synAccessSource=h5`。
-   - 解析 `data.barcode` 和 `data.expires`，不将完整码写入日志。
+   - 解析 `data.barcode` 和 `data.expires`，不将完整码写入日志。取码失败时保留本次查询的账户和余额、清除旧码，优先展示 `data.errmsg` 或外层 `msg`；充值入口不依赖是否已取得付款码。
 
 取码使用自定义 Token 头，与登录的 OAuth Basic 头不同：
 
@@ -78,6 +78,7 @@ synAccessSource: h5
 - 解挂：`POST /berserker-app/ykt/tsm/unlostCard`，字段同上。本次解挂要求 6 位查询密码，密码来自官网数字安全键盘，不提交明文。
 - 成功需外层 `code=200` 且 `data.retcode=0`；官网源码还接受挂失 `60007`、解挂 `60008`，本次未独立验证。
 - 响应不返回新的 `lostflag`；成功后重新查询卡列表确认。写请求不自动重试，超时先查状态，避免重复挂失/解挂。
+- 提交前错误和后端明确拒绝显示原提示、保留确认界面，不再统一报待确认；只有写请求结果不明／提交后状态未确认时只读复查，仍不自动重发。响应可省略账户回显，若存在则校验；最终以请求目标状态确认。
 
 ## 卡片充值与微信支付（接入调查）
 
@@ -91,7 +92,7 @@ synAccessSource: h5
 - 结果：`GET /charge/order/personal_data?orderid=<本人订单>`，解析顶层 `orderList`；`status=1` 是支付成功，不仅凭回跳或请求成功展示“充值到账”。
 - **充值/收银台金额是元，卡片余额和账单金额是分**，不能混用。
 - 不保存原始支付配置，不将 Token 放进外部跳转 URL，不自动重试创建订单。
-- 挂失代充值已验证支付参数请求返回外层 `60007`／`success=false`／`msg=账户已挂失`；本人与代充值共用拒绝处理，不拉起微信、不自动查单。错误文案优先原样服务端 `msg`，没有官方映射时使用官网 `Error` 兜底；消费 `60050` 不再等同余额不足。
+- 挂失代充值已验证支付参数请求返回外层 `60007`／`success=false`／`msg=账户已挂失`；本人与代充值共用拒绝处理，不拉起微信、不自动查单。错误文案优先原样服务端 `msg`，没有官方映射时使用官网 `Error` 兜底；消费 `60050` 不再等同余额不足。一卡通付款不进行本地余额拦截，原样显示后端原因；充值目标遵循官网状态配置，不额外增加下单前账户预检。
 
 ## 代人充值（接入调查）
 
