@@ -2,15 +2,25 @@ package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -192,22 +202,18 @@ private fun LifeFeesCard(opening: FeeProject?, onOpen: (FeeProject) -> Unit) {
             FeeProject.entries.chunked(3).forEach { projects ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     projects.forEach { project ->
-                        val loading = opening == project
-                        Surface(onClick = { if (opening == null) onOpen(project) }, color = Color.Transparent, modifier = Modifier.weight(1f)) {
-                            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                IconButton(onClick = { if (opening == null) onOpen(project) }, modifier = Modifier.size(48.dp),
-                                    backgroundColor = MiuixTheme.colorScheme.secondaryContainer) {
-                                    if (loading) CircularProgressIndicator(Modifier.size(24.dp))
-                                    else Icon(when (project) {
-                                        FeeProject.Network -> AppIcons.Network
-                                        FeeProject.FamilyWater -> AppIcons.Water
-                                        else -> AppIcons.Electricity
-                                    }, contentDescription = project.label, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
-                                }
-                                Text(project.label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            }
-                        }
+                        ServiceEntry(
+                            label = project.label,
+                            icon = when (project) {
+                                FeeProject.Network -> AppIcons.Network
+                                FeeProject.FamilyWater -> AppIcons.Water
+                                else -> AppIcons.Electricity
+                            },
+                            loading = opening == project,
+                            enabled = opening == null,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onOpen(project) },
+                        )
                     }
                     repeat(3 - projects.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -224,25 +230,44 @@ internal fun CampusCardServicesCard(opening: Boolean, onOpen: (CampusCardAction)
             Text("校园卡服务", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(CampusCardAction.ManageState, CampusCardAction.OthersRecharge).forEach { action ->
-                    Surface(onClick = { if (!opening) onOpen(action) }, color = Color.Transparent, modifier = Modifier.weight(1f)) {
-                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // A single clickable tile, not a clickable icon nested inside another click target.
-                            Surface(color = MiuixTheme.colorScheme.secondaryContainer, shape = androidx.compose.foundation.shape.CircleShape,
-                                modifier = Modifier.size(48.dp)) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    if (loadingAction == action) CircularProgressIndicator(Modifier.size(24.dp))
-                                    else Icon(if (action == CampusCardAction.ManageState) AppIcons.CardState else AppIcons.OthersRecharge,
-                                        contentDescription = action.label, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
-                                }
-                            }
-                            Text(action.label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        }
-                    }
+                    ServiceEntry(
+                        label = action.label,
+                        icon = if (action == CampusCardAction.ManageState) AppIcons.CardState else AppIcons.OthersRecharge,
+                        loading = loadingAction == action,
+                        enabled = !opening,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onOpen(action) },
+                    )
                 }
                 Spacer(Modifier.weight(1f))
             }
         }
+    }
+}
+
+/** The whole entry is tappable, but its press indication stays inside the circular icon. */
+@Composable
+private fun ServiceEntry(label: String, icon: ImageVector, loading: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier = modifier
+            .semantics { contentDescription = label }
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(48.dp)
+                .clip(CircleShape)
+                .background(MiuixTheme.colorScheme.secondaryContainer)
+                .indication(interactionSource, LocalIndication.current),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) CircularProgressIndicator(Modifier.size(24.dp))
+            else Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
+        }
+        Text(label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
