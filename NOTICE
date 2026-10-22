@@ -1,8 +1,8 @@
-HUEL-yktwx — third-party notices
+CaiXiaoTong (财小通) — third-party notices
 
 This application adapts UI, theme settings, predictive navigation, about-page
 layout, gradient effects and glass-navigation components from Mercury000/SonyPods.
-SonyPods is licensed under GNU GPL v3; YktWx is distributed under the same license.
+SonyPods is licensed under GNU GPL v3; CaiXiaoTong is distributed under the same license.
 A complete GPL v3 copy is included in LICENSE. Provide corresponding source with
 any APK redistribution. No SonyPods original project files were modified.
 
@@ -15,7 +15,7 @@ Apache-2.0 components and adaptation references:
 Individual source headers have been retained. Upstream project links are
 available in the app's About → Open-source projects page.
 
-YktWx is an unofficial personal client for the user's own campus-card account.
+CaiXiaoTong is an unofficial personal client for the user's own campus-card account.
 It is not affiliated with the university or the campus-card service provider.
 No account credentials, tokens or actual payment codes are included in source,
 artwork, screenshots, tests or APK assets.

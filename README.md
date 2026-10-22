@@ -1,4 +1,4 @@
-# 校园一卡通 Android 客户端
+# 财小通
 
 校园一卡通 Android 客户端，使用 Kotlin、Jetpack Compose 和 miuix 开发。
 

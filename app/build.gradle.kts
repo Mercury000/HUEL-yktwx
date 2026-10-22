@@ -29,7 +29,7 @@ android {
         create("preview") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".preview"
-            resValue("string", "app_name", "YktWx Preview")
+            resValue("string", "app_name", "财小通 Preview")
             matchingFallbacks += "debug"
         }
         create("personal") {
