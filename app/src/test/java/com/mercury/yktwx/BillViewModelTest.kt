@@ -179,6 +179,8 @@ class BillViewModelTest {
             return BillPageData(items, items.size, current, if (items.isEmpty()) 0 else 1, size)
         }
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
+        override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int =
+            if (type == 1) items.count { it.income } else items.count { !it.income }
         override suspend fun billTypes(token: String) = listOf(BillType("4", "二维码支付", "qrCode-payment"))
         override suspend fun login(credentials: Credentials): Session = error("Unexpected login")
         override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")

@@ -39,6 +39,8 @@ data class BillPageData(
 
 data class BillSummary(val incomeCents: Long, val expensesCents: Long)
 
+data class BillCounts(val income: Int, val expenses: Int)
+
 data class BillType(val id: String, val name: String, val icon: String)
 
 data class BillCategory(

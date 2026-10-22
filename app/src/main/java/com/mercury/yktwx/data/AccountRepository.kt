@@ -54,6 +54,12 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun billSummary(timeFrom: String, timeTo: String): BillSummary = withSession {
         service.billSummary(it, timeFrom, timeTo)
     }
+    suspend fun billCounts(timeFrom: String, timeTo: String): BillCounts = withSession {
+        BillCounts(
+            income = service.billCount(it, timeFrom, timeTo, 1),
+            expenses = service.billCount(it, timeFrom, timeTo, 2),
+        )
+    }
     suspend fun billTypes(): List<BillType> = withSession { service.billTypes(it) }
     suspend fun billCategories(type: Int, timeFrom: String, timeTo: String): List<BillCategory> = withSession {
         service.billCategories(it, type, timeFrom, timeTo)
