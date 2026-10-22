@@ -40,7 +40,7 @@ class FeeViewModelTest {
         model.payAccount("demo-type", "123456")
         await { fees.payments == 1 && !model.state.value.loading }
         assertEquals(FeeStage.Password, model.state.value.stage)
-        assertEquals("支付密码错误，请重新输入", model.state.value.error)
+        assertEquals("账户密码错误", model.state.value.error)
         assertSame(preparation, model.state.value.preparation)
         assertEquals("FAKE-ORDER", model.state.value.order?.pending?.orderId)
         assertEquals(0, fees.resultQueries)
@@ -53,14 +53,15 @@ class FeeViewModelTest {
         assertNull(model.state.value.preparation)
     }
 
-    @Test fun insufficientBalanceReturnsToMethodsWithAvailableAlternative() {
+    @Test fun server60050KeepsOfficialPasswordDialogWithoutInventingAnAction() {
         openPassword()
         fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
             "{\"code\":60050,\"success\":false,\"data\":null,\"msg\":\"账户余额不足！\"}"))
         model.payAccount("demo-type", "123456")
-        await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
-        assertEquals("一卡通余额不足，请选择其他支付方式", model.state.value.error)
-        assertNull(model.state.value.preparation)
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals("账户余额不足！", model.state.value.error)
+        assertNotNull(model.state.value.preparation)
         assertEquals("FAKE-ORDER", model.state.value.order?.pending?.orderId)
         assertEquals(0, fees.resultQueries)
     }
@@ -214,4 +215,28 @@ class FeeViewModelTest {
             return RechargeResult(resultStatus == 1, order.amountCents, null, resultStatus)
         }
     }
+    @Test fun lost60050KeepsBackendReasonAndDoesNotSuggestRechargingOrQuery() {
+        openPassword()
+        fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
+            "{\"code\":60050,\"success\":false,\"data\":null,\"msg\":\"持卡人已挂失！\"}"))
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals("持卡人已挂失！", model.state.value.error)
+        assertNotNull(model.state.value.preparation)
+        assertEquals("FAKE-ORDER", model.state.value.order?.pending?.orderId)
+        model.onForeground(); model.onResumed(true)
+        assertEquals(0, fees.resultQueries)
+        assertEquals(1, fees.payments)
+    }
+
+    @Test fun numericPreflightBalanceStillSuggestsAnAlternative() {
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Balance)
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
+        assertEquals("一卡通余额不足，请选择其他支付方式", model.state.value.error)
+        assertEquals(0, fees.resultQueries)
+    }
+
 }

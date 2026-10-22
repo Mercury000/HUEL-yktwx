@@ -93,10 +93,11 @@ class RechargeViewModel internal constructor(
                 val order = repository.createRecharge(pending.username, config, amountCents)
                 if (current != attempt) return@launch
                 val created = pending.withOrder(order.orderId, order.payId)
-                update(pending = created, phase = RechargePhase.AwaitingPayment)
+                update(pending = created) // Stay Creating until valid payment parameters are available.
                 requireOwner(created)
                 val launch = repository.launchRecharge(created)
                 if (current != attempt) return@launch
+                requireOwner(created)
                 if (!paymentReturn.canLaunch) {
                     showResult(RechargePhase.Unknown, "支付未完成，请重新发起充值")
                     return@launch
@@ -104,6 +105,18 @@ class RechargeViewModel internal constructor(
                 update(loading = false, phase = RechargePhase.AwaitingPayment)
                 launches.send(launch)
             } catch (e: CancellationException) { throw e }
+            catch (e: RechargePaymentRejected) {
+                if (current == attempt) {
+                    paymentReturn.reset()
+                    showResult(RechargePhase.Failed, e.message)
+                }
+            }
+            catch (e: RechargeTargetUnavailable) {
+                if (current == attempt) {
+                    paymentReturn.reset()
+                    update(loading = false, pending = null, phase = RechargePhase.Amount, error = e.message)
+                }
+            }
             catch (e: Exception) {
                 if (current == attempt) showResult(RechargePhase.Unknown, resultError(e))
             }
@@ -119,7 +132,8 @@ class RechargeViewModel internal constructor(
 
     fun checkResult() {
         val pending = mutable.value.pending ?: return
-        if (pending.orderId == null || mutable.value.preview || task?.isActive == true) return
+        if (pending.orderId == null || mutable.value.preview ||
+            mutable.value.phase in listOf(RechargePhase.Failed, RechargePhase.Paid) || task?.isActive == true) return
         if (mutable.value.phase != RechargePhase.Checking) resultQueriesCompleted = 0
         paymentReturn.consume()
         val current = attempt
@@ -195,7 +209,7 @@ class RechargeViewModel internal constructor(
     private fun resultError(e: Exception) = when (e) {
         is NetworkFailure -> "网络异常，请稍后查看账单"
         is AuthenticationRequired, is InvalidCredentials, is CaptchaRequired -> "登录已失效，请重新登录"
-        else -> "暂未确认本次付款，请稍后查看账单"
+        else -> safeError(e, "暂未确认本次付款，请稍后查看账单")
     }
     private fun safeError(e: Exception, fallback: String) = if (e is YktException) e.message ?: fallback else fallback
     private fun update(

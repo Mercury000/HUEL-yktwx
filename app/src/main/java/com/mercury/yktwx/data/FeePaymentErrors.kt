@@ -5,21 +5,24 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
 
-internal enum class FeeRejectionReason { Password, Balance, Other }
+internal enum class FeeRejectionReason { Password, Balance, Rejected, Other }
 
-/** Fixed UI messages only: never retain or display the server's raw payment error. */
-internal class FeePaymentRejected(val reason: FeeRejectionReason) : YktException(when (reason) {
-    FeeRejectionReason.Password -> "支付密码错误，请重新输入"
-    FeeRejectionReason.Balance -> "一卡通余额不足"
-    FeeRejectionReason.Other -> "支付未完成，请核实后重试"
-})
+/** Preserve official business text; numeric codes only determine the verified interaction. */
+internal class FeePaymentRejected(val reason: FeeRejectionReason, hint: String? = null) : YktException(
+    hint?.takeIf { it.isNotEmpty() } ?: when (reason) {
+        // Only a local numeric precheck has no backend message.
+        FeeRejectionReason.Balance -> "一卡通余额不足"
+        else -> "Error" // Same fallback as the official cashier: msg || "Error".
+    },
+)
 internal class FeeOrderExpired : YktException("订单已过期，请重新发起缴费")
 internal class FeeOrderAlreadyPaid : YktException("订单已完成，正在确认结果")
 /** Read-only validation failed before the password request was sent. Safe for a manual retry. */
 internal class FeePaymentNotStarted(message: String) : YktException(message)
 
 internal object FeePaymentErrors {
-    // Verified business codes: 60005 = password rejection; 60050 = insufficient balance.
+    // 60050 covers multiple rejections (including lost cards), not just balance.
+    // Balance is reserved for a local numeric balance precheck.
     // Do not infer rejection from unknown codes or contradictory success data.
     fun rejection(body: JSONObject): FeePaymentRejected? {
         val code = body.opt("code")
@@ -28,11 +31,12 @@ internal object FeePaymentErrors {
             (!body.isNull("data") && body.opt("data") != "")) return null
         if (code == 60005 || code == 60050) {
             if (body.opt("success") != false) return null
-            return FeePaymentRejected(if (code == 60005) FeeRejectionReason.Password else FeeRejectionReason.Balance)
+            return if (code == 60005) FeePaymentRejected(FeeRejectionReason.Password, body.opt("msg") as? String)
+                else FeePaymentRejected(FeeRejectionReason.Rejected, body.opt("msg") as? String)
         }
         // code=400 is a generic rejection, not a password/balance/expiry classification.
-        // The human-readable msg has no role in control flow and is never retained.
-        return FeePaymentRejected(FeeRejectionReason.Other)
+        // The message is display-only; do not infer balance/password/expiry from its text.
+        return FeePaymentRejected(FeeRejectionReason.Other, body.opt("msg") as? String)
     }
 }
 

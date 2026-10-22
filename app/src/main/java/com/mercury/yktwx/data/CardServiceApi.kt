@@ -94,10 +94,12 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val (_, ecard, _) = settings(token)
         val list = data.optJSONArray("card") ?: throw RecipientLookupRejected(false, "没有可充值账户")
         val result = mutableListOf<RechargeRecipient>()
+        var unavailable: RechargeTargetUnavailable? = null
         for (i in 0 until list.length()) {
             val card = list.getJSONObject(i)
             // Same conservative policy as the existing native recharge flow.
-            if (card.optInt("lostflag", -1) != 0 || card.optInt("freezeflag", -1) != 0 || (card.has("acc_status") && card.optInt("acc_status", -1) != 0)) continue
+            try { RechargeErrors.requireAvailable(card) }
+            catch (e: RechargeTargetUnavailable) { unavailable = unavailable ?: e; continue }
             val account = card.rechargeText("account")
             if (account.isBlank()) continue
             fun add(target: String, name: String, balance: Long) {
@@ -111,7 +113,7 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
                 }
             }
         }
-        if (result.isEmpty()) throw RecipientLookupRejected(false, "没有正常的可充值账户，请在官网检查卡状态")
+        if (result.isEmpty()) throw RecipientLookupRejected(false, unavailable?.message ?: "没有正常的可充值账户，请在官网检查卡状态")
         return result
     }
     override suspend fun recipientRechargeConfiguration(token: String, recipient: RechargeRecipient): RechargeConfiguration {

@@ -142,7 +142,7 @@ class FeeApiTest {
         URLDecoder.decode(key, "UTF-8") to URLDecoder.decode(value, "UTF-8")
     }
 
-    @Test fun passwordRejectionIsSafeAndNeverReplaysTheRequest() = runBlocking {
+    @Test fun passwordRejectionPreservesOfficialMessageAndNeverReplaysTheRequest() = runBlocking {
         val calls = mutableListOf<FakeHttps>()
         val api = api(calls, JSONObject().put("code", 60005).put("success", false)
             .put("data", JSONObject.NULL).put("msg", "账户密码错误").toString())
@@ -151,7 +151,7 @@ class FeeApiTest {
             fail("Expected rejection")
         } catch (e: FeePaymentRejected) {
             assertEquals(FeeRejectionReason.Password, e.reason)
-            assertEquals("支付密码错误，请重新输入", e.message)
+            assertEquals("账户密码错误", e.message)
         }
         assertEquals(listOf("/charge/pay/getpayinfo", "/charge/order/getCurrentTime", "/blade-pay/pay"), calls.map { it.url.path })
         assertEquals("876543", fields(calls.last())["password"])
@@ -184,7 +184,7 @@ class FeeApiTest {
         }
     }
 
-    @Test fun errorClassificationDoesNotLeakServerTextOrTreatServerFailureAsRejection() {
+    @Test fun officialErrorTextDoesNotDetermineServerFailureOrRejection() {
         val http = PaymentHttp { error("No requests allowed") }
         for (text in listOf("账户余额不足", "订单已过期", "<script>secret-token</script>")) {
             try {
@@ -192,7 +192,7 @@ class FeeApiTest {
                 fail("Expected rejection")
             } catch (e: FeePaymentRejected) {
                 assertEquals(FeeRejectionReason.Other, e.reason)
-                assertFalse(e.message.orEmpty().contains("secret-token"))
+                assertEquals(text, e.message)
             }
         }
         for ((status, response) in listOf(503 to "{\"code\":400}", 200 to "{\"code\":500,\"msg\":\"密码错误\"}",
@@ -214,12 +214,12 @@ class FeeApiTest {
             val body = JSONObject().put("code", 60005).put("success", false).put("data", JSONObject.NULL).put("msg", text)
             val rejected = FeePaymentErrors.rejection(body)!!
             assertEquals(FeeRejectionReason.Password, rejected.reason)
-            assertEquals("支付密码错误，请重新输入", rejected.message)
+            assertEquals(text, rejected.message)
         }
     }
 
-    @Test fun serverBalanceRejectionUsesCodeRegardlessOfMessage() = runBlocking {
-        for (message in listOf("账户余额不足！", "different language", "密码错误")) {
+    @Test fun server60050UsesOriginalMessageWithoutClassifyingTheCause() = runBlocking {
+        for (message in listOf("账户余额不足！", "持卡人已挂失！", "different language", "密码错误")) {
             val calls = mutableListOf<FakeHttps>()
             val response = JSONObject().put("code", 60050).put("success", false)
                 .put("data", JSONObject.NULL).put("msg", message)
@@ -227,8 +227,8 @@ class FeeApiTest {
                 api(calls, response.toString()).payFeeAccount("fake-token", pending(), method(), preparation(), "demo-type", "123456")
                 fail("Expected server balance rejection")
             } catch (e: FeePaymentRejected) {
-                assertEquals(FeeRejectionReason.Balance, e.reason)
-                assertEquals("一卡通余额不足", e.message)
+                assertEquals(FeeRejectionReason.Rejected, e.reason)
+                assertEquals(message, e.message)
             }
             assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
         }
@@ -254,6 +254,19 @@ class FeeApiTest {
         val result = api.feeResult("fake-token", pending())
         assertFalse(result.paid)
         assertNull(result.serverStatus)
+    }
+
+    @Test fun officialMessagesAreVerbatimAndOnlyMissingOrEmptyTextUsesError() {
+        for (code in listOf(60005, 60050, 400)) {
+            for (text in listOf("账户已挂失", "  原始提示\n ", "<b>业务提示</b>", "详细提示".repeat(80))) {
+                val body = JSONObject().put("code", code).put("success", false).put("data", JSONObject.NULL).put("msg", text)
+                assertEquals(text, FeePaymentErrors.rejection(body)!!.message)
+            }
+            for (text in listOf(null, "", 123, JSONObject())) {
+                val body = JSONObject().put("code", code).put("success", false).put("data", JSONObject.NULL).put("msg", text ?: JSONObject.NULL)
+                assertEquals("Error", FeePaymentErrors.rejection(body)!!.message)
+            }
+        }
     }
 
 }

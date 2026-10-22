@@ -8,6 +8,9 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -34,6 +37,7 @@ class RechargeViewModelTest {
         service.configurationGate.complete(Unit)
         service.creationGate.complete(Unit)
         service.resultGate.complete(Unit)
+        service.launchGate.complete(Unit)
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -243,11 +247,13 @@ class RechargeViewModelTest {
         var resultResponses = 0
         var submittedCents: Long? = null
         var creationFailure: Exception? = null
+        var launchFailure: Exception? = null
         var resultFailure: Exception? = null
         var resultStatus = 1
         var configurationGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var creationGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var resultGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var launchGate = CompletableDeferred<Unit>().apply { complete(Unit) }
 
         override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
             configurations++
@@ -267,6 +273,8 @@ class RechargeViewModelTest {
 
         override suspend fun launchRecharge(token: String, pending: PendingRecharge): WechatRechargeLaunch {
             launches++
+            launchGate.await()
+            launchFailure?.let { throw it }
             return WechatRechargeLaunch("weixin://wap/pay?prepayid=fake-prepay")
         }
 
@@ -278,4 +286,81 @@ class RechargeViewModelTest {
             return RechargeResult(resultStatus == 1, pending.amountCents, null, resultStatus)
         }
     }
+    @Test fun explicitLostRejectionEndsOwnAndOthersRechargeWithoutLaunchOrQuery() {
+        for (other in listOf(false, true)) {
+            if (other) {
+                val recipient = RechargeRecipient("other-card", "other-target", "示例", "123456", "统一账户", 0)
+                model.openOthers(vault.username, RechargeConfiguration("401", "other-target", "统一账户", 0,
+                    listOf(1000), 1, 50_000, true, false, recipient), false)
+            } else open()
+            service.launchFailure = RechargePaymentRejected("账户已挂失")
+            val previousCreations = service.creations
+            model.submit(1000)
+            await { !model.state.value.loading && model.state.value.phase == RechargePhase.Failed }
+            assertEquals("账户已挂失", model.state.value.error)
+            assertFalse(model.canLaunchWechat())
+            assertNull(runBlocking { withTimeoutOrNull(50) { model.events.first() } })
+            assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
+            model.onForeground(); model.onResumed(true); model.onWindowFocusChanged(true)
+            model.checkResult(); model.submit(1000)
+            assertEquals(0, service.resultQueries)
+            assertEquals(previousCreations + 1, service.creations)
+            model.finish()
+            assertNull(model.state.value.pending)
+        }
+    }
+
+    @Test fun failedPreflightReturnsToAmountWithoutPhantomPendingOrder() {
+        open()
+        service.creationFailure = RechargeTargetUnavailable("已挂失，禁止充值，请先解挂")
+        model.submit(1000)
+        await { !model.state.value.loading }
+        assertEquals(RechargePhase.Amount, model.state.value.phase)
+        assertNull(model.state.value.pending)
+        assertNotNull(model.state.value.config)
+        assertEquals("已挂失，禁止充值，请先解挂", model.state.value.error)
+        assertEquals(0, service.launches)
+        assertEquals(0, service.resultQueries)
+    }
+
+    @Test fun lostLaunchResponseStaysUnknownAndKeepsOrderForManualReadOnlyCheck() {
+        open()
+        service.launchFailure = NetworkFailure()
+        model.submit(1000)
+        await { !model.state.value.loading }
+        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
+        assertFalse(model.canLaunchWechat())
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        assertEquals(1, service.creations)
+        assertEquals(1, service.launches)
+        assertEquals(1, service.resultQueries)
+    }
+
+    @Test fun paymentParameterFetchIsNotYetAwaitingExternalPayment() {
+        open()
+        service.launchGate = CompletableDeferred()
+        service.launchFailure = RechargePaymentRejected("账户已挂失")
+        model.submit(1000)
+        await { service.launches == 1 }
+        assertTrue(model.state.value.loading)
+        assertEquals(RechargePhase.Creating, model.state.value.phase)
+        assertFalse(model.canLaunchWechat())
+        service.launchGate.complete(Unit)
+        await { model.state.value.phase == RechargePhase.Failed }
+        assertEquals(0, service.resultQueries)
+    }
+
+    @Test fun unknownBusinessMessageRemainsUnknownWithoutLosingOfficialText() {
+        open()
+        service.launchFailure = YktException("新的业务提示")
+        model.submit(1000)
+        await { !model.state.value.loading }
+        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals("新的业务提示", model.state.value.error)
+        assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
+        assertEquals(0, service.resultQueries)
+    }
+
 }

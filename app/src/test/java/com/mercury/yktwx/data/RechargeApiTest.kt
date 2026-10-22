@@ -64,7 +64,10 @@ class RechargeApiTest {
     }
     @Test fun createUsesSignedPostAndDoesNotFollowTokenRedirect() = runBlocking {
         lateinit var call: FakeHttps
-        val api = RechargeApi { url -> FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it } }
+        val api = RechargeApi { url ->
+            if (url.path.endsWith("queryCard")) FakeHttps(url, 200, cards().toString())
+            else FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it }
+        }
         val o = api.createRecharge("fake-token", config(), 1000)
         assertEquals("FAKE-ORDER", o.orderId)
         assertEquals("POST", call.requestMethod)
@@ -134,7 +137,10 @@ class RechargeApiTest {
     }
     @Test fun ambiguousCreationIsNotRetried() = runBlocking {
         var calls = 0
-        val api = RechargeApi { url -> calls++; FakeHttps(url, 200, "{}") }
+        val api = RechargeApi { url ->
+            if (url.path.endsWith("queryCard")) FakeHttps(url, 200, cards().toString())
+            else { calls++; FakeHttps(url, 200, "{}") }
+        }
         try { api.createRecharge("fake-token", config(), 1000); fail("Expected unknown outcome") } catch (_: YktException) { }
         assertEquals(1, calls)
     }
@@ -151,6 +157,87 @@ class RechargeApiTest {
         assertEquals("10.00", p["tranamt"]); assertEquals(64, p.getValue("SIGN").length)
         val pending = PendingRecharge("payer", config.targetId, "401", 1000, 0, recipient = recipient).withOrder("FAKE-ORDER", "81")
         assertSame(recipient, pending.recipient); assertEquals("other-target", pending.targetId)
+    }
+
+    @Test fun lostRechargeIsRefusedBeforeAnyExternalBridgeForOwnAndOtherTargets() = runBlocking {
+        for (other in listOf(false, true)) {
+            val recipient = RechargeRecipient("fake-card", "fake-account", "示例", "123456", "统一账户", 0)
+            val pending = PendingRecharge("123456", "fake-account", "401", 1000, 0, "FAKE-ORDER", "81", if (other) recipient else null)
+            val calls = mutableListOf<FakeHttps>()
+            val api = RechargeApi { url ->
+                val text = when (url.path) {
+                    "/charge/pay/getpayinfo" -> JSONObject().put("code", 200).put("order", JSONObject()
+                        .put("orderid", "FAKE-ORDER").put("third_party", "fake-account").put("tranamt", 10))
+                        .put("payList", JSONArray().put(JSONObject().put("payid", 81).put("code", "CAMPUSCARD").put("remark", "weixin"))).toString()
+                    "/blade-pay/pay" -> "{\"code\":60007,\"success\":false,\"data\":null,\"msg\":\"账户已挂失\"}"
+                    else -> error("No external payment bridge is allowed")
+                }
+                FakeHttps(url, 200, text).also(calls::add)
+            }
+            assertThrows(RechargePaymentRejected::class.java) { runBlocking { api.launchRecharge("fake-token", pending) } }
+            assertEquals(2, calls.size)
+            assertEquals(1, calls.count { it.requestMethod == "POST" })
+            assertTrue(calls.all { it.url.host == "yktwx2.huel.edu.cn" && it.disconnected })
+        }
+    }
+
+    @Test fun contradictoryAndWrongLayerLostCodesAreNotConfirmedRejections() {
+        for (body in listOf("{\"code\":60007,\"success\":true,\"data\":null}",
+            "{\"code\":60007,\"success\":false,\"data\":\"FAKE-ORDER\"}",
+            "{\"code\":60007,\"success\":false,\"state\":200}", "{\"code\":60007}",
+            "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"60007\"}}")) {
+            RechargeErrors.paymentFailure(PaymentHttp.Response(200, body, null))
+        }
+        RechargeErrors.paymentFailure(PaymentHttp.Response(500,
+            "{\"code\":60007,\"success\":false,\"data\":null}", null))
+    }
+
+    @Test fun ownAccountPreflightBlocksLostAndFrozenWithoutCreatingAnOrder() = runBlocking {
+        for (field in listOf("lostflag", "freezeflag")) {
+            val calls = mutableListOf<FakeHttps>()
+            val response = cards().apply { getJSONObject("data").getJSONArray("card").getJSONObject(0).put(field, 1) }
+            val api = RechargeApi { url ->
+                assertTrue(url.path.endsWith("queryCard"))
+                FakeHttps(url, 200, response.toString()).also(calls::add)
+            }
+            val error = assertThrows(RechargeTargetUnavailable::class.java) { runBlocking { api.createRecharge("fake-token", config(), 1000) } }
+            assertTrue(error.message!!.contains(if (field == "lostflag") "挂失" else "冻结"))
+            assertEquals(1, calls.size)
+            assertEquals("GET", calls.single().requestMethod)
+        }
+    }
+
+    @Test fun preflightNetworkFailureIsNotAnAmbiguousCreatedOrder() = runBlocking {
+        val api = RechargeApi { throw java.io.IOException("fake outage") }
+        assertThrows(RechargeTargetUnavailable::class.java) { runBlocking { api.createRecharge("fake-token", config(), 1000) } }
+        Unit
+    }
+
+    @Test fun lostPaymentKeepsOriginalMessageAndOfficialEmptyFallback() {
+        for (text in listOf("账户已挂失", "  服务端提示\n", "<b>业务提示</b>", "提示".repeat(160), "", null)) {
+            val body = JSONObject().put("code", 60007).put("success", false).put("data", JSONObject.NULL)
+                .put("msg", text ?: JSONObject.NULL)
+            val error = assertThrows(RechargePaymentRejected::class.java) {
+                RechargeErrors.paymentFailure(PaymentHttp.Response(200, body.toString(), null))
+            }
+            assertEquals(text?.takeIf { it.isNotEmpty() } ?: "Error", error.message)
+        }
+    }
+
+    @Test fun unknownBusinessMessageIsShownButNotClassifiedAsLost() {
+        val body = "{\"code\":99999,\"success\":false,\"data\":null,\"msg\":\"新的业务提示\"}"
+        RechargeErrors.paymentFailure(PaymentHttp.Response(200, body, null))
+        val http = PaymentHttp { error("No network allowed") }
+        val error = assertThrows(YktException::class.java) { http.json(PaymentHttp.Response(200, body, null)) }
+        assertEquals("新的业务提示", error.message)
+        assertFalse(error is RechargePaymentRejected)
+    }
+
+    @Test fun contradictorySuccessNeverProvidesPaymentParameters() {
+        val http = PaymentHttp { error("No network allowed") }
+        assertThrows(YktException::class.java) {
+            http.json(PaymentHttp.Response(200, "{\"code\":200,\"success\":false,\"msg\":\"未成功\"}", null))
+        }
     }
 
 }

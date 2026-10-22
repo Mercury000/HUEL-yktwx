@@ -56,7 +56,11 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
         if (feePayment && response.status == 200 && body != null) {
             FeePaymentErrors.rejection(body)?.let { throw it }
         }
-        if (response.status !in 200..299 || body?.optInt("code") != 200) throw YktException("缴费服务不可用，请在官网核实账户或已有订单")
+        if (response.status !in 200..299 || body?.optInt("code") != 200 || body.opt("success") == false) {
+            // Show the official business message without deciding payment outcome from its text.
+            val hint = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+            throw YktException(hint ?: if (body == null) "服务器响应异常" else "Error")
+        }
         return body
     }
     suspend fun wechatLaunch(html: String, pending: PendingRecharge, feePayment: Boolean = false): WechatRechargeLaunch {
