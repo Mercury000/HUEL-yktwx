@@ -20,6 +20,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +32,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onOpenFee: (FeeProject) -> Unit = {}, feeOpening: FeeProject? = null) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onOpenFee: (FeeProject) -> Unit = {}, feeOpening: FeeProject? = null, onOpenCardService: (CampusCardAction) -> Unit = {}, cardServiceOpening: Boolean = false, cardServiceLoadingAction: CampusCardAction? = null) {
     var showLogoutConfirmation by remember(state.username, state.needsLogin) { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
@@ -146,6 +147,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                         }
                         item { LifeFeesCard(feeOpening, onOpenFee) }
+                        item { CampusCardServicesCard(cardServiceOpening, onOpenCardService, cardServiceLoadingAction) }
                     }
                 }
             }
@@ -209,6 +211,36 @@ private fun LifeFeesCard(opening: FeeProject?, onOpen: (FeeProject) -> Unit) {
                     }
                     repeat(3 - projects.size) { Spacer(Modifier.weight(1f)) }
                 }
+            }
+        }
+    }
+}
+
+/** Two entries for now, on the same three-column grid as living fees. */
+@Composable
+internal fun CampusCardServicesCard(opening: Boolean, onOpen: (CampusCardAction) -> Unit, loadingAction: CampusCardAction? = null) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("校园卡服务", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(CampusCardAction.ManageState, CampusCardAction.OthersRecharge).forEach { action ->
+                    Surface(onClick = { if (!opening) onOpen(action) }, color = Color.Transparent, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // A single clickable tile, not a clickable icon nested inside another click target.
+                            Surface(color = MiuixTheme.colorScheme.secondaryContainer, shape = androidx.compose.foundation.shape.CircleShape,
+                                modifier = Modifier.size(48.dp)) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    if (loadingAction == action) CircularProgressIndicator(Modifier.size(24.dp))
+                                    else Icon(if (action == CampusCardAction.ManageState) AppIcons.CardState else AppIcons.OthersRecharge,
+                                        contentDescription = action.label, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
+                                }
+                            }
+                            Text(action.label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
             }
         }
     }

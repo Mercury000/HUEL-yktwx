@@ -187,7 +187,7 @@ internal fun BillMonthSelector(
             if (month !in list) list += month
             list.sortedDescending()
         }
-        Card(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth().bottomSheetSafeArea()) {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                 items(months, key = { it.toString() }) { item ->
                     RadioButtonPreference(

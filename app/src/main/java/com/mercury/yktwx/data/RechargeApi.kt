@@ -17,20 +17,26 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val id = front.rechargeText("recharge")
         if (!id.matches(Regex("[0-9]{1,12}"))) throw YktException("充值项目配置异常")
         val fee = json(request("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id))).getJSONObject("feeitem")
-        val minimum = fee.rechargeText("retain_money").takeIf { it.isNotBlank() }?.let(RechargeMoney::cents) ?: 1L
-        val configuredMax = listOf(fee.rechargeText("maxmoney"), front.rechargeText("rechargeMaxAmount"))
-            .filter { it.isNotBlank() }.map { RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常") }.minOrNull()
-        // Conservative local cap when server gives no upper limit; not a claim of server acceptance.
-        val maximum = minOf(configuredMax ?: 50_000L, 50_000L)
-        val options = fee.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }
-            .distinct().filter { it in minimum..maximum }
-        val flag = fee.rechargeText("flag").getOrNull(7)
-        // The homepage passes the parent card account, not payment's payacc.
-        // Resolve the recharge ID from queryCard; pending-order checks stay exact.
         val account = selectedAccount(token, preferredTarget, ecard.rechargeText("type"), allowCardMatch = true)
-        if (minimum > maximum || (flag == '1' && options.isEmpty())) throw YktException("没有可用的充值金额")
-        return RechargeConfiguration(id, account.first, account.second.first, account.second.second, options, minimum, maximum, flag != '1', flag == '2')
+        return amountConfiguration(id, account.first, account.second.first, account.second.second, front, fee)
     }
+    companion object {
+        internal fun amountConfiguration(id: String, target: String, name: String, balance: Long, front: JSONObject,
+            fee: JSONObject, recipient: RechargeRecipient? = null): RechargeConfiguration {
+            val minimum = fee.rechargeText("retain_money").takeIf { it.isNotBlank() }?.let {
+                RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常")
+            } ?: 1L
+            val configuredMax = listOf(fee.rechargeText("maxmoney"), front.rechargeText("rechargeMaxAmount"))
+                .filter { it.isNotBlank() }.map { RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常") }.minOrNull()
+            val maximum = minOf(configuredMax ?: 50_000L, 50_000L)
+            val options = fee.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }
+                .distinct().filter { it in minimum..maximum }
+            val flag = fee.rechargeText("flag").getOrNull(7)
+            if (minimum > maximum || (flag == '1' && options.isEmpty())) throw YktException("没有可用的充值金额")
+            return RechargeConfiguration(id, target, name, balance, options, minimum, maximum, flag != '1', flag == '2', recipient)
+        }
+    }
+
     private suspend fun selectedAccount(
         token: String,
         preferredTarget: String?,
@@ -77,10 +83,11 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
     }
     override suspend fun createRecharge(token: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder {
         config.amountError(amountCents)?.let { throw YktException(it) }
+        if (config.recipient != null && config.recipient.targetId != config.targetId) throw YktException("收款账户不匹配，请重新查询")
         val form = RechargeProtocol.signed(mapOf(
             "feeitemid" to config.feeItemId, "appid" to "56321", "tranamt" to RechargeMoney.yuan(amountCents),
             "source" to "app", "synjones-auth" to "bearer " + token, "yktcard" to config.targetId,
-            "synAccessSource" to "h5", "abstracts" to "{\"type\":\"recharge\",\"othersRecharge\":false}",
+            "synAccessSource" to "h5", "abstracts" to JSONObject().put("type", "recharge").put("othersRecharge", config.recipient != null).toString(),
         ))
         val response = request("/charge/order/thirdOrder", token, form = form)
         if (response.status != 302 || response.location == null) {
@@ -94,6 +101,8 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val info = json(request("/charge/pay/getpayinfo", token, mapOf("orderid" to order, "userAgent" to "h5")))
         val o = info.getJSONObject("order")
         if (o.rechargeText("orderid") != order || RechargeMoney.responseCents(o.opt("tranamt")) != pending.amountCents) throw YktException("充值订单信息不匹配")
+        val target = o.rechargeText("third_party")
+        if (target.isNotBlank() && target != pending.targetId) throw YktException("订单收款账户不匹配，请在官网核实")
         if (o.optInt("status", -1) == 1) throw YktException("订单已支付，请查询结果")
         val methods = info.optJSONArray("payList") ?: throw YktException("没有可用的微信支付方式")
         val method = (0 until methods.length()).map { methods.getJSONObject(it) }

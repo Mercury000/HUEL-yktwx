@@ -69,6 +69,16 @@ synAccessSource: h5
 - Token 过期或被拒绝时映射为 `AuthenticationRequired`，由账户仓库最多重登一次；不在此处保存账单响应。
 - Android 的账单预览模式只注入虚构记录、金额和账户名，不读取真实账单。
 
+## 挂失与解挂（接入调查）
+
+详见 [挂失解挂接口调查](card-operation.md)。2026-10-21 通过 MCP 在本人账户完成一次挂失→解挂，最终恢复 `lostflag=0`。
+
+- 卡状态：`GET /berserker-app/ykt/tsm/getCampusCards?synAccessSource=h5`，解析 `data.card[].{account,lostflag,freezeflag,acc_status}`；操作使用卡片 `account`，不是学号或 `accinfo[].type`。
+- 挂失：`POST /berserker-app/ykt/tsm/lostCard`，JSON 请求体传 `account`、`synAccessSource`；按配置可带查询密码 `pwd`/`pwdType`。
+- 解挂：`POST /berserker-app/ykt/tsm/unlostCard`，字段同上。本次解挂要求 6 位查询密码，密码来自官网数字安全键盘，不提交明文。
+- 成功需外层 `code=200` 且 `data.retcode=0`；官网源码还接受挂失 `60007`、解挂 `60008`，本次未独立验证。
+- 响应不返回新的 `lostflag`；成功后重新查询卡列表确认。写请求不自动重试，超时先查状态，避免重复挂失/解挂。
+
 ## 卡片充值与微信支付（接入调查）
 
 详见 [卡片充值调查](recharge.md)。2026-10-21 通过 MCP 只读验证接口，并离线分析用户本人 10 元充值 HAR：已确认微信内网页下单 302、微信 JSAPI 参数、两次订单成功查询和余额增加 10 元。外部 Android App 调起微信及自定义回跳仍未验证，**当前客户端已接入原生充值界面，微信实际唤起仍需真机验证**。
@@ -81,6 +91,16 @@ synAccessSource: h5
 - 结果：`GET /charge/order/personal_data?orderid=<本人订单>`，解析顶层 `orderList`；`status=1` 是支付成功，不仅凭回跳或请求成功展示“充值到账”。
 - **充值/收银台金额是元，卡片余额和账单金额是分**，不能混用。
 - 不保存原始支付配置，不将 Token 放进外部跳转 URL，不自动重试创建订单。
+
+## 代人充值（接入调查）
+
+详见 [代人充值接口调查](others-recharge.md)。2026-10-22 通过 MCP 核对当前官网源码及用户手动查询的失败响应；没有创建或支付代充值订单。
+
+- 验证码：`GET /berserker-auth/oauth/captcha`，当前组件读取顶层 `key` / `image`，用户手动输入。
+- 收款人查询：`GET /berserker-app/ykt/tsm/idtypeQueryCard`，传 `idtype=sno|id`、`id`、`scene=recharge`、`captcha_header_key` / `captcha_header_code`（查询参数）。
+- 成功须外层 `code=200` 且内层 `data.retcode="0"`、存在可用目标；已观察到验证码错误 `code=8002`，以及外层成功但内层 `60003` / “账户信息不存在”。
+- 下单复用 `/charge/order/thirdOrder`，`abstracts` 中 `othersRecharge=true`；`yktcard` 来自收款目标查询，而不是付款人卡片或输入的学号/证件号。
+- 代充值成功查询、跨用户目标绑定、下单支付和到账仍未验证。当前 Android 已接入验证码、收款目标查询与确认，支付及查单复用现有充值流程；已进行离线回归，不要求额外真实扣款。
 
 ## 电费、水费与校园网缴费（接入调查）
 

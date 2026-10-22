@@ -175,7 +175,7 @@ fun FeePage(
             }
             OverlayBottomSheet(show = interactive && state.stage == FeeStage.Methods, title = "支付方式",
                 onDismissRequest = onCancelPayment, renderInRootScaffold = true) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                Column(Modifier.fillMaxWidth().bottomSheetSafeArea().padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("¥ " + RechargeMoney.yuan(orderAmount), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                     state.order?.methods.orEmpty().forEach { method ->
@@ -230,7 +230,7 @@ fun FeePage(
             )
             OverlayBottomSheet(show = interactive && state.stage == FeeStage.Result, title = null,
                 onDismissRequest = onFinish, renderInRootScaffold = true, insideMargin = DpSize(0.dp, 0.dp)) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                Box(Modifier.fillMaxWidth().bottomSheetSafeArea().padding(horizontal = 24.dp)) {
                     PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
                         onFinish, subject = "缴费")
                 }

@@ -90,4 +90,21 @@ object AppIcons {
             moveTo(20f, 7f); lineTo(16f, 7f)
         }
     }.build()
+    val CardState = ImageVector.Builder("CardState", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 19f); lineTo(3f, 19f); close()
+            moveTo(3f, 9f); lineTo(21f, 9f)
+            moveTo(7f, 14f); lineTo(10f, 14f)
+            moveTo(14f, 13f); lineTo(18f, 17f); moveTo(18f, 13f); lineTo(14f, 17f)
+        }
+    }.build()
+    val OthersRecharge = ImageVector.Builder("OthersRecharge", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(10f, 5f); curveTo(10f, 1f, 4f, 1f, 4f, 5f); curveTo(4f, 9f, 10f, 9f, 10f, 5f); close()
+            moveTo(2f, 17f); lineTo(2f, 14f); curveTo(2f, 10f, 12f, 10f, 12f, 14f); lineTo(12f, 17f)
+            moveTo(14f, 10f); lineTo(22f, 10f); moveTo(18f, 6f); lineTo(22f, 10f); lineTo(18f, 14f)
+            moveTo(15f, 19f); lineTo(22f, 19f)
+        }
+    }.build()
+
 }

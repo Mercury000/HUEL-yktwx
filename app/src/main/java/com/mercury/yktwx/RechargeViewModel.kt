@@ -71,6 +71,13 @@ class RechargeViewModel internal constructor(
         }
     }
 
+    fun openOthers(username: String, config: RechargeConfiguration, preview: Boolean) {
+        if (config.recipient == null) return
+        endAttempt()
+        owner = username
+        mutable.value = RechargeUiState(visible = true, config = config, preview = preview)
+    }
+
     fun submit(amountCents: Long) {
         val state = mutable.value
         if (state.preview || state.loading || state.pending != null || task?.isActive == true) return
@@ -78,7 +85,7 @@ class RechargeViewModel internal constructor(
         config.amountError(amountCents)?.let { update(error = it); return }
         if (repository.username() != owner) { update(error = "账户已切换，请重新打开充值"); return }
         val current = attempt
-        val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, System.currentTimeMillis())
+        val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, System.currentTimeMillis(), recipient = config.recipient)
         update(loading = true, pending = pending, phase = RechargePhase.Creating, error = null)
         task = viewModelScope.launch {
             try {

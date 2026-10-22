@@ -138,4 +138,19 @@ class RechargeApiTest {
         try { api.createRecharge("fake-token", config(), 1000); fail("Expected unknown outcome") } catch (_: YktException) { }
         assertEquals(1, calls)
     }
+    @Test fun othersRechargeSignsRecipientTargetAndRetainsMetadataInPendingOrder() = runBlocking {
+        lateinit var call: FakeHttps
+        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户", 0)
+        val config = RechargeConfiguration("401", "other-target", "统一账户", 0, listOf(1000), 1, 50000, true, false, recipient)
+        val api = RechargeApi { url -> FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also { call = it } }
+        api.createRecharge("fake-token", config, 1000)
+        val p = params(call.sent.toString("UTF-8"))
+        assertEquals("other-target", p["yktcard"])
+        assertTrue(JSONObject(p.getValue("abstracts")).getBoolean("othersRecharge"))
+        assertEquals("recharge", JSONObject(p.getValue("abstracts")).getString("type"))
+        assertEquals("10.00", p["tranamt"]); assertEquals(64, p.getValue("SIGN").length)
+        val pending = PendingRecharge("payer", config.targetId, "401", 1000, 0, recipient = recipient).withOrder("FAKE-ORDER", "81")
+        assertSame(recipient, pending.recipient); assertEquals("other-target", pending.targetId)
+    }
+
 }

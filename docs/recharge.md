@@ -11,6 +11,8 @@
 
 不要将源码确认等同于真实支付链路已经通过。
 
+代人充值使用相同充值组件，但需增加验证码与收款目标查询，并签名 `othersRecharge=true`；详见 [2026-10-22 代人充值调查](others-recharge.md)。本人充值成功验证不等价于代充值已通过。
+
 ## 1. 查询充值配置
 
 `GET /berserker-app/frontInfo?synAccessSource=h5`
