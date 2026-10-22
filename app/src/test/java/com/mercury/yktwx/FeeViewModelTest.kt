@@ -36,34 +36,92 @@ class FeeViewModelTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
-    @Test fun passwordRejectionShowsResultExcludesFailedMethodAndContinuesWithNewOrder() {
+    @Test fun passwordRejectionKeepsOrderAndKeyboardForExplicitPasswordCorrection() {
         openPassword()
+        val before = model.state.value
         fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
             "{\"code\":60005,\"success\":false,\"data\":null,\"msg\":\"账户密码错误\"}"))
         model.payAccount("demo-type", "123456")
         await { fees.payments == 1 && !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals("账户密码错误", model.state.value.error)
+        assertSame(before.preparation, model.state.value.preparation)
+        assertSame(before.order, model.state.value.order)
+        assertSame(before.method, model.state.value.method)
+        assertNull(model.state.value.paymentRetry)
+        assertCannotContinue()
+        model.onForeground(); model.onResumed(true)
+        assertEquals(0, fees.resultQueries)
+        assertEquals(1, fees.creations)
+        assertEquals(1, fees.preparedOrders.size)
+        assertEquals(1, fees.payments)
+        fees.failure = null
+        model.payAccount("demo-type", "654321")
+        await { model.state.value.resultPhase == RechargePhase.Paid }
+        assertEquals(2, fees.payments)
+        assertEquals(1, fees.creations)
+        assertEquals(1, fees.preparedOrders.size)
+        assertEquals(listOf("FAKE-ORDER", "FAKE-ORDER"), fees.paidOrders)
+        assertEquals(0, fees.launches)
+    }
+
+    @Test fun passwordClassificationUsesReasonInsteadOfMatchingMessageAndAlsoWorksWithSingleMethod() {
+        fees.methods = listOf(fees.accountMethod)
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Password, "服务端其他语言的密码提示")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals("服务端其他语言的密码提示", model.state.value.error)
+        assertNotNull(model.state.value.preparation)
+        assertNotNull(model.state.value.order)
+        assertCannotContinue()
+        assertEquals(1, fees.payments)
+        assertEquals(0, fees.resultQueries)
+    }
+
+    @Test fun genericRejectionNamedPasswordErrorDoesNotEnableSameOrderPasswordRetry() {
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Other, "账户密码错误")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading }
         assertEquals(FeeStage.Result, model.state.value.stage)
         assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
         assertEquals("账户密码错误", model.state.value.error)
-        assertNull(model.state.value.preparation)
         assertNull(model.state.value.order)
-        assertTrue(model.state.value.canContinuePayment)
-        assertEquals(100L, model.state.value.paymentRetry?.amountCents)
+        assertNull(model.state.value.preparation)
         assertEquals(listOf(fees.wechatMethod), model.state.value.paymentRetry?.methods)
-        assertEquals(0, fees.resultQueries)
-        model.continuePayment(fees.accountMethod)
+    }
+
+    @Test fun correctedPasswordStillHandlesExpiredOrderWithoutAnotherOrderOrAutomaticPayment() {
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Password, "账户密码错误")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        fees.failure = FeeOrderExpired()
+        model.payAccount("demo-type", "654321")
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
+        assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
+        assertEquals("订单已过期，请重新发起缴费", model.state.value.error)
+        assertCannotContinue()
         assertEquals(1, fees.creations)
-        fees.failure = null
-        model.onForeground(); model.onResumed(true)
         assertEquals(0, fees.resultQueries)
-        model.continuePayment(fees.wechatMethod)
-        await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
-        assertEquals(2, fees.creations)
-        assertEquals("FAKE-ORDER-2", model.state.value.order?.pending?.orderId)
-        assertNull(model.state.value.paymentRetry)
+    }
+
+    @Test fun passwordCorrectionCanBeCanceledWithoutRestoringOldDialog() {
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Password, "账户密码错误")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading }
+        model.cancelPayment()
+        assertEquals(FeeStage.Query, model.state.value.stage)
+        assertNull(model.state.value.order)
+        assertNull(model.state.value.preparation)
+        assertNull(model.state.value.error)
+        model.payAccount("demo-type", "654321")
         assertEquals(1, fees.payments)
-        assertEquals(1, fees.launches)
-        assertEquals(1, fees.preparedOrders.size)
+        assertEquals(1, fees.creations)
     }
 
     @Test fun server60050ShowsOfficialMessageInResultWithoutAutomaticallyPaying() {
@@ -334,6 +392,21 @@ class FeeViewModelTest {
         assertEquals(0, fees.payments)
     }
 
+    @Test fun passwordCodeDuringPreparationDoesNotEnterPasswordCorrection() {
+        model.open(FeeProject.Network, "test-user", false)
+        await { !model.state.value.loading && model.state.value.query != null }
+        model.create(100)
+        await { model.state.value.stage == FeeStage.Methods }
+        fees.prepareFailure = FeePaymentRejected(FeeRejectionReason.Password, "账户密码错误")
+        model.chooseMethod(fees.accountMethod)
+        await { !model.state.value.loading }
+        assertEquals(FeeStage.Result, model.state.value.stage)
+        assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
+        assertNull(model.state.value.preparation)
+        assertEquals(listOf(fees.wechatMethod), model.state.value.paymentRetry?.methods)
+        assertEquals(0, fees.payments)
+    }
+
     @Test fun initialOrderRejectionShowsMessageWithoutReusingMissingChannels() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
@@ -471,6 +544,7 @@ class FeeViewModelTest {
         var createFailure: Exception? = null
         var prepareFailure: Exception? = null
         var launchFailure: Exception? = null
+        val paidOrders = mutableListOf<String>()
         var payments = 0
         var resultQueries = 0
         var resultGate = CompletableDeferred<Unit>().apply { complete(Unit) }
@@ -500,6 +574,7 @@ class FeeViewModelTest {
         }
         override suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String) {
             payments++
+            paidOrders += order.orderId!!
             gate.await()
             failure?.let { throw it }
         }

@@ -209,6 +209,36 @@ class FeeApiTest {
         catch (_: AuthenticationRequired) { }
     }
 
+    @Test fun manualPasswordCorrectionRechecksServerExpiryBeforeAnotherPayment() = runBlocking {
+        val calls = mutableListOf<FakeHttps>()
+        var expired = false
+        val api = FeeApi { url ->
+            val body = when (url.path) {
+                "/charge/pay/getpayinfo" -> orderInfo().toString()
+                "/charge/order/getCurrentTime" -> JSONObject().put("code", 200)
+                    .put("currentTime", if (expired) "2026-10-21 12:30:00" else "2026-10-21 12:00:00").toString()
+                "/blade-pay/pay" -> JSONObject().put("code", 60005).put("success", false)
+                    .put("data", JSONObject.NULL).put("msg", "账户密码错误").toString()
+                else -> error("Unexpected URL")
+            }
+            FakeHttps(url, body).also(calls::add)
+        }
+        val keyboard = preparation()
+        try {
+            api.payFeeAccount("fake-token", pending(), method(), keyboard, "demo-type", "123456")
+            fail("Expected password rejection")
+        } catch (e: FeePaymentRejected) { assertEquals(FeeRejectionReason.Password, e.reason) }
+        assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
+        expired = true
+        try {
+            api.payFeeAccount("fake-token", pending(), method(), keyboard, "demo-type", "654321")
+            fail("Expected order expiry before password submission")
+        } catch (_: FeeOrderExpired) { }
+        assertEquals(2, calls.count { it.url.path == "/charge/pay/getpayinfo" })
+        assertEquals(2, calls.count { it.url.path == "/charge/order/getCurrentTime" })
+        assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
+    }
+
     @Test fun passwordClassificationUsesCodeAndIgnoresMessageText() {
         for (text in listOf("账户密码错误", "不同语言的提示", "余额不足", "<script>private-message</script>")) {
             val body = JSONObject().put("code", 60005).put("success", false).put("data", JSONObject.NULL).put("msg", text)
