@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.hypot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.WindowInsets
@@ -202,10 +204,58 @@ class CardServiceUiTest {
             AppTheme { CampusCardServicesCard(loading.value, { calls++; loading.value = true },
                 CampusCardAction.ManageState.takeIf { loading.value }) }
         }
+        compose.onAllNodes(hasClickAction()).assertCountEquals(2)
+        compose.onAllNodes(hasClickAction(), useUnmergedTree = true).assertCountEquals(2)
         compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
         assertEquals(1, calls)
+        compose.onNodeWithContentDescription("挂失 / 解挂").assertIsNotEnabled()
         compose.onNodeWithText("挂失 / 解挂").performClick()
         assertEquals(1, calls)
+    }
+    @Test fun servicePressIndicationStaysInsideCircleForBothGrids() {
+        page(ColorSchemeMode.Light)
+        for (label in listOf("校园网费", "挂失 / 解挂")) {
+            val node = compose.onNodeWithContentDescription(label)
+            node.assertHasClickAction()
+            val before = node.captureToImage().asAndroidBitmap()
+            var density = 1f
+            compose.runOnIdle { density = compose.activity.resources.displayMetrics.density }
+            val centerX = before.width / 2f
+            val centerY = 32f * density // 8 dp top padding + 24 dp icon radius.
+            val radius = 24f * density
+            compose.mainClock.autoAdvance = false
+            node.performTouchInput { down(Offset(centerX, centerY)) }
+            compose.mainClock.advanceTimeBy(300)
+            val pressed = node.captureToImage().asAndroidBitmap()
+            var changed = 0
+            for (y in 0 until before.height) for (x in 0 until before.width) {
+                if (before.getPixel(x, y) != pressed.getPixel(x, y)) {
+                    changed++
+                    assertTrue("$label press highlight escaped its circular icon at ($x, $y)",
+                        hypot(x + 0.5f - centerX, y + 0.5f - centerY) <= radius + 2f)
+                }
+            }
+            assertTrue("$label has no visible press feedback", changed > 0)
+            screenshot(if (label == "校园网费") "life-fees-circular-press" else "campus-card-circular-press")
+            node.performTouchInput { cancel() }
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+        }
+    }
+    @Test fun successfulStateDoesNotRequireAnExtraCompletionClick() {
+        val card = CampusCard("demo", "校园卡", "202600000001", false, false, 0)
+        val current = mutableStateOf(CardServiceUiState(visible = true, cards = listOf(card), selectedCard = card))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}) } }
+            }
+        }
+        compose.onNodeWithText("确认挂失").assertExists()
+        compose.runOnIdle { current.value = current.value.copy(visible = false, selectedCard = null, completed = true) }
+        compose.waitForIdle()
+        compose.onNodeWithText("确认挂失").assertDoesNotExist()
+        compose.onNodeWithText("操作成功").assertDoesNotExist()
+        compose.onNodeWithText("完成").assertDoesNotExist()
     }
     @Test fun captchaImageIsClickableBesideInputAndPreviousClearsCodeButKeepsRecipientInput() {
         val image = java.io.ByteArrayOutputStream().also {

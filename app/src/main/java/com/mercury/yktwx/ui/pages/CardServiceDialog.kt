@@ -118,32 +118,29 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
     val keyboard = LocalSoftwareKeyboardController.current
     val card = state.selectedCard
     OverlayDialog(show = state.visible,
-        title = if (state.completed) "操作成功" else if (card != null) "确认" + state.operation.label else "挂失 / 解挂",
-        summary = if (card != null && !state.completed && !state.loading && !state.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
+        title = if (card != null) "确认" + state.operation.label else "挂失 / 解挂",
+        summary = if (card != null && !state.loading && !state.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (state.loading && card == null) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }
-            if (state.cards.size > 1 && !state.completed) state.cards.forEach { candidate ->
+            if (state.cards.size > 1) state.cards.forEach { candidate ->
                 Button(onClick = { onSelectCard(candidate) }, enabled = !state.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
                     Text(candidate.label + if (candidate.lost) " · 已挂失" else " · 未挂失")
                 }
             }
-            if (card != null && !state.completed && state.needsPassword) TextField(value = password,
+            if (card != null && state.needsPassword) TextField(value = password,
                 onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
                 enabled = !state.loading, visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
-            if (!state.loading && card == null && !state.completed && state.error == null) Text(
+            if (!state.loading && card == null && state.error == null) Text(
                 if (state.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
             state.error?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.completed) Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
-                else {
-                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
-                    Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
-                        enabled = card != null && !state.loading && !state.preview && (!state.needsPassword || password.length == 6),
-                        modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "处理中…" else "确定") }
-                }
+                Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
+                    enabled = card != null && !state.loading && !state.preview && (!state.needsPassword || password.length == 6),
+                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "处理中…" else "确定") }
             }
         }
     }

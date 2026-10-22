@@ -87,7 +87,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     fun changeCard(password: String) {
         val s = mutable.value
         val card = s.selectedCard ?: return
-        if (s.preview || s.loading || s.completed || task?.isActive == true || s.action == CampusCardAction.OthersRecharge) return
+        if (!s.visible || s.preview || s.loading || s.completed || task?.isActive == true || s.action == CampusCardAction.OthersRecharge) return
         if (s.needsPassword && !password.matches(Regex("[0-9]{6}"))) { mutable.value = s.copy(error = "请输入 6 位查询密码"); return }
         val current = attempt
         val username = owner
@@ -97,25 +97,35 @@ class CardServiceViewModel internal constructor(app: Application, private val re
             try {
                 val cards = repository.changeCardState(username, card, operation, password)
                 if (attempt != current) return@launch
-                mutable.value = mutable.value.copy(loading = false, cards = cards, selectedCard = null, completed = true)
-                changed.send(Unit)
+                completeCardChange(cards, operation)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (attempt != current) return@launch
                 if (e is CardOperationRejected) {
-                    mutable.value = mutable.value.copy(loading = false, error = safeError(e))
+                    mutable.value = mutable.value.copy(loading = false, error = null)
+                    notifications.send(safeError(e))
                     return@launch
                 }
                 // Never replay the POST. A read can establish the outcome after an ambiguous transport error.
                 val refreshed = try { repository.cardConfiguration(username).cards } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
                 if (attempt != current) return@launch
                 val confirmed = refreshed.singleOrNull { it.account == card.account }?.lost == (operation == CampusCardAction.Lost)
-                mutable.value = mutable.value.copy(loading = false, cards = refreshed.ifEmpty { s.cards }, selectedCard = null,
-                    completed = confirmed, error = if (confirmed) null else "操作结果待确认，请关闭后重新查看")
-                // Clear stale payment codes even when the write's outcome is uncertain.
-                changed.send(Unit)
+                if (confirmed) {
+                    completeCardChange(refreshed, operation)
+                } else {
+                    mutable.value = mutable.value.copy(visible = false, loading = false, cards = refreshed.ifEmpty { s.cards }, selectedCard = null, error = null)
+                    // Clear stale payment codes and require a fresh read before another write.
+                    changed.send(Unit)
+                    notifications.send("操作结果待确认，请重新查看卡状态")
+                }
             }
         }
+    }
+    private suspend fun completeCardChange(cards: List<CampusCard>, operation: CampusCardAction) {
+        // Do not call dismiss(): it would cancel this task and drain the result events.
+        mutable.value = mutable.value.copy(visible = false, loading = false, cards = cards, selectedCard = null, completed = true, error = null)
+        changed.send(Unit)
+        notifications.send(operation.label + "成功")
     }
     fun clearRecipient() {
         if (mutable.value.loading) return

@@ -10,6 +10,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -46,12 +48,19 @@ class CardServiceViewModelTest {
         await { model.state.value.completed }
         assertEquals(CampusCardAction.Lost, service.lastAction)
         assertTrue(model.state.value.cards.single().lost)
+        assertFalse(model.state.value.visible)
+        assertNull(model.state.value.selectedCard)
+        assertOneResult("挂失成功")
+        model.changeCard("")
+        assertEquals(1, service.writes)
         openCards()
         assertEquals(CampusCardAction.Unlost, model.state.value.operation)
         model.changeCard("")
         await { model.state.value.completed }
         assertEquals(CampusCardAction.Unlost, service.lastAction)
         assertFalse(model.state.value.cards.single().lost)
+        assertFalse(model.state.value.visible)
+        assertOneResult("解挂成功")
         assertEquals(2, service.writes)
     }
     @Test fun duplicateClicksAndInvalidPasswordsNeverDuplicateWrites() {
@@ -75,6 +84,23 @@ class CardServiceViewModelTest {
         assertEquals(1, service.writes)
         assertTrue(model.state.value.cards.single().lost)
         assertNull(model.state.value.error)
+        assertFalse(model.state.value.visible)
+        assertOneResult("挂失成功")
+    }
+    @Test fun unconfirmedWriteToastsAndRequiresReopeningBeforeAnotherWrite() {
+        openCards()
+        service.writeFailure = NetworkFailure()
+        service.cardFailure = NetworkFailure()
+        model.changeCard("")
+        await { !model.state.value.loading }
+        assertFalse(model.state.value.visible)
+        assertFalse(model.state.value.completed)
+        assertNull(model.state.value.selectedCard)
+        assertNull(model.state.value.error)
+        assertEquals(1, service.writes)
+        assertOneResult("操作结果待确认，请重新查看卡状态")
+        model.changeCard("")
+        assertEquals(1, service.writes)
     }
     @Test fun lateWriteCannotRestoreDialogAfterAccountChanges() {
         openCards()
@@ -87,6 +113,18 @@ class CardServiceViewModelTest {
         await { service.writeResponses == 1 }
         assertFalse(model.state.value.visible)
         assertNull(model.state.value.selectedCard)
+        assertNoResult()
+    }
+    @Test fun dismissedWriteDoesNotSendALateResultToast() {
+        openCards()
+        service.writeGate = CompletableDeferred()
+        model.changeCard("")
+        await { service.writes == 1 }
+        model.dismiss()
+        service.writeGate.complete(Unit)
+        await { service.writeResponses == 1 }
+        assertFalse(model.state.value.visible)
+        assertNoResult()
     }
     @Test fun recipientRequiresExplicitSelectionAndEditingClearsOldTarget() {
         openRecipients()
@@ -165,8 +203,18 @@ class CardServiceViewModelTest {
         await { !model.state.value.loading }
         assertSame(selected, model.state.value.selectedCard)
         assertFalse(model.state.value.completed)
-        assertEquals("查询密码错误，请重新输入", model.state.value.error)
+        assertTrue(model.state.value.visible)
+        assertNull(model.state.value.error)
         assertEquals(1, service.writes)
+        assertEquals(1, service.cardReads)
+        assertEquals("查询密码错误，请重新输入", runBlocking { withTimeout(1_000) { model.messages.first() } })
+        assertNoResult()
+        service.writeFailure = null
+        model.changeCard("123456")
+        await { model.state.value.completed }
+        assertFalse(model.state.value.visible)
+        assertEquals(2, service.writes)
+        assertOneResult("解挂成功")
     }
     @Test fun stateEntryWaitsForCardReadAndRepeatedClicksOpenOnlyOneConfirmation() {
         service.cardGate = CompletableDeferred()
@@ -207,6 +255,19 @@ class CardServiceViewModelTest {
         model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "abcde")
         await { !model.state.value.loading }
         assertEquals(1, model.state.value.recipients.size)
+    }
+    private fun assertOneResult(message: String) {
+        runBlocking {
+            assertEquals(message, withTimeout(1_000) { model.messages.first() })
+            withTimeout(1_000) { model.cardChanges.first() }
+        }
+        assertNoResult()
+    }
+    private fun assertNoResult() {
+        runBlocking {
+            assertNull(withTimeoutOrNull(50) { model.messages.first() })
+            assertNull(withTimeoutOrNull(50) { model.cardChanges.first() })
+        }
     }
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
