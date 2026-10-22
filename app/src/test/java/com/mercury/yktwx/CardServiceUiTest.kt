@@ -65,7 +65,7 @@ class CardServiceUiTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("校园卡服务"))
         compose.onNodeWithText("校园卡服务").assertIsDisplayed()
     }
-    @Test fun twoEntryCardIsBelowLivingFeesOnTheSameGrid() {
+    @Test fun threeEntryCardIsBelowLivingFeesOnTheSameGrid() {
         page(ColorSchemeMode.Light)
         compose.onNodeWithText("生活缴费").assertExists()
         val life = compose.onNodeWithText("生活缴费").fetchSemanticsNode().boundsInRoot
@@ -73,11 +73,12 @@ class CardServiceUiTest {
         assertTrue(card.top > life.top)
         compose.onNodeWithContentDescription("挂失 / 解挂").assertIsDisplayed()
         compose.onNodeWithContentDescription("代人充值").assertIsDisplayed()
+        compose.onNodeWithContentDescription("修改查询密码").assertIsDisplayed()
         compose.onNodeWithContentDescription("挂失").assertDoesNotExist()
         compose.onNodeWithContentDescription("解挂").assertDoesNotExist()
         screenshot("campus-card-services-light")
     }
-    @Test fun twoEntryCardAlsoRendersInDarkTheme() {
+    @Test fun threeEntryCardAlsoRendersInDarkTheme() {
         page(ColorSchemeMode.Dark)
         compose.onNodeWithText("校园卡服务").assertIsDisplayed()
         screenshot("campus-card-services-dark")
@@ -236,8 +237,8 @@ class CardServiceUiTest {
             AppTheme { CampusCardServicesCard(loading.value, { calls++; loading.value = true },
                 CampusCardAction.ManageState.takeIf { loading.value }) }
         }
-        compose.onAllNodes(hasClickAction()).assertCountEquals(2)
-        compose.onAllNodes(hasClickAction(), useUnmergedTree = true).assertCountEquals(2)
+        compose.onAllNodes(hasClickAction()).assertCountEquals(3)
+        compose.onAllNodes(hasClickAction(), useUnmergedTree = true).assertCountEquals(3)
         compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
         assertEquals(1, calls)
         compose.onNodeWithContentDescription("挂失 / 解挂").assertIsNotEnabled()

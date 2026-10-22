@@ -50,9 +50,12 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
         catch (_: java.io.IOException) { throw NetworkFailure() }
         finally { connection.disconnect() }
     }
-    fun json(response: Response, feePayment: Boolean = false): JSONObject {
+    fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false): JSONObject {
         val body = runCatching { JSONObject(response.body) }.getOrNull()
-        if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
+        if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) {
+            val msg = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+            throw AuthenticationRequired(if (preserveAuthenticationMessage) msg ?: "登录已失效，请重新登录" else "登录已失效，请重新登录")
+        }
         if (feePayment && response.status == 200 && body != null) {
             FeePaymentErrors.rejection(body)?.let { throw it }
         }

@@ -22,6 +22,7 @@ import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
+import com.mercury.yktwx.CardPasswordViewModel
 import com.mercury.yktwx.CardServiceViewModel
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
@@ -79,6 +80,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val rechargeModel: RechargeViewModel = viewModel()
         val feeModel: FeeViewModel = viewModel()
         val cardModel: CardServiceViewModel = viewModel()
+        val passwordModel: CardPasswordViewModel = viewModel()
         val context = LocalContext.current
         LaunchedEffect(state.restoringLogin, state.needsLogin, state.username) {
             if (!state.restoringLogin) {
@@ -86,6 +88,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                 rechargeModel.accountChanged(owner.orEmpty())
                 feeModel.accountChanged(owner.orEmpty())
                 cardModel.accountChanged(owner.orEmpty())
+                passwordModel.accountChanged(owner.orEmpty())
                 billViewModel.accountChanged(owner)
             }
         }
@@ -99,6 +102,12 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         }
         LaunchedEffect(cardModel) {
             cardModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
+        LaunchedEffect(passwordModel) {
+            passwordModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
+        LaunchedEffect(passwordModel, viewModel) {
+            passwordModel.passwordChanges.collect { username -> viewModel.cardPasswordChanged(username) }
         }
         LaunchedEffect(cardModel) {
             cardModel.cardChanges.collect { viewModel.cardStateChanged() }
@@ -164,7 +173,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                             MainContent(
                                 settings, state,
                                 if (interactive) billState else BillUiState(),
-                                viewModel, billViewModel, rechargeModel, feeModel, cardModel,
+                                viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel,
                                 isActive = interactive,
                             )
                         }
@@ -206,11 +215,13 @@ private fun MainContent(
     rechargeModel: RechargeViewModel,
     feeModel: FeeViewModel,
     cardModel: CardServiceViewModel,
+    passwordModel: CardPasswordViewModel,
     isActive: Boolean,
 ) {
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
     val cardState by cardModel.state.collectAsStateWithLifecycle()
+    val passwordState by passwordModel.state.collectAsStateWithLifecycle()
     var feeProject by remember { mutableStateOf<FeeProject?>(null) }
     var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
@@ -241,10 +252,11 @@ private fun MainContent(
         if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
     }
     fun openFee(project: FeeProject) {
-        if (!isActive || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!isActive || passwordState.loading || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         feeOpening = project
         rechargeModel.dismiss()
         cardModel.dismiss()
+        passwordModel.dismiss()
         feeModel.open(project, state.username, state.preview)
     }
     fun closeFee() {
@@ -335,7 +347,7 @@ private fun MainContent(
                                     state, settings, bottom,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onLogout = { if (isActive) viewModel.logout() },
-                                    onRecharge = { if (isActive) { cardModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
+                                    onRecharge = { if (isActive && !passwordState.loading) { cardModel.dismiss(); passwordModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                 )
                                 1 -> HallPage(
@@ -344,13 +356,20 @@ private fun MainContent(
                                     onOpenFee = ::openFee,
                                     feeOpening = feeOpening,
                                     onOpenCardService = { action ->
-                                        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading) {
+                                        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
                                             rechargeModel.dismiss()
-                                            cardModel.open(action, state.username, state.preview)
+                                            if (action == CampusCardAction.ChangePassword) {
+                                                cardModel.dismiss()
+                                                passwordModel.open(state.username, state.preview)
+                                            } else {
+                                                passwordModel.dismiss()
+                                                cardModel.open(action, state.username, state.preview)
+                                            }
                                         }
                                     },
-                                    cardServiceOpening = cardState.loading || rechargeState.loading || feeOpening != null,
-                                    cardServiceLoadingAction = cardState.action.takeIf { cardState.loading && !cardState.visible },
+                                    cardServiceOpening = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
+                                    cardServiceLoadingAction = if (passwordState.loading && !passwordState.visible) CampusCardAction.ChangePassword
+                                        else cardState.action.takeIf { cardState.loading && !cardState.visible },
                                 )
                                 2 -> BillPage(
                                     state = billState,
@@ -382,6 +401,7 @@ private fun MainContent(
                         cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
                         cardModel::selectRecipient, cardModel::continueRecharge,
                     )
+                    CardPasswordDialog(passwordState, passwordModel::dismiss, passwordModel::selectCard, passwordModel::submit)
                     // Keep recharge under the root Scaffold so its overlay has a popup host.
                     RechargeDialog(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
