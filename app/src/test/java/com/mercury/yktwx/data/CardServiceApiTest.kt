@@ -149,6 +149,26 @@ class CardServiceApiTest {
         assertEquals(listOf(1000L, 5000L, 10000L), config.amountsCents)
         assertTrue(calls.none { it.url.path.endsWith("queryCard") })
     }
+    @Test fun unlostAcceptsLegitimateDollarMappingWithoutFetchingAnotherKeyboard() = runBlocking {
+        var lost = true
+        val calls = mutableListOf<FakeHttps>()
+        val api = CardServiceApi { url ->
+            val body = when {
+                url.path.endsWith("frontInfo") -> configuration()
+                url.path.endsWith("getCampusCards") -> cardResponse(if (lost) 1 else 0)
+                url.path.endsWith("keyboard") -> JSONObject().put("code", 200).put("data", JSONObject()
+                    .put("numberKeyboard", "\$bcdefghij").put("uuid", "fake-uuid")).toString()
+                url.path.endsWith("unlostCard") -> { lost = false; "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"recipient-card\"}}" }
+                else -> error("Unexpected local path")
+            }
+            FakeHttps(url, body).also(calls::add)
+        }
+        assertFalse(api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "000000").single().lost)
+        val body = JSONObject(calls.single { it.requestMethod == "POST" }.sent.toString("UTF-8"))
+        assertEquals("1\$1\$" + "\$".repeat(6) + "\$1\$fake-uuid", body.getString("pwd"))
+        assertEquals(1, calls.count { it.url.path.endsWith("keyboard") })
+        assertEquals(1, calls.count { it.requestMethod == "POST" })
+    }
     @Test fun numberEncoderRejectsBadInputsAndSensitiveModelsAreRedacted() {
         for ((password, mapping, uuid) in listOf(Triple("12345", "abcdefghij", "fake"), Triple("123456", "aaaaaaaaaa", "fake"), Triple("123456", "abcdefghij", "bad\$id"))) {
             try { NumberKeyboardEncoder.encode(password, mapping, uuid); fail("Expected invalid input") } catch (_: YktException) { }

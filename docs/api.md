@@ -39,6 +39,8 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 卡状态使用 `GET /berserker-app/ykt/tsm/getCampusCards`，目标是卡片 `account`。挂失与解挂分别使用 `POST /berserker-app/ykt/tsm/lostCard`、`unlostCard`，按配置提交 `account`、`synAccessSource` 和数字安全键盘编码的查询密码。成功核对外层、内层返回码与目标状态；响应未返回新状态时重新查询。超时先查状态，不自动重发。明确拒绝保留平台原因，存在目标回显时必须匹配。
 
+修改密码使用 `POST /berserker-app/ykt/tsm/modifyPwd`，提交 `account`、`oldpw`、`newpw`、`renewpw`、`synAccessSource`。密码使用同次数字安全键盘映射与 UUID，成功要求外层 `code=200`、内层 `retcode=0`，随后清除旧凭据和 Token 并返回登录页。
+
 ## 充值与代人充值
 
 | 接口 | 用途 |

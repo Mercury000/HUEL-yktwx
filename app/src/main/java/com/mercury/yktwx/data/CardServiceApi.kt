@@ -7,22 +7,23 @@ import javax.net.ssl.HttpsURLConnection
 
 class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : CardService {
     private val http = PaymentHttp(openConnection)
-    private suspend fun get(path: String, token: String, params: Map<String, String> = emptyMap()) = http.json(http.request(path, token, params))
+    private suspend fun get(path: String, token: String, params: Map<String, String> = emptyMap(), preserveAuthMessage: Boolean = false) =
+        http.json(http.request(path, token, params), preserveAuthenticationMessage = preserveAuthMessage)
     private fun config(data: JSONObject, key: String): JSONObject = when (val raw = data.opt(key)) {
         is JSONObject -> raw
         is String -> runCatching { JSONObject(raw) }.getOrElse { throw YktException("校园卡服务配置异常") }
         null -> JSONObject()
         else -> if (raw === JSONObject.NULL) JSONObject() else throw YktException("校园卡服务配置异常")
     }
-    private suspend fun settings(token: String): Triple<JSONObject, JSONObject, JSONObject> {
-        val data = get("/berserker-app/frontInfo", token).getJSONObject("data")
+    private suspend fun settings(token: String, preserveAuthMessage: Boolean = false): Triple<JSONObject, JSONObject, JSONObject> {
+        val data = get("/berserker-app/frontInfo", token, preserveAuthMessage = preserveAuthMessage).getJSONObject("data")
         val front = config(data, "getFrontConfig")
         val ecard = config(data, "getEcardConfig")
         val business = config(data, "getBusinessConfig")
         return Triple(front, ecard, config(business, "businessHandleConfig"))
     }
-    private suspend fun cards(token: String): List<CampusCard> {
-        val data = get("/berserker-app/ykt/tsm/getCampusCards", token).getJSONObject("data")
+    private suspend fun cards(token: String, preserveAuthMessage: Boolean = false, verifyPaymentState: Boolean = false): List<CampusCard> {
+        val data = get("/berserker-app/ykt/tsm/getCampusCards", token, preserveAuthMessage = preserveAuthMessage).getJSONObject("data")
         if (data.rechargeText("retcode") != "0") throw YktException(
             (data.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() } ?: "读取校园卡状态失败",
         )
@@ -31,15 +32,68 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
             val card = list.getJSONObject(index)
             val account = card.rechargeText("account")
             if (account.isBlank() || card.rechargeText("lostflag") !in listOf("0", "1")) throw YktException("校园卡状态数据异常")
+            if (verifyPaymentState && (card.rechargeText("freezeflag") !in listOf("0", "1") || card.optInt("acc_status", -1) < 0))
+                throw YktException("校园卡状态数据异常")
             CampusCard(account, card.rechargeText("cardname"), card.rechargeText("sno"), card.rechargeText("lostflag") == "1",
                 card.optInt("freezeflag", -1) != 0, card.optInt("acc_status", -1))
         }
     }
+    /** Read-only payment preflight, scoped to the selected unified account. */
+    internal suspend fun paymentCard(token: String, account: String): CampusCard =
+        cards(token, verifyPaymentState = true).singleOrNull { it.account == account }
+            ?: throw YktException("无法确认当前付款账户的校园卡状态")
+
     override suspend fun cardConfiguration(token: String): CardServiceConfiguration {
         val (front, _, business) = settings(token)
         val lostNeedsPassword = front.rechargeText("lockFlag") == "1" || business.rechargeText("lockFlag") == "1"
         val unlostNeedsPassword = front.rechargeText("unlockFlag") != "0" && business.rechargeText("unlockFlag") != "0"
         return CardServiceConfiguration(cards(token), lostNeedsPassword, unlostNeedsPassword)
+    }
+    override suspend fun passwordConfiguration(token: String): CardPasswordConfiguration {
+        val (front, ecard, business) = settings(token, preserveAuthMessage = true)
+        val changeFlag = front.rechargeText("changePasswordFlag")
+        // Only the observed six-digit, old-password verification flow is supported.
+        if (ecard.rechargeText("passwordType") == "1" || changeFlag.getOrNull(1) in listOf('2', '4') ||
+            business.rechargeText("modifyPwdFlag") == "0") throw YktException("当前改密方式请在官网完成")
+        val eligible = cards(token, preserveAuthMessage = true).filter { !it.frozen && it.status == 0 && (!it.lost || ecard.rechargeText("showLost") == "1") }
+        if (eligible.isEmpty()) throw YktException("没有可修改密码的校园卡，请在官网检查卡状态")
+        return CardPasswordConfiguration(eligible)
+    }
+    override suspend fun modifyCardPassword(token: String, card: CampusCard, oldPassword: String, newPassword: String, confirmation: String) {
+        if (listOf(oldPassword, newPassword, confirmation).any { !it.matches(Regex("[0-9]{6}")) })
+            throw YktException("请输入 6 位数字查询密码")
+        if (newPassword != confirmation) throw YktException("两次输入的新密码不一致")
+        val current = passwordConfiguration(token).cards.singleOrNull { it.account == card.account }
+            ?: throw YktException("校园卡已变更或不可用，请重新选择")
+        suspend fun encode(password: String): String {
+            val keyboard = get("/berserker-secure/keyboard", token, mapOf("type" to "Number", "order" to "0"),
+                preserveAuthMessage = true).getJSONObject("data")
+            return NumberKeyboardEncoder.encode(password, keyboard.rechargeText("numberKeyboard"), keyboard.rechargeText("uuid"))
+        }
+        val body = JSONObject().put("account", current.account).put("oldpw", encode(oldPassword))
+            .put("newpw", encode(newPassword)).put("renewpw", encode(confirmation)).put("synAccessSource", "h5")
+        // One write only. An ambiguous result must not be replayed or called successful.
+        val response = try { http.request("/berserker-app/ykt/tsm/modifyPwd", token, jsonBody = body) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: NetworkFailure) { throw YktException("修改结果未确认，请先在官网核实，勿重复提交") }
+        val outer = runCatching { JSONObject(response.body) }.getOrNull()
+        val data = outer?.optJSONObject("data")
+        // Preserve official text exactly (including whitespace); never classify failure by message wording.
+        val msg = (outer?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+        val errmsg = (data?.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
+            ?: (data?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+        val unknown = "修改结果未确认，请先在官网核实，勿重复提交"
+        if (response.status in listOf(401, 403) || outer?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038))
+            throw AuthenticationRequired(msg ?: errmsg ?: "登录已失效，请重新登录")
+        if (response.status !in 200..299 || outer?.optInt("code") != 200 || outer.opt("success") == false)
+            throw YktException(msg ?: errmsg ?: unknown)
+        if (data == null) throw YktException(msg ?: unknown)
+        val retcode = data.rechargeText("retcode")
+        if (retcode.isBlank()) throw YktException(errmsg ?: msg ?: unknown)
+        if (retcode != "0") throw YktException(errmsg ?: msg ?: "修改查询密码失败")
+        val echoed = data.rechargeText("account")
+        if (echoed.isNotBlank() && echoed != current.account)
+            throw YktException("修改结果未确认，请先在官网核实，勿重复提交")
     }
     override suspend fun changeCardState(token: String, card: CampusCard, action: CampusCardAction, password: String): List<CampusCard> {
         require(action == CampusCardAction.Lost || action == CampusCardAction.Unlost)

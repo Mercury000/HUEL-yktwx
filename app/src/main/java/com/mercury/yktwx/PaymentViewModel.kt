@@ -160,6 +160,11 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             }
         }
     }
+    fun cardPasswordChanged(username: String) {
+        if (preview || mutable.value.username != username) return
+        notifications.trySend("查询密码修改成功，请重新登录")
+        logout()
+    }
     fun logout() {
         if (logoutJob?.isActive == true) return
         ticker?.cancel(); request?.cancel()

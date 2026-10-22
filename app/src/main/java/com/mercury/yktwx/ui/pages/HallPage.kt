@@ -94,24 +94,27 @@ private fun LifeFeesCard(opening: FeeProject?, onOpen: (FeeProject) -> Unit) {
     }
 }
 
-/** Two entries for now, on the same three-column grid as living fees. */
+/** Campus card services share the three-column grid used by living fees. */
 @Composable
 internal fun CampusCardServicesCard(opening: Boolean, onOpen: (CampusCardAction) -> Unit, loadingAction: CampusCardAction? = null) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("校园卡服务", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(CampusCardAction.ManageState, CampusCardAction.OthersRecharge).forEach { action ->
+                listOf(CampusCardAction.ManageState, CampusCardAction.OthersRecharge, CampusCardAction.ChangePassword).forEach { action ->
                     ServiceEntry(
                         label = action.label,
-                        icon = if (action == CampusCardAction.ManageState) AppIcons.CardState else AppIcons.OthersRecharge,
+                        icon = when (action) {
+                            CampusCardAction.ManageState -> AppIcons.CardState
+                            CampusCardAction.ChangePassword -> AppIcons.Password
+                            else -> AppIcons.OthersRecharge
+                        },
                         loading = loadingAction == action,
                         enabled = !opening,
                         modifier = Modifier.weight(1f),
                         onClick = { onOpen(action) },
                     )
                 }
-                Spacer(Modifier.weight(1f))
             }
         }
     }

@@ -15,7 +15,7 @@ class PaymentBatch(val codes: List<String>, val expiresSeconds: Long, val receiv
     override fun toString() = "PaymentBatch([redacted])"
 }
 open class YktException(message: String) : Exception(message)
-class AuthenticationRequired : YktException("登录已失效，请重新登录")
+class AuthenticationRequired(message: String = "登录已失效，请重新登录") : YktException(message)
 class InvalidCredentials : YktException("学号或密码无效，请重新输入")
 class CaptchaRequired : YktException("官网要求验证码，请在官方页面完成验证后重新登录")
 class NetworkFailure : YktException("网络连接失败，请检查网络后刷新")

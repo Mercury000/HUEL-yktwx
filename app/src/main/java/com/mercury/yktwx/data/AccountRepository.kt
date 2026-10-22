@@ -82,6 +82,13 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun launchFeeWechat(order: PendingRecharge, method: FeeMethod) =
         withSession(retryAuthentication = false, expectedUsername = order.username) { feeService.launchFeeWechat(it, order, method) }
     suspend fun feeResult(order: PendingRecharge) = withSession(expectedUsername = order.username) { feeService.feeResult(it, order) }
+    suspend fun passwordConfiguration(username: String) = withSession(expectedUsername = username) { cardService.passwordConfiguration(it) }
+    suspend fun modifyCardPassword(username: String, card: CampusCard, oldPassword: String, newPassword: String, confirmation: String) =
+        withSession(retryAuthentication = false, expectedUsername = username) {
+            cardService.modifyCardPassword(it, card, oldPassword, newPassword, confirmation)
+            // Clear under the same session lock before a queued refresh can re-login with old credentials.
+            vault.clear()
+        }
     suspend fun cardConfiguration(username: String) = withSession(expectedUsername = username) { cardService.cardConfiguration(it) }
     suspend fun changeCardState(username: String, card: CampusCard, action: CampusCardAction, password: String) =
         withSession(retryAuthentication = false, expectedUsername = username) { cardService.changeCardState(it, card, action, password) }

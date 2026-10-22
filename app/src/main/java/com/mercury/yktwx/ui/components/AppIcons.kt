@@ -98,6 +98,13 @@ object AppIcons {
             moveTo(20f, 7f); lineTo(16f, 7f)
         }
     }.build()
+    val Password = ImageVector.Builder("Password", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(7f, 10f); lineTo(7f, 7f); curveTo(7f, 1f, 17f, 1f, 17f, 7f); lineTo(17f, 10f)
+            moveTo(4f, 10f); lineTo(20f, 10f); lineTo(20f, 21f); lineTo(4f, 21f); close()
+            moveTo(12f, 14f); lineTo(12f, 17f)
+        }
+    }.build()
     val CardState = ImageVector.Builder("CardState", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 19f); lineTo(3f, 19f); close()
