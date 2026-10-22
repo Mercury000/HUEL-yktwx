@@ -27,8 +27,8 @@ data class CardServiceUiState(
     val completed: Boolean = false,
     val preview: Boolean = false,
 ) {
-    val operation get() = if (selectedCard?.lost == true) CampusCardAction.Unlost else CampusCardAction.Lost
-    val needsPassword get() = if (selectedCard?.lost == true) unlostNeedsPassword else lostNeedsPassword
+    val operation get() = if (action == CampusCardAction.Unlost || selectedCard?.lost == true) CampusCardAction.Unlost else CampusCardAction.Lost
+    val needsPassword get() = if (operation == CampusCardAction.Unlost) unlostNeedsPassword else lostNeedsPassword
     override fun toString() = "CardServiceUiState([redacted])"
 }
 class RecipientRechargeRequest(val username: String, val config: RechargeConfiguration, val preview: Boolean, internal val attempt: Long) {
@@ -48,6 +48,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
+    private var paymentAccount: String? = null
     fun open(action: CampusCardAction, username: String, preview: Boolean) {
         if (task?.isActive == true) return
         dismiss()
@@ -55,26 +56,45 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         mutable.value = CardServiceUiState(visible = action == CampusCardAction.OthersRecharge, action = action, preview = preview)
         if (action == CampusCardAction.OthersRecharge) refreshCaptcha() else refreshCards()
     }
+    fun openUnlost(username: String, account: String, preview: Boolean) {
+        if (task?.isActive == true || account.isBlank()) return
+        dismiss()
+        owner = username
+        paymentAccount = account
+        mutable.value = CardServiceUiState(visible = true, action = CampusCardAction.Unlost, preview = preview)
+        refreshCards()
+    }
     private fun refreshCards() {
         if (owner.isEmpty() || task?.isActive == true) return
         val current = attempt
         val username = owner
         val preview = mutable.value.preview
+        val targetAccount = paymentAccount
         mutable.value = mutable.value.copy(loading = true, error = null, completed = false, selectedCard = null)
         task = viewModelScope.launch {
             try {
                 val config = if (preview) CardServiceConfiguration(listOf(
-                    CampusCard("demo-card", "校园卡", "202600000001", false, false, 0)), false, true)
+                    CampusCard(targetAccount ?: "demo-card", "校园卡", "202600000001", targetAccount != null, false, 0)), false, true)
                 else repository.cardConfiguration(username)
                 if (attempt != current) return@launch
-                mutable.value = mutable.value.copy(visible = true, loading = false, cards = config.cards,
-                    selectedCard = config.cards.singleOrNull()?.takeIf { !it.frozen && it.status == 0 },
+                val cards = if (targetAccount == null) config.cards else listOf(
+                    config.cards.singleOrNull { it.account == targetAccount }
+                        ?: throw YktException("付款账户对应的校园卡已变更，请刷新卡状态"))
+                if (targetAccount != null && !cards.single().lost) {
+                    mutable.value = mutable.value.copy(visible = false, loading = false, cards = cards)
+                    changed.send(Unit)
+                    notifications.send("校园卡已解挂，正在更新付款状态")
+                    return@launch
+                }
+                mutable.value = mutable.value.copy(visible = true, loading = false, cards = cards,
+                    selectedCard = cards.singleOrNull()?.takeIf { !it.frozen && it.status == 0 },
                     lostNeedsPassword = config.lostNeedsPassword, unlostNeedsPassword = config.unlostNeedsPassword)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (attempt == current) {
-                    mutable.value = mutable.value.copy(visible = false, loading = false)
-                    notifications.send(safeError(e))
+                    mutable.value = mutable.value.copy(visible = targetAccount != null, loading = false,
+                        error = safeError(e).takeIf { targetAccount != null })
+                    if (targetAccount == null) notifications.send(safeError(e))
                 }
             }
         }
@@ -196,7 +216,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     fun accountChanged(username: String) { if (owner.isNotEmpty() && owner != username) dismiss() }
     fun dismiss() {
         attempt++
-        task?.cancel(); task = null; owner = ""
+        task?.cancel(); task = null; owner = ""; paymentAccount = null
         mutable.value = CardServiceUiState()
         while (ready.tryReceive().isSuccess) { }
         while (changed.tryReceive().isSuccess) { }

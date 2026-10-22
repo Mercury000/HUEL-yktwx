@@ -28,9 +28,14 @@ Python 与 Android 均只向该 HTTPS 源站请求，不依赖网页登录 Cooki
 ## 获取付款码
 
 1. `GET /berserker-app/ykt/tsm/codebarPayinfo?synAccessSource=h5`
-   - Android 读取统一账户 `ACCOUNT` 及余额，不按 `lostflag`／`freezeflag` 过滤账户。官网先展示余额，再依据服务端 `status` 判断取码可用性；`status=0` 时只停取码，不阻止账户展示或充值入口。
+   - Android 读取统一账户 `ACCOUNT` 及余额，不按 `lostflag`／`freezeflag` 过滤账户。账户展示和充值入口不依赖取码成功；`status=0` 时停止取码。
    - 从响应读取 `account`、`payacc`、`paytype`，不硬编码个人账户字段。
-2. `GET /berserker-app/ykt/tsm/batchGetBarCodeGet`
+2. `GET /berserker-app/ykt/tsm/getCampusCards?synAccessSource=h5`
+   - 以当前付款账户 `account` 精确匹配唯一卡片，确认 `lostflag`／`freezeflag`／`acc_status`；其他卡片挂失不影响当前账户。
+   - 已挂失时保留账户和余额，不请求或展示付款码；付款页显示“付款已暂停”，点击“解挂”直接打开当前卡片的确认解挂流程，不跳大厅、不自动提交操作。付款页不提供刷新／重试按钮，手动刷新统一使用下拉刷新。已冻结不提供解挂。
+   - 核验失败或匹配不唯一时不展示码，提示下拉刷新，不能把网络异常当作挂失。挂失／解挂完成后重新核验状态，获取新码；取消并失效化旧请求，防止晚返回的码恢复显示。
+   - 正常、挂失、冻结和核验状态使用相同付款卡片高度；按可用宽度及字体测量静态内容，兼顾大字体。挂失内容上下分布、解挂按钮固定在底部槽，核验图标与文案整体居中；状态切换不挤动余额卡，也不保留旧码。
+3. `GET /berserker-app/ykt/tsm/batchGetBarCodeGet`
    - 参数：前一步的 `account`、`payacc`、`paytype`，加 `synAccessSource=h5`。
    - 解析 `data.barcode` 和 `data.expires`，不将完整码写入日志。取码失败时保留本次查询的账户和余额、清除旧码，优先展示 `data.errmsg` 或外层 `msg`；充值入口不依赖是否已取得付款码。
 

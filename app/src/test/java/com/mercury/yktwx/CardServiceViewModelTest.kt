@@ -35,6 +35,57 @@ class CardServiceViewModelTest {
         service.writeGate.complete(Unit); service.queryGate.complete(Unit); service.cardGate.complete(Unit)
         store.clear(); shadowOf(Looper.getMainLooper()).idle()
     }
+    @Test fun paymentUnlostOpensImmediatelyAndSelectsOnlyTheMatchingCard() {
+        service.lost = true
+        service.needsPassword = true
+        service.extraCards = listOf(CampusCard("other-card", "另一张卡", "202600000002", true, false, 0))
+        service.cardGate = CompletableDeferred()
+        model.openUnlost(vault.username, "fake-card", false)
+        assertTrue(model.state.value.visible)
+        assertTrue(model.state.value.loading)
+        assertEquals(CampusCardAction.Unlost, model.state.value.operation)
+        service.cardGate.complete(Unit)
+        await { !model.state.value.loading }
+        assertEquals("fake-card", model.state.value.selectedCard!!.account)
+        assertEquals(1, model.state.value.cards.size)
+        assertTrue(model.state.value.needsPassword)
+        model.changeCard("123456")
+        await { model.state.value.completed }
+        assertEquals(CampusCardAction.Unlost, service.lastAction)
+        assertFalse(service.lost)
+        assertOneResult("解挂成功")
+    }
+
+    @Test fun paymentUnlostNeverTurnsIntoLostWhenTheCardWasAlreadyRestored() {
+        service.lost = false
+        model.openUnlost(vault.username, "fake-card", false)
+        await { !model.state.value.loading }
+        assertFalse(model.state.value.visible)
+        assertNull(model.state.value.selectedCard)
+        model.changeCard("")
+        assertEquals(0, service.writes)
+        assertOneResult("校园卡已解挂，正在更新付款状态")
+    }
+
+    @Test fun paymentUnlostWithMissingTargetOrFailedReadKeepsAnInertDialog() {
+        service.cardFailure = NetworkFailure()
+        model.openUnlost(vault.username, "fake-card", false)
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.visible)
+        assertNull(model.state.value.selectedCard)
+        assertEquals(NetworkFailure().message, model.state.value.error)
+        model.changeCard("123456")
+        assertEquals(0, service.writes)
+        model.dismiss()
+        service.cardFailure = null
+        model.openUnlost(vault.username, "missing-card", false)
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.visible)
+        assertNull(model.state.value.selectedCard)
+        assertTrue(model.state.value.cards.isEmpty())
+        assertEquals(0, service.writes)
+    }
+
     private fun openCards() {
         model.open(CampusCardAction.ManageState, vault.username, false)
         await { !model.state.value.loading }
@@ -309,6 +360,7 @@ class CardServiceViewModelTest {
         override fun clear() { username = "" }
     }
     private class FakeCards : CardService {
+        var extraCards: List<CampusCard> = emptyList()
         var lost = false
         var needsPassword = false
         var writes = 0; var writeResponses = 0; var queries = 0; var queryResponses = 0; var configurations = 0; var captchas = 0
@@ -322,7 +374,7 @@ class CardServiceViewModelTest {
         var cardReads = 0
         var cardResponses = 0
         var cardFailure: Exception? = null
-        fun cards() = listOf(CampusCard("fake-card", "校园卡", "202600000001", lost, false, 0))
+        fun cards() = listOf(CampusCard("fake-card", "校园卡", "202600000001", lost, false, 0)) + extraCards
         override suspend fun cardConfiguration(token: String): CardServiceConfiguration {
             cardReads++
             withContext(NonCancellable) { cardGate.await() }; cardResponses++

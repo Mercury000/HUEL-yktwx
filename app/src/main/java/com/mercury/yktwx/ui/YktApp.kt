@@ -24,6 +24,7 @@ import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
 import com.mercury.yktwx.CardPasswordViewModel
 import com.mercury.yktwx.CardServiceViewModel
+import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.WechatRechargeLaunch
@@ -349,6 +350,17 @@ private fun MainContent(
                                     onLogout = { if (isActive) viewModel.logout() },
                                     onRecharge = { if (isActive && !passwordState.loading) { cardModel.dismiss(); passwordModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                    onUnlost = {
+                                        val account = state.account?.account
+                                        if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
+                                            feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
+                                            rechargeModel.dismiss()
+                                            passwordModel.dismiss()
+                                            cardModel.openUnlost(state.username, account, state.preview)
+                                        }
+                                    },
+                                    unlostLoading = cardState.action == CampusCardAction.Unlost && cardState.loading,
+                                    unlostEnabled = feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading,
                                 )
                                 1 -> HallPage(
                                     settings = settings,

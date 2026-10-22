@@ -113,7 +113,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
     val keyboard = LocalSoftwareKeyboardController.current
     val card = state.selectedCard
     OverlayDialog(show = state.visible,
-        title = if (card != null) "确认" + state.operation.label else "挂失 / 解挂",
+        title = if (card != null || state.action == CampusCardAction.Unlost) "确认" + state.operation.label else "挂失 / 解挂",
         summary = if (card != null && !state.loading && !state.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {

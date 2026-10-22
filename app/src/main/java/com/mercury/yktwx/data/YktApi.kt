@@ -98,7 +98,16 @@ class YktApi(
             it.optString("code") == "ACCOUNT"
         } ?: throw YktException("没有统一账户，请在官网检查账户状态")
         val account = PaymentAccount(selected.getString("account"), selected.getString("payacc"), selected.getString("paytype"), selected.optString("name", "统一账户"), selected.optLong("accinfo_balance"))
-        // This is the backend's payment-method activation status, not a client-side loss check.
+        // An issued barcode can still be rejected at payment time. Verify the matching card
+        // before requesting any codes; preserve balance and recharge independently.
+        val card = try { CardServiceApi(openConnection).paymentCard(token, account.account) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: AuthenticationRequired) { throw e }
+        catch (_: Exception) { throw PaymentCodeUnavailable(account, "暂时无法确认卡状态，请检查网络后重试", PaymentCodeProblem.StatusUnverified) }
+        if (card.frozen) throw PaymentCodeUnavailable(account, "校园卡已冻结，请在官网或联系校园卡服务中心处理", PaymentCodeProblem.Frozen)
+        if (card.lost) throw PaymentCodeUnavailable(account, "校园卡已挂失，当前无法使用付款码", PaymentCodeProblem.Lost)
+        if (card.status != 0) throw PaymentCodeUnavailable(account, "校园卡状态异常，请在官网检查账户", PaymentCodeProblem.Unavailable)
+        // Activation is a separate restriction from the card's loss/freeze state.
         if (selected.optInt("status", -1) == 0) throw PaymentCodeUnavailable(account,
             (selected.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
                 ?: (selected.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "付款码暂不可用")

@@ -5,6 +5,9 @@ import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,6 +27,9 @@ class PaymentViewModelTest {
     private var codeAvailable = false
     private var payments = 0
     private var logins = 0
+    private var problem = PaymentCodeProblem.Unavailable
+    private var paymentGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private var responses = 0
     private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
         override suspend fun login(credentials: Credentials): Session {
             logins++
@@ -31,14 +37,19 @@ class PaymentViewModelTest {
         }
         override suspend fun payment(token: String): PaymentBatch {
             payments++
-            if (!codeAvailable) throw PaymentCodeUnavailable(account, "持卡人已挂失！")
+            val allowed = codeAvailable
+            val currentProblem = problem
+            val currentAccount = account
+            withContext(NonCancellable) { paymentGate.await() }
+            responses++
+            if (!allowed) throw PaymentCodeUnavailable(currentAccount, "持卡人已挂失！", currentProblem)
             return PaymentBatch(listOf("00000000000000000000"), 60, 0, account)
         }
     }
     private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
     private val store = ViewModelStore().apply { put("payment", model) }
 
-    @After fun cleanup() { store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+    @After fun cleanup() { paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
     @Test fun firstEntryShowsBalanceEvenWhenBarcodeIsUnavailable() {
         model.initialize()
@@ -81,6 +92,59 @@ class PaymentViewModelTest {
         assertNull(model.state.value.batch)
         assertEquals("持卡人已挂失！", model.state.value.error)
         assertEquals(2, payments)
+    }
+
+    @Test fun confirmedLossClearsCodeAndUnlostChangeFetchesANewBatch() {
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        codeAvailable = true
+        model.onForeground()
+        await { model.state.value.code != null }
+        val first = model.state.value.batch
+        codeAvailable = false
+        problem = PaymentCodeProblem.Lost
+        model.cardStateChanged()
+        assertNull(model.state.value.code)
+        await { !model.state.value.busy }
+        assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
+        assertNull(model.state.value.batch)
+        assertEquals(0L, model.state.value.secondsLeft)
+        assertEquals(6496L, model.state.value.account!!.balanceCents)
+        codeAvailable = true
+        model.cardStateChanged()
+        await { model.state.value.code != null }
+        assertNull(model.state.value.problem)
+        assertNotSame(first, model.state.value.batch)
+        assertEquals(3, payments)
+    }
+
+    @Test fun latePreLossRefreshCannotRestoreItsOldCode() {
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        codeAvailable = true
+        paymentGate = CompletableDeferred()
+        model.onForeground()
+        await { payments == 1 }
+        codeAvailable = false
+        problem = PaymentCodeProblem.Lost
+        model.cardStateChanged()
+        assertNull(model.state.value.code)
+        paymentGate.complete(Unit)
+        await { responses == 2 && !model.state.value.busy }
+        assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertNull(model.state.value.batch)
+    }
+
+    @Test fun failedCardVerificationIsNotPresentedAsALostCard() {
+        problem = PaymentCodeProblem.StatusUnverified
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { !model.state.value.busy }
+        assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertNotNull(model.state.value.account)
     }
 
     private fun await(condition: () -> Boolean) {
