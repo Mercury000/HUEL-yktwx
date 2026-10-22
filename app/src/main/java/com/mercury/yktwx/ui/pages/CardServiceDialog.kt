@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.ui.components.FieldError
+import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
@@ -67,7 +69,7 @@ fun CardServiceDialog(
                             color = if (selected) contentColor else MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
-                state.error?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }
+                InlineError(state.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = ::previous, enabled = !state.loading, modifier = Modifier.weight(1f)) { Text("上一步") }
                     Button(onClick = { keyboard?.hide(); onContinueRecharge() }, enabled = !state.loading && state.selectedRecipient != null,
@@ -98,7 +100,7 @@ fun CardServiceDialog(
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
                         enabled = !state.loading, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
-                state.error?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }
+                InlineError(state.error)
                 Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
                     enabled = !state.loading && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "查询中…" else "查询") }
@@ -124,13 +126,19 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                     Text(candidate.label + if (candidate.lost) " · 已挂失" else " · 未挂失")
                 }
             }
-            if (card != null && state.needsPassword) TextField(value = password,
-                onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
-                enabled = !state.loading, visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
-            if (!state.loading && card == null && state.error == null) Text(
-                if (state.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
-            state.error?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }
+            if (card != null && state.needsPassword) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextField(value = password,
+                        onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
+                        enabled = !state.loading, visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
+                    FieldError(state.error)
+                }
+            } else {
+                if (!state.loading && card == null && state.error == null) Text(
+                    if (state.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
+                InlineError(state.error)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },

@@ -21,6 +21,7 @@ import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.pages.BillPage
+import com.mercury.yktwx.ui.pages.LoginPage
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -62,6 +63,16 @@ class UiSmokeTest {
         compose.onNodeWithContentDescription("隐藏密码").assertExists()
         compose.onNodeWithText("打开官网处理验证码 / 账户问题").assertDoesNotExist()
         compose.onNodeWithText("登录").assertIsNotEnabled()
+    }
+    @Test fun loginFailureStaysInlineAboveTheLoginButton() {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { LoginPage(PaymentUiState(needsLogin = true, error = "用户名或密码错误"), { _, _ -> }) }
+            }
+        }
+        compose.onNodeWithText("用户名或密码错误").assertIsDisplayed()
+        compose.onNodeWithText("登录").assertExists()
+        compose.onNodeWithText("登录校园一卡通").assertExists()
     }
     @Test fun paymentPreviewShowsCodesWithoutRefreshButton() {
         content()

@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
+import com.mercury.yktwx.ui.components.FieldError
+import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -58,29 +60,31 @@ internal fun PaymentAmountInput(
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
-        if (config.allowCustom) TextField(
-            value = amount,
-            onValueChange = { value ->
-                if (value.length <= 11 && value.all { it in '0'..'9' || it == '.' } && value.count { it == '.' } <= 1) {
-                    onAmountChange(value)
-                    validationMessage = null
-                }
-            },
-            label = "自定义金额（元）", useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
-                if (focus.isFocused) validationMessage = null
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = if (config.integerOnly) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
-                validationMessage = if (amount.isBlank()) null else amountError
-                focusManager.clearFocus()
-                keyboard?.hide()
-            }),
-        )
-        // Only an explicit keyboard Done can show a format hint. Neither
-        // preset selection nor focus loss renders a transient validation row.
-        val inputError = validationMessage ?: error
-        inputError?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }
+        if (config.allowCustom) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextField(
+                value = amount,
+                onValueChange = { value ->
+                    if (value.length <= 11 && value.all { it in '0'..'9' || it == '.' } && value.count { it == '.' } <= 1) {
+                        onAmountChange(value)
+                        validationMessage = null
+                    }
+                },
+                label = "自定义金额（元）", useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
+                    if (focus.isFocused) validationMessage = null
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = if (config.integerOnly) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    validationMessage = if (amount.isBlank()) null else amountError
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }),
+            )
+            // Only an explicit keyboard Done can show a format hint. Neither
+            // preset selection nor focus loss renders a transient validation row.
+            FieldError(validationMessage)
+        }
+        InlineError(error)
     }
 }
 

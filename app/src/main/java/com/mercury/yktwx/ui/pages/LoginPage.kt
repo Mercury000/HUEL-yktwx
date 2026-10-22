@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
+import com.mercury.yktwx.ui.components.InlineError
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Show
@@ -80,6 +81,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
             }, modifier = Modifier.fillMaxWidth())
+        InlineError(state.error)
         Button(onClick = { submit() }, enabled = !state.busy && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
             Text(if (state.busy) "正在登录…" else "登录")
         }

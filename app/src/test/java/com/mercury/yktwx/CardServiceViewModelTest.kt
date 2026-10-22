@@ -276,10 +276,9 @@ class CardServiceViewModelTest {
         assertSame(selected, model.state.value.selectedCard)
         assertFalse(model.state.value.completed)
         assertTrue(model.state.value.visible)
-        assertNull(model.state.value.error)
+        assertEquals("查询密码错误，请重新输入", model.state.value.error)
         assertEquals(1, service.writes)
         assertEquals(1, service.cardReads)
-        assertEquals("查询密码错误，请重新输入", runBlocking { withTimeout(1_000) { model.messages.first() } })
         assertNoResult()
         service.writeFailure = null
         model.changeCard("123456")
@@ -414,7 +413,7 @@ class CardServiceViewModelTest {
             assertTrue(model.state.value.visible)
             assertNotNull(model.state.value.selectedCard)
             assertEquals(reads, service.cardReads)
-            assertEquals(failure.message, runBlocking { withTimeout(1_000) { model.messages.first() } })
+            assertEquals(failure.message, model.state.value.error)
             assertNoResult()
         }
     }
@@ -440,7 +439,7 @@ class CardServiceViewModelTest {
         model.changeCard("")
         await { !model.state.value.loading }
         assertEquals(1, service.writes)
-        assertEquals("查询密码错误", runBlocking { withTimeout(1_000) { model.messages.first() } })
+        assertEquals("查询密码错误", model.state.value.error)
         assertNoResult()
         service.writeFailure = null
         model.changeCard("")

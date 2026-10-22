@@ -127,7 +127,8 @@ fun FeePage(
                                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                         if (state.loading) CircularProgressIndicator()
-                                        Text(error ?: "正在读取缴费信息", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        if (error != null) InlineError(error, actionLabel = "重试", onAction = onRetry)
+                                        else Text("正在读取缴费信息", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                 }
                             }
@@ -168,7 +169,8 @@ fun FeePage(
                                 }
                             }
                             if (error != null && state.stage == FeeStage.Query) item {
-                                Text(error, fontSize = 13.sp, color = MiuixTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 4.dp))
+                                InlineError(error, actionLabel = "重试", onAction = onRefreshQuery,
+                                    modifier = Modifier.padding(horizontal = 4.dp))
                             }
                         }
                     }
@@ -179,6 +181,7 @@ fun FeePage(
                 Column(Modifier.fillMaxWidth().bottomSheetSafeArea().padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("¥ " + RechargeMoney.yuan(orderAmount), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                    InlineError(state.error)
                     state.order?.methods.orEmpty().forEach { method ->
                         val busy = state.loading && state.method?.id == method.id
                         Button(onClick = { onMethod(method) }, enabled = !state.loading,
@@ -186,7 +189,6 @@ fun FeePage(
                             Text(if (busy) "正在准备支付" else method.name + "支付")
                         }
                     }
-                    if (state.error != null) Text(state.error, color = MiuixTheme.colorScheme.error, fontSize = 13.sp)
                 }
             }
             val roomDialog = state.roomDialog
@@ -271,8 +273,7 @@ private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fee
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.fillMaxWidth())
-            if (error != null) Text(error, color = MiuixTheme.colorScheme.error, fontSize = 13.sp,
-                textAlign = TextAlign.Center)
+            InlineError(error)
             Button(onClick = { pay() }, enabled = password.length == 6 && !loading && type.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (loading) "正在支付…" else "确定支付") }
         }

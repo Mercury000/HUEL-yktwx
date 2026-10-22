@@ -72,8 +72,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (exists && foreground) refresh()
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
-                mutable.value = PaymentUiState()
-                notifications.send("无法读取本机登录信息，请重新登录")
+                mutable.value = PaymentUiState(error = "无法读取本机登录信息，请重新登录")
             }
         }
     }
@@ -112,12 +111,12 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             } catch (e: YktException) {
                 val stored = withContext(Dispatchers.IO) { repository.hasCredentials() }
                 if (version != requestVersion) return@launch
-                notifications.send(e.message ?: "登录失败，请重试")
-                mutable.value = PaymentUiState(needsLogin = !stored, username = username)
+                mutable.value = PaymentUiState(needsLogin = !stored, username = username,
+                    error = e.message ?: "登录失败，请重试")
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
-                notifications.send("登录失败，请稍后重试")
-                mutable.value = PaymentUiState(needsLogin = true, username = old.username)
+                mutable.value = PaymentUiState(needsLogin = true, username = old.username,
+                    error = "登录失败，请稍后重试")
             }
         }
     }
@@ -138,9 +137,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             catch (e: YktException) {
                 if (version != requestVersion) return@launch
                 val requireLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
-                if (requireLogin) notifications.send(e.message ?: "登录已失效，请重新登录")
                 mutable.value = PaymentUiState(
-                    needsLogin = requireLogin, error = if (requireLogin) null else e.message,
+                    needsLogin = requireLogin,
+                    error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
                     username = username, account = account.takeUnless { requireLogin },
                 )
             } catch (_: Exception) {

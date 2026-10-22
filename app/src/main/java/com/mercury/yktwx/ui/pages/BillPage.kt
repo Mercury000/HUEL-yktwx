@@ -33,7 +33,6 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Filter
-import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -113,6 +112,7 @@ fun BillPage(
                             item(key = "login") {
                                 BillErrorCard(
                                     "登录已失效，请重新登录。",
+                                    title = "登录已失效",
                                     actionLabel = "重试",
                                     onAction = onActivate,
                                 )
@@ -176,24 +176,7 @@ fun BillPage(
                             }
                             if (state.error != null && state.items.isNotEmpty()) {
                                 item(key = "inline-error") {
-                                    Card(Modifier.fillMaxWidth()) {
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        ) {
-                                            Icon(
-                                                MiuixIcons.Info, contentDescription = null,
-                                                modifier = Modifier.size(20.dp),
-                                                tint = MiuixTheme.colorScheme.error,
-                                            )
-                                            Text(
-                                                state.error, modifier = Modifier.weight(1f),
-                                                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                            )
-                                            TextButton("重试", onClick = onRefresh)
-                                        }
-                                    }
+                                    InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
                                 }
                             }
                             when {
@@ -317,13 +300,9 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
-        state.loadMoreError != null -> Row(
-            Modifier.fillMaxWidth().height(56.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton("加载失败，点击重试", onClick = onLoadMore)
-        }
+        state.loadMoreError != null -> InlineError(
+            state.loadMoreError, actionLabel = "重试", onAction = onLoadMore,
+        )
         state.currentPage in 1 until state.pages -> {
             LaunchedEffect(state.currentPage, state.pages) { onLoadMore() }
             Row(
@@ -387,25 +366,25 @@ private fun BillFilterSheet(
                 }
             }
             Text("金额范围（元）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextField(
-                    value = min, onValueChange = { min = it.amountInput() },
-                    modifier = Modifier.weight(1f), label = "最低", singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
-                )
-                Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                TextField(
-                    value = max, onValueChange = { max = it.amountInput() },
-                    modifier = Modifier.weight(1f), label = "最高", singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                )
-            }
-            if (error != null) {
-                Text(error!!, fontSize = 13.sp, color = MiuixTheme.colorScheme.error)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextField(
+                        value = min, onValueChange = { min = it.amountInput() },
+                        modifier = Modifier.weight(1f), label = "最低", singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                    )
+                    Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    TextField(
+                        value = max, onValueChange = { max = it.amountInput() },
+                        modifier = Modifier.weight(1f), label = "最高", singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    )
+                }
+                FieldError(error)
             }
             Row(
                 Modifier.fillMaxWidth(),

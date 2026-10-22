@@ -104,6 +104,26 @@ class CardServiceUiTest {
         compose.onNodeWithText("校园卡查询密码").assertExists()
         screenshot("campus-card-state-unlost-dialog")
     }
+    @Test fun stateFailureStaysInsideTheDialogAsInlineOrFieldError() {
+        val notLost = CampusCard("demo-card", "校园卡", "202600000001", false, false, 0)
+        val lost = CampusCard("demo-card", "校园卡", "202600000001", true, false, 0)
+        val current = mutableStateOf(CardServiceUiState(visible = true, cards = listOf(notLost),
+            selectedCard = notLost, error = "校园卡状态读取失败"))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}) } }
+            }
+        }
+        compose.onNodeWithText("校园卡状态读取失败").assertIsDisplayed()
+        compose.onNodeWithText("确认挂失").assertExists()
+        screenshot("campus-card-inline-error-dialog")
+        compose.runOnIdle { current.value = current.value.copy(cards = listOf(lost),
+            selectedCard = lost, error = "查询密码错误") }
+        compose.onNodeWithText("查询密码错误").assertIsDisplayed()
+        compose.onNodeWithText("校园卡查询密码").assertExists()
+        compose.onNodeWithText("确认解挂").assertExists()
+        screenshot("campus-card-field-error-dialog")
+    }
     @Test fun recipientConfirmationShowsCompleteValuesWithoutQueryFields() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
         val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge, recipients = listOf(recipient)))
