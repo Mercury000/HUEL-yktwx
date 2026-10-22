@@ -138,6 +138,27 @@ class CardServiceViewModelTest {
         model.continueRecharge()
         assertEquals(0, service.configurations)
     }
+    @Test fun recipientCanBeDeselectedAndCannotContinueUntilReselected() {
+        openRecipients()
+        val recipient = model.state.value.recipients.single()
+        model.selectRecipient(recipient)
+        assertSame(recipient, model.state.value.selectedRecipient)
+        model.selectRecipient(recipient)
+        assertNull(model.state.value.selectedRecipient)
+        assertEquals(listOf(recipient), model.state.value.recipients)
+        model.continueRecharge()
+        assertEquals(0, service.configurations)
+        model.selectRecipient(recipient)
+        assertSame(recipient, model.state.value.selectedRecipient)
+        model.continueRecharge()
+        // Selection cannot change once the selected recipient's configuration is being read.
+        model.selectRecipient(recipient)
+        assertSame(recipient, model.state.value.selectedRecipient)
+        await { service.configurations == 1 }
+        val request = runBlocking { withTimeout(1_000) { model.rechargeRequests.first() } }
+        assertSame(recipient, request.config.recipient)
+        assertEquals(1, service.queries)
+    }
     @Test fun recipientCanContinueToSharedRechargeWithoutPayerConfiguration() {
         openRecipients()
         val selected = model.state.value.recipients.single()
