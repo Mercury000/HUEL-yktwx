@@ -124,6 +124,15 @@ class PaymentViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+    /** Card-state changes invalidate both the displayed code and any older in-flight refresh. */
+    fun cardStateChanged() {
+        if (preview || mutable.value.needsLogin || mutable.value.restoringLogin) return
+        request?.cancel()
+        ticker?.cancel()
+        val state = mutable.value
+        mutable.value = PaymentUiState(needsLogin = false, username = state.username, account = state.account)
+        refresh()
+    }
     private fun show(batch: PaymentBatch, username: String) {
         if (!foreground) {
             mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)

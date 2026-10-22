@@ -22,6 +22,8 @@ import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
+import com.mercury.yktwx.CardServiceViewModel
+import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
@@ -76,12 +78,14 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val billState by billViewModel.state.collectAsStateWithLifecycle()
         val rechargeModel: RechargeViewModel = viewModel()
         val feeModel: FeeViewModel = viewModel()
+        val cardModel: CardServiceViewModel = viewModel()
         val context = LocalContext.current
         LaunchedEffect(state.restoringLogin, state.needsLogin, state.username) {
             if (!state.restoringLogin) {
                 val owner = state.username.takeUnless { state.needsLogin }
                 rechargeModel.accountChanged(owner.orEmpty())
                 feeModel.accountChanged(owner.orEmpty())
+                cardModel.accountChanged(owner.orEmpty())
                 billViewModel.accountChanged(owner)
             }
         }
@@ -92,6 +96,20 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         }
         LaunchedEffect(viewModel) {
             viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
+        LaunchedEffect(cardModel) {
+            cardModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+        }
+        LaunchedEffect(cardModel) {
+            cardModel.cardChanges.collect { viewModel.cardStateChanged() }
+        }
+        LaunchedEffect(cardModel, rechargeModel) {
+            cardModel.rechargeRequests.collect { request ->
+                if (cardModel.accepts(request)) {
+                    cardModel.dismiss()
+                    rechargeModel.openOthers(request.username, request.config, request.preview)
+                }
+            }
         }
         val authPage = when {
             state.restoringLogin -> AuthPage.Restoring
@@ -146,7 +164,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                             MainContent(
                                 settings, state,
                                 if (interactive) billState else BillUiState(),
-                                viewModel, billViewModel, rechargeModel, feeModel,
+                                viewModel, billViewModel, rechargeModel, feeModel, cardModel,
                                 isActive = interactive,
                             )
                         }
@@ -187,10 +205,12 @@ private fun MainContent(
     billViewModel: BillViewModel,
     rechargeModel: RechargeViewModel,
     feeModel: FeeViewModel,
+    cardModel: CardServiceViewModel,
     isActive: Boolean,
 ) {
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
+    val cardState by cardModel.state.collectAsStateWithLifecycle()
     var feeProject by remember { mutableStateOf<FeeProject?>(null) }
     var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
@@ -224,6 +244,7 @@ private fun MainContent(
         if (!isActive || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         feeOpening = project
         rechargeModel.dismiss()
+        cardModel.dismiss()
         feeModel.open(project, state.username, state.preview)
     }
     fun closeFee() {
@@ -314,10 +335,18 @@ private fun MainContent(
                                     state, settings, bottom,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onLogout = { if (isActive) viewModel.logout() },
-                                    onRecharge = { if (isActive) rechargeModel.open(state.username, state.account?.account, state.preview) },
+                                    onRecharge = { if (isActive) { cardModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onOpenFee = ::openFee,
                                     feeOpening = feeOpening,
+                                    onOpenCardService = { action ->
+                                        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading) {
+                                            rechargeModel.dismiss()
+                                            cardModel.open(action, state.username, state.preview)
+                                        }
+                                    },
+                                    cardServiceOpening = cardState.loading || rechargeState.loading || feeOpening != null,
+                                    cardServiceLoadingAction = cardState.action.takeIf { cardState.loading && !cardState.visible },
                                 )
                                 1 -> BillPage(
                                     state = billState,
@@ -344,6 +373,11 @@ private fun MainContent(
                             }
                         }
                     }
+                    CardServiceDialog(
+                        cardState, cardModel::dismiss, cardModel::selectCard, cardModel::changeCard,
+                        cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
+                        cardModel::selectRecipient, cardModel::continueRecharge,
+                    )
                     // Keep recharge under the root Scaffold so its overlay has a popup host.
                     RechargeDialog(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,

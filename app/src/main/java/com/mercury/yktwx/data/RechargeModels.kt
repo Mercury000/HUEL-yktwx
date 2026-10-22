@@ -28,6 +28,7 @@ class RechargeConfiguration(
     val maximumCents: Long,
     val allowCustom: Boolean,
     val integerOnly: Boolean,
+    val recipient: RechargeRecipient? = null,
 ) {
     fun amountError(amountCents: Long?): String? = when {
         amountCents == null || amountCents <= 0 -> "请输入有效金额，最多两位小数"
@@ -49,9 +50,10 @@ class PendingRecharge(
     val createdAtMillis: Long,
     val orderId: String? = null,
     val payId: String? = null,
+    val recipient: RechargeRecipient? = null,
 ) {
     fun withOrder(orderId: String, payId: String?) = PendingRecharge(
-        username, targetId, feeItemId, amountCents, createdAtMillis, orderId, payId,
+        username, targetId, feeItemId, amountCents, createdAtMillis, orderId, payId, recipient,
     )
     override fun toString() = "PendingRecharge([redacted])"
 }

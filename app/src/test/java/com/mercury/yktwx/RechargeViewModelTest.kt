@@ -190,6 +190,24 @@ class RechargeViewModelTest {
         await { model.state.value.visible && !model.state.value.loading }
     }
 
+    @Test fun othersRechargeUsesSameCreationLaunchAndResultFlowWithRecipientMetadata() {
+        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户", 0)
+        val config = RechargeConfiguration("401", recipient.targetId, recipient.accountName, 0, listOf(1000), 1, 50000, true, false, recipient)
+        model.onForeground()
+        model.onResumed(true)
+        model.openOthers(vault.username, config, false)
+        assertTrue(model.state.value.visible)
+        assertEquals(0, service.configurations)
+        model.submit(1000)
+        await { model.state.value.phase == RechargePhase.AwaitingPayment && !model.state.value.loading }
+        assertEquals(1, service.creations); assertEquals(1, service.launches)
+        assertSame(recipient, model.state.value.pending!!.recipient)
+        assertEquals("other-target", model.state.value.pending!!.targetId)
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        assertEquals(1, service.resultQueries)
+    }
+
     private fun prepareOrder() {
         open()
         model.submit(1000)

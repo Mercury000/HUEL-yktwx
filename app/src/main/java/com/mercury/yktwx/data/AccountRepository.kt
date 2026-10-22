@@ -5,7 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** All requests share one lock, so multiple expired-token callers cannot trigger a login storm. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi()) {
+class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi()) {
     private val mutex = Mutex()
     fun hasCredentials() = vault.credentials() != null
     fun username() = vault.credentials()?.username.orEmpty()
@@ -82,6 +82,14 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun launchFeeWechat(order: PendingRecharge, method: FeeMethod) =
         withSession(retryAuthentication = false, expectedUsername = order.username) { feeService.launchFeeWechat(it, order, method) }
     suspend fun feeResult(order: PendingRecharge) = withSession(expectedUsername = order.username) { feeService.feeResult(it, order) }
+    suspend fun cardConfiguration(username: String) = withSession(expectedUsername = username) { cardService.cardConfiguration(it) }
+    suspend fun changeCardState(username: String, card: CampusCard, action: CampusCardAction, password: String) =
+        withSession(retryAuthentication = false, expectedUsername = username) { cardService.changeCardState(it, card, action, password) }
+    suspend fun recipientCaptcha(username: String) = withSession(expectedUsername = username) { cardService.recipientCaptcha(it) }
+    suspend fun rechargeRecipients(username: String, type: RecipientQueryType, value: String, captcha: RecipientCaptcha, code: String) =
+        withSession(retryAuthentication = false, expectedUsername = username) { cardService.rechargeRecipients(it, type, value, captcha, code) }
+    suspend fun recipientRechargeConfiguration(username: String, recipient: RechargeRecipient) =
+        withSession(expectedUsername = username) { cardService.recipientRechargeConfiguration(it, recipient) }
     suspend fun logout() = mutex.withLock { vault.clear() }
 
     companion object {

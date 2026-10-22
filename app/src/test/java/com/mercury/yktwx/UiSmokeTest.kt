@@ -122,4 +122,30 @@ class UiSmokeTest {
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertExists()
     }
+    @Test fun campusCardEntriesOpenStateDialogAndReuseRechargeSheet() {
+        content()
+        compose.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("付款码")))
+            .performScrollToNode(hasText("校园卡服务"))
+        compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("确认挂失").assertExists()
+        compose.onNodeWithText("确定").assertIsNotEnabled()
+        compose.activity.onBackPressedDispatcher.onBackPressed()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("代人充值").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("查询").assertExists()
+        compose.onNode(hasSetTextAction() and hasText("学工号")).performTextInput("202600000002")
+        compose.onNodeWithText("查询").performClick()
+        compose.waitForIdle()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("下一步").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("下一步").assertIsNotEnabled()
+        compose.onNodeWithText("示例同学").performClick()
+        compose.onNodeWithText("下一步").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("收款人：示例同学").assertExists()
+        compose.onNodeWithText("¥ 10").performClick()
+        compose.onNodeWithText("微信充值 ¥ 10.00").assertIsNotEnabled()
+    }
+
 }

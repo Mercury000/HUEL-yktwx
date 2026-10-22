@@ -35,9 +35,22 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 账单列表使用 `/berserker-search/search/personal/turnover`，汇总使用 `/berserker-search/statistics/turnover/count`，分类与趋势通过对应 statistics 接口读取。金额以分处理，收入与支出方向由响应字段决定。
 
-## 充值
+## 校园卡管理
 
-读取充值项目与当前账户，创建订单并获取当前订单付款方式。微信 H5 支付只允许经校验的官方跳转。支付返回后查询同一订单，回跳或 HTTP 成功不作为到账依据。
+卡状态使用 `GET /berserker-app/ykt/tsm/getCampusCards`，目标是卡片 `account`。挂失与解挂分别使用 `POST /berserker-app/ykt/tsm/lostCard`、`unlostCard`，按配置提交 `account`、`synAccessSource` 和数字安全键盘编码的查询密码。成功核对外层、内层返回码与目标状态；响应未返回新状态时重新查询。超时先查状态，不自动重发。明确拒绝保留平台原因，存在目标回显时必须匹配。
+
+## 充值与代人充值
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /charge/feeitem/singleFeeitem` | 充值项目 |
+| `GET /berserker-app/ykt/tsm/queryCard?scene=recharge` | 可充值卡 |
+| `POST /charge/order/thirdOrder` | 创建订单 |
+| `GET /charge/pay/getpayinfo?orderid=<订单>&userAgent=h5` | 原订单和付款方式 |
+| `POST /blade-pay/pay` | 支付参数 |
+| `GET /charge/order/personal_data?orderid=<订单>` | 订单结果 |
+
+收银台金额以元计，卡余额和账单以分计。JSAPI 参数不是 H5 跳转地址，回跳和 HTTP 成功不代表到账，必须核对订单、金额、目标和服务端结果。代人充值目标来自响应，验证码由用户完成，修改目标或退出时清除旧授权。本人和代充值共享拒绝处理，明确挂失拒绝不拉起支付、不自动重试。
 
 ## 水电与校园网缴费
 

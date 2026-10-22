@@ -380,7 +380,7 @@ private fun BillFilterSheet(
         renderInRootScaffold = true,
     ) {
         Column(
-            Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
+            Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text("交易类型", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
