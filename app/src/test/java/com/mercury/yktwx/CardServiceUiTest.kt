@@ -154,6 +154,38 @@ class CardServiceUiTest {
         assertEquals(primary.toArgb(), background())
         compose.onNodeWithText("已选择").assertExists()
     }
+    @Test fun tappingSelectedRecipientClearsHighlightAndDisablesNext() {
+        val model = CardServiceViewModel(compose.activity.application)
+        val store = androidx.lifecycle.ViewModelStore().apply { put("card", model) }
+        try {
+            compose.setContent {
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    AppTheme {
+                        val state by model.state.collectAsState()
+                        Scaffold { CardServiceDialog(state, model::dismiss, model::selectCard, model::changeCard,
+                            model::refreshCaptcha, model::clearRecipient, model::queryRecipient, model::selectRecipient, model::continueRecharge) }
+                    }
+                }
+            }
+            compose.runOnIdle { model.open(CampusCardAction.OthersRecharge, "preview", true) }
+            compose.waitUntil(5_000) { !model.state.value.loading }
+            compose.runOnIdle { model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "") }
+            compose.waitUntil(5_000) { model.state.value.recipients.isNotEmpty() }
+            compose.onNodeWithText("下一步").assertIsNotEnabled()
+            compose.onNodeWithText("示例同学").performClick()
+            compose.onNodeWithText("已选择").assertExists()
+            compose.onNodeWithText("下一步").assertIsEnabled()
+            compose.onNodeWithText("示例同学").performClick()
+            compose.onNodeWithText("已选择").assertDoesNotExist()
+            compose.onNodeWithText("下一步").assertIsNotEnabled()
+            compose.onNodeWithText("示例同学").assertExists()
+            screenshot("campus-card-recipient-deselected-dialog")
+            compose.onNodeWithText("示例同学").performClick()
+            compose.onNodeWithText("下一步").assertIsEnabled()
+        } finally {
+            compose.runOnIdle { store.clear() }
+        }
+    }
     @Test fun recipientBottomSheetKeepsActionAboveInjectedNavigationBar() {
         compose.activity.enableEdgeToEdge()
         val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户", 0)

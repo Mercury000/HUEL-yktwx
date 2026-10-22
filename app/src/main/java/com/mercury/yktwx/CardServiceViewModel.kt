@@ -168,7 +168,9 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         }
     }
     fun selectRecipient(recipient: RechargeRecipient) {
-        if (!mutable.value.loading && recipient in mutable.value.recipients) mutable.value = mutable.value.copy(selectedRecipient = recipient, error = null)
+        val s = mutable.value
+        if (s.loading || recipient !in s.recipients) return
+        mutable.value = s.copy(selectedRecipient = if (s.selectedRecipient === recipient) null else recipient, error = null)
     }
     fun continueRecharge() {
         val s = mutable.value
