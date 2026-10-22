@@ -33,6 +33,7 @@ data class BillUiState(
     val month: YearMonth = YearMonth.now(),
     val items: List<BillRecord> = emptyList(),
     val summary: BillSummary? = null,
+    val counts: BillCounts? = null,
     val total: Int = 0,
     val currentPage: Int = 0,
     val pages: Int = 0,
@@ -133,7 +134,7 @@ class BillViewModel internal constructor(
         cancelListJobs()
         val current = mutable.value
         mutable.value = current.copy(
-            month = month, items = emptyList(), summary = null, total = 0, currentPage = 0, pages = 0,
+            month = month, items = emptyList(), summary = null, counts = null, total = 0, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
         )
         if (preview) {
@@ -284,6 +285,13 @@ class BillViewModel internal constructor(
                 } catch (_: YktException) {
                     null
                 }
+                val counts = try {
+                    withContext(Dispatchers.IO) { repository.billCounts(range.first, range.second) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: YktException) {
+                    null
+                }
                 val types = if (current.types.isEmpty()) {
                     try {
                         withContext(Dispatchers.IO) { repository.billTypes() }
@@ -298,7 +306,7 @@ class BillViewModel internal constructor(
                     latest.amountToCents != amountTo || latest.info != info
                 ) return@launch
                 mutable.value = latest.copy(
-                    needsLogin = false, items = page.items, summary = summary, total = page.total,
+                    needsLogin = false, items = page.items, summary = summary, counts = counts, total = page.total,
                     currentPage = page.current, pages = page.pages, types = types,
                     loading = false, refreshing = false, error = null, loaded = true,
                 )
@@ -368,7 +376,9 @@ class BillViewModel internal constructor(
         val records = previewRecords(month)
         return BillUiState(
             preview = true, needsLogin = false, month = month, items = records,
-            summary = BillSummary(20000, 20540), total = records.size, currentPage = 1, pages = 1,
+            summary = BillSummary(20000, 20540),
+            counts = BillCounts(records.count { it.income }, records.count { !it.income }),
+            total = records.size, currentPage = 1, pages = 1,
             types = listOf(
                 BillType("1", "消费", "consume"), BillType("2", "充值", "recharge"),
                 BillType("3", "退款", "refund"), BillType("4", "二维码支付", "qrCode-payment"),

@@ -55,6 +55,7 @@ synAccessSource: h5
    - 搜索限定当前月份并传 `info`；不在本地保存搜索词或账单明细。
    - 排行复用该接口，附加 `current=1`、`size=5`、`type=2`、`sortFields=tranamt`、`sortType=desc`。
    - 解析 `data.{records,total,size,current,pages}`；记录字段包括 `orderId`、`resume`、`payName`、`turnoverType`、`icon`、`typeId`、`typeFrom`、`tranamt`、`cardBalance`、`feeAmt`、`effectdateStr`、`jndatetimeStr`、`fromAccount`、`posCode`、`remark`、`toMerchant`、`sno`、`labelName`。
+   - 收入/支出笔数复用该列表接口，附加 `type=1`（收入）或 `type=2`（支出）、`current=1`、`size=1`，读取 `data.total`。
 2. `GET /berserker-search/statistics/turnover/count?timeFrom=<date>&timeTo=<date>&synAccessSource=h5`
    - 解析 `data.income`、`data.expenses`，用于月收入/支出汇总。
 3. `GET /berserker-search/search/turnoverType?synAccessSource=h5`

@@ -159,6 +159,23 @@ class BillApiTest {
         assertTrue(fake.calls.all { it.disconnected })
     }
 
+    @Test fun billCountUsesDirectionFilterAndReadsTotal() = runBlocking {
+        val fake = ScriptedBillsApi()
+        val count = fake.api.billCount("fake-token", "2026-10-01", "2026-10-31", 2)
+        assertEquals(1, count)
+
+        val call = fake.calls.single()
+        assertEquals("/berserker-search/search/personal/turnover", call.url.path)
+        assertEquals(
+            mapOf(
+                "current" to "1", "size" to "1", "timeFrom" to "2026-10-01", "timeTo" to "2026-10-31",
+                "type" to "2", "synAccessSource" to "h5",
+            ),
+            query(call.url),
+        )
+        assertTrue(call.disconnected)
+    }
+
     @Test fun billPayloadsAreParsedWithoutNullStringsOrLostCents() = runBlocking {
         val fake = ScriptedBillsApi()
         val record = fake.api.bills("fake-token", 1, 8, "2026-10-01", "2026-10-31", null, null, null, null).items.single()

@@ -44,6 +44,7 @@ class AccountRepositoryTest {
             info: String?,
         ) = BillPageData(emptyList(), 0, current, 0, size)
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
+        override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int = 0
         override suspend fun billTypes(token: String): List<BillType> = emptyList()
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()
         override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> = emptyList()

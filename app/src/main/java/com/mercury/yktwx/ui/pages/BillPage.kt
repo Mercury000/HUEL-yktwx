@@ -118,8 +118,6 @@ fun BillPage(
                                 )
                             }
                         } else {
-                            if (state.preview) item(key = "preview") { BillPreviewNote() }
-                            item(key = "summary") { BillSummaryCard(state) }
                             item(key = "month") {
                                 BillMonthSelector(month = state.month, onMonthSelected = onMonthSelected) {
                                     Box {
@@ -142,6 +140,8 @@ fun BillPage(
                                     }
                                 }
                             }
+                            if (state.preview) item(key = "preview") { BillPreviewNote() }
+                            item(key = "summary") { BillSummaryCard(state) }
                             item(key = "search") {
                                 TextField(
                                     value = query,
@@ -249,34 +249,27 @@ fun BillPage(
 @Composable
 private fun BillSummaryCard(state: BillUiState) {
     val label = if (state.month == YearMonth.now()) "本月" else "${state.month.monthValue}月"
+    val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
+    val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Text("${label}支出", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        state.summary?.let { "¥ ${money(it.expensesCents)}" } ?: "—",
-                        fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("${label}收入", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        state.summary?.let { "¥ ${money(it.incomeCents)}" } ?: "—",
-                        fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
-                        color = MiuixTheme.colorScheme.primary,
-                    )
-                }
+        Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(expensesLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    state.summary?.let { "¥ ${money(it.expensesCents)}" } ?: "—",
+                    fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                )
             }
-            Spacer(Modifier.height(14.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "共 ${state.total} 笔",
-                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
+            Column(Modifier.weight(1f)) {
+                Text(incomeLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    state.summary?.let { "¥ ${money(it.incomeCents)}" } ?: "—",
+                    fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }

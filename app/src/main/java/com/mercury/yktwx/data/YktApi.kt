@@ -24,6 +24,7 @@ interface YktService {
         info: String?,
     ): BillPageData
     suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary
+    suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int
     suspend fun billTypes(token: String): List<BillType>
     suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory>
     suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint>
@@ -157,6 +158,15 @@ class YktApi(
             mapOf("timeFrom" to timeFrom, "timeTo" to timeTo), token,
         ).getJSONObject("data")
         return BillParser.summary(data)
+    }
+    override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+        val params = mapOf(
+            "current" to "1", "size" to "1", "timeFrom" to timeFrom, "timeTo" to timeTo,
+            "type" to type.toString(),
+        )
+        return BillParser.page(
+            request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data"),
+        ).total
     }
     override suspend fun billTypes(token: String): List<BillType> =
         BillParser.types(request("/berserker-search/search/turnoverType", token = token).getJSONArray("data"))
