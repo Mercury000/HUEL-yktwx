@@ -4,14 +4,12 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -23,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
+import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -57,19 +56,15 @@ fun CardServiceDialog(
             if (confirming) {
                 state.recipients.forEach { recipient ->
                     val selected = state.selectedRecipient === recipient
-                    val contentColor = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface
-                    Surface(onClick = { if (!state.loading) onSelectRecipient(recipient) },
-                        color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = contentColor,
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(recipient.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = contentColor, modifier = Modifier.weight(1f))
-                                if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
-                            }
-                            Text(recipient.sno.ifBlank { recipient.cardAccount }, fontSize = 14.sp, color = contentColor)
-                            Text(recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp, color = if (selected) contentColor else MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    PaymentSelectionCard(selected = selected, enabled = !state.loading,
+                        onClick = { onSelectRecipient(recipient) }) { contentColor ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(recipient.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = contentColor, modifier = Modifier.weight(1f))
+                            if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
                         }
+                        Text(recipient.sno.ifBlank { recipient.cardAccount }, fontSize = 14.sp, color = contentColor)
+                        Text(recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp,
+                            color = if (selected) contentColor else MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
                 state.error?.let { Text(it, fontSize = 13.sp, color = MiuixTheme.colorScheme.error) }

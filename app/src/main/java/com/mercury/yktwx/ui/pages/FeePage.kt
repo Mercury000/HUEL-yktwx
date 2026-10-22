@@ -60,12 +60,13 @@ fun FeePage(
     onDismissRoomDialog: () -> Unit = {},
     onConsumeRoomNotice: () -> Unit = {},
     interactive: Boolean = true,
+    onContinuePayment: (FeeMethod) -> Unit = {},
 ) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     var amount by remember(state.config) { mutableStateOf("") }
     val config = state.config
     val cents = RechargeMoney.cents(amount)
-    val orderAmount = state.order?.pending?.amountCents ?: cents ?: 0
+    val orderAmount = state.order?.pending?.amountCents ?: state.paymentRetry?.amountCents ?: cents ?: 0
     val error = state.error
     val roomInteractive = interactive && !state.roomBusy && state.roomDialog == null
     val context = LocalContext.current
@@ -230,9 +231,11 @@ fun FeePage(
             )
             OverlayBottomSheet(show = interactive && state.stage == FeeStage.Result, title = null,
                 onDismissRequest = onFinish, renderInRootScaffold = true, insideMargin = DpSize(0.dp, 0.dp)) {
-                Box(Modifier.fillMaxWidth().bottomSheetSafeArea().padding(horizontal = 24.dp)) {
+                Box(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                     PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
-                        onFinish, subject = "缴费")
+                        onFinish, subject = "缴费",
+                        retryMethods = if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
+                        onContinuePayment = onContinuePayment)
                 }
             }
         }

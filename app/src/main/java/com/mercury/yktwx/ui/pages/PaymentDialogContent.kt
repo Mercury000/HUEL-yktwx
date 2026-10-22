@@ -2,10 +2,9 @@ package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,14 +19,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.RechargePhase
-import com.mercury.yktwx.RechargeUiState
+import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
+import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -87,8 +85,21 @@ internal fun PaymentAmountInput(
 }
 
 @Composable
-internal fun PaymentResultContent(phase: RechargePhase, loading: Boolean, amountCents: Long, detail: String?, onFinish: () -> Unit, subject: String = "充值") {
+internal fun PaymentResultContent(
+    phase: RechargePhase,
+    loading: Boolean,
+    amountCents: Long,
+    detail: String?,
+    onFinish: () -> Unit,
+    subject: String = "充值",
+    retryMethods: List<FeeMethod> = emptyList(),
+    onContinuePayment: (FeeMethod) -> Unit = {},
+) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
+    val failed = phase == RechargePhase.Failed && !busy
+    val methods = retryMethods.distinctBy { it.id to it.code }
+    val canContinue = failed && methods.isNotEmpty()
+    var selectedMethod by remember(phase, detail, retryMethods) { mutableStateOf<FeeMethod?>(null) }
     val title = when (phase) {
         RechargePhase.Paid -> subject + "成功"
         RechargePhase.Failed -> subject + "失败"
@@ -115,11 +126,15 @@ internal fun PaymentResultContent(phase: RechargePhase, loading: Boolean, amount
         Text(title, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(if (busy) 8.dp else 12.dp))
         Text(
-            "¥ " + RechargeMoney.yuan(amountCents),
-            fontSize = 36.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+            if (failed) detail?.takeIf { it.isNotBlank() } ?: "未能完成支付，请稍后重试"
+            else "¥ " + RechargeMoney.yuan(amountCents),
+            modifier = Modifier.fillMaxWidth(),
+            fontSize = if (failed) 17.sp else 36.sp,
+            fontWeight = if (failed) FontWeight.Normal else FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
         )
         val resultDetail = detail ?: if (phase == RechargePhase.Unknown) "稍后可在账单中核实" else null
-        if (!busy && phase != RechargePhase.Paid && resultDetail != null) {
+        if (!busy && !failed && phase != RechargePhase.Paid && resultDetail != null) {
             Spacer(Modifier.height(12.dp))
             Text(
                 resultDetail,
@@ -127,7 +142,31 @@ internal fun PaymentResultContent(phase: RechargePhase, loading: Boolean, amount
                 fontSize = 13.sp, textAlign = TextAlign.Center,
             )
         }
-        if (!busy) {
+        if (canContinue) {
+            Spacer(Modifier.height(20.dp))
+            Text("可选择以下方式重新支付", fontSize = 13.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(12.dp))
+            Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                methods.forEach { method ->
+                    val selected = selectedMethod?.let { it.id == method.id && it.code == method.code } == true
+                    PaymentSelectionCard(selected = selected,
+                        onClick = { selectedMethod = if (selected) null else method }) { contentColor ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(method.name + "支付", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                                color = contentColor, modifier = Modifier.weight(1f))
+                            if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onFinish, modifier = Modifier.weight(1f)) { Text("取消支付") }
+                Button(onClick = { selectedMethod?.let(onContinuePayment) }, enabled = selectedMethod != null,
+                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text("继续支付") }
+            }
+        } else if (!busy) {
             Spacer(Modifier.height(28.dp))
             Button(onClick = onFinish, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
         }

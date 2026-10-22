@@ -408,6 +408,7 @@ private fun MainContent(
                         onRetry = { if (feeActive) feeProject?.let { feeModel.open(it, state.username, state.preview) } },
                         onCreate = feeModel::create, onMethod = feeModel::chooseMethod,
                         onPayAccount = feeModel::payAccount,
+                        onContinuePayment = feeModel::continuePayment,
                         onCancelPayment = feeModel::cancelPayment,
                         onRoomAction = feeModel::requestRoomAction,
                         onConfirmRoomAction = feeModel::confirmRoomAction,
