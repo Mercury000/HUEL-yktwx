@@ -1,4 +1,4 @@
-# HUEL-yktwx
+# 财小通 · CaiXiaoTong
 
 河南财经政法大学校园一卡通个人付款码客户端，包含 **Kotlin / Jetpack Compose / miuix 安卓应用**及用于验证接口的 **Python 命令行客户端**。
 

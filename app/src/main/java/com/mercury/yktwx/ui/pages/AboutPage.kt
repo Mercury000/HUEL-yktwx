@@ -177,7 +177,7 @@ fun AboutPage(
                             scaleY = 1f - (progress * 0.05f)
                         },
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(18.dp))
                 GlassArtwork(
                     resourceId = R.drawable.about_wordmark,
                     backdrop = backdrop,
@@ -186,8 +186,8 @@ fun AboutPage(
                     shape = RoundedCornerShape(16.dp),
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier
-                        .width(193.dp)
-                        .height(40.dp)
+                        .width(224.dp)
+                        .height(64.dp)
                         .graphicsLayer {
                             val progress = ((scrollProgress - 0.20f) / 0.15f).coerceIn(0f, 1f)
                             alpha = 1f - progress
@@ -195,7 +195,7 @@ fun AboutPage(
                             scaleY = 1f - (progress * 0.05f)
                         },
                 )
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     text = "${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})",
                     modifier = Modifier.graphicsLayer {
