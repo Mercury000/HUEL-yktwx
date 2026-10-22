@@ -248,6 +248,59 @@ class PaymentResultUiTest {
         assertSame(state.query, current.value.query)
     }
 
+    @Test fun passwordRejectionLeavesEmptyInputAndRequiresFreshPasswordConfirmation() {
+        val preparation = FeeAccountPreparation("FAKE-ORDER", account.id,
+            listOf(FeeAccount("demo-type", "统一账户", 1000)), "fake-uuid", "9876543210")
+        val initial = FeeUiState(
+            config = FeeConfiguration(FeeProject.Network, "示例网费",
+                RechargeConfiguration("412", "", "", 0, listOf(1000), 1, 10000, true, false)),
+            query = FeeQuery(thirdParty = "{}"), stage = FeeStage.Password,
+            order = FeeOrder(PendingRecharge("test-user", "{}", "412", 1000, 0, "FAKE-ORDER", account.id), methods),
+            method = account, preparation = preparation,
+        )
+        val current = mutableStateOf(initial)
+        val passwords = mutableListOf<String>()
+        val settings = ThemeSettings(ApplicationProvider.getApplicationContext<Context>())
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme {
+                    FeePage(current.value, settings, {}, { _, _ -> }, {}, {}, {}, {},
+                        onPayAccount = { type, password ->
+                            assertEquals("demo-type", type)
+                            passwords += password
+                            current.value = FeeUiState(config = initial.config, query = initial.query,
+                                stage = FeeStage.Password, order = initial.order, method = account,
+                                preparation = preparation, error = "账户密码错误")
+                        }, onFinish = {}, onCancelPayment = {})
+                }
+            }
+        }
+        fun input() = compose.onNode(hasSetTextAction() and
+            SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Password))
+        compose.onNodeWithText("确定支付").assertIsNotEnabled()
+        input().performTextInput("123456")
+        compose.onNodeWithText("确定支付").assertIsEnabled().performClick()
+        assertEquals(listOf("123456"), passwords)
+        compose.onNodeWithText("账户密码错误").assertExists()
+        compose.onNodeWithText("六位支付密码").assertExists()
+        compose.onNodeWithText("缴费失败").assertDoesNotExist()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        input().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText,
+            androidx.compose.ui.text.AnnotatedString("")))
+        compose.onNodeWithText("确定支付").assertIsNotEnabled()
+        screenshot("fee-password-correction")
+        input().performTextInput("65432")
+        compose.onNodeWithText("确定支付").assertIsNotEnabled()
+        input().performTextInput("1")
+        assertEquals(1, passwords.size)
+        compose.onNodeWithText("确定支付").assertIsEnabled().performClick()
+        assertEquals(listOf("123456", "654321"), passwords)
+        input().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText,
+            androidx.compose.ui.text.AnnotatedString("")))
+        assertSame(initial.order, current.value.order)
+        assertSame(preparation, current.value.preparation)
+    }
+
     private fun screenshot(name: String) {
         val output = File("../tools/$name.png").absoluteFile
         output.parentFile?.mkdirs()

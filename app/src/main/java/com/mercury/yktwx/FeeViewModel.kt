@@ -399,7 +399,13 @@ class FeeViewModel internal constructor(
                 if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
             }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
+                if (generation == attempt) {
+                    if (e.reason == FeeRejectionReason.Password) {
+                        // Correct the password within this attempt. The dialog already cleared it;
+                        // the next explicit submit still checks the order and server expiry.
+                        mutable.value = copy(s, loading = false, error = e.message)
+                    } else result(RechargePhase.Failed, e.message, retryable = true)
+                }
             }
             catch (e: AuthenticationRequired) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
             catch (e: InvalidCredentials) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
