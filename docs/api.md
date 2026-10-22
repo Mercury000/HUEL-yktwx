@@ -93,7 +93,7 @@ synAccessSource: h5
 - `POST /berserker-app/ykt/tsm/modifyPwd`，JSON 字段 `account`、`oldpw`、`newpw`、`renewpw`、`synAccessSource`。
 - 三个密码分别使用同次数字安全键盘映射与 UUID；原生固定顺序编码使用 `Number&order=0`，不提交明文。
 - 仅外层 `code=200` 与内层 `retcode=0` 确认成功；成功清除旧凭据与 Token，Toast 后回登录页，不自动重登。
-- 失败保留弹窗，按“修改失败：<服务端原始消息>”显示 `msg` / `data.errmsg`，只加前缀、不改写、不附加重试文案；没有原始消息的网络/格式异常才用本地提示。不自动重试写请求。
+- 失败保留弹窗，直接在固定错误槽显示服务端原始 `msg` / `data.errmsg`，不添加前缀、不改写、不附加重试文案；没有原始消息的网络/格式异常才用本地提示。不自动重试写请求。
 - 本轮未执行真实原生改密，无 Cookie 提交仍需本地验证。
 
 ## 卡片充值与微信支付（接入调查）

@@ -73,6 +73,7 @@ fun BillStatsPage(
                             item(key = "login") {
                                 BillErrorCard(
                                     "登录已失效，请返回付款页重新登录。",
+                                    title = "登录已失效",
                                     actionLabel = "返回",
                                     onAction = onBack,
                                 )
@@ -94,22 +95,10 @@ fun BillStatsPage(
                                     BillLoadingCard("正在加载统计")
                                 }
                                 stats.error != null && !stats.loaded -> item(key = "error") {
-                                    BillErrorCard(stats.error, onAction = onRetry)
+                                    BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
                                 }
                                 stats.error != null -> item(key = "inline-error") {
-                                    Card(Modifier.fillMaxWidth()) {
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        ) {
-                                            Text(
-                                                stats.error, modifier = Modifier.weight(1f),
-                                                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                            )
-                                            TextButton("重试", onClick = onRetry)
-                                        }
-                                    }
+                                    InlineError(stats.error, actionLabel = "重试", onAction = onRetry)
                                 }
                                 else -> {
                                     item(key = "overview") { StatsOverview(stats) }

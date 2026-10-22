@@ -71,7 +71,7 @@ class CardPasswordUiTest {
         val message = "服务端原始错误消息"
         state.value = state.value.copy(error = message, preview = true)
         dialog(ColorSchemeMode.Dark)
-        compose.onNodeWithText("修改失败：$message").assertExists()
+        compose.onNodeWithText(message).assertExists()
         compose.onNodeWithText("请重试").assertDoesNotExist()
         compose.onNodeWithText("预览模式不会修改密码").assertExists()
         val fields = compose.onAllNodes(hasSetTextAction())
@@ -80,11 +80,11 @@ class CardPasswordUiTest {
         assertNull(submitted)
         screenshot("card-password-dark-error")
     }
-    @Test fun failurePrefixPreservesWhitespaceAndDoesNotAppendRetryText() {
+    @Test fun failurePreservesWhitespaceAndDoesNotAppendRetryText() {
         val original = "  official error\nsecond line  "
         state.value = state.value.copy(error = original)
         dialog()
-        compose.onNodeWithText("修改失败：" + original).assertExists()
+        compose.onNodeWithText(original).assertExists()
         compose.onNodeWithText("请重试").assertDoesNotExist()
         compose.onNodeWithText("修改成功后将退出登录，请重新登录").assertDoesNotExist()
     }

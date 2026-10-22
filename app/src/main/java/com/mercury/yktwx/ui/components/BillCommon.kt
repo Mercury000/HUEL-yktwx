@@ -206,10 +206,15 @@ internal fun BillMonthSelector(
 }
 
 @Composable
-internal fun BillErrorCard(message: String, actionLabel: String = "重试", onAction: () -> Unit) {
+internal fun BillErrorCard(
+    message: String,
+    title: String = "账单加载失败",
+    actionLabel: String = "重试",
+    onAction: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("账单加载失败", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text(message, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             Button(onClick = onAction, colors = ButtonDefaults.buttonColorsPrimary()) { Text(actionLabel) }
         }

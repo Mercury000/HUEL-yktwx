@@ -122,10 +122,9 @@ class CardServiceViewModel internal constructor(app: Application, private val re
             catch (e: Exception) {
                 if (attempt != current) return@launch
                 if (e !is CardOperationUnconfirmed) {
-                    // Preflight failures and explicit server rejections keep their original message.
-                    // Do not query or claim that a write was submitted for these errors.
-                    mutable.value = mutable.value.copy(loading = false, error = null)
-                    notifications.send(safeError(e))
+                    // Preflight failures and explicit server rejections stay in the dialog
+                    // with their original message. Do not query or claim a write was submitted.
+                    mutable.value = mutable.value.copy(loading = false, error = safeError(e))
                     return@launch
                 }
                 // Only an explicitly ambiguous write is checked. Never replay the POST.

@@ -55,7 +55,7 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
             catch (e: Exception) {
                 if (current == attempt) {
                     mutable.value = CardPasswordUiState()
-                    notifications.send("修改失败：" + safeError(e))
+                    notifications.send(safeError(e))
                 }
             }
         }
