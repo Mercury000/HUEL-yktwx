@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 
 enum class FeeStage { Query, Methods, Password, Result }
 enum class FeeRoomAction { Save, Unbind }
+/** A new-payment draft, deliberately without the failed order's ID or pay ID. */
+class FeePaymentRetry(val amountCents: Long, val methods: List<FeeMethod>) {
+    override fun toString() = "FeePaymentRetry([redacted])"
+}
 class FeeRoomDialog(val action: FeeRoomAction, val target: FeeRoomBinding, val previous: FeeRoomBinding?) {
     override fun toString() = "FeeRoomDialog([redacted])"
 }
@@ -33,7 +37,11 @@ class FeeUiState(
     val roomBindingKnown: Boolean = config?.invalidRoomBinding != true,
     val roomBusy: Boolean = false, val roomDialog: FeeRoomDialog? = null,
     val roomNotice: String? = null,
+    val paymentRetry: FeePaymentRetry? = null,
 ) {
+    val canContinuePayment get() = !preview && !loading && stage == FeeStage.Result &&
+        resultPhase == RechargePhase.Failed && query?.thirdParty != null &&
+        paymentRetry?.methods?.isNotEmpty() == true
     val currentRoom get() = FeeRoomBinding.from(levels, selections, names)
     val roomAction get() = if (currentRoom?.sameTarget(roomBinding) == true) FeeRoomAction.Unbind else FeeRoomAction.Save
     val roomActionEnabled get() = config?.roomBindingEnabled == true && roomBindingKnown &&
@@ -252,6 +260,12 @@ class FeeViewModel internal constructor(
     /** Dismissing an unpaid UI ends only this attempt; it does not pop the fee page. */
     fun cancelPayment() {
         if (mutable.value.stage !in setOf(FeeStage.Methods, FeeStage.Password, FeeStage.Result)) return
+        endPaymentAttempt()
+        mutable.value = copy(mutable.value, loading = false, refreshing = false, error = null,
+            order = null, method = null, preparation = null, paymentRetry = null, stage = FeeStage.Query,
+            resultPhase = RechargePhase.Creating)
+    }
+    private fun endPaymentAttempt() {
         attempt++
         task?.cancel()
         task = null
@@ -261,9 +275,49 @@ class FeeViewModel internal constructor(
         completedChecks = 0
         accountPaymentSubmitted = false
         while (launches.tryReceive().isSuccess) { }
-        mutable.value = copy(mutable.value, loading = false, refreshing = false, error = null,
-            order = null, method = null, preparation = null, stage = FeeStage.Query,
-            resultPhase = RechargePhase.Creating)
+    }
+    /** Only an explicit rejection permits a user-confirmed new order, never a replay. */
+    fun continuePayment(method: FeeMethod) {
+        val s = mutable.value
+        val retry = s.paymentRetry ?: return
+        val config = s.config ?: return
+        val query = s.query ?: return
+        if (!s.canContinuePayment || task?.isActive == true || s.roomBusy || s.roomDialog != null ||
+            repository.username() != owner || retry.methods.none { it.id == method.id && it.code == method.code }) return
+        if (config.amountRules.amountError(retry.amountCents) != null) return
+        endPaymentAttempt()
+        val generation = attempt
+        val marker = PendingRecharge(owner, query.thirdParty ?: return, config.project.id,
+            retry.amountCents, System.currentTimeMillis())
+        mutable.value = copy(s, loading = true, error = null, order = FeeOrder(marker, emptyList()),
+            method = null, preparation = null, paymentRetry = null, resultPhase = RechargePhase.Creating)
+        launchTask {
+            val order = try {
+                repository.createFee(marker.username, config, query, retry.amountCents)
+            } catch (e: CancellationException) { throw e }
+            catch (e: FeePaymentRejected) {
+                if (generation == attempt) result(RechargePhase.Failed, e.message)
+                return@launchTask
+            }
+            catch (e: Exception) {
+                if (generation == attempt) result(RechargePhase.Unknown,
+                    "订单结果未确认，请在官网核实，确认前请勿重复缴费")
+                return@launchTask
+            }
+            if (generation != attempt) return@launchTask
+            // Keep the failed channel excluded even if the new order's method list has changed.
+            val alternatives = order.methods.filter { current -> retry.methods.any { it.code == current.code } }
+            mutable.value = copy(mutable.value, loading = false,
+                order = FeeOrder(order.pending, alternatives), stage = FeeStage.Methods)
+            // The previous list is presentation-only. Only the new order authorizes a method.
+            val currentMethod = alternatives.firstOrNull { it.id == method.id && it.code == method.code }
+            if (currentMethod == null) {
+                if (alternatives.isEmpty()) result(RechargePhase.Failed, "其他支付方式已不可用，请重新发起缴费")
+                else mutable.value = copy(mutable.value, error = "支付方式已变化，请重新选择")
+                return@launchTask
+            }
+            prepareMethod(copy(mutable.value, order = order), currentMethod, generation)
+        }
     }
     fun create(amount: Long) {
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
@@ -272,45 +326,54 @@ class FeeViewModel internal constructor(
         val generation=attempt
         accountPaymentSubmitted = false
         val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount, System.currentTimeMillis())
-        mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()))
+        mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()),paymentRetry=null)
         launchTask {
             try {
                 val order=repository.createFee(marker.username,config,q,amount)
                 if (generation==attempt) mutable.value=copy(mutable.value,loading=false,order=order,stage=FeeStage.Methods)
             } catch (e: CancellationException) { throw e }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) mutable.value = copy(mutable.value, loading = false, order = null, error = e.message)
+                if (generation == attempt) result(RechargePhase.Failed, e.message)
             }
             catch (e: Exception) { if(generation==attempt) result(RechargePhase.Unknown, "订单结果未确认，请在官网核实，确认前请勿重复缴费") }
         }
     }
     fun chooseMethod(method: FeeMethod) {
-        val s=mutable.value; val order=s.order ?: return
-        if(s.loading || task?.isActive == true || s.stage!=FeeStage.Methods || order.methods.none { it.id==method.id && it.code==method.code }) return
-        val generation=attempt
-        val pending=order.pending.withOrder(order.pending.orderId!!,method.id)
-        mutable.value=copy(s,loading=true,error=null,order=FeeOrder(pending,order.methods),method=method,preparation=null)
-        launchTask {
-            try {
-                if(method.wechat) {
-                    mutable.value=copy(mutable.value,stage=FeeStage.Result,resultPhase=RechargePhase.Creating)
-                    val launch=repository.launchFeeWechat(pending,method)
-                    if(generation!=attempt)return@launchTask
-                    mutable.value=copy(mutable.value,loading=false,resultPhase=RechargePhase.AwaitingPayment)
-                    if(paymentReturn.canLaunch) launches.send(launch) else result(RechargePhase.Unknown,"支付尚未完成")
-                } else {
-                    val preparation=repository.prepareFeeAccount(pending,method)
-                    if(generation==attempt) mutable.value=copy(mutable.value,loading=false,stage=FeeStage.Password,preparation=preparation)
-                }
-            } catch(e: CancellationException){throw e}
-            catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.Failed, e.message) }
-            catch (e: FeeOrderAlreadyPaid) { if (generation == attempt) { accountPaymentSubmitted = true; startCheck() } }
-            catch (e: FeePaymentRejected) {
-                if (generation == attempt) {
-                    mutable.value = copy(mutable.value, loading = false, error = e.message, stage = FeeStage.Methods)
-                }
+        val s = mutable.value
+        val order = s.order ?: return
+        if (s.loading || task?.isActive == true || s.stage != FeeStage.Methods ||
+            order.methods.none { it.id == method.id && it.code == method.code }) return
+        val generation = attempt
+        launchTask { prepareMethod(s, method, generation) }
+    }
+    private suspend fun prepareMethod(s: FeeUiState, method: FeeMethod, generation: Long) {
+        val order = s.order ?: return
+        val pending = order.pending.withOrder(order.pending.orderId ?: return, method.id)
+        mutable.value = copy(s, loading = true, error = null, order = FeeOrder(pending, order.methods),
+            method = method, preparation = null, paymentRetry = null)
+        try {
+            if (method.wechat) {
+                mutable.value = copy(mutable.value, stage = FeeStage.Result, resultPhase = RechargePhase.Creating)
+                val launch = repository.launchFeeWechat(pending, method)
+                if (generation != attempt) return
+                mutable.value = copy(mutable.value, loading = false, resultPhase = RechargePhase.AwaitingPayment)
+                if (paymentReturn.canLaunch) launches.send(launch) else result(RechargePhase.Unknown, "支付尚未完成")
+            } else {
+                val preparation = repository.prepareFeeAccount(pending, method)
+                if (generation == attempt) mutable.value = copy(mutable.value, loading = false,
+                    stage = FeeStage.Password, preparation = preparation)
             }
-            catch(e: Exception){if(generation==attempt) { if(method.wechat) result(RechargePhase.Unknown,unknownDetail(message(e))) else mutable.value=copy(mutable.value,loading=false,error=message(e),stage=FeeStage.Methods) }}
+        } catch (e: CancellationException) { throw e }
+        catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.Failed, e.message) }
+        catch (e: FeeOrderAlreadyPaid) { if (generation == attempt) { accountPaymentSubmitted = true; startCheck() } }
+        catch (e: FeePaymentRejected) {
+            if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
+        }
+        catch (e: Exception) {
+            if (generation == attempt) {
+                if (method.wechat) result(RechargePhase.Unknown, unknownDetail(message(e)))
+                else result(RechargePhase.Failed, message(e), retryable = true)
+            }
         }
     }
     fun payAccount(type: String, password: String) {
@@ -333,10 +396,10 @@ class FeeViewModel internal constructor(
                 if (generation == attempt) { accountPaymentSubmitted = true; startCheck() }
             }
             catch (e: FeePaymentNotStarted) {
-                if (generation == attempt) mutable.value = copy(s, loading = false, error = e.message)
+                if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
             }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) mutable.value = copy(s, loading = false, error = e.message)
+                if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
             }
             catch (e: AuthenticationRequired) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
             catch (e: InvalidCredentials) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
@@ -411,7 +474,7 @@ class FeeViewModel internal constructor(
     }
     fun canLaunchWechat()=paymentReturn.canLaunch && repository.username()==owner && mutable.value.resultPhase==RechargePhase.AwaitingPayment
     fun wechatLaunched()=paymentReturn.launched()
-    fun launchFailed(){paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信")}
+    fun launchFailed(){paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
     fun accountChanged(username:String){if(owner.isNotEmpty() && username!=owner)dismiss()}
     fun dismiss(){attempt++;task?.cancel();task=null;checkDeadline?.cancel();checkDeadline=null;paymentReturn.reset();owner="";completedChecks=0;accountPaymentSubmitted=false;while(launches.tryReceive().isSuccess){};mutable.value=FeeUiState()}
     fun onForeground()=paymentReturn.foreground()
@@ -419,11 +482,20 @@ class FeeViewModel internal constructor(
     fun onPaused()=paymentReturn.paused()
     fun onWindowFocusChanged(focus:Boolean)=paymentReturn.focus(focus)
     fun onBackground()=paymentReturn.background()
-    private fun result(phase: RechargePhase, error: String? = null) {
+    private fun result(phase: RechargePhase, error: String? = null, retryable: Boolean = false) {
         checkDeadline?.cancel()
         checkDeadline = null
-        mutable.value = copy(mutable.value, loading = false, error = error,
-            stage = FeeStage.Result, resultPhase = phase, preparation = null)
+        paymentReturn.reset()
+        val s = mutable.value
+        val retry = if (phase == RechargePhase.Failed && retryable && s.method != null) s.order?.let {
+            val alternatives = it.methods.filter { method -> method.id != s.method.id && method.code != s.method.code }
+                .distinctBy { method -> method.id to method.code }
+            FeePaymentRetry(it.pending.amountCents, alternatives)
+        } else null
+        mutable.value = copy(s, loading = false, error = error,
+            stage = FeeStage.Result, resultPhase = phase, preparation = null,
+            order = if (retry != null) null else s.order,
+            method = if (retry != null) null else s.method, paymentRetry = retry)
     }
     private fun unknownDetail(reason: String? = null) = listOfNotNull(reason,
         "请稍后在账单中核实，确认前请勿重复缴费").joinToString("。")
@@ -452,7 +524,8 @@ class FeeViewModel internal constructor(
         roomBusy: Boolean = s.roomBusy,
         roomDialog: FeeRoomDialog? = s.roomDialog,
         roomNotice: String? = s.roomNotice,
+        paymentRetry: FeePaymentRetry? = s.paymentRetry,
     ) = FeeUiState(s.config, loading, error, levels, options, selections, names, query, order,
         method, preparation, stage, resultPhase, s.preview, hiddenLevels, refreshing, selecting,
-        roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice)
+        roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice, paymentRetry)
 }
