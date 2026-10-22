@@ -213,7 +213,7 @@ private fun MainContent(
     val cardState by cardModel.state.collectAsStateWithLifecycle()
     var feeProject by remember { mutableStateOf<FeeProject?>(null) }
     var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
@@ -337,6 +337,10 @@ private fun MainContent(
                                     onLogout = { if (isActive) viewModel.logout() },
                                     onRecharge = { if (isActive) { cardModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                )
+                                1 -> HallPage(
+                                    settings = settings,
+                                    bottomPadding = bottom,
                                     onOpenFee = ::openFee,
                                     feeOpening = feeOpening,
                                     onOpenCardService = { action ->
@@ -348,7 +352,7 @@ private fun MainContent(
                                     cardServiceOpening = cardState.loading || rechargeState.loading || feeOpening != null,
                                     cardServiceLoadingAction = cardState.action.takeIf { cardState.loading && !cardState.visible },
                                 )
-                                1 -> BillPage(
+                                2 -> BillPage(
                                     state = billState,
                                     settings = settings,
                                     onBack = { tabs.animateToPage(0) },
@@ -360,12 +364,12 @@ private fun MainContent(
                                     onSearch = billViewModel::search,
                                     onOpenStats = ::openBillStats,
                                     onOpenDetail = ::openBillDetail,
-                                    isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
+                                    isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
                                     showBack = false,
                                     bottomPadding = bottom,
                                 )
-                                2 -> AboutTabPage(
-                                    isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
+                                3 -> AboutTabPage(
+                                    isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
                                     pageBottomContentPadding = bottom,
                                     onOpenReferences = { open(Screen.References) },
                                     onOpenSettings = { open(Screen.Settings) },
@@ -439,8 +443,8 @@ private fun MainContent(
 
 @Composable
 private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected: (Int) -> Unit) {
-    val icons = listOf(MiuixIcons.Scan, AppIcons.Bill, MiuixIcons.Info)
-    val labels = listOf("付款", "账单", "关于")
+    val icons = listOf(MiuixIcons.Scan, AppIcons.Hall, AppIcons.Bill, MiuixIcons.Info)
+    val labels = listOf("付款", "大厅", "账单", "关于")
     val floating = settings.floatingBottomBar.value
     val blur = settings.blurBottomBar.value
     if (floating && settings.floatingBottomBarStyle.value == 1) {
