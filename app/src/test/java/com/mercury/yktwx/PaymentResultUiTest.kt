@@ -70,6 +70,15 @@ class PaymentResultUiTest {
         }
     }
 
+    @Test fun scanPaymentSuccessReusesPaidContentAndFinishAction() {
+        var finished = false
+        content(phase = RechargePhase.Paid, detail = null, subject = "支付", onFinish = { finished = true })
+        compose.onNodeWithText("支付成功").assertIsDisplayed()
+        compose.onNodeWithText("¥ 10.00").assertIsDisplayed()
+        compose.onNodeWithText("完成").performClick()
+        compose.runOnIdle { assertTrue(finished) }
+    }
+
     @Test fun rechargeFailureReplacesAmountWithOfficialMessageWithoutRepeatingIt() {
         content(subject = "充值")
         compose.onNodeWithText("充值失败").assertExists()

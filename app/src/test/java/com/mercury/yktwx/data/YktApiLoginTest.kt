@@ -35,7 +35,7 @@ class YktApiLoginTest {
         override fun getLocalPrincipal(): Principal? = null
     }
     private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JSONObject? = null,
-        private val paymentStatus: Int = 1, private val lost: Int = 0, private val frozen: Int = 0,
+        private val balance: Any? = 1234, private val paymentStatus: Int = 1, private val lost: Int = 0, private val frozen: Int = 0,
         private val barcodeBody: JSONObject? = null, private val barcodeHttpStatus: Int = 200,
         private val cardBody: JSONObject? = null, private val cardHttpStatus: Int = 200) {
         val calls = mutableListOf<FakeHttps>()
@@ -52,7 +52,7 @@ class YktApiLoginTest {
                 "/berserker-auth/oauth/token" -> tokenBody ?: JSONObject().put("access_token", "fake-token").put("token_type", "bearer").put("expires_in", 3600)
                 "/berserker-app/ykt/tsm/codebarPayinfo" -> JSONObject().put("code", 200).put("data", JSONArray().put(
                     JSONObject().put("code", "ACCOUNT").put("status", paymentStatus).put("lostflag", lost).put("freezeflag", frozen)
-                        .put("account", "fake-account").put("payacc", "fake-payacc").put("paytype", "1").put("name", "Demo").put("accinfo_balance", 1234)))
+                        .put("account", "fake-account").put("payacc", "fake-payacc").put("paytype", "1").put("name", "Demo").put("accinfo_balance", balance)))
                 "/berserker-app/ykt/tsm/getCampusCards" -> cardBody ?: JSONObject().put("code", 200).put("data", JSONObject()
                     .put("retcode", "0").put("card", JSONArray().put(JSONObject().put("account", "fake-account")
                         .put("lostflag", lost).put("freezeflag", frozen).put("acc_status", 0))))
@@ -68,6 +68,20 @@ class YktApiLoginTest {
     private fun form(value: String): Map<String, String> = value.split('&').associate {
         val pair = it.split('=', limit = 2)
         URLDecoder.decode(pair[0], "UTF-8") to URLDecoder.decode(pair[1], "UTF-8")
+    }
+    @Test fun standaloneBalanceQueryDoesNotCheckCardOrFetchBarcode() = runBlocking {
+        val fake = ScriptedApi(paymentStatus = 0, lost = 1)
+        assertEquals(1234L, fake.api.paymentAccount("fake-token").balanceCents)
+        assertEquals(1, fake.calls.size)
+        assertTrue(fake.calls.single().url.path.endsWith("/codebarPayinfo"))
+    }
+    @Test fun malformedBalancesCannotBecomeZeroOrTruncatedAmounts() = runBlocking {
+        for (balance in listOf(null, JSONObject.NULL, "", "oops", -1, 12.5, "9223372036854775808")) {
+            val fake = ScriptedApi(balance = balance)
+            try { fake.api.paymentAccount("fake-token"); fail("Accepted malformed balance: $balance") }
+            catch (_: YktException) { }
+        }
+        assertEquals(0L, ScriptedApi(balance = "0").api.paymentAccount("fake-token").balanceCents)
     }
     @Test fun loginAndPaymentWithCardPreflightReachAllSixEndpoints() = runBlocking {
         val fake = ScriptedApi()

@@ -12,6 +12,7 @@ import javax.net.ssl.HttpsURLConnection
 interface YktService {
     suspend fun login(credentials: Credentials): Session
     suspend fun payment(token: String): PaymentBatch
+    suspend fun paymentAccount(token: String): PaymentAccount
     suspend fun bills(
         token: String,
         current: Int,
@@ -92,13 +93,23 @@ class YktApi(
         val lifetime = response.optLong("expires_in").coerceIn(1, 31_536_000)
         return Session(token, System.currentTimeMillis() + lifetime * 1000)
     }
-    override suspend fun payment(token: String): PaymentBatch {
+    private suspend fun paymentAccountInfo(token: String): Pair<PaymentAccount, JSONObject> {
         val list = request("/berserker-app/ykt/tsm/codebarPayinfo", token = token).getJSONArray("data")
-        // Keep the account and its balance regardless of loss/freeze flags, as the official UI does.
         val selected = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull {
             it.optString("code") == "ACCOUNT"
         } ?: throw YktException("没有统一账户，请在官网检查账户状态")
-        val account = PaymentAccount(selected.getString("account"), selected.getString("payacc"), selected.getString("paytype"), selected.optString("name", "统一账户"), selected.optLong("accinfo_balance"))
+        // Never coerce missing, fractional, negative or overflowing balances to zero.
+        val balance = selected.opt("accinfo_balance")?.toString()?.toLongOrNull()
+            ?.takeIf { it >= 0 } ?: throw YktException("账户余额数据异常")
+        fun identifier(key: String) = (selected.opt(key) as? String)?.takeIf { it.isNotBlank() }
+            ?: throw YktException("付款账户数据异常")
+        return PaymentAccount(identifier("account"), identifier("payacc"), identifier("paytype"),
+            selected.optString("name", "统一账户"), balance) to selected
+    }
+    override suspend fun paymentAccount(token: String): PaymentAccount = paymentAccountInfo(token).first
+
+    override suspend fun payment(token: String): PaymentBatch {
+        val (account, selected) = paymentAccountInfo(token)
         // An issued barcode can still be rejected at payment time. Verify the matching card
         // before requesting any codes; preserve balance and recharge independently.
         val card = try { CardServiceApi(openConnection).paymentCard(token, account.account) }

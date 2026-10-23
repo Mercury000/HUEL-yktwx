@@ -1,0 +1,46 @@
+package com.mercury.yktwx
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.mercury.yktwx.ui.ThemeSettings
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class ThemeSettingsTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val prefs = context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE)
+
+    @Before fun reset() { prefs.edit().clear().commit() }
+
+    @Test fun paymentMotionDetectionIsOffForNewAndExistingUsersWithoutThePreference() {
+        assertFalse(ThemeSettings(context).paymentMotionDetection.value)
+        prefs.edit().putInt("theme_mode", 2).putBoolean("prevent_screenshots", false).commit()
+        val settings = ThemeSettings(context)
+        assertFalse(settings.paymentMotionDetection.value)
+        assertEquals(2, settings.themeMode.value)
+        assertFalse(settings.preventScreenshots.value)
+    }
+    @Test fun enablingPersistsAndUpdatesObservableState() {
+        val settings = ThemeSettings(context)
+        settings.setPaymentMotionDetection(true)
+        assertTrue(settings.paymentMotionDetection.value)
+        assertTrue(ThemeSettings(context).paymentMotionDetection.value)
+    }
+    @Test fun disablingPersistsWithoutChangingOtherPreferences() {
+        val settings = ThemeSettings(context)
+        settings.setTheme(2)
+        settings.setPaymentMotionDetection(true)
+        settings.setPaymentMotionDetection(false)
+        assertFalse(settings.paymentMotionDetection.value)
+        val restored = ThemeSettings(context)
+        assertFalse(restored.paymentMotionDetection.value)
+        assertEquals(2, restored.themeMode.value)
+        assertTrue(restored.preventScreenshots.value)
+    }
+}

@@ -18,6 +18,9 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         catch (e: AuthenticationRequired) { vault.clear(); throw e }
     }
     suspend fun refresh(): PaymentBatch = withSession { service.payment(it) }
+    suspend fun paymentAccount(username: String): PaymentAccount = withSession(expectedUsername = username) {
+        service.paymentAccount(it)
+    }
     internal suspend fun <T> withSession(retryAuthentication: Boolean = true, expectedUsername: String? = null, block: suspend (String) -> T): T = mutex.withLock {
         val credentials = vault.credentials() ?: throw AuthenticationRequired()
         if (expectedUsername != null && credentials.username != expectedUsername) throw YktException("充值账户已切换，请重新打开充值")

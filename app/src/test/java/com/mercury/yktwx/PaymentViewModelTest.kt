@@ -30,10 +30,22 @@ class PaymentViewModelTest {
     private var problem = PaymentCodeProblem.Unavailable
     private var paymentGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var responses = 0
+    private var accountQueries = 0
+    private var accountFailure: Exception? = null
+    private var accountGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private var accountResponses = 0
     private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
         override suspend fun login(credentials: Credentials): Session {
             logins++
             return Session("fake-token", Long.MAX_VALUE)
+        }
+        override suspend fun paymentAccount(token: String): PaymentAccount {
+            accountQueries++
+            val result = account
+            withContext(NonCancellable) { accountGate.await() }
+            accountResponses++
+            accountFailure?.let { throw it }
+            return result
         }
         override suspend fun payment(token: String): PaymentBatch {
             payments++
@@ -49,7 +61,7 @@ class PaymentViewModelTest {
     private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
     private val store = ViewModelStore().apply { put("payment", model) }
 
-    @After fun cleanup() { paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+    @After fun cleanup() { accountGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
     @Test fun firstEntryShowsBalanceEvenWhenBarcodeIsUnavailable() {
         model.initialize()
@@ -145,6 +157,175 @@ class PaymentViewModelTest {
         assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
         assertNull(model.state.value.code)
         assertNotNull(model.state.value.account)
+    }
+
+    private fun PaymentAccount.with(account: String = this.account, balanceCents: Long = this.balanceCents) =
+        PaymentAccount(account, payacc, paytype, name, balanceCents)
+
+    private fun readyForTurn() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        model.setPaymentMotionActive(true)
+        model.paymentTurnStarted()
+    }
+    @Test fun decreasedBalanceShowsDifferenceAndRefreshesCodeAndBalance() {
+        readyForTurn()
+        val first = model.state.value.batch
+        account = account.with(balanceCents = 5996)
+        model.paymentTurnReturned()
+        await { model.paymentSuccess.value != null && !model.state.value.busy }
+        assertEquals(500L, model.paymentSuccess.value)
+        assertEquals(5996L, model.state.value.account!!.balanceCents)
+        assertEquals(1, accountQueries)
+        assertEquals(2, payments)
+        assertNotSame(first, model.state.value.batch)
+        model.dismissPaymentSuccess()
+        model.paymentTurnStarted(); model.paymentTurnReturned()
+        await { accountQueries == 2 }
+        assertNull(model.paymentSuccess.value)
+    }
+    @Test fun unchangedOrIncreasedBalanceAndErrorsKeepThePageSilent() {
+        readyForTurn()
+        val before = model.state.value
+        account = account.with(balanceCents = 6996)
+        model.paymentTurnReturned()
+        await { accountQueries == 1 }
+        assertNull(model.paymentSuccess.value)
+        assertNull(model.state.value.error)
+        assertSame(before.batch, model.state.value.batch)
+        assertEquals(1, payments)
+        model.cancelPaymentDetection()
+        model.paymentTurnStarted()
+        accountFailure = NetworkFailure()
+        model.paymentTurnReturned()
+        await { accountQueries == 2 }
+        assertNull(model.paymentSuccess.value)
+        assertNull(model.state.value.error)
+    }
+    @Test fun periodicRefreshCannotOverwriteAnInProgressTurnBaseline() {
+        readyForTurn()
+        account = account.with(balanceCents = 6000)
+        model.refresh()
+        await { !model.state.value.busy && payments == 2 }
+        model.paymentTurnReturned()
+        await { model.paymentSuccess.value != null && !model.state.value.busy }
+        assertEquals(496L, model.paymentSuccess.value)
+    }
+    @Test fun lateBalanceResponseAfterBackgroundIsIgnored() {
+        readyForTurn()
+        account = account.with(balanceCents = 5000)
+        accountGate = CompletableDeferred()
+        model.paymentTurnReturned()
+        await { accountQueries == 1 }
+        model.onBackground()
+        accountGate.complete(Unit)
+        await { accountResponses == 1 }
+        assertNull(model.paymentSuccess.value)
+        assertNull(model.state.value.code)
+        assertEquals(1, payments)
+    }
+    @Test fun differentAccountIsNeverCompared() {
+        readyForTurn()
+        account = account.with(account = "other", balanceCents = 1)
+        model.paymentTurnReturned()
+        await { accountResponses == 1 }
+        assertNull(model.paymentSuccess.value)
+        assertEquals(1, payments)
+    }
+    @Test fun returnedWithoutStartedAndOffscreenMotionDoNotQuery() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        model.paymentTurnReturned()
+        model.paymentTurnStarted(); model.paymentTurnReturned()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, accountQueries)
+    }
+    @Test fun silentRetryFindsAnEventuallyUpdatedBalance() {
+        readyForTurn()
+        model.paymentTurnReturned()
+        await { accountResponses == 1 }
+        account = account.with(balanceCents = 6296)
+        shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+        await { model.paymentSuccess.value != null }
+        assertEquals(200L, model.paymentSuccess.value)
+    }
+
+    private fun finishSilentRetries() {
+        // IO completion can post the next delay after the current virtual-time jump.
+        // Advance in small steps until each response has returned to the main looper.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (accountResponses < 3 && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idleFor(100, TimeUnit.MILLISECONDS)
+            Thread.sleep(5)
+        }
+        assertEquals("Silent retries must reach their bounded third attempt", 3, accountResponses)
+        shadowOf(Looper.getMainLooper()).idleFor(6, TimeUnit.SECONDS)
+    }
+    @Test fun unchangedBalanceExhaustsThreeQueriesWithoutRefreshingOrShowingAnything() {
+        readyForTurn()
+        val before = model.state.value
+        model.paymentTurnReturned()
+        finishSilentRetries()
+        assertEquals(3, accountQueries)
+        assertEquals(1, payments)
+        assertNull(model.paymentSuccess.value)
+        assertNull(model.state.value.error)
+        assertSame(before.batch, model.state.value.batch)
+        assertEquals(before.account!!.balanceCents, model.state.value.account!!.balanceCents)
+    }
+    @Test fun allFailedQueriesAlsoRemainSilentAndStop() {
+        readyForTurn()
+        accountFailure = NetworkFailure()
+        model.paymentTurnReturned()
+        finishSilentRetries()
+        assertEquals(3, accountQueries)
+        assertEquals(1, payments)
+        assertNull(model.paymentSuccess.value)
+        assertNull(model.state.value.error)
+        assertFalse(model.state.value.busy)
+    }
+    @Test fun repeatedReturnEventsCannotRunConcurrentQueriesOrShowTheSameDebitTwice() {
+        readyForTurn()
+        account = account.with(balanceCents = 6000)
+        accountGate = CompletableDeferred()
+        model.paymentTurnReturned()
+        await { accountQueries == 1 }
+        model.paymentTurnReturned(); model.paymentTurnReturned()
+        assertEquals(1, accountQueries)
+        accountGate.complete(Unit)
+        await { model.paymentSuccess.value != null && !model.state.value.busy }
+        model.paymentTurnReturned()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, accountQueries)
+        assertEquals(496L, model.paymentSuccess.value)
+    }
+    @Test fun switchingAwayCancelsLateDebitResponse() {
+        readyForTurn()
+        account = account.with(balanceCents = 6000)
+        accountGate = CompletableDeferred()
+        model.paymentTurnReturned()
+        await { accountQueries == 1 }
+        model.setPaymentMotionActive(false)
+        accountGate.complete(Unit)
+        await { accountResponses == 1 }
+        assertNull(model.paymentSuccess.value)
+        assertEquals(1, payments)
+    }
+    @Test fun confirmedDebitSurvivesAnUnavailableNewBarcode() {
+        readyForTurn()
+        account = account.with(balanceCents = 6000)
+        codeAvailable = false
+        model.paymentTurnReturned()
+        await { model.paymentSuccess.value != null && !model.state.value.busy }
+        assertEquals(496L, model.paymentSuccess.value)
+        assertEquals(6000L, model.state.value.account!!.balanceCents)
+        assertNull(model.state.value.code)
     }
 
     private fun await(condition: () -> Boolean) {

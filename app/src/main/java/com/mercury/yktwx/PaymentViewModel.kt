@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class PaymentUiState(
+data class PaymentUiState(
     val needsLogin: Boolean = true,
     val busy: Boolean = false,
     val error: String? = null,
@@ -48,6 +48,70 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var logoutJob: Job? = null
     private var preview = false
     private var requestVersion = 0L
+    private val mutableSuccess = MutableStateFlow<Long?>(null)
+    val paymentSuccess = mutableSuccess.asStateFlow()
+    private var motionActive = false
+    private var balanceCheck: Job? = null
+    private var detectionVersion = 0L
+    private data class PaymentTurn(val username: String, val account: PaymentAccount, val version: Long)
+    private var paymentTurn: PaymentTurn? = null
+
+    internal fun setPaymentMotionActive(active: Boolean) {
+        motionActive = active
+        if (!active) cancelPaymentDetection()
+    }
+    internal fun cancelPaymentDetection() {
+        detectionVersion++
+        balanceCheck?.cancel(); balanceCheck = null; paymentTurn = null
+    }
+    internal fun paymentTurnStarted() {
+        val current = mutable.value
+        if (!foreground || !motionActive || preview || current.needsLogin || current.busy ||
+            current.code == null || current.problem != null || mutableSuccess.value != null || balanceCheck?.isActive == true) return
+        val account = current.account ?: return
+        paymentTurn = PaymentTurn(current.username, account, ++detectionVersion)
+    }
+    internal fun paymentTurnReturned() {
+        val turn = paymentTurn ?: return
+        if (balanceCheck?.isActive == true || !isCurrent(turn)) return
+        balanceCheck = viewModelScope.launch {
+            try {
+                // Bounded silent retries cover a balance endpoint that lags behind the scanner.
+                for (wait in longArrayOf(0, 350, 700)) {
+                    delay(wait)
+                    if (!isCurrent(turn)) return@launch
+                    val updated = try { withContext(Dispatchers.IO) { repository.paymentAccount(turn.username) } }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { continue }
+                    if (!isCurrent(turn)) return@launch
+                    val baseline = turn.account
+                    if (updated.account != baseline.account || updated.payacc != baseline.payacc ||
+                        updated.paytype != baseline.paytype) return@launch
+                    if (updated.balanceCents < 0 || baseline.balanceCents < 0) return@launch
+                    if (updated.balanceCents < baseline.balanceCents) {
+                        paymentTurn = null
+                        mutableSuccess.value = baseline.balanceCents - updated.balanceCents
+                        // Preserve the confirmed balance even if the following barcode request fails.
+                        mutable.value = mutable.value.copy(account = updated)
+                        requestVersion++; request?.cancel(); ticker?.cancel()
+                        mutable.value = mutable.value.copy(busy = false)
+                        refresh()
+                        return@launch
+                    }
+                }
+            } finally {
+                if (turn.version == detectionVersion) paymentTurn = null
+            }
+        }
+    }
+    private fun isCurrent(turn: PaymentTurn): Boolean {
+        val current = mutable.value
+        val account = current.account ?: return false
+        return turn.version == detectionVersion && foreground && motionActive && !current.needsLogin &&
+            current.username == turn.username && current.problem == null && mutableSuccess.value == null &&
+            account.account == turn.account.account && account.payacc == turn.account.payacc && account.paytype == turn.account.paytype
+    }
+    fun dismissPaymentSuccess() { mutableSuccess.value = null }
 
     fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false) {
         if (initialized) return
@@ -81,6 +145,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
     }
     fun onBackground() {
+        setPaymentMotionActive(false)
+        mutableSuccess.value = null
         requestVersion++
         foreground = false; ticker?.cancel(); request?.cancel()
         val old = mutable.value
@@ -93,6 +159,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun login(username: String, password: String) {
         if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
+        cancelPaymentDetection(); mutableSuccess.value = null
         val old = mutable.value
         val version = ++requestVersion
         mutable.value = PaymentUiState(true, true, username = username)
@@ -150,6 +217,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     /** Card-state changes invalidate both the displayed code and any older in-flight refresh. */
     fun cardStateChanged() {
+        cancelPaymentDetection(); mutableSuccess.value = null
         if (preview || mutable.value.needsLogin || mutable.value.restoringLogin) return
         requestVersion++
         request?.cancel()
@@ -174,7 +242,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (elapsed >= interval) {
                     refresh(); return@launch
                 }
-                mutable.value = PaymentUiState(false, username = username, batch = batch, code = batch.codes[0], secondsLeft = interval - elapsed)
+                mutable.value = mutable.value.copy(secondsLeft = interval - elapsed)
                 delay(1000)
             }
         }
@@ -186,6 +254,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun logout() {
         if (logoutJob?.isActive == true) return
+        setPaymentMotionActive(false); mutableSuccess.value = null
         requestVersion++
         ticker?.cancel(); request?.cancel()
         // Revoke access and clear payment codes immediately; only an inert shell

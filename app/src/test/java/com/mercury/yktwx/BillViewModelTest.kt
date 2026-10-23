@@ -163,6 +163,7 @@ class BillViewModelTest {
     }
 
     private class FakeService : YktService {
+        override suspend fun paymentAccount(token: String) = PaymentAccount("0", "0", "0", "Demo", 0)
         @Volatile var requests = 0
         var requestGate = CompletableDeferred<Unit>()
         var failure: YktException? = null

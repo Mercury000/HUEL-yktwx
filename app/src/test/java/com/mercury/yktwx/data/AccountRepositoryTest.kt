@@ -18,6 +18,13 @@ class AccountRepositoryTest {
         override fun clear() { savedCredentials = null; savedSession = null }
     }
     private class FakeService : YktService {
+        var balanceQueries = 0
+        var balanceFailures = mutableListOf<YktException>()
+        override suspend fun paymentAccount(token: String): PaymentAccount {
+            balanceQueries++
+            if (balanceFailures.isNotEmpty()) throw balanceFailures.removeAt(0)
+            return PaymentAccount("0", "0", "0", "Demo", 1234)
+        }
         var logins = 0
         var payments = 0
         var loginFailure: YktException? = null
@@ -109,6 +116,21 @@ class AccountRepositoryTest {
         val s = FakeService(); val v = MemoryVault(); v.clear()
         fails(AuthenticationRequired::class.java) { AccountRepository(s, v).refresh() }
         assertEquals(0, s.logins); assertEquals(0, s.payments)
+    }
+    @Test fun balanceQueryUsesSessionWithoutRequestingPaymentCodes() = runBlocking {
+        val s = FakeService(); val v = MemoryVault()
+        assertEquals(1234L, AccountRepository(s, v).paymentAccount("123").balanceCents)
+        assertEquals(1, s.balanceQueries); assertEquals(0, s.payments); assertEquals(0, s.logins)
+    }
+    @Test fun balanceQueryRejectsAnotherLoginBeforeAnyRequest() = runBlocking {
+        val s = FakeService()
+        fails(YktException::class.java) { AccountRepository(s, MemoryVault()).paymentAccount("other") }
+        assertEquals(0, s.balanceQueries); assertEquals(0, s.payments)
+    }
+    @Test fun rejectedBalanceTokenRelogsOnceWithoutFetchingCodes() = runBlocking {
+        val s = FakeService(); s.balanceFailures.add(AuthenticationRequired())
+        AccountRepository(s, MemoryVault()).paymentAccount("123")
+        assertEquals(2, s.balanceQueries); assertEquals(1, s.logins); assertEquals(0, s.payments)
     }
     @Test fun logoutClearsEverything() = runBlocking {
         val v = MemoryVault(); AccountRepository(FakeService(), v).logout()

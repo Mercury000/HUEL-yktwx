@@ -167,6 +167,30 @@ class UiSmokeTest {
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertExists()
     }
+    @Test fun paymentMotionDetectionSwitchIsInSettingsOffByDefaultAndPersists() {
+        content()
+        compose.onNode(hasText("关于") and hasClickAction())
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("设置").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("转回检测支付").assertIsDisplayed()
+        fun switch() = compose.onNode(isToggleable() and
+            (hasTestTag("payment-motion-detection-switch") or
+                hasAnyAncestor(hasTestTag("payment-motion-detection-switch"))))
+        switch().assertIsOff().performClick()
+        switch().assertIsOn()
+        assertTrue(settings.paymentMotionDetection.value)
+        assertTrue(ThemeSettings(compose.activity).paymentMotionDetection.value)
+        val output = File("../build/payment-motion-settings.png").absoluteFile
+        output.parentFile?.mkdirs()
+        output.outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+        switch().performClick().assertIsOff()
+        assertFalse(settings.paymentMotionDetection.value)
+        assertFalse(ThemeSettings(compose.activity).paymentMotionDetection.value)
+    }
+
     @Test fun campusCardEntriesOpenStateDialogAndReuseRechargeSheet() {
         content()
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
