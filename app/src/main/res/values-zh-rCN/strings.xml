@@ -28,4 +28,6 @@
     <string name="about_developer">开发者</string>
     <string name="about_source_code">源码</string>
     <string name="about_references">引用</string>
+    <string name="payment_motion_detection">转回检测支付</string>
+    <string name="payment_motion_detection_summary">展示付款码后转回手机，静默查询余额；仅余额减少时提示支付成功</string>
 </resources>

@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import android.widget.Toast
 import android.content.Intent
 import android.content.ActivityNotFoundException
@@ -219,6 +220,7 @@ private fun MainContent(
     passwordModel: CardPasswordViewModel,
     isActive: Boolean,
 ) {
+    val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
     val cardState by cardModel.state.collectAsStateWithLifecycle()
@@ -237,6 +239,14 @@ private fun MainContent(
     DisposableEffect(feeActive) {
         onDispose { if (feeActive) feeModel.dismiss() }
     }
+    PaymentMotionEffect(
+        enabled = settings.paymentMotionDetection.value && isActive && pagerState.currentPage == 0 &&
+            !pagerState.isScrollInProgress && layers.isEmpty() &&
+            feeOpening == null && !rechargeState.visible && !rechargeState.loading && !cardState.visible &&
+            !cardState.loading && !passwordState.visible && !passwordState.loading &&
+            !state.preview && !state.needsLogin && state.account != null && state.problem == null && paymentSuccess == null,
+        username = state.username, model = viewModel,
+    )
     val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
     val lastScreens = remember { mutableStateListOf<Screen?>(null, null, null) }
     SideEffect {
@@ -408,6 +418,7 @@ private fun MainContent(
                             }
                         }
                     }
+                    PaymentSuccessDialog(paymentSuccess, viewModel::dismissPaymentSuccess)
                     CardServiceDialog(
                         cardState, cardModel::dismiss, cardModel::selectCard, cardModel::changeCard,
                         cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
@@ -532,6 +543,13 @@ private fun SecondaryPage(
                         item {
                             Card(Modifier.fillMaxWidth()) {
                                 ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)
+                                SwitchPreference(
+                                    title = stringResource(R.string.payment_motion_detection),
+                                    summary = stringResource(R.string.payment_motion_detection_summary),
+                                    checked = settings.paymentMotionDetection.value,
+                                    onCheckedChange = settings::setPaymentMotionDetection,
+                                    modifier = Modifier.testTag("payment-motion-detection-switch"),
+                                )
                                 SwitchPreference(
                                     title = stringResource(R.string.prevent_screenshots),
                                     summary = stringResource(R.string.prevent_screenshots_summary),

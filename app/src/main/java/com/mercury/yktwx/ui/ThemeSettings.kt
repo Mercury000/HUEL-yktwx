@@ -1,10 +1,9 @@
 package com.mercury.yktwx.ui
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateOf
 
-/** All SonyPods theme controls, with exactly the same defaults and persistent keys. */
+/** Persistent UI preferences, including SonyPods theme controls with their original defaults. */
 class ThemeSettings(context: Context) {
     private val prefs = context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE)
     val themeMode = mutableStateOf(prefs.getInt("theme_mode", 0).coerceIn(0, 2))
@@ -15,6 +14,7 @@ class ThemeSettings(context: Context) {
     val blurTopBar = mutableStateOf(prefs.getBoolean("blur_top_bar", false))
     val predictiveBack = mutableStateOf(prefs.getBoolean("predictive_back", true))
     val predictiveBackDistance = mutableStateOf(prefs.getInt("predictive_back_distance", 50).coerceIn(0, 100))
+    val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }
     fun setAccent(v: Int) { accentMode.value = v; prefs.edit().putInt("accent_mode", v).apply() }
@@ -24,5 +24,6 @@ class ThemeSettings(context: Context) {
     fun setBlurTop(v: Boolean) { blurTopBar.value = v; prefs.edit().putBoolean("blur_top_bar", v).apply() }
     fun setPredictive(v: Boolean) { predictiveBack.value = v; prefs.edit().putBoolean("predictive_back", v).apply() }
     fun setDistance(v: Int) { predictiveBackDistance.value = v.coerceIn(0, 100); prefs.edit().putInt("predictive_back_distance", predictiveBackDistance.value).apply() }
+    fun setPaymentMotionDetection(v: Boolean) { paymentMotionDetection.value = v; prefs.edit().putBoolean("payment_motion_detection", v).apply() }
     fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
 }
