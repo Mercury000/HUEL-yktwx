@@ -9,6 +9,7 @@ import java.net.URLDecoder
 import java.security.Principal
 import java.security.cert.Certificate
 import java.time.LocalDate
+import java.time.YearMonth
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -72,6 +73,10 @@ class BillApiTest {
             .put("2026-10-02", 500.0)
             .put("2026-10-01", 300.4)
             .put("not-a-date", 99.0)
+        private val yearlyDaily = JSONObject()
+            .put("2026-02", 2000.0)
+            .put("2026-01", 1000.4)
+            .put("not-a-month", 99.0)
 
         val api = YktApi { url ->
             check(url.protocol == "https" && url.host == "yktwx2.huel.edu.cn")
@@ -80,7 +85,8 @@ class BillApiTest {
                 "/berserker-search/statistics/turnover/count" -> summary
                 "/berserker-search/search/turnoverType" -> types
                 "/berserker-search/statistics/turnover" -> categories
-                "/berserker-search/statistics/turnover/sum/user" -> daily
+                "/berserker-search/statistics/turnover/sum/user" ->
+                    if (url.query.contains("dateType=year")) yearlyDaily else daily
                 else -> error("Unexpected request path: ${url.path}")
             }
             val body = JSONObject().put("code", 200).put("data", data)
@@ -135,7 +141,8 @@ class BillApiTest {
         fake.api.billSummary("fake-token", "2026-10-01", "2026-10-31")
         fake.api.billTypes("fake-token")
         fake.api.billCategories("fake-token", 2, "2026-10-01", "2026-10-31")
-        fake.api.billDaily("fake-token", 2, "2026-10")
+        fake.api.billTrend("fake-token", 2, BillDateFilter.month(YearMonth.of(2026, 10)))
+        fake.api.billTrend("fake-token", 2, BillDateFilter.year(2026))
 
         assertEquals("/berserker-search/statistics/turnover/count", fake.calls[0].url.path)
         assertEquals(
@@ -154,6 +161,13 @@ class BillApiTest {
                 "type" to "2", "synAccessSource" to "h5",
             ),
             query(fake.calls[3].url),
+        )
+        assertEquals(
+            mapOf(
+                "dateStr" to "2026", "dateType" to "year", "statisticsDateStr" to "month",
+                "type" to "2", "synAccessSource" to "h5",
+            ),
+            query(fake.calls[4].url),
         )
         assertTrue(fake.calls.all { it.getRequestProperty("synjones-auth") == "bearer fake-token" })
         assertTrue(fake.calls.all { it.disconnected })
@@ -199,9 +213,13 @@ class BillApiTest {
         assertEquals(listOf("超市", "餐饮"), categories.map { it.name })
         assertEquals(1000, categories[0].amountCents)
 
-        val daily = fake.api.billDaily("fake-token", 2, "2026-10")
+        val daily = fake.api.billTrend("fake-token", 2, BillDateFilter.month(YearMonth.of(2026, 10)))
         assertEquals(listOf(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 2)), daily.map { it.date })
         assertEquals(listOf(300L, 500L), daily.map { it.amountCents })
+
+        val yearly = fake.api.billTrend("fake-token", 2, BillDateFilter.year(2026))
+        assertEquals(listOf(YearMonth.of(2026, 1), YearMonth.of(2026, 2)), yearly.map { YearMonth.from(it.date) })
+        assertEquals(listOf(1000L, 2000L), yearly.map { it.amountCents })
     }
 
     @Test fun rejectedBillRequestMapsToAuthenticationRequired() = runBlocking {

@@ -21,13 +21,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.BillCategory
+import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillDailyPoint
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
 @Composable
-internal fun DailyBillChart(points: List<BillDailyPoint>, modifier: Modifier = Modifier) {
+internal fun DailyBillChart(
+    points: List<BillDailyPoint>,
+    mode: BillDateMode,
+    modifier: Modifier = Modifier,
+) {
     val primary = MiuixTheme.colorScheme.primary
     val grid = MiuixTheme.colorScheme.dividerLine
     val surface = MiuixTheme.colorScheme.surface
@@ -35,14 +40,14 @@ internal fun DailyBillChart(points: List<BillDailyPoint>, modifier: Modifier = M
     val max = points.maxOfOrNull { it.amountCents } ?: 0L
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("每日趋势", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (mode == BillDateMode.Year) "每月趋势" else "每日趋势", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text(if (max > 0) "最高 ¥ ${money(max)}" else "暂无数据", fontSize = 12.sp, color = summary)
         }
         Spacer(Modifier.height(12.dp))
         if (points.isEmpty() || max <= 0L) {
             Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                Text("本月暂无数据", fontSize = 13.sp, color = summary)
+                Text("暂无数据", fontSize = 13.sp, color = summary)
             }
             return@Column
         }
@@ -91,16 +96,18 @@ internal fun DailyBillChart(points: List<BillDailyPoint>, modifier: Modifier = M
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-            Text(dayShort(points.first()), fontSize = 11.sp, color = summary)
+            Text(pointShort(points.first(), mode), fontSize = 11.sp, color = summary)
             Spacer(Modifier.weight(1f))
-            Text(dayShort(points[points.size / 2]), fontSize = 11.sp, color = summary)
+            Text(pointShort(points[points.size / 2], mode), fontSize = 11.sp, color = summary)
             Spacer(Modifier.weight(1f))
-            Text(dayShort(points.last()), fontSize = 11.sp, color = summary)
+            Text(pointShort(points.last(), mode), fontSize = 11.sp, color = summary)
         }
     }
 }
 
-private fun dayShort(point: BillDailyPoint) = "${point.date.monthValue}.${point.date.dayOfMonth}"
+private fun pointShort(point: BillDailyPoint, mode: BillDateMode): String =
+    if (mode == BillDateMode.Year) "${point.date.monthValue}月"
+    else "${point.date.monthValue}.${point.date.dayOfMonth}"
 
 @Composable
 internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modifier: Modifier = Modifier) {
@@ -153,7 +160,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
         }
         if (categories.isEmpty()) {
             Text(
-                "本月暂无分类数据", modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                "暂无分类数据", modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 fontSize = 13.sp, color = summary, textAlign = TextAlign.Center,
             )
             return@Column

@@ -67,8 +67,8 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun billCategories(type: Int, timeFrom: String, timeTo: String): List<BillCategory> = withSession {
         service.billCategories(it, type, timeFrom, timeTo)
     }
-    suspend fun billDaily(type: Int, month: String): List<BillDailyPoint> = withSession {
-        service.billDaily(it, type, month)
+    suspend fun billTrend(type: Int, filter: BillDateFilter): List<BillDailyPoint> = withSession {
+        service.billTrend(it, type, filter)
     }
     suspend fun billRanking(type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = withSession {
         service.billRanking(it, type, timeFrom, timeTo, limit)

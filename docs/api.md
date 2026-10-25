@@ -35,6 +35,8 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 账单列表使用 `/berserker-search/search/personal/turnover`，汇总使用 `/berserker-search/statistics/turnover/count`，分类与趋势通过对应 statistics 接口读取。金额以分处理，收入与支出方向由响应字段决定。
 
+支持单日、自然月、自然年及自定义日期范围，各接口共用 `timeFrom` / `timeTo`。
+
 ## 校园卡管理
 
 卡状态使用 `GET /berserker-app/ykt/tsm/getCampusCards`，目标是卡片 `account`。挂失与解挂分别使用 `POST /berserker-app/ykt/tsm/lostCard`、`unlostCard`，按配置提交 `account`、`synAccessSource` 和数字安全键盘编码的查询密码。成功核对外层、内层返回码与目标状态；响应未返回新状态时重新查询。超时先查状态，不自动重发。明确拒绝保留平台原因，存在目标回显时必须匹配。
