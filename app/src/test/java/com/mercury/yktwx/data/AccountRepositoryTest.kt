@@ -54,7 +54,7 @@ class AccountRepositoryTest {
         override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int = 0
         override suspend fun billTypes(token: String): List<BillType> = emptyList()
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()
-        override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> = emptyList()
+        override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> = emptyList()
         override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = emptyList()
     }
     private suspend fun fails(type: Class<out YktException>, action: suspend () -> Unit) {

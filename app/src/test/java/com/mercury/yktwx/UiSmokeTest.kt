@@ -100,7 +100,7 @@ class UiSmokeTest {
                     ),
                     settings = settings,
                     onBack = {}, onActivate = {}, onRefresh = {}, onLoadMore = {},
-                    onMonthSelected = {}, onFiltersApplied = { _, _, _ -> },
+                    onDateSelected = {}, onFiltersApplied = { _, _, _ -> },
                     onSearch = {}, onOpenStats = {}, onOpenDetail = {},
                 )
             }
@@ -108,6 +108,14 @@ class UiSmokeTest {
         compose.waitForIdle()
         compose.onNodeWithText("第一餐厅-扫码支付").assertExists()
         compose.onNodeWithContentDescription("筛选账单").assertExists()
+        compose.onNodeWithContentDescription("选择日期").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("日期范围").assertExists()
+        compose.onNodeWithText("按月").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("按年").onLast().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("确定").assertExists()
     }
 
     @Test fun hallIsSecondTabAndOwnsServicesAcrossBottomBarStyles() {

@@ -2,8 +2,6 @@ package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -13,20 +11,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.data.BillDateFilter
+import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillRecord
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRecord>) {
@@ -34,6 +36,9 @@ internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRec
 }
 
 internal val AppRefreshTexts = listOf("下拉刷新", "松开刷新", "正在刷新", "刷新完成")
+
+internal val BillListMinimumDate = LocalDate.of(2010, 2, 1)
+internal val BillStatsMinimumDate = LocalDate.of(2010, 1, 1)
 
 internal fun money(cents: Long): String = String.format(Locale.CHINA, "%.2f", cents / 100.0)
 
@@ -43,6 +48,55 @@ internal fun signedMoney(record: BillRecord): String =
 internal fun monthTitle(month: YearMonth): String = "${month.year}年${month.monthValue}月"
 
 internal fun monthShort(month: YearMonth): String = "${month.monthValue}月"
+
+internal fun billDateLabel(filter: BillDateFilter): String = when (filter.mode) {
+    BillDateMode.Day -> fullBillDate(filter.start)
+    BillDateMode.Month -> monthTitle(YearMonth.from(filter.start))
+    BillDateMode.Year -> "${filter.start.year}年"
+    BillDateMode.Range -> billRangeLabel(filter.start, filter.end)
+}
+
+internal fun billDateScopeLabel(filter: BillDateFilter, today: LocalDate = LocalDate.now()): String =
+    when (filter.mode) {
+        BillDateMode.Day -> "${filter.start.monthValue}月${filter.start.dayOfMonth}日"
+        BillDateMode.Month -> {
+            val month = YearMonth.from(filter.start)
+            if (month == YearMonth.from(today)) "本月" else "${month.monthValue}月"
+        }
+        BillDateMode.Year -> "${filter.start.year}年"
+        BillDateMode.Range -> billRangeScopeLabel(filter.start, filter.end)
+    }
+
+internal fun shiftBillDateFilter(filter: BillDateFilter, step: Long): BillDateFilter = when (filter.mode) {
+    BillDateMode.Day -> BillDateFilter.day(filter.start.plusDays(step))
+    BillDateMode.Month -> BillDateFilter.month(YearMonth.from(filter.start).plusMonths(step))
+    BillDateMode.Year -> BillDateFilter.year(filter.start.year + step.toInt())
+    BillDateMode.Range -> {
+        val days = ChronoUnit.DAYS.between(filter.start, filter.end) + 1
+        BillDateFilter.range(filter.start.plusDays(days * step), filter.end.plusDays(days * step))
+    }
+}
+
+private fun fullBillDate(date: LocalDate): String =
+    "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
+
+private fun billRangeLabel(start: LocalDate, end: LocalDate): String = when {
+    start == end -> fullBillDate(start)
+    start.year == end.year && start.month == end.month ->
+        "${fullBillDate(start)} - ${end.dayOfMonth}日"
+    start.year == end.year ->
+        "${fullBillDate(start)} - ${end.monthValue}月${end.dayOfMonth}日"
+    else -> "${fullBillDate(start)} - ${fullBillDate(end)}"
+}
+
+private fun billRangeScopeLabel(start: LocalDate, end: LocalDate): String = when {
+    start.year == end.year && start.month == end.month ->
+        "${start.monthValue}月${start.dayOfMonth}日 - ${end.dayOfMonth}日"
+    start.year == end.year ->
+        "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日"
+    else -> "${start.year}年${start.monthValue}月${start.dayOfMonth}日 - " +
+        "${end.year}年${end.monthValue}月${end.dayOfMonth}日"
+}
 
 private val timeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
@@ -132,23 +186,28 @@ internal fun BillFilterPill(text: String, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
-internal fun BillMonthSelector(
-    month: YearMonth,
-    onMonthSelected: (YearMonth) -> Unit,
+internal fun BillDateSelector(
+    filter: BillDateFilter,
+    minimumDate: LocalDate,
+    onDateSelected: (BillDateFilter) -> Unit,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     var showSheet by remember { mutableStateOf(false) }
-    val canNext = month < YearMonth.now()
+    val today = LocalDate.now()
+    val previous = shiftBillDateFilter(filter, -1)
+    val canPrevious = !previous.start.isBefore(minimumDate)
+    val canNext = shiftBillDateFilter(filter, 1).start <= today
     Card(modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { onMonthSelected(month.minusMonths(1)) }) {
+            IconButton(onClick = { if (canPrevious) onDateSelected(previous) }) {
                 Icon(
-                    MiuixIcons.ChevronBackward, contentDescription = "上个月",
-                    modifier = Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    MiuixIcons.ChevronBackward, contentDescription = "上一时间段",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (canPrevious) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.disabledOnSurface,
                 )
             }
             Surface(onClick = { showSheet = true }, modifier = Modifier.weight(1f), color = Color.Transparent) {
@@ -157,17 +216,24 @@ internal fun BillMonthSelector(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(monthTitle(month), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        billDateLabel(filter),
+                        modifier = Modifier.weight(1f, fill = false),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Spacer(Modifier.width(6.dp))
                     Icon(
-                        MiuixIcons.ExpandMore, contentDescription = null,
+                        MiuixIcons.ExpandMore, contentDescription = "选择日期",
                         modifier = Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
-            IconButton(onClick = { if (canNext) onMonthSelected(month.plusMonths(1)) }) {
+            IconButton(onClick = { if (canNext) onDateSelected(shiftBillDateFilter(filter, 1)) }) {
                 Icon(
-                    MiuixIcons.ChevronForward, contentDescription = "下个月",
+                    MiuixIcons.ChevronForward, contentDescription = "下一时间段",
                     modifier = Modifier.size(20.dp),
                     tint = if (canNext) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.disabledOnSurface,
                 )
@@ -175,35 +241,340 @@ internal fun BillMonthSelector(
             actions()
         }
     }
-    OverlayBottomSheet(
+    BillDatePickerDialog(
         show = showSheet,
-        title = "选择月份",
-        onDismissRequest = { showSheet = false },
-        renderInRootScaffold = true,
-    ) {
-        val months = remember(month) {
-            val current = YearMonth.now()
-            val list = (0 until 24).map { current.minusMonths(it.toLong()) }.toMutableList()
-            if (month !in list) list += month
-            list.sortedDescending()
+        filter = filter,
+        minimumDate = minimumDate,
+        onDismiss = { showSheet = false },
+        onConfirm = {
+            showSheet = false
+            onDateSelected(it)
+        },
+    )
+}
+
+@Composable
+private fun BillDatePickerDialog(
+    show: Boolean,
+    filter: BillDateFilter,
+    minimumDate: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: (BillDateFilter) -> Unit,
+) {
+    val today = LocalDate.now()
+    var mode by remember { mutableStateOf(filter.mode) }
+    var rangeStart by remember { mutableStateOf(filter.start) }
+    var rangeEnd by remember { mutableStateOf(filter.end) }
+    var activeStart by remember { mutableStateOf(true) }
+    var pickerDate by remember { mutableStateOf(filter.start) }
+    val modes = remember { listOf(BillDateMode.Day, BillDateMode.Month, BillDateMode.Year, BillDateMode.Range) }
+
+    fun dateForMode(nextMode: BillDateMode, start: LocalDate, end: LocalDate): LocalDate = when (nextMode) {
+        BillDateMode.Day -> minOf(today, end).coerceIn(start, today)
+        BillDateMode.Month -> maxOf(YearMonth.from(start).atDay(1), minimumDate)
+        BillDateMode.Year -> maxOf(LocalDate.of(start.year, 1, 1), minimumDate)
+        BillDateMode.Range -> (if (activeStart) start else end).coerceIn(minimumDate, today)
+    }
+
+    fun selectedFilter(): BillDateFilter = when (mode) {
+        BillDateMode.Day -> BillDateFilter.day(pickerDate)
+        BillDateMode.Month -> BillDateFilter.month(YearMonth.from(pickerDate))
+        BillDateMode.Year -> BillDateFilter.year(pickerDate.year)
+        BillDateMode.Range -> BillDateFilter.range(rangeStart, rangeEnd)
+    }
+
+    fun updateRangeDate(next: LocalDate) {
+        pickerDate = next
+        if (activeStart) {
+            rangeStart = next
+            if (rangeEnd < next) rangeEnd = next
+        } else {
+            rangeEnd = next
+            if (rangeStart > next) rangeStart = next
         }
-        Card(Modifier.fillMaxWidth().bottomSheetSafeArea()) {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                items(months, key = { it.toString() }) { item ->
-                    RadioButtonPreference(
-                        title = monthTitle(item),
-                        summary = if (item == YearMonth.now()) "本月" else null,
-                        selected = item == month,
+    }
+
+    fun updatePickerDate(next: LocalDate) {
+        if (next.isBefore(minimumDate) || next.isAfter(today)) return
+        if (mode == BillDateMode.Range) updateRangeDate(next) else pickerDate = next
+    }
+
+    fun selectMode(nextMode: BillDateMode) {
+        mode = nextMode
+        activeStart = true
+        if (mode == BillDateMode.Range) {
+            if (rangeStart < minimumDate) rangeStart = minimumDate
+            if (rangeEnd > today) rangeEnd = today
+            if (rangeStart > rangeEnd) rangeStart = rangeEnd
+        }
+        pickerDate = dateForMode(mode, rangeStart, rangeEnd)
+    }
+
+    LaunchedEffect(show) {
+        if (show) {
+            mode = filter.mode
+            rangeStart = filter.start.coerceAtLeast(minimumDate)
+            rangeEnd = filter.end.coerceAtMost(today)
+            if (rangeStart > rangeEnd) rangeEnd = rangeStart
+            activeStart = true
+            pickerDate = dateForMode(filter.mode, rangeStart, rangeEnd)
+        }
+    }
+
+    OverlayDialog(
+        show = show,
+        title = "选择日期",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            OverlayDropdownPreference(
+                title = "日期范围",
+                items = listOf("按日", "按月", "按年", "自定义时间段"),
+                selectedIndex = modes.indexOf(mode),
+                onSelectedIndexChange = { index -> selectMode(modes[index]) },
+                insideMargin = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+            )
+            if (mode == BillDateMode.Range) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BillRangeDateField(
+                        label = "开始",
+                        date = rangeStart,
+                        selected = activeStart,
+                        modifier = Modifier.weight(1f),
                         onClick = {
-                            showSheet = false
-                            onMonthSelected(item)
+                            activeStart = true
+                            pickerDate = rangeStart
+                        },
+                    )
+                    Text("至", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    BillRangeDateField(
+                        label = "结束",
+                        date = rangeEnd,
+                        selected = !activeStart,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            activeStart = false
+                            pickerDate = minOf(rangeEnd, today)
                         },
                     )
                 }
             }
+            when (mode) {
+                BillDateMode.Day -> BillDayPickers(
+                    date = pickerDate,
+                    today = today,
+                    minimumDate = minimumDate,
+                    onDateChange = ::updatePickerDate,
+                )
+                BillDateMode.Month -> BillMonthPickers(
+                    month = YearMonth.from(pickerDate),
+                    today = today,
+                    minimumDate = minimumDate,
+                    onMonthChange = { month -> updatePickerDate(month.atDay(1)) },
+                )
+                BillDateMode.Year -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    BillWheelPicker(
+                        value = pickerDate.year,
+                        onValueChange = { year ->
+                            if (year in minimumDate.year..today.year) {
+                                updatePickerDate(maxOf(LocalDate.of(year, 1, 1), minimumDate))
+                            }
+                        },
+                        modifier = Modifier.width(180.dp),
+                        selectableRange = minimumDate.year..today.year,
+                        displayRange = minimumDate.year..(today.year + DISPLAY_YEAR_BUFFER),
+                        label = { it.toString() },
+                    )
+                }
+                BillDateMode.Range -> BillDayPickers(
+                    date = pickerDate,
+                    today = today,
+                    minimumDate = minimumDate,
+                    onDateChange = ::updatePickerDate,
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = "取消",
+                    minHeight = 50.dp,
+                    onClick = onDismiss,
+                )
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = "确定",
+                    minHeight = 50.dp,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = { onConfirm(selectedFilter()) },
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun BillDayPickers(
+    date: LocalDate,
+    today: LocalDate,
+    minimumDate: LocalDate,
+    onDateChange: (LocalDate) -> Unit,
+) {
+    val monthRange = 1..12
+    val dayRange = 1..YearMonth.of(date.year, date.monthValue).lengthOfMonth()
+    val minMonth = if (date.year == minimumDate.year) minimumDate.monthValue else 1
+    val maxMonth = if (date.year == today.year) today.monthValue else 12
+    val minDay = if (date.year == minimumDate.year && date.monthValue == minimumDate.monthValue)
+        minimumDate.dayOfMonth else 1
+    val maxDay = if (date.year == today.year && date.monthValue == today.monthValue)
+        today.dayOfMonth else YearMonth.of(date.year, date.monthValue).lengthOfMonth()
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        BillWheelPicker(
+            value = date.year,
+            onValueChange = { year ->
+                if (year in minimumDate.year..today.year) {
+                    onDateChange(boundedBillDate(year, date.monthValue, date.dayOfMonth, minimumDate, today))
+                }
+            },
+            modifier = Modifier.weight(1f),
+            selectableRange = minimumDate.year..today.year,
+            displayRange = minimumDate.year..(today.year + DISPLAY_YEAR_BUFFER),
+            label = { it.toString() },
+        )
+        BillWheelPicker(
+            value = date.monthValue,
+            onValueChange = { month ->
+                if (month in minMonth..maxMonth) {
+                    onDateChange(boundedBillDate(date.year, month, date.dayOfMonth, minimumDate, today))
+                }
+            },
+            modifier = Modifier.weight(1f),
+            selectableRange = minMonth..maxMonth,
+            displayRange = monthRange,
+            label = { "%02d".format(it) },
+        )
+        BillWheelPicker(
+            value = date.dayOfMonth,
+            onValueChange = { day ->
+                if (day in minDay..maxDay) {
+                    onDateChange(boundedBillDate(date.year, date.monthValue, day, minimumDate, today))
+                }
+            },
+            modifier = Modifier.weight(1f),
+            selectableRange = minDay..maxDay,
+            displayRange = dayRange,
+            label = { "%02d".format(it) },
+        )
+    }
+}
+
+@Composable
+private fun BillMonthPickers(
+    month: YearMonth,
+    today: LocalDate,
+    minimumDate: LocalDate,
+    onMonthChange: (YearMonth) -> Unit,
+) {
+    val minMonth = if (month.year == minimumDate.year) minimumDate.monthValue else 1
+    val maxMonth = if (month.year == today.year) today.monthValue else 12
+    val selectableMonths = minMonth..maxMonth
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BillWheelPicker(
+            value = month.year,
+            onValueChange = { year ->
+                if (year in minimumDate.year..today.year) {
+                    val minMonth = if (year == minimumDate.year) minimumDate.monthValue else 1
+                    val maxMonth = if (year == today.year) today.monthValue else 12
+                    onMonthChange(YearMonth.of(year, month.monthValue.coerceIn(minMonth, maxMonth)))
+                }
+            },
+            modifier = Modifier.weight(1f),
+            selectableRange = minimumDate.year..today.year,
+            displayRange = minimumDate.year..(today.year + DISPLAY_YEAR_BUFFER),
+            label = { it.toString() },
+        )
+        BillWheelPicker(
+            value = month.monthValue,
+            onValueChange = { value ->
+                val minMonth = if (month.year == minimumDate.year) minimumDate.monthValue else 1
+                val maxMonth = if (month.year == today.year) today.monthValue else 12
+                if (value in minMonth..maxMonth) {
+                    onMonthChange(YearMonth.of(month.year, value))
+                }
+            },
+            modifier = Modifier.weight(1f),
+            selectableRange = selectableMonths,
+            displayRange = 1..12,
+            label = { "%02d".format(it) },
+        )
+    }
+}
+
+@Composable
+private fun BillRangeDateField(
+    label: String,
+    date: LocalDate,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        color = Color.Transparent,
+    ) {
+        Column(Modifier.padding(vertical = 6.dp)) {
+            Text(
+                label,
+                fontSize = 11.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "${date.year}.${date.monthValue}.${date.dayOfMonth}",
+                fontSize = 16.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.fillMaxWidth().height(2.dp).background(
+                    if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.dividerLine,
+                ),
+            )
+        }
+    }
+}
+
+private fun safeBillDate(year: Int, month: Int, day: Int): LocalDate {
+    val safeMonth = month.coerceIn(1, 12)
+    return LocalDate.of(year, safeMonth, day.coerceIn(1, YearMonth.of(year, safeMonth).lengthOfMonth()))
+}
+
+private fun boundedBillDate(
+    year: Int,
+    month: Int,
+    day: Int,
+    minimum: LocalDate,
+    maximum: LocalDate,
+): LocalDate = safeBillDate(year, month, day).coerceIn(minimum, maximum)
+
+private const val DISPLAY_YEAR_BUFFER = 5
 
 @Composable
 internal fun BillErrorCard(

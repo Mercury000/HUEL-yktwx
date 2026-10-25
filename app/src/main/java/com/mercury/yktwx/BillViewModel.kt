@@ -17,7 +17,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 data class BillStatsState(
-    val month: YearMonth = YearMonth.now(),
+    val period: BillDateFilter = BillDateFilter.currentMonth(),
     val type: Int = 2,
     val loading: Boolean = false,
     val error: String? = null,
@@ -30,7 +30,7 @@ data class BillStatsState(
 data class BillUiState(
     val preview: Boolean = false,
     val needsLogin: Boolean = false,
-    val month: YearMonth = YearMonth.now(),
+    val dateFilter: BillDateFilter = BillDateFilter.currentMonth(),
     val items: List<BillRecord> = emptyList(),
     val summary: BillSummary? = null,
     val counts: BillCounts? = null,
@@ -121,7 +121,7 @@ class BillViewModel internal constructor(
     fun refresh() {
         if (mutable.value.loading || mutable.value.refreshing) return
         if (preview) {
-            mutable.value = previewState(mutable.value.month, mutable.value.stats.type)
+            mutable.value = previewState(mutable.value.dateFilter, mutable.value.stats.type)
             lastLoadedAt = System.currentTimeMillis()
             lastStatsLoadedAt = lastLoadedAt
             return
@@ -129,18 +129,22 @@ class BillViewModel internal constructor(
         load(manualRefresh = true)
     }
 
-    fun selectMonth(month: YearMonth) {
-        if (month == mutable.value.month) return
+    fun selectDate(filter: BillDateFilter) {
+        if (filter == mutable.value.dateFilter) return
         cancelListJobs()
         val current = mutable.value
         mutable.value = current.copy(
-            month = month, items = emptyList(), summary = null, counts = null, total = 0, currentPage = 0, pages = 0,
+            dateFilter = filter, items = emptyList(), summary = null, counts = null, total = 0, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
         )
         if (preview) {
-            mutable.value = previewState(month, mutable.value.stats.type)
+            mutable.value = previewState(filter, mutable.value.stats.type)
             lastLoadedAt = System.currentTimeMillis()
         } else if (!mutable.value.needsLogin) load()
+    }
+
+    fun selectMonth(month: YearMonth) {
+        selectDate(BillDateFilter.month(month))
     }
 
     fun applyFilters(typeId: String?, amountFromCents: Long?, amountToCents: Long?) {
@@ -171,7 +175,7 @@ class BillViewModel internal constructor(
         if (preview || current.loading || current.refreshing || current.loadingMore) return
         if (current.currentPage <= 0 || current.currentPage >= current.pages) return
         val next = current.currentPage + 1
-        val month = current.month
+        val dateFilter = current.dateFilter
         val typeId = current.typeId
         val amountFrom = current.amountFromCents
         val amountTo = current.amountToCents
@@ -179,18 +183,24 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(loadingMore = true, loadMoreError = null)
         loadMoreJob = viewModelScope.launch {
             try {
-                val range = monthRange(month)
                 val page = withContext(Dispatchers.IO) {
-                    repository.bills(next, PAGE_SIZE, range.first, range.second, typeId, amountFrom, amountTo, info.ifBlank { null })
+                    repository.bills(
+                        next, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
+                        typeId, amountFrom, amountTo, info.ifBlank { null },
+                    )
                 }
                 val latest = mutable.value
-                if (latest.month != month || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
+                if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
                     latest.amountToCents != amountTo || latest.info != info
                 ) return@launch
                 val seen = latest.items.mapTo(HashSet()) { it.orderId }
+                val newItems = page.items.filter { it.orderId !in seen }
+                val exhausted = page.items.isEmpty() || newItems.isEmpty()
+                val loadedPage = next
+                val availablePages = if (exhausted) loadedPage else page.pages.coerceAtLeast(loadedPage)
                 mutable.value = latest.copy(
-                    items = latest.items + page.items.filter { it.orderId !in seen },
-                    total = page.total, currentPage = page.current, pages = page.pages,
+                    items = latest.items + newItems,
+                    total = page.total, currentPage = loadedPage, pages = availablePages,
                     loadingMore = false, loadMoreError = null,
                 )
             } catch (e: CancellationException) {
@@ -209,18 +219,23 @@ class BillViewModel internal constructor(
 
     fun openStats() {
         val current = mutable.value
-        val sameMonth = current.stats.month == current.month
-        mutable.value = current.copy(stats = current.stats.copy(month = current.month))
-        if (!sameMonth || !current.stats.loaded || System.currentTimeMillis() - lastStatsLoadedAt > CACHE_MS) loadStats()
+        val samePeriod = current.stats.period == current.dateFilter
+        mutable.value = current.copy(stats = current.stats.copy(period = current.dateFilter))
+        if (!samePeriod || !current.stats.loaded || System.currentTimeMillis() - lastStatsLoadedAt > CACHE_MS) loadStats()
+    }
+
+    fun selectStatsDate(filter: BillDateFilter) {
+        if (filter == mutable.value.stats.period) return
+        statsJob?.cancel()
+        mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(
+            period = filter, loading = false, error = null,
+            daily = emptyList(), categories = emptyList(), ranking = emptyList(), loaded = false,
+        ))
+        loadStats()
     }
 
     fun selectStatsMonth(month: YearMonth) {
-        if (month == mutable.value.stats.month) return
-        statsJob?.cancel()
-        mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(
-            month = month, loading = false, error = null, daily = emptyList(), categories = emptyList(), ranking = emptyList(), loaded = false,
-        ))
-        loadStats()
+        selectStatsDate(BillDateFilter.month(month))
     }
 
     fun selectStatsType(type: Int) {
@@ -249,7 +264,7 @@ class BillViewModel internal constructor(
         val current = mutable.value
         if (current.needsLogin && !manualRefresh) return
         loadJob?.cancel()
-        val month = current.month
+        val dateFilter = current.dateFilter
         val typeId = current.typeId
         val amountFrom = current.amountFromCents
         val amountTo = current.amountToCents
@@ -274,19 +289,25 @@ class BillViewModel internal constructor(
                     }
                     mutable.value = mutable.value.copy(needsLogin = false)
                 }
-                val range = monthRange(month)
                 val page = withContext(Dispatchers.IO) {
-                    repository.bills(1, PAGE_SIZE, range.first, range.second, typeId, amountFrom, amountTo, info.ifBlank { null })
+                    repository.bills(
+                        1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
+                        typeId, amountFrom, amountTo, info.ifBlank { null },
+                    )
                 }
                 val summary = try {
-                    withContext(Dispatchers.IO) { repository.billSummary(range.first, range.second) }
+                    withContext(Dispatchers.IO) {
+                        repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: YktException) {
                     null
                 }
                 val counts = try {
-                    withContext(Dispatchers.IO) { repository.billCounts(range.first, range.second) }
+                    withContext(Dispatchers.IO) {
+                        repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: YktException) {
@@ -302,7 +323,7 @@ class BillViewModel internal constructor(
                     }
                 } else current.types
                 val latest = mutable.value
-                if (latest.month != month || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
+                if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
                     latest.amountToCents != amountTo || latest.info != info
                 ) return@launch
                 mutable.value = latest.copy(
@@ -331,7 +352,7 @@ class BillViewModel internal constructor(
     private fun loadStats() {
         if (preview) {
             mutable.value = mutable.value.copy(
-                stats = previewStats(mutable.value.stats.month, mutable.value.stats.type),
+                stats = previewStats(mutable.value.stats.period, mutable.value.stats.type),
             )
             lastStatsLoadedAt = System.currentTimeMillis()
             return
@@ -342,12 +363,19 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null))
         statsJob = viewModelScope.launch {
             try {
-                val range = monthRange(stats.month)
-                val daily = withContext(Dispatchers.IO) { repository.billDaily(stats.type, stats.month.toString()) }
-                val categories = withContext(Dispatchers.IO) { repository.billCategories(stats.type, range.first, range.second) }
-                val ranking = withContext(Dispatchers.IO) { repository.billRanking(stats.type, range.first, range.second, 5) }
+                val daily = if (stats.period.trendSupported) {
+                    withContext(Dispatchers.IO) { repository.billTrend(stats.type, stats.period) }
+                } else {
+                    emptyList()
+                }
+                val categories = withContext(Dispatchers.IO) {
+                    repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo)
+                }
+                val ranking = withContext(Dispatchers.IO) {
+                    repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5)
+                }
                 val latest = mutable.value
-                if (latest.stats.month != stats.month || latest.stats.type != stats.type) return@launch
+                if (latest.stats.period != stats.period || latest.stats.type != stats.type) return@launch
                 mutable.value = latest.copy(stats = latest.stats.copy(
                     loading = false, error = null, daily = daily, categories = categories, ranking = ranking, loaded = true,
                 ))
@@ -372,10 +400,13 @@ class BillViewModel internal constructor(
         loadJob?.cancel(); loadMoreJob?.cancel()
     }
 
-    private fun previewState(month: YearMonth = YearMonth.now(), statsType: Int = 2): BillUiState {
-        val records = previewRecords(month)
+    private fun previewState(
+        period: BillDateFilter = BillDateFilter.currentMonth(),
+        statsType: Int = 2,
+    ): BillUiState {
+        val records = previewRecords(period)
         return BillUiState(
-            preview = true, needsLogin = false, month = month, items = records,
+            preview = true, needsLogin = false, dateFilter = period, items = records,
             summary = BillSummary(20000, 20540),
             counts = BillCounts(records.count { it.income }, records.count { !it.income }),
             total = records.size, currentPage = 1, pages = 1,
@@ -383,20 +414,32 @@ class BillViewModel internal constructor(
                 BillType("1", "消费", "consume"), BillType("2", "充值", "recharge"),
                 BillType("3", "退款", "refund"), BillType("4", "二维码支付", "qrCode-payment"),
             ),
-            loaded = true, stats = previewStats(month, statsType),
+            loaded = true, stats = previewStats(period, statsType),
         )
     }
 
-    private fun previewStats(month: YearMonth, type: Int): BillStatsState {
-        val records = previewRecords(month)
-        val daily = month.days().map { day ->
-            val amount = when {
-                type == 2 && day.dayOfMonth % 5 == 0 -> 1800L
-                type == 2 && day.dayOfMonth % 3 == 0 -> 640L
-                type == 1 && day.dayOfMonth == 1 -> 20000L
-                else -> 0L
+    private fun previewStats(period: BillDateFilter, type: Int): BillStatsState {
+        val records = previewRecords(period)
+        val daily = when (period.mode) {
+            BillDateMode.Month -> YearMonth.from(period.start).days().map { day ->
+                val amount = when {
+                    type == 2 && day.dayOfMonth % 5 == 0 -> 1800L
+                    type == 2 && day.dayOfMonth % 3 == 0 -> 640L
+                    type == 1 && day.dayOfMonth == 1 -> 20000L
+                    else -> 0L
+                }
+                BillDailyPoint(day, amount)
             }
-            BillDailyPoint(day, amount)
+            BillDateMode.Year -> (1..12).map { monthValue ->
+                val month = YearMonth.of(period.start.year, monthValue)
+                val amount = when {
+                    type == 2 && monthValue % 3 == 0 -> 8400L
+                    type == 1 -> 12000L
+                    else -> 0L
+                }
+                BillDailyPoint(month.atDay(1), amount)
+            }
+            BillDateMode.Day, BillDateMode.Range -> emptyList()
         }
         val categories = if (type == 2) listOf(
             BillCategory("二维码支付", 15000, "4", "qrCode-payment"),
@@ -408,14 +451,14 @@ class BillViewModel internal constructor(
         )
         val ranking = records.filter { (it.typeFrom == "1") == (type == 1) }.sortedByDescending { it.amountCents }.take(5)
         return BillStatsState(
-            month = month, type = type, daily = daily, categories = categories, ranking = ranking, loaded = true,
+            period = period, type = type, daily = daily, categories = categories, ranking = ranking, loaded = true,
         )
     }
 
-    private fun previewRecords(month: YearMonth): List<BillRecord> {
+    private fun previewRecords(period: BillDateFilter): List<BillRecord> {
         val today = LocalDate.now()
-        val baseDay = if (YearMonth.from(today) == month) today.dayOfMonth else month.lengthOfMonth()
-        fun date(offset: Long): LocalDate = month.atDay((baseDay - offset).coerceIn(1L, month.lengthOfMonth().toLong()).toInt())
+        val anchor = minOf(today, period.end).coerceAtLeast(period.start)
+        fun date(offset: Long): LocalDate = anchor.minusDays(offset).coerceIn(period.start, period.end)
         fun time(day: LocalDate, hour: Int, minute: Int): String =
             LocalDateTime.of(day, java.time.LocalTime.of(hour, minute)).format(PREVIEW_TIME)
         fun record(
@@ -440,9 +483,6 @@ class BillViewModel internal constructor(
             record("DEMO-08", "退款", "退款", "refund", "3", "1", 300, d5, 10, 10, "扫码支付", "校园超市", "退款"),
         )
     }
-
-    private fun monthRange(month: YearMonth): Pair<String, String> =
-        month.atDay(1).toString() to month.atEndOfMonth().toString()
 
     private fun YearMonth.days(): List<LocalDate> = (1..lengthOfMonth()).map { atDay(it) }
 

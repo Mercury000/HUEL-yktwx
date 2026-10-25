@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BillUiState
+import com.mercury.yktwx.data.BillDateFilter
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.data.BillType
 import com.mercury.yktwx.ui.ThemeSettings
@@ -39,7 +41,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.time.YearMonth
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import java.util.Locale
 
 @Composable
@@ -50,7 +53,7 @@ fun BillPage(
     onActivate: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
-    onMonthSelected: (YearMonth) -> Unit,
+    onDateSelected: (BillDateFilter) -> Unit,
     onFiltersApplied: (String?, Long?, Long?) -> Unit,
     onSearch: (String) -> Unit,
     onOpenStats: () -> Unit,
@@ -64,9 +67,29 @@ fun BillPage(
     var showFilter by remember { mutableStateOf(false) }
     var query by remember(state.info) { mutableStateOf(state.info) }
     val groups = remember(state.items) { state.items.groupByDay() }
+    val listState = rememberLazyListState()
+    val currentState by rememberUpdatedState(state)
+    val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // Adjacent tabs may be precomposed. Load only when the bill tab is active.
     LaunchedEffect(isActive) {
         if (isActive) onActivate() else showFilter = false
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            listState.isScrollInProgress && lastVisible >= layout.totalItemsCount - 3
+        }
+            .distinctUntilChanged()
+            .filter { it }
+            .collect {
+                val latest = currentState
+                if (!latest.loadingMore && latest.loadMoreError == null &&
+                    latest.currentPage in 1 until latest.pages
+                ) {
+                    currentOnLoadMore()
+                }
+            }
     }
 
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
@@ -99,6 +122,7 @@ fun BillPage(
                     refreshTexts = AppRefreshTexts,
                 ) {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize().overScrollVertical(),
                         contentPadding = PaddingValues(
                             top = padding.calculateTopPadding() + 16.dp,
@@ -118,8 +142,12 @@ fun BillPage(
                                 )
                             }
                         } else {
-                            item(key = "month") {
-                                BillMonthSelector(month = state.month, onMonthSelected = onMonthSelected) {
+                            item(key = "date") {
+                                BillDateSelector(
+                                    filter = state.dateFilter,
+                                    minimumDate = BillListMinimumDate,
+                                    onDateSelected = onDateSelected,
+                                ) {
                                     Box {
                                         IconButton(
                                             onClick = { showFilter = true },
@@ -185,7 +213,7 @@ fun BillPage(
                                     BillErrorCard(state.error, onAction = onRefresh)
                                 }
                                 state.items.isEmpty() -> item(key = "empty") {
-                                    BillEmptyCard("这个月还没有账单", "试试切换月份，或调整搜索和筛选条件。")
+                                    BillEmptyCard("当前时间段还没有账单", "试试切换日期范围，或调整搜索和筛选条件。")
                                 }
                                 else -> {
                                     items(groups, key = { it.key }) { group ->
@@ -231,7 +259,7 @@ fun BillPage(
 
 @Composable
 private fun BillSummaryCard(state: BillUiState) {
-    val label = if (state.month == YearMonth.now()) "本月" else "${state.month.monthValue}月"
+    val label = billDateScopeLabel(state.dateFilter)
     val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
     val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
     Card(Modifier.fillMaxWidth()) {
@@ -303,15 +331,12 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
         state.loadMoreError != null -> InlineError(
             state.loadMoreError, actionLabel = "重试", onAction = onLoadMore,
         )
-        state.currentPage in 1 until state.pages -> {
-            LaunchedEffect(state.currentPage, state.pages) { onLoadMore() }
-            Row(
-                Modifier.fillMaxWidth().height(56.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            }
+        state.currentPage in 1 until state.pages -> Row(
+            Modifier.fillMaxWidth().height(56.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
         state.items.isNotEmpty() -> Row(
             Modifier.fillMaxWidth().padding(vertical = 8.dp),

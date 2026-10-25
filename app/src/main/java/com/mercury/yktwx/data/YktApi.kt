@@ -28,7 +28,7 @@ interface YktService {
     suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int
     suspend fun billTypes(token: String): List<BillType>
     suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory>
-    suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint>
+    suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint>
     suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord>
 }
 
@@ -188,10 +188,19 @@ class YktApi(
         ).getJSONArray("data")
         return BillParser.categories(data)
     }
-    override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> {
+    override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+        val dateStr = filter.trendDateStr() ?: throw YktException("当前日期范围不支持趋势统计")
+        val dateType = if (filter.mode == BillDateMode.Year) "year" else "month"
+        val statisticsDateStr = if (filter.mode == BillDateMode.Year) "month" else "day"
         val data = request(
             "/berserker-search/statistics/turnover/sum/user",
-            mapOf("dateStr" to month, "dateType" to "month", "statisticsDateStr" to "day", "type" to type.toString()), token,
+            mapOf(
+                "dateStr" to dateStr,
+                "dateType" to dateType,
+                "statisticsDateStr" to statisticsDateStr,
+                "type" to type.toString(),
+            ),
+            token,
         ).getJSONObject("data")
         return BillParser.daily(data)
     }

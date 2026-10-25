@@ -3,7 +3,52 @@ package com.mercury.yktwx.data
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlin.math.roundToLong
+
+enum class BillDateMode { Day, Month, Year, Range }
+
+data class BillDateFilter(
+    val mode: BillDateMode,
+    val start: LocalDate,
+    val end: LocalDate,
+) {
+    init {
+        require(!start.isAfter(end)) { "Bill date range start must not be after end" }
+    }
+
+    val timeFrom: String get() = start.toString()
+    val timeTo: String get() = end.toString()
+    val trendSupported: Boolean get() = mode == BillDateMode.Month || mode == BillDateMode.Year
+
+    fun trendDateStr(): String? = when (mode) {
+        BillDateMode.Month -> YearMonth.from(start).toString()
+        BillDateMode.Year -> start.year.toString()
+        BillDateMode.Day, BillDateMode.Range -> null
+    }
+
+    companion object {
+        fun day(date: LocalDate) = BillDateFilter(BillDateMode.Day, date, date)
+
+        fun month(month: YearMonth) = BillDateFilter(
+            BillDateMode.Month,
+            month.atDay(1),
+            month.atEndOfMonth(),
+        )
+
+        fun year(year: Int) = BillDateFilter(
+            BillDateMode.Year,
+            LocalDate.of(year, 1, 1),
+            LocalDate.of(year, 12, 31),
+        )
+
+        fun range(start: LocalDate, end: LocalDate) =
+            BillDateFilter(BillDateMode.Range, start, end)
+
+        fun currentMonth(today: LocalDate = LocalDate.now()) =
+            month(YearMonth.from(today))
+    }
+}
 
 data class BillRecord(
     val orderId: String,
@@ -94,7 +139,9 @@ internal object BillParser {
         val keys = data.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val date = runCatching { LocalDate.parse(key) }.getOrNull() ?: continue
+            val date = runCatching { LocalDate.parse(key) }.getOrNull()
+                ?: runCatching { YearMonth.parse(key).atDay(1) }.getOrNull()
+                ?: continue
             points += BillDailyPoint(date, data.cents(key))
         }
         return points.sortedBy { it.date }

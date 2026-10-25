@@ -48,11 +48,17 @@ synAccessSource: h5
 
 ## 账单
 
-账单请求同样使用 `synjones-auth: bearer <access_token>`，不携带网页 Cookie，不跟随重定向。列表、统计和排行均只查询当前账户；时间范围按自然月传入 `yyyy-MM-dd`。
+账单请求同样使用 `synjones-auth: bearer <access_token>`，不携带网页 Cookie，不跟随重定向。列表、统计和排行均只查询当前账户；客户端支持单日、自然月、自然年和自定义时间段，统一以 `timeFrom=<yyyy-MM-dd>&timeTo=<yyyy-MM-dd>` 传给列表、汇总、分类和排行接口。
+
+日期下限不是账单接口返回值，而是官网前端规则：
+
+- 账单列表默认 `minDate=2010-02-01`，并允许前端配置 `billMinDate` 覆盖。
+- 统计页默认 `minDate=2010-01-01`，年份列表固定回溯到 2010。
+- 官网通用日期组件的 `2004-01-01` 只是未被这两个页面采用的默认兜底值。
 
 1. `GET /berserker-search/search/personal/turnover`
    - 列表/搜索参数：`current`、`size`、`timeFrom`、`timeTo`，可选 `typeId`、`amountFrom`、`amountTo`（单位分）、`info`，以及 `synAccessSource=h5`。
-   - 搜索限定当前月份并传 `info`；不在本地保存搜索词或账单明细。
+   - 搜索沿用当前日期范围并传 `info`；不在本地保存搜索词或账单明细。
    - 排行复用该接口，附加 `current=1`、`size=5`、`type=2`、`sortFields=tranamt`、`sortType=desc`。
    - 解析 `data.{records,total,size,current,pages}`；记录字段包括 `orderId`、`resume`、`payName`、`turnoverType`、`icon`、`typeId`、`typeFrom`、`tranamt`、`cardBalance`、`feeAmt`、`effectdateStr`、`jndatetimeStr`、`fromAccount`、`posCode`、`remark`、`toMerchant`、`sno`、`labelName`。
    - 收入/支出笔数复用该列表接口，附加 `type=1`（收入）或 `type=2`（支出）、`current=1`、`size=1`，读取 `data.total`。
@@ -64,8 +70,10 @@ synAccessSource: h5
    - 支出分类饼图；`type=1` 为收入、`type=2` 为支出。
    - 解析 `data[].{turnoverType,amount,typeId,icon}`，按金额降序展示。
 5. `GET /berserker-search/statistics/turnover/sum/user?dateStr=2026-10&dateType=month&statisticsDateStr=day&type=2&synAccessSource=h5`
-   - 按日聚合；`dateStr` 为 `yyyy-MM`，响应 `data` 是日期到金额的对象。
-   - 只接受可解析为 `yyyy-MM-dd` 的键，其余忽略。
+   - 按月查询时按日聚合；`dateStr` 为 `yyyy-MM`，响应 `data` 是日期到金额的对象。
+   - 按年查询使用 `dateStr=2026&dateType=year&statisticsDateStr=month`，响应键为 `yyyy-MM`。
+   - 单日和自定义时间段仍使用汇总、分类与排行接口；官网未提供对应的趋势聚合参数，客户端不伪造趋势数据。
+   - 趋势键同时接受 `yyyy-MM-dd` 与 `yyyy-MM`，其余忽略。
 
 约定：
 

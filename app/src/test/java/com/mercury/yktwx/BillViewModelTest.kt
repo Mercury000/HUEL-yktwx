@@ -14,6 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
+import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -116,15 +117,29 @@ class BillViewModelTest {
         vault.credentialsGate = CountDownLatch(1)
         model.refresh()
         assertTrue(model.state.value.refreshing)
-        val nextMonth = model.state.value.month.minusMonths(1)
+        val nextMonth = java.time.YearMonth.from(model.state.value.dateFilter.start).minusMonths(1)
         model.selectMonth(nextMonth)
         assertFalse(model.state.value.refreshing)
         assertTrue(model.state.value.loading)
         vault.credentialsGate!!.countDown()
         service.requestGate.complete(Unit)
         await { model.state.value.loaded }
-        assertEquals(nextMonth, model.state.value.month)
+        assertEquals(nextMonth, java.time.YearMonth.from(model.state.value.dateFilter.start))
         assertEquals(listOf(nextMonth.atDay(1).toString()), service.requestMonths)
+    }
+
+    @Test fun selectingCustomRangeUsesExactFromAndToDates() {
+        service.requestGate.complete(Unit)
+        model.refresh()
+        await { model.state.value.loaded }
+        service.requests = 0
+        service.requestRanges.clear()
+
+        model.selectDate(BillDateFilter.range(LocalDate.of(2026, 9, 3), LocalDate.of(2026, 10, 2)))
+
+        await { model.state.value.loaded && service.requests == 1 }
+        assertEquals(listOf("2026-09-03" to "2026-10-02"), service.requestRanges)
+        assertEquals(BillDateMode.Range, model.state.value.dateFilter.mode)
     }
 
     private fun loadExistingBills() {
@@ -169,11 +184,13 @@ class BillViewModelTest {
         var failure: YktException? = null
         var items = emptyList<BillRecord>()
         val requestMonths = mutableListOf<String>()
+        val requestRanges = mutableListOf<Pair<String, String>>()
         override suspend fun bills(
             token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
             typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?,
         ): BillPageData {
             requestMonths += timeFrom
+            requestRanges += timeFrom to timeTo
             requests++
             requestGate.await()
             failure?.let { throw it }
@@ -186,7 +203,8 @@ class BillViewModelTest {
         override suspend fun login(credentials: Credentials): Session = error("Unexpected login")
         override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = error("Unexpected categories")
-        override suspend fun billDaily(token: String, type: Int, month: String): List<BillDailyPoint> = error("Unexpected daily stats")
+        override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> =
+            error("Unexpected daily stats")
         override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = error("Unexpected ranking")
     }
 

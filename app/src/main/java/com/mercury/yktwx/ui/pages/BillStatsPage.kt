@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BillStatsState
 import com.mercury.yktwx.BillUiState
+import com.mercury.yktwx.data.BillDateFilter
+import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
@@ -21,14 +23,13 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import java.time.YearMonth
 
 @Composable
 fun BillStatsPage(
     state: BillUiState,
     settings: ThemeSettings,
     onBack: () -> Unit,
-    onMonthChange: (YearMonth) -> Unit,
+    onDateChange: (BillDateFilter) -> Unit,
     onTypeChange: (Int) -> Unit,
     onRetry: () -> Unit,
     onOpenDetail: (BillRecord) -> Unit,
@@ -79,8 +80,12 @@ fun BillStatsPage(
                                 )
                             }
                         } else {
-                            item(key = "month") {
-                                BillMonthSelector(month = stats.month, onMonthSelected = onMonthChange)
+                            item(key = "date") {
+                                BillDateSelector(
+                                    filter = stats.period,
+                                    minimumDate = BillStatsMinimumDate,
+                                    onDateSelected = onDateChange,
+                                )
                             }
                             item(key = "tabs") {
                                 TabRow(
@@ -102,10 +107,12 @@ fun BillStatsPage(
                                 }
                                 else -> {
                                     item(key = "overview") { StatsOverview(stats) }
-                                    item(key = "daily") {
-                                        Card(Modifier.fillMaxWidth()) {
-                                            Column(Modifier.padding(20.dp)) {
-                                                DailyBillChart(stats.daily)
+                                    if (stats.period.trendSupported) {
+                                        item(key = "trend") {
+                                            Card(Modifier.fillMaxWidth()) {
+                                                Column(Modifier.padding(20.dp)) {
+                                                    DailyBillChart(stats.daily, stats.period.mode)
+                                                }
                                             }
                                         }
                                     }
@@ -136,9 +143,20 @@ private fun StatsOverview(stats: BillStatsState) {
     val total = if (categoriesTotal > 0) categoriesTotal else dailyTotal
     val typeLabel = if (stats.type == 2) "支出" else "收入"
     val activeDays = stats.daily.count { it.amountCents > 0 }
+    val periodLabel = billDateScopeLabel(stats.period)
+    val heading = when (stats.period.mode) {
+        BillDateMode.Day, BillDateMode.Range -> "${typeLabel}合计"
+        BillDateMode.Month, BillDateMode.Year -> "${periodLabel}${typeLabel}合计"
+    }
+    val detail = when (stats.period.mode) {
+        BillDateMode.Month -> "${fullDate(stats.period.start)} 至 ${stats.period.end.dayOfMonth}日 · $activeDays 天有记录"
+        BillDateMode.Year -> if (activeDays > 0) "共 $activeDays 个月有记录" else "暂无记录"
+        BillDateMode.Day -> fullDate(stats.period.start)
+        BillDateMode.Range -> "${fullDate(stats.period.start)} 至 ${fullDate(stats.period.end)}"
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${stats.month.monthValue}月${typeLabel}合计", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text(heading, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             Text(
                 "¥ ${money(total)}",
                 fontSize = 30.sp,
@@ -146,13 +164,16 @@ private fun StatsOverview(stats: BillStatsState) {
                 color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
             )
             Text(
-                "${stats.month.year}年${stats.month.monthValue}月1日 至 ${stats.month.atEndOfMonth().dayOfMonth}日 · $activeDays 天有记录",
+                detail,
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
     }
 }
+
+private fun fullDate(date: java.time.LocalDate): String =
+    "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
 
 @Composable
 private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -> Unit) {
