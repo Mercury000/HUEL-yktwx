@@ -9,6 +9,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -99,33 +102,40 @@ class HallViewModel internal constructor(
             val errors = mutableListOf<String>()
             val bindingProjects = mutableSetOf<FeeProject>()
             var needsLogin = false
-            for (project in FeeProject.entries.filterNot { it.network }) {
-                try {
-                    val config = repository.feeConfiguration(username, project)
-                    if (attempt != generation) return@launchTask
-                    if (config.roomBindingEnabled) bindingProjects += project
-                    if (config.invalidRoomBinding) throw YktException("已绑定房间无法识别，请在管理中核实")
-                    if (config.roomBindingEnabled && config.roomBinding != null) repository.dormRoom(username, config)?.let { rooms.add(it) }
-                } catch (e: CancellationException) { throw e }
-                catch (e: Exception) {
-                    needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
-                    errors += project.label + "：" + ((e as? YktException)?.message ?: "读取失败，请重试")
-                    previous.rooms.flatMap { it.bindings }.filter { it.project == project }.forEach { old -> rooms += DormRoom(old.project, old.binding,
-                            old.meters.map { DormMeter(it.kind, it.room, null, "更新失败", it.project ?: old.project) }, old.updatedAtMillis, old.notice) }
-                }
-                if (attempt != generation) return@launchTask
-            }
             var network: FeeQuery? = null
             var networkError: String? = null
-            try {
-                repository.feeConfiguration(username, FeeProject.Network)
-                network = repository.feeQuery(username, FeeProject.Network, 0, emptyMap(), true)
-                network.tip?.let { throw YktException(it) }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) {
-                network = null
-                needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
-                networkError = (e as? YktException)?.message ?: "校园网读取失败"
+            coroutineScope {
+                val projects = FeeProject.entries.map { project -> async {
+                    if (project.network) {
+                        try {
+                            repository.feeConfiguration(username, project)
+                            val query = repository.feeQuery(username, project, 0, emptyMap(), true)
+                            query.tip?.let { throw YktException(it) }
+                            network = query
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) {
+                            needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                            networkError = (e as? YktException)?.message ?: "校园网读取失败"
+                        }
+                        emptyList()
+                    } else {
+                        try {
+                            val config = repository.feeConfiguration(username, project)
+                            if (attempt != generation) return@async emptyList()
+                            if (config.roomBindingEnabled) bindingProjects += project
+                            if (config.invalidRoomBinding) throw YktException("已绑定房间无法识别，请在管理中核实")
+                            if (config.roomBindingEnabled && config.roomBinding != null)
+                                listOfNotNull(repository.dormRoom(username, config)) else emptyList()
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) {
+                            needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                            errors += project.label + "：" + ((e as? YktException)?.message ?: "读取失败，请重试")
+                            previous.rooms.flatMap { it.bindings }.filter { it.project == project }.map { old -> DormRoom(old.project, old.binding,
+                                old.meters.map { DormMeter(it.kind, it.room, null, "更新失败", it.project ?: old.project) }, old.updatedAtMillis, old.notice) }
+                        }
+                    }
+                } }
+                rooms += projects.awaitAll().flatten()
             }
             if (attempt != generation) return@launchTask
             val selectedRoom = mutable.value.selectedRoom

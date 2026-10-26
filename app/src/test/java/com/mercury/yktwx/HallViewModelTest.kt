@@ -48,8 +48,22 @@ class HallViewModelTest {
     }
     @After fun cleanup() {
         fees.networkGate?.complete(Unit)
+        fees.projectGate?.complete(Unit)
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test fun slowProjectDoesNotBlockOtherProjectsOrTheNetworkRead() {
+        fees.projectGate = CompletableDeferred()
+        model.accountChanged("fake-owner"); model.refresh()
+        await { fees.blockedProjectEntered && fees.networkEntered &&
+            fees.configReads[FeeProject.Wenbei] == 1 && fees.configReads[FeeProject.Commercial] == 1 }
+        assertTrue(model.state.value.loading)
+        fees.projectGate!!.complete(Unit)
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.loaded)
+        assertNotNull(model.state.value.network)
+        assertTrue(fees.writes.isEmpty())
     }
 
     @Test fun bindingInvalidatedDuringRefreshIsReadAgainBeforeBeingConsideredFresh() {
@@ -139,12 +153,17 @@ class HallViewModelTest {
         var failWrite: FeeProject? = null
         var networkGate: CompletableDeferred<Unit>? = null
         var networkEntered = false
+        var projectGate: CompletableDeferred<Unit>? = null
+        var blockedProjectEntered = false
         private val levels = listOf(FeeLevel("campus", 1, "校区"), FeeLevel("room", 2, "房间"))
         fun room(project: FeeProject, name: String) = FeeRoomBinding.from(levels,
             mapOf("campus" to "fake-campus", "room" to "${project.id}-$name"),
             mapOf("campus" to "示例校区", "room" to name))!!
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             configReads[project] = configReads.getOrDefault(project, 0) + 1
+            if (project == FeeProject.Zhengdong && projectGate != null) {
+                blockedProjectEntered = true; projectGate!!.await()
+            }
             return FeeConfiguration(project, project.label,
                 RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false),
                 !project.network && project != FeeProject.Commercial, saved[project])

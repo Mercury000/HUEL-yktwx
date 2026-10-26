@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -64,25 +65,41 @@ class MyViewModel internal constructor(app: Application, private val repository:
             var needsLogin = false
             var homeIdentity = current.homeIdentity
             var homeIdentityError: String? = null
-            try {
-                profile = repository.personalProfile(username)
-                if (attempt != generation) return@launch
-                avatar = null
-                avatar = profile.avatarPath?.let { repository.profileAvatar(it) }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { profileError = message(e); needsLogin = isAuthenticationFailure(e) }
-            if (attempt != generation) return@launch
-            if (profileError == null && profile != null) {
-                try { homeIdentity = repository.homeIdentity(username, profile.sno) }
-                catch (e: CancellationException) { throw e }
-                catch (e: Exception) { homeIdentityError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+            coroutineScope {
+                launch identity@{
+                    val fresh = try { repository.personalProfile(username) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) {
+                        profileError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e)
+                        return@identity
+                    }
+                    if (attempt != generation) return@identity
+                    profile = fresh
+                    avatar = null
+                    coroutineScope {
+                        launch {
+                            try { avatar = fresh.avatarPath?.let { repository.profileAvatar(it) } }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { profileError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                        }
+                        launch {
+                            try { homeIdentity = repository.homeIdentity(username, fresh.sno) }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { homeIdentityError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                        }
+                    }
+                }
+                launch {
+                    try { summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                }
+                launch {
+                    try { counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                }
             }
-            if (attempt != generation) return@launch
-            try {
-                summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
-                counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
             if (attempt != generation) return@launch
             mutable.value = MyUiState(profile, avatar, summary, counts, month, false, profileError, summaryError,
                 needsLogin = needsLogin, homeIdentity = homeIdentity, homeIdentityError = homeIdentityError, loaded = true)
