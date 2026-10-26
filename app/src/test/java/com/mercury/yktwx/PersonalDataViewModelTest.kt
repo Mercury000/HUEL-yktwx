@@ -90,6 +90,68 @@ class PersonalDataViewModelTest {
         assertNotNull(model.state.value.summaryError)
         assertNull(model.state.value.profileError)
     }
+    @Test fun firstReadPublishesIdentityAndMonthTogetherAfterBothComplete() {
+        var summaryEntered = false
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "示例专业", null)
+            override suspend fun avatar(path: String): ByteArray? = null
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                summaryEntered = true; gate.await(); return BillSummary(100, 200)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.refresh()
+        await { summaryEntered }
+        assertTrue(model.state.value.loading)
+        assertFalse(model.state.value.loaded)
+        assertNull(model.state.value.profile)
+        assertNull(model.state.value.summary)
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.loaded)
+        assertEquals("示例姓名", model.state.value.profile?.name)
+        assertEquals(100L, model.state.value.summary?.incomeCents)
+        assertEquals(3, model.state.value.counts!!.income + model.state.value.counts!!.expenses)
+    }
+
+    @Test fun refreshingKeepsDisplayedIdentityAndErrorUntilNewReadCompletes() {
+        var refreshing = false
+        var profileEntered = false
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String): PersonalProfile {
+                if (refreshing) { profileEntered = true; gate.await() }
+                return PersonalProfile("示例姓名", "fake-id", "示例部门", "", null)
+            }
+            override suspend fun avatar(path: String): ByteArray? = null
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                if (!refreshing) throw NetworkFailure()
+                return BillSummary(100, 200)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.refresh()
+        await { !model.state.value.loading }
+        val previous = model.state.value
+        assertNotNull(previous.summaryError)
+        refreshing = true; model.refresh()
+        await { profileEntered }
+        assertTrue(model.state.value.loaded)
+        assertSame(previous.profile, model.state.value.profile)
+        assertEquals(previous.summaryError, model.state.value.summaryError)
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertNull(model.state.value.summaryError)
+        assertNotNull(model.state.value.summary)
+    }
+
     @Test fun lateDormReadCannotRestorePreviousAccountRoomAfterLogout() {
         var entered = false
         val fees = object : FeeService by FeeApi({ error("No live request") }) {
