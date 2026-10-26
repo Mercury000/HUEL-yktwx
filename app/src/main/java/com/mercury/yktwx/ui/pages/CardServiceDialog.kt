@@ -13,17 +13,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
-import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -39,41 +38,36 @@ fun CardServiceDialog(
     onRecipientEdited: () -> Unit,
     onQueryRecipient: (RecipientQueryType, String, String) -> Unit,
     onSelectRecipient: (RechargeRecipient) -> Unit,
-    onContinueRecharge: () -> Unit,
+    onContinueRecharge: (Long) -> Unit,
+    onRetryRecharge: () -> Unit = {},
 ) {
     if (state.action != CampusCardAction.OthersRecharge) {
         CardStateDialog(state, onDismiss, onSelectCard, onChangeCard)
         return
     }
-    // Input is local, not SavedState. Preserve recipient ID on back, never preserve captcha codes.
+    // Input is local, not SavedState. A new sheet starts with empty query and captcha fields.
     var queryType by remember(state.visible) { mutableStateOf(RecipientQueryType.StudentNumber) }
     var identifier by remember(state.visible) { mutableStateOf("") }
     var captchaCode by remember(state.visible, state.captcha) { mutableStateOf("") }
+    var amount by remember(state.visible, state.recipients) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val confirming = state.recipients.isNotEmpty()
-    fun previous() { captchaCode = ""; onRefreshCaptcha() }
-    OverlayBottomSheet(show = state.visible, title = "代人充值", onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    OverlayBottomSheet(show = state.visible, title = "代人充值", onDismissRequest = onDismiss,
+        renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (confirming) {
                 state.recipients.forEach { recipient ->
-                    val selected = state.selectedRecipient === recipient
-                    PaymentSelectionCard(selected = selected, enabled = !state.loading,
-                        onClick = { onSelectRecipient(recipient) }) { contentColor ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(recipient.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = contentColor, modifier = Modifier.weight(1f))
-                            if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
-                        }
-                        Text(recipient.sno.ifBlank { recipient.cardAccount }, fontSize = 14.sp, color = contentColor)
-                        Text(recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp,
-                            color = if (selected) contentColor else MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    }
+                    RecipientSelectionCard(recipient, state.selectedRecipient === recipient,
+                        { onSelectRecipient(recipient) }, !state.loading)
                 }
-                InlineError(state.error)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = ::previous, enabled = !state.loading, modifier = Modifier.weight(1f)) { Text("上一步") }
-                    Button(onClick = { keyboard?.hide(); onContinueRecharge() }, enabled = !state.loading && state.selectedRecipient != null,
-                        modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "读取中…" else "下一步") }
+                val config = state.rechargeConfig
+                if (config != null) {
+                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
+                        !state.preview && config.recipient === state.selectedRecipient, state.error, onContinueRecharge)
+                } else {
+                    if (state.loading) Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    InlineError(state.error, actionLabel = "重试", onAction = onRetryRecharge)
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

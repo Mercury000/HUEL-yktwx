@@ -7,12 +7,14 @@ class FeeRoomBinding private constructor(
     val label get() = names.values.joinToString(" · ")
     /** Prefer the meter label; only add location when it is not already part of that label. */
     val dialogLabel: String get() {
-        val room = names["room"] ?: names["room_id"] ?: return names.values.lastOrNull().orEmpty()
+        val rawRoom = names["room"] ?: names["room_id"] ?: return names.values.lastOrNull().orEmpty()
+        val room = rawRoom
         val building = names["building"] ?: names["loudong_id"]
-        val buildingStem = building?.removeSuffix("号楼")?.removeSuffix("楼")
+        val buildingStem = building?.let(::physicalLabel)?.removeSuffix("号楼")?.removeSuffix("楼")?.removeSuffix("栋")
         if (buildingStem.isNullOrBlank() || room.contains(buildingStem)) return room
-        val floor = names["floor"] ?: names["louceng_id"]
-        return listOfNotNull(building, floor?.takeUnless { room.contains(it) }, room).distinct().joinToString(" · ")
+        val floor = (names["floor"] ?: names["louceng_id"])?.let(::physicalLabel)
+        return listOfNotNull(physicalLabel(building), floor?.takeUnless { rawRoom.contains(it) }, room)
+            .distinct().joinToString(" · ")
     }
     fun sameTarget(other: FeeRoomBinding?) = other != null && selections == other.selections
     fun sceneInfo() = selections.entries.joinToString(";") { (key, value) -> "$key:$value#\$#${names.getValue(key)}" }

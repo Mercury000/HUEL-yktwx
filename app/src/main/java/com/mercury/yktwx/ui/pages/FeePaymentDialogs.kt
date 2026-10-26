@@ -66,7 +66,7 @@ internal fun FeePaymentDialogs(
 }
 
 @Composable
-private fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,
+internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,
     onDismiss: () -> Unit, onPay: (String, String) -> Unit) {
     var password by remember(preparation, show) { mutableStateOf("") }
     var type by remember(preparation) { mutableStateOf(preparation?.accounts?.firstOrNull()?.type.orEmpty()) }

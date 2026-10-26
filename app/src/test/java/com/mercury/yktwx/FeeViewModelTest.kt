@@ -124,6 +124,41 @@ class FeeViewModelTest {
         assertEquals(1, fees.creations)
     }
 
+    @Test fun hallPreferredCardMethodPreparesOneOrderAndWaitsForPasswordConfirmation() {
+        model.open(FeeProject.Network, "test-user", false, hall = true)
+        await { !model.state.value.loading && model.state.value.query != null }
+        model.createWithMethod(100, "ACCOUNTTSM")
+        model.createWithMethod(100, "ACCOUNTTSM")
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Password }
+        assertEquals(1, fees.creations)
+        assertEquals(listOf("FAKE-ORDER"), fees.preparedOrders)
+        assertEquals(fees.accountMethod.id, model.state.value.order?.pending?.payId)
+        assertEquals(0, fees.payments)
+        assertEquals(0, fees.launches)
+        model.cancelPayment()
+        assertEquals(FeeStage.Query, model.state.value.stage)
+        assertNotNull(model.state.value.query?.thirdParty)
+        assertNull(model.state.value.preparation)
+        assertNull(model.state.value.order)
+    }
+
+    @Test fun hallPreferredMethodLateOrderCannotRestoreDialogOrLaunchAfterDismissal() {
+        model.open(FeeProject.Network, "test-user", false, hall = true)
+        await { !model.state.value.loading && model.state.value.query != null }
+        fees.createGate = CompletableDeferred()
+        fees.ignoreCreateCancellation = true
+        model.createWithMethod(100, "TSM")
+        await { fees.creations == 1 }
+        model.dismiss()
+        fees.createGate.complete(Unit)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(model.state.value.config)
+        assertNull(model.state.value.order)
+        assertNull(model.state.value.preparation)
+        assertEquals(0, fees.launches)
+        assertEquals(0, fees.payments)
+    }
+
     @Test fun server60050ShowsOfficialMessageInResultWithoutAutomaticallyPaying() {
         openPassword()
         fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
