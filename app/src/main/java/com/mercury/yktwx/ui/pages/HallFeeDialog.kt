@@ -79,7 +79,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
             when (state.stage) {
                 FeeStage.Query -> {
                     if (config == null) {
-                        if (state.loading) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        if (state.loading) PaymentAmountPlaceholder()
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                     } else if (!amountStep && project?.network != true) {
                         val targetEnabled = !state.loading && !state.selecting && !state.refreshing && !state.roomBusy && state.roomDialog == null

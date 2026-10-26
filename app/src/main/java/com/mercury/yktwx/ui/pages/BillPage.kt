@@ -315,12 +315,14 @@ private fun BillSummaryCard(state: BillUiState) {
     val label = billDateScopeLabel(state.dateFilter)
     val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
     val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
+    val pending = state.loading && !state.loaded && state.summary == null
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(expensesLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
-                Text(
+                if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
+                    lineHeight = 34.sp, sample = "¥ 0.00") else Text(
                     state.summary?.let { "¥ ${money(it.expensesCents)}" } ?: "—",
                     fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
                 )
@@ -328,7 +330,8 @@ private fun BillSummaryCard(state: BillUiState) {
             Column(Modifier.weight(1f)) {
                 Text(incomeLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
-                Text(
+                if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
+                    lineHeight = 34.sp, sample = "¥ 0.00") else Text(
                     state.summary?.let { "¥ ${money(it.incomeCents)}" } ?: "—",
                     fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
                     color = MiuixTheme.colorScheme.primary,

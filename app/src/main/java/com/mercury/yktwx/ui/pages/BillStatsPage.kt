@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,9 +109,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
         )
     }
     when {
-        stats.loading && !stats.loaded -> item(key = "loading") {
-            BillLoadingCard("正在加载统计")
-        }
+        stats.loading && !stats.loaded -> billStatsLoading(stats.period.trendSupported)
         stats.error != null && !stats.loaded -> item(key = "error") {
             BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
         }
@@ -136,6 +136,35 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
             }
             if (stats.ranking.isNotEmpty()) {
                 item(key = "ranking") { StatsRanking(stats.ranking, onOpenDetail) }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.billStatsLoading(trendSupported: Boolean) {
+    item(key = "loading-overview") {
+        Card(Modifier.fillMaxWidth().semantics { contentDescription = "正在加载统计" }) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), fraction = .38f, lineHeight = 18.sp)
+                DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
+                DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .68f, lineHeight = 18.sp)
+            }
+        }
+    }
+    if (trendSupported) item(key = "loading-trend") { StatsChartPlaceholder() }
+    item(key = "loading-category") { StatsChartPlaceholder() }
+}
+
+@Composable
+private fun StatsChartPlaceholder() {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            DashboardPlaceholder(15.sp, Modifier.fillMaxWidth(), fraction = .35f, lineHeight = 22.sp)
+            Row(Modifier.fillMaxWidth().height(150.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Bottom) {
+                listOf(.42f, .68f, .52f, .82f, .61f, .74f).forEach { fraction ->
+                    ContentPlaceholder(Modifier.weight(1f).fillMaxHeight(fraction), cornerRadius = 8.dp)
+                }
             }
         }
     }

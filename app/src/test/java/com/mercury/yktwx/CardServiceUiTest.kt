@@ -265,7 +265,7 @@ class CardServiceUiTest {
         assertTrue("Sheet action overlaps system navigation inset", bounds.bottom <= height - insetPixels)
         screenshot("campus-card-recipient-navigation-safe")
     }
-    @Test fun pendingCardReadDoesNotShowAnIntermediatePopup() {
+    @Test fun pendingCardReadShowsSkeletonThenConfirmation() {
         val card = CampusCard("demo", "校园卡", "202600000001", false, false, 0)
         val current = mutableStateOf(CardServiceUiState(loading = true, visible = false))
         compose.setContent {
@@ -273,10 +273,13 @@ class CardServiceUiTest {
                 AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}) } }
             }
         }
+        compose.onNodeWithText("读取校园卡").assertIsDisplayed()
+        compose.onNodeWithContentDescription("正在读取校园卡").assertIsDisplayed()
         compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
         compose.onNodeWithText("确认挂失").assertDoesNotExist()
         compose.runOnIdle { current.value = current.value.copy(visible = true, loading = false, cards = listOf(card), selectedCard = card) }
         compose.onNodeWithText("确认挂失").assertExists()
+        compose.onNodeWithText("读取校园卡").assertDoesNotExist()
         compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
     }
     @Test fun serviceIconHasOneClickTargetAndLoadingBlocksRepeatedEntry() {

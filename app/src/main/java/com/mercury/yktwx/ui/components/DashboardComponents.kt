@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,13 +71,20 @@ internal fun DashboardPullToRefresh(loading: Boolean, onRefresh: () -> Unit, mod
 /** Reserve the same text metrics while data is unknown; placeholders expose no fake values. */
 @Composable
 internal fun DashboardPlaceholder(fontSize: TextUnit, modifier: Modifier = Modifier,
-    fraction: Float = .6f, lineHeight: TextUnit = TextUnit.Unspecified, sample: String = "读取") {
+    fraction: Float = .6f, lineHeight: TextUnit = TextUnit.Unspecified, sample: String = "读取",
+    color: Color = MiuixTheme.colorScheme.onSurface.copy(alpha = .08f)) {
     val barHeight = with(LocalDensity.current) { (fontSize * .7f).toDp() }
     Box(modifier.clearAndSetSemantics {}) {
         Text(sample, fontSize = fontSize, lineHeight = lineHeight, maxLines = 1, color = Color.Transparent)
-        Box(Modifier.fillMaxWidth(fraction).height(barHeight).align(Alignment.CenterStart)
-            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = .08f), RoundedCornerShape(4.dp)))
+        ContentPlaceholder(Modifier.fillMaxWidth(fraction).height(barHeight).align(Alignment.CenterStart), color = color)
     }
+}
+
+/** Shared loading surface for content-shaped placeholders. */
+@Composable
+internal fun ContentPlaceholder(modifier: Modifier = Modifier, cornerRadius: Dp = 4.dp,
+    color: Color = MiuixTheme.colorScheme.onSurface.copy(alpha = .08f)) {
+    Box(modifier.clearAndSetSemantics {}.background(color, RoundedCornerShape(cornerRadius)))
 }
 
 @Composable

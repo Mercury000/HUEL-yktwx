@@ -148,7 +148,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                             Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
                                             if (state.busy && state.account == null) {
-                                                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                                                DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
+                                                    lineHeight = 38.sp, sample = "¥ 0.00")
                                             } else {
                                                 Text(
                                                     state.account?.let { "¥ " + String.format(Locale.CHINA, "%.2f", it.balanceCents / 100.0) } ?: "¥ —",
