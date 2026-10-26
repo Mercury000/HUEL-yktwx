@@ -71,14 +71,16 @@ class FeeViewModel internal constructor(
     private var completedChecks = 0
     private var accountPaymentSubmitted = false
     private var hallMode = false
+    private var fixedHallTarget = false
     private val paymentReturn = PaymentReturnObserver(viewModelScope, { task },
         { !accountPaymentSubmitted && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
     fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null,
-        hall: Boolean = false) {
+        hall: Boolean = false, matchRoomNames: Boolean = false) {
         dismiss()
         hallMode = hall
+        fixedHallTarget = hall && requestedRoom != null && !matchRoomNames
         owner = username
         mutable.value = FeeUiState(loading = true, preview = preview)
         val generation = attempt
@@ -106,13 +108,13 @@ class FeeViewModel internal constructor(
                         options = mapOf(first.number to initial.options), preview = preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
                     val target = requestedRoom ?: config.roomBinding.takeUnless { hall }
-                    if (preview && requestedRoom != null) {
+                    if (preview && requestedRoom != null && !matchRoomNames) {
                         mutable.value = FeeUiState(config, levels = initial.levels,
                             selections = requestedRoom.selections, names = requestedRoom.names,
                             options = initial.levels.associate { it.number to listOf(FeeOption(requestedRoom.selections.getValue(it.key), requestedRoom.names.getValue(it.key))) },
                             query = previewQuery(project, true, initial.levels.last().number), preview = true)
                     } else if (target != null) {
-                        restoreRoom(entrance, target, generation)
+                        restoreRoom(entrance, target, generation, matchRoomNames)
                     } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
                         mutable.value = copy(entrance, loading = true)
                         loadSelection(entrance, first, initial.options.single(), generation)
@@ -125,6 +127,18 @@ class FeeViewModel internal constructor(
                 if (attempt == generation) mutable.value = FeeUiState(error = message(e), preview = preview)
             }
         }
+    }
+
+    /** Keep the household while resolving the other service's own live option IDs. */
+    fun selectFamilyProject(project: FeeProject): Boolean {
+        val state = mutable.value
+        val family = setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
+        if (!hallMode || fixedHallTarget || state.config?.project !in family || project !in family ||
+            state.config?.project == project || state.stage != FeeStage.Query || state.loading || state.selecting ||
+            state.refreshing || state.roomBusy || state.roomDialog != null) return false
+        val household = state.currentRoom ?: return false
+        open(project, owner, state.preview, household, hall = true, matchRoomNames = true)
+        return true
     }
 
     fun select(level: FeeLevel, option: FeeOption) {
@@ -162,18 +176,23 @@ class FeeViewModel internal constructor(
         if (next == null && allowRoomPrompt) offerRoomSave()
     }
 
-    private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long) {
+    private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long,
+        matchRoomNames: Boolean = false) {
+        val unavailable = if (matchRoomNames) "未找到此房间对应的水表或电表，请重新选择房间" else "已保存的房间选项已失效，请重新选择后保存"
         mutable.value = copy(entrance, loading = true)
         if (binding.selections.keys != entrance.levels.map { it.key }.toSet()) {
-            mutable.value = copy(entrance, error = "已保存的房间选项已失效，请重新选择后保存")
+            mutable.value = copy(entrance, error = unavailable)
             return
         }
         try {
             for ((index, level) in entrance.levels.withIndex()) {
                 val current = mutable.value
-                val option = current.options[level.number]?.firstOrNull { it.id == binding.selections[level.key] }
+                val options = current.options[level.number].orEmpty()
+                val option = if (matchRoomNames) options.singleOrNull {
+                    physicalLabel(it.name) == physicalLabel(binding.names.getValue(level.key))
+                } else options.firstOrNull { it.id == binding.selections[level.key] }
                 if (option == null) {
-                    mutable.value = copy(current, loading = false, error = "已保存的房间选项已失效，请重新选择后保存")
+                    mutable.value = copy(current, loading = false, error = unavailable)
                     return
                 }
                 loadSelection(current, level, option, generation, allowRoomPrompt = false,
@@ -549,7 +568,8 @@ class FeeViewModel internal constructor(
         val letter = buildingId.removePrefix("demo-building-").substringBefore('-').ifEmpty { "A" }
         val wenbeiKind = if (buildingId.endsWith("AirConditioning")) DormMeterKind.AirConditioning else DormMeterKind.Lighting
         val options = when (level) {
-            0 -> listOf(FeeOption("demo-campus", project.label.removeSuffix("电费")))
+            0 -> listOf(FeeOption("demo-campus", if (project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater))
+                "家属区" else project.label.removeSuffix("电费")))
             1 -> if (project == FeeProject.Wenbei) listOf("A", "B", "C").flatMap { letter ->
                 listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning).map { kind ->
                     FeeOption("demo-building-$letter-${kind.name}", "示例${letter}栋${kind.label}")

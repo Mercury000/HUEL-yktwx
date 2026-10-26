@@ -1,0 +1,150 @@
+package com.mercury.yktwx
+
+import android.graphics.Bitmap
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import com.mercury.yktwx.data.*
+import com.mercury.yktwx.ui.AppTheme
+import com.mercury.yktwx.ui.pages.HallFeeDialog
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import java.io.File
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class FeeSelectorUiTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val levels = listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("floor", 2, "楼层"), FeeLevel("room", 3, "房间"))
+    private fun state(project: FeeProject, kind: String = "", complete: Boolean = true): FeeUiState {
+        val names = mapOf("building" to "示例A栋", "floor" to "示例楼层", "room" to "示例A栋-房间A$kind")
+        val selections = mapOf("building" to "building-${project.id}", "floor" to "floor-${project.id}", "room" to "room-${project.id}-$kind")
+        return FeeUiState(
+            config = FeeConfiguration(project, project.label,
+                RechargeConfiguration(project.id, "", "", 0, listOf(1000), 1, 200000, true, false), roomBindingEnabled = true),
+            levels = levels, names = if (complete) names else names - "room",
+            selections = if (complete) selections else selections - "room",
+            options = levels.associate { level -> level.number to if (level.key == "room" && project == FeeProject.Zhengdong)
+                listOf(FeeOption("room-${project.id}-照明", "示例A栋-房间A照明"), FeeOption("room-${project.id}-空调", "示例A栋-房间A空调"))
+                else listOf(FeeOption(selections.getValue(level.key), names.getValue(level.key))) },
+            query = if (complete) FeeQuery(thirdParty = "{}", display = listOf("剩余用量" to "86.4")) else null,
+        )
+    }
+    private fun content(state: () -> FeeUiState, fixed: Boolean = false, saveOnly: Boolean = false,
+        dark: () -> Boolean = { false }, onSelect: (FeeLevel, FeeOption) -> Unit = { _, _ -> },
+        onProject: (FeeProject) -> Unit = {}, onCreate: (Long, String) -> Unit = { _, _ -> },
+        bindingProjects: Set<FeeProject> = setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(if (dark()) ColorSchemeMode.Dark else ColorSchemeMode.Light) { Scaffold {
+                    val current = state()
+                    HallFeeDialog(current, true, current.config!!.project, if (fixed) current.currentRoom else null,
+                        saveOnly = saveOnly, onDismiss = {}, onSelect = onSelect, onRetry = {}, onCreate = onCreate,
+                        onMethod = {}, onPayAccount = { _, _ -> }, onCancelPayment = {}, onFinish = {},
+                        onContinuePayment = {}, onRoomAction = {}, onConfirmRoomAction = {},
+                        onDismissRoomDialog = {}, onConsumeRoomNotice = {}, onProject = onProject,
+                        bindingProjects = bindingProjects)
+                } }
+            }
+        }
+    }
+    private fun capture(name: String) {
+        compose.mainClock.advanceTimeBy(1500)
+        compose.runOnIdle { compose.activity.window.decorView.invalidate() }
+        compose.waitForIdle()
+        val output = File("../tools/fee-selector-preview/$name.png").absoluteFile
+        output.parentFile?.mkdirs()
+        output.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+    @Test fun everyFixedCardEntryKeepsItsMeterAndOnlyAsksForAmount() {
+        var current by mutableStateOf(state(FeeProject.FamilyElectric))
+        var dark by mutableStateOf(false)
+        var submitted: Pair<Long, String>? = null
+        content({ current }, fixed = true, dark = { dark }, onCreate = { cents, method -> submitted = cents to method })
+        listOf(FeeProject.FamilyElectric to "", FeeProject.FamilyWater to "",
+            FeeProject.Zhengdong to "照明", FeeProject.Zhengdong to "空调").forEach { (project, kind) ->
+            compose.runOnIdle { current = state(project, kind); submitted = null }
+            compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
+            compose.onNodeWithText("楼栋").assertDoesNotExist()
+            compose.onNodeWithText("返回选房").assertDoesNotExist()
+            compose.onNodeWithTag("hall-payment-target").assertIsSelected()
+            compose.onNodeWithText("充值金额").assertIsDisplayed()
+            compose.onNodeWithText("¥ 10").performClick()
+            compose.onNodeWithText("充值 ¥ 10.00").assertIsEnabled().performClick()
+            assertEquals(1000L to "ACCOUNTTSM", submitted)
+            capture("fixed-${project.id}-${kind.ifEmpty { "family" }}")
+            compose.onNodeWithTag("hall-payment-target").performClick()
+            compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
+        }
+        compose.runOnIdle { dark = true; current = state(FeeProject.FamilyWater) }
+        capture("fixed-water-dark")
+    }
+    @Test fun familyAndStudentMeterChoicesFollowRoomAndDisappearOnAmountStep() {
+        var current by mutableStateOf(state(FeeProject.Zhengdong, "照明"))
+        var selectedOption: FeeOption? = null
+        var selectedProject: FeeProject? = null
+        content({ current }, onSelect = { _, option -> selectedOption = option; current = state(FeeProject.Zhengdong, "空调") },
+            onProject = { selectedProject = it; current = state(it) })
+        fun assertBelowRoom() {
+            val selector = compose.onNodeWithTag("fee-meter-type").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue(selector.top > compose.onNodeWithText("房间").fetchSemanticsNode().boundsInRoot.bottom)
+            val building = compose.onNodeWithText("楼栋").fetchSemanticsNode().boundsInRoot
+            val floor = compose.onNodeWithText("楼层").fetchSemanticsNode().boundsInRoot
+            assertTrue(floor.top > building.bottom)
+            assertEquals(building.left, floor.left, 1f)
+        }
+        assertBelowRoom()
+        compose.onNode(hasText("空调") and hasClickAction()).performClick()
+        assertEquals("room-410-空调", selectedOption?.id)
+        capture("student-target")
+        compose.onNodeWithText("下一步").performClick()
+        compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
+        compose.onNodeWithText("返回选房").performClick()
+        compose.onNodeWithTag("fee-meter-type").assertIsDisplayed()
+        compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
+        assertBelowRoom()
+        compose.onNode(hasText("水费") and hasClickAction()).performClick()
+        assertEquals(FeeProject.FamilyWater, selectedProject)
+        assertBelowRoom()
+        capture("family-target")
+        compose.onNodeWithText("下一步").performClick()
+        compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
+        compose.onNodeWithText("充值金额").assertIsDisplayed()
+        capture("family-temporary-amount")
+    }
+    @Test fun bindingOnlyShowsTypeAfterRoomAndOnlyForAvailableProjects() {
+        var current by mutableStateOf(state(FeeProject.FamilyElectric, complete = false))
+        content({ current }, saveOnly = true)
+        compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
+        compose.onNodeWithText("绑定房间").assertIsNotEnabled()
+        compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
+        compose.onNodeWithTag("fee-meter-type").assertIsDisplayed()
+        compose.onNodeWithText("绑定房间").assertIsEnabled()
+    }
+    @Test fun singleBindableFamilyServiceHasNoAlternativeType() {
+        content({ state(FeeProject.FamilyWater) }, saveOnly = true, bindingProjects = setOf(FeeProject.FamilyWater))
+        compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
+        compose.onNodeWithText("绑定房间").assertIsEnabled()
+    }
+    @Test fun familyTargetUsesStudentFieldLayoutInBothThemes() {
+        var dark by mutableStateOf(false)
+        content({ state(FeeProject.FamilyElectric) }, dark = { dark })
+        compose.onNodeWithText("楼栋").assertIsDisplayed()
+        compose.onNodeWithText("楼层").assertIsDisplayed()
+        compose.onNodeWithText("房间").assertIsDisplayed()
+        capture("family-target-light")
+        compose.runOnIdle { dark = true }
+        capture("family-target-dark")
+    }
+}

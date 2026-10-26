@@ -104,6 +104,73 @@ class FeeRoomViewModelTest {
         assertNull(model.state.value.roomDialog)
         assertEquals(1, fees.writes)
     }
+    @Test fun familyTypeChangeKeepsHouseholdAndUsesEachProjectsActualIds() {
+        fees.familyOptions = true
+        model.open(FeeProject.FamilyElectric, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
+        await { model.state.value.query != null }
+        val source = model.state.value.currentRoom!!
+        assertEquals("family-448-room", source.selections["room"])
+        model.selectFamilyProject(FeeProject.FamilyWater)
+        await { !model.state.value.loading && model.state.value.query != null }
+        val water = model.state.value
+        assertEquals(FeeProject.FamilyWater, water.config!!.project)
+        assertEquals("family-449-campus", water.selections["campus"])
+        assertEquals("family-449-room", water.selections["room"])
+        assertEquals(familyHouseholdKey(source), familyHouseholdKey(water.currentRoom!!))
+        assertTrue(water.query!!.thirdParty!!.contains("family-449-room"))
+        assertNull(water.roomDialog)
+        assertEquals(0, fees.writes)
+        assertEquals(0, fees.creations)
+        model.selectFamilyProject(FeeProject.FamilyElectric)
+        await { !model.state.value.loading && model.state.value.query != null }
+        assertTrue(source.sameTarget(model.state.value.currentRoom))
+    }
+    @Test fun missingOrAmbiguousFamilyMeterRequiresReselectionAndCannotSubmit() {
+        fees.familyOptions = true
+        model.open(FeeProject.FamilyElectric, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
+        await { model.state.value.query != null }
+        fees.familyWaterMissing = true
+        model.selectFamilyProject(FeeProject.FamilyWater)
+        await { !model.state.value.loading }
+        assertNull(model.state.value.currentRoom)
+        assertNull(model.state.value.query)
+        assertNotNull(model.state.value.error)
+        model.create(100)
+        assertEquals(0, fees.creations)
+        fees.familyWaterMissing = false
+        model.open(FeeProject.FamilyElectric, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
+        await { model.state.value.query != null }
+        fees.familyWaterDuplicate = true
+        model.selectFamilyProject(FeeProject.FamilyWater)
+        await { !model.state.value.loading }
+        assertNull(model.state.value.currentRoom)
+        assertNull(model.state.value.query)
+        assertNotNull(model.state.value.error)
+        model.create(100)
+        assertEquals(0, fees.creations)
+        assertEquals(0, fees.writes)
+    }
+    @Test fun fixedFamilyCardTargetRejectsTypeChange() {
+        fees.familyOptions = true
+        model.open(FeeProject.FamilyElectric, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
+        await { model.state.value.query != null }
+        val target = model.state.value.currentRoom!!
+        model.open(FeeProject.FamilyElectric, vault.username, false, requestedRoom = target, hall = true)
+        await { !model.state.value.loading && model.state.value.query != null }
+        val before = model.state.value
+        model.selectFamilyProject(FeeProject.FamilyWater)
+        assertSame(before, model.state.value)
+        assertEquals(0, fees.writes)
+        assertEquals(0, fees.creations)
+    }
     @Test fun unavailablePreferredMethodKeepsTheExistingOrderWithoutLaunchingOrRecreating() {
         model.open(FeeProject.Wenbei, vault.username, false, hall = true)
         await { !model.state.value.loading && model.state.value.config != null }
@@ -332,6 +399,9 @@ class FeeRoomViewModelTest {
         var writtenProject: FeeProject? = null
         var detailFails = false
         var canPay = true
+        var familyOptions = false
+        var familyWaterMissing = false
+        var familyWaterDuplicate = false
         var creations = 0
         var createdProject: FeeProject? = null
         var createdTarget: String? = null
@@ -350,6 +420,15 @@ class FeeRoomViewModelTest {
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
             queryLevels += level
             if (detail && detailFails) throw NetworkFailure()
+            if (familyOptions && project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                val suffix = if (project == FeeProject.FamilyWater) "水表" else "电表"
+                val options = if (level == 0) listOf(FeeOption("family-${project.id}-campus", "示例家属区")) else
+                    if (project == FeeProject.FamilyWater && familyWaterMissing) emptyList() else
+                        listOf(FeeOption("family-${project.id}-room", "示例A栋-房间A$suffix")) +
+                            if (project == FeeProject.FamilyWater && familyWaterDuplicate)
+                                listOf(FeeOption("family-449-duplicate", "示例A栋-房间A水表")) else emptyList()
+                return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString()) else FeeQuery(levels = levels, options = options)
+            }
             return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString(), display = listOf("剩余电量" to "100 度"), canPay = canPay)
                 else FeeQuery(levels = levels, options = if (level == 0) listOf(FeeOption("demo-campus", "示例校区")) else rooms)
         }

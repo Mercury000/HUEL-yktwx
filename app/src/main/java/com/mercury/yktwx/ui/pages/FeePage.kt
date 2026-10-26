@@ -25,7 +25,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
@@ -122,7 +121,7 @@ fun FeePage(
                         } else {
                             val visibleLevels = state.levels.filterNot { it.key in state.hiddenLevels }
                             if (visibleLevels.isNotEmpty()) item {
-                                Card(Modifier.fillMaxWidth()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     FeeTargetOptions(state, onSelect, roomInteractive && state.stage == FeeStage.Query)
                                 }
                             }
@@ -211,14 +210,12 @@ private fun FeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOption) 
         val options = state.options[level.number].orEmpty()
         // An explicit placeholder prevents a preselected label from looking like
         // a committed choice before the corresponding query has run.
-        OverlayDropdownPreference(
+        FeeLocationDropdown(
             title = level.name,
-            items = listOf("请选择") + options.map { it.name },
+            items = options.map { it.name },
             selectedIndex = options.indexOfFirst { it.id == state.selections[level.key] }.let { if (it < 0) 0 else it + 1 },
             enabled = enabled && !state.refreshing && options.isNotEmpty(),
-            renderInRootScaffold = true,
-            maxHeight = 320.dp,
-            onSelectedIndexChange = { index -> options.getOrNull(index - 1)?.let { onSelect(level, it) } },
+            onSelectedIndexChange = { index -> options.getOrNull(index)?.let { onSelect(level, it) } },
         )
     }
 }
