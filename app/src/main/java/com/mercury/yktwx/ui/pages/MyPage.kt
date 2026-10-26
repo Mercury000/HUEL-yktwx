@@ -118,9 +118,12 @@ internal fun MyPage(
                                         }
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(payment.account?.let { "¥ ${money(it.balanceCents)}" } ?: "¥ —", Modifier.weight(1f),
-                                            fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                            fontWeight = FontWeight.SemiBold, color = foreground)
+                                        if (payment.busy && payment.account == null) {
+                                            DashboardPlaceholder(36.sp, Modifier.weight(1f), fraction = .58f,
+                                                lineHeight = 44.sp, sample = "¥ 0.00", color = foreground.copy(alpha = .18f))
+                                        } else Text(payment.account?.let { "¥ ${money(it.balanceCents)}" } ?: "¥ —", Modifier.weight(1f),
+                                                fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                fontWeight = FontWeight.SemiBold, color = foreground)
                                         CompactButton("+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
                                             color = foreground, textColor = primary)
                                     }
@@ -238,8 +241,9 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
     ProfileDetailScaffold("账户详情", settings, onBack) {
         item {
             Card(Modifier.fillMaxWidth()) {
-                ProfileField("账户", payment.account?.name)
-                ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" })
+                val pending = payment.busy && payment.account == null
+                ProfileField("账户", payment.account?.name, pending)
+                ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" }, pending)
                 ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, payment.busy))
             }
         }
@@ -249,10 +253,11 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
 }
 
 @Composable
-private fun ProfileField(label: String, value: String?) {
+private fun ProfileField(label: String, value: String?, pending: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        Text(value?.takeIf { it.isNotBlank() } ?: "未提供", Modifier.weight(1f), fontSize = 14.sp, textAlign = TextAlign.End)
+        if (pending) DashboardPlaceholder(14.sp, Modifier.weight(1f), fraction = .55f, lineHeight = 20.sp)
+        else Text(value?.takeIf { it.isNotBlank() } ?: "未提供", Modifier.weight(1f), fontSize = 14.sp, textAlign = TextAlign.End)
     }
 }
 

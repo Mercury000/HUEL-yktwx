@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -591,14 +593,21 @@ internal fun BillEmptyCard(title: String, message: String) {
 
 @Composable
 internal fun BillLoadingCard(message: String = "正在加载账单") {
-    Card(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.fillMaxWidth().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            CircularProgressIndicator(Modifier.size(26.dp))
-            Text(message, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    Card(Modifier.fillMaxWidth().semantics { contentDescription = message }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            repeat(4) { index ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ContentPlaceholder(Modifier.size(40.dp), cornerRadius = 12.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .62f, lineHeight = 20.sp)
+                        DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), fraction = .42f, lineHeight = 16.sp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    DashboardPlaceholder(14.sp, Modifier.width(72.dp), fraction = 1f, lineHeight = 20.sp, sample = "¥ 00.00")
+                }
+                if (index != 3) HorizontalDivider(Modifier.padding(start = 52.dp))
+            }
         }
     }
 }

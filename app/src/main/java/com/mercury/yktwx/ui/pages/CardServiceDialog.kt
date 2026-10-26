@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -23,6 +25,8 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
+import com.mercury.yktwx.ui.components.ContentPlaceholder
+import com.mercury.yktwx.ui.components.DashboardPlaceholder
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -66,7 +70,7 @@ fun CardServiceDialog(
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
                         !state.preview && config.recipient === state.selectedRecipient, state.error, onContinueRecharge)
                 } else {
-                    if (state.loading) Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    if (state.loading) PaymentAmountPlaceholder()
                     InlineError(state.error, actionLabel = "重试", onAction = onRetryRecharge)
                 }
             } else {
@@ -108,12 +112,13 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
     var password by remember(state.visible, state.selectedCard) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val card = state.selectedCard
-    OverlayDialog(show = state.visible,
-        title = if (card != null || state.action == CampusCardAction.Unlost) "确认" + state.operation.label else "挂失 / 解挂",
+    val initialLoading = state.loading && card == null
+    OverlayDialog(show = state.visible || initialLoading,
+        title = if (initialLoading) "读取校园卡" else if (card != null || state.action == CampusCardAction.Unlost) "确认" + state.operation.label else "挂失 / 解挂",
         summary = if (card != null && !state.loading && !state.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (state.loading && card == null) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }
+            if (initialLoading) CardSelectionPlaceholder()
             if (state.cards.size > 1) state.cards.forEach { candidate ->
                 Button(onClick = { onSelectCard(candidate) }, enabled = !state.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
@@ -138,6 +143,23 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
                     enabled = card != null && !state.loading && !state.preview && (!state.needsPassword || password.length == 6),
                     modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "处理中…" else "确定") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardSelectionPlaceholder() {
+    Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取校园卡" },
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(2) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                ContentPlaceholder(Modifier.size(40.dp), cornerRadius = 12.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 20.sp)
+                    DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), fraction = .72f, lineHeight = 16.sp)
+                }
             }
         }
     }
