@@ -23,7 +23,7 @@ internal object DashboardPalette {
     val ink: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFE9EDF4) else Color(0xFF202329)
     val muted: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF9AA8BA) else Color(0xFF929CA9)
     val card: Color @Composable get() = CardDefaults.defaultColors().color
-    val field: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF252B35) else Color(0xFFE9EDF3)
+    val field: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF2A2A2A) else Color(0xFFF0F0F0)
     val lightingInk: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFA5BDEC) else Color(0xFF354E78)
     val lightingAccent: Color @Composable get() = lerp(MiuixTheme.colorScheme.primary, lightingInk, .45f)
     val lightingPanel: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF202A3A) else Color(0xFFF4F7FD)

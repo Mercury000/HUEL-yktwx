@@ -360,12 +360,8 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(signedMoney(record), fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
-                Text(record.fromAccount, Modifier.padding(top = 4.dp), fontSize = 10.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1)
-            }
+            Text(signedMoney(record), fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
         }
     }
 }
