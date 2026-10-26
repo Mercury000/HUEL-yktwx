@@ -484,7 +484,9 @@ private fun MainContent(
                         onRoomAction = feeModel::requestRoomAction, onConfirmRoomAction = feeModel::confirmRoomAction,
                         onDismissRoomDialog = feeModel::dismissRoomDialog, onConsumeRoomNotice = feeModel::consumeRoomNotice,
                         onCreate = feeModel::createWithMethod, onMethod = feeModel::chooseMethod,
-                        onProject = { openFee(it, saveOnly = feeSaveOnly) }, bindingProjects = dormState.bindingProjects,
+                        onProject = {
+                            if (feeTarget == null && feeModel.selectFamilyProject(it)) feeProject = it
+                        }, bindingProjects = dormState.bindingProjects,
                         onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment,
                         onContinuePayment = feeModel::continuePayment,
                         onFinish = {

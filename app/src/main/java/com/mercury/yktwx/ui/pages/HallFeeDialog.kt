@@ -20,7 +20,6 @@ import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** One root-hosted sheet for target selection, amount, server payment channels and results. */
@@ -54,14 +53,23 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     val config = state.config
     val ready = !state.loading && !state.selecting && !state.refreshing && state.query?.canPay == true &&
         state.query.thirdParty != null && state.query.tip == null &&
+        config?.project == project &&
         (fixedTarget == null || fixedTarget.sameTarget(state.currentRoom))
     val orderAmount = state.order?.pending?.amountCents ?: state.paymentRetry?.amountCents ?: cents ?: 0
-    val meterName = fixedTarget?.names?.values?.lastOrNull()?.let { DormMeterDiscovery.kind(it).takeUnless { kind -> kind == DormMeterKind.Other }?.label }
+    val meterName = fixedTarget?.let { target ->
+        when (project) {
+            FeeProject.FamilyElectric -> "电费"
+            FeeProject.FamilyWater -> "水费"
+            else -> target.names.values.lastOrNull()?.let {
+                DormMeterDiscovery.kind(it).takeUnless { kind -> kind == DormMeterKind.Other }?.label
+            }
+        }
+    }
+    val paymentTitle = if (project?.network == true) "校园网充值" else meterName?.plus("充值") ?: project?.hallTitle ?: "水电缴费"
     val title = when (state.stage) {
-        FeeStage.Methods -> if (project?.network == true) "校园网充值" else project?.hallTitle ?: "水电缴费"
         FeeStage.Password -> "一卡通支付"
         FeeStage.Result -> null
-        else -> if (project?.network == true) "校园网充值" else if (meterName != null) meterName + "充值" else project?.hallTitle ?: "水电缴费"
+        else -> paymentTitle
     }
     OverlayBottomSheet(show = visible && state.stage != FeeStage.Password, title = title, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
@@ -70,19 +78,21 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when (state.stage) {
                 FeeStage.Query -> {
-                    if (project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
-                        val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
-                            .filter { !saveOnly || it in bindingProjects }
-                        if (projects.size > 1) HallNeutralTabs(projects.map { if (it == FeeProject.FamilyElectric) "电费" else "水费" },
-                            projects.indexOf(project).coerceAtLeast(0)) { index ->
-                            if (!state.loading && !state.roomBusy && projects[index] != project) onProject(projects[index])
-                        }
-                    }
                     if (config == null) {
                         if (state.loading) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                     } else if (!amountStep && project?.network != true) {
-                        HallFeeTargetOptions(state, onSelect, !state.loading && !state.selecting && !state.roomBusy && state.roomDialog == null)
+                        val targetEnabled = !state.loading && !state.selecting && !state.refreshing && !state.roomBusy && state.roomDialog == null
+                        HallFeeTargetOptions(state, onSelect, targetEnabled)
+                        if (state.currentRoom != null && project in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                            val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
+                                .filter { !saveOnly || it in bindingProjects }
+                            if (projects.size > 1) FeeMeterTypeSelector("缴费类型",
+                                projects.map { if (it == FeeProject.FamilyElectric) "电费" else "水费" },
+                                projects.indexOf(project).coerceAtLeast(0), targetEnabled) { index ->
+                                if (projects[index] != project) onProject(projects[index])
+                            }
+                        }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                         if (!saveOnly && config.roomBindingEnabled && state.roomBindingKnown && state.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
@@ -188,42 +198,39 @@ internal fun HallFeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOpt
     val paired = state.config?.project in listOf(FeeProject.Zhengdong, FeeProject.Wenbei) && groups.isNotEmpty() &&
         groups.values.all { siblings -> siblings.size == 2 && siblings.map { DormMeterDiscovery.kind(it.name) }.toSet() ==
             setOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning) }
-    @Composable fun field(level: FeeLevel, modifier: Modifier = Modifier) {
+    @Composable fun field(level: FeeLevel) {
         val available = state.options[level.number].orEmpty()
         val selected = available.indexOfFirst { it.id == state.selections[level.key] } + 1
-        val styles = MiuixTheme.textStyles
-        MiuixTheme(colors = MiuixTheme.colorScheme, textStyles = styles.copy(main = styles.main.copy(fontSize = 14.sp), body1 = styles.body1.copy(fontSize = 14.sp))) {
-            Card(modifier, cornerRadius = 14.dp, colors = CardDefaults.defaultColors(color = DashboardPalette.field)) {
-                OverlayDropdownPreference(title = level.name, items = listOf("请选择") + available.map { it.name },
-                    selectedIndex = selected, enabled = enabled && available.isNotEmpty(), renderInRootScaffold = true,
-                    maxHeight = 320.dp, onSelectedIndexChange = { index -> available.getOrNull(index - 1)?.let { onSelect(level, it) } })
-            }
+        FeeLocationDropdown(level.name, available.map { it.name }, selected, enabled) { index ->
+            available.getOrNull(index)?.let { onSelect(level, it) }
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val ordinary = levels.filterNot { it == last && paired }
-        if (ordinary.size >= 2 && ordinary[0].key !in setOf("campus", "xiaoqu_id")) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                field(ordinary[0], Modifier.weight(1f)); field(ordinary[1], Modifier.weight(1f))
-            }
-            ordinary.drop(2).forEach { field(it, Modifier.fillMaxWidth()) }
-        } else ordinary.forEach { field(it, Modifier.fillMaxWidth()) }
+        ordinary.forEach { field(it) }
         if (paired && last != null) {
             val selected = options.firstOrNull { it.id == state.selections[last.key] }
             val names = groups.keys.toList()
-            Card(Modifier.fillMaxWidth(), cornerRadius = 14.dp, colors = CardDefaults.defaultColors(color = DashboardPalette.field)) {
-                OverlayDropdownPreference(title = "房间", items = listOf("请选择") + names,
-                    selectedIndex = selected?.let { names.indexOf(stem(it)) + 1 } ?: 0, enabled = enabled,
-                    renderInRootScaffold = true, maxHeight = 320.dp, onSelectedIndexChange = { index ->
-                        names.getOrNull(index - 1)?.let { name -> groups[name]?.firstOrNull { it.name.endsWith("照明") }?.let { onSelect(last, it) } }
-                    })
+            FeeLocationDropdown("房间", names, selected?.let { names.indexOf(stem(it)) + 1 } ?: 0, enabled) { index ->
+                names.getOrNull(index)?.let { name ->
+                    groups[name]?.firstOrNull { it.name.endsWith("照明") }?.let { onSelect(last, it) }
+                }
             }
             if (selected != null) {
                 val siblings = groups.getValue(stem(selected)).sortedBy { DormMeterDiscovery.kind(it.name).ordinal }
-                Text("电表", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                HallNeutralTabs(siblings.map { DormMeterDiscovery.kind(it.name).label },
-                    siblings.indexOf(selected).coerceAtLeast(0)) { if (enabled) onSelect(last, siblings[it]) }
+                FeeMeterTypeSelector("电表", siblings.map { DormMeterDiscovery.kind(it.name).label },
+                    siblings.indexOf(selected).coerceAtLeast(0), enabled) { onSelect(last, siblings[it]) }
             }
         }
+    }
+}
+
+/** Meter choices appear below the room, only while choosing a payment target. */
+@Composable
+private fun FeeMeterTypeSelector(label: String, types: List<String>, selected: Int,
+    enabled: Boolean, onSelect: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("fee-meter-type"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        HallNeutralTabs(types, selected) { if (enabled) onSelect(it) }
     }
 }
