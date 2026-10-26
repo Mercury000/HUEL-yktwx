@@ -1,11 +1,16 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +65,18 @@ internal fun DashboardPullToRefresh(loading: Boolean, onRefresh: () -> Unit, mod
     PullToRefresh(isRefreshing = requested && loading, onRefresh = { requested = true; onRefresh() },
         modifier = modifier, contentPadding = contentPadding, topAppBarScrollBehavior = scrollBehavior,
         color = MiuixTheme.colorScheme.primary, refreshTexts = AppRefreshTexts, content = content)
+}
+
+/** Reserve the same text metrics while data is unknown; placeholders expose no fake values. */
+@Composable
+internal fun DashboardPlaceholder(fontSize: TextUnit, modifier: Modifier = Modifier,
+    fraction: Float = .6f, lineHeight: TextUnit = TextUnit.Unspecified, sample: String = "读取") {
+    val barHeight = with(LocalDensity.current) { (fontSize * .7f).toDp() }
+    Box(modifier.clearAndSetSemantics {}) {
+        Text(sample, fontSize = fontSize, lineHeight = lineHeight, maxLines = 1, color = Color.Transparent)
+        Box(Modifier.fillMaxWidth(fraction).height(barHeight).align(Alignment.CenterStart)
+            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = .08f), RoundedCornerShape(4.dp)))
+    }
 }
 
 @Composable

@@ -93,7 +93,7 @@ class HallViewModel internal constructor(
         val username = owner
         val previous = mutable.value
         refreshPending = false
-        update(loading = true, error = managementError)
+        update(loading = true, error = managementError ?: previous.error)
         launchTask {
             val rooms = mutableListOf<DormRoom>()
             val errors = mutableListOf<String>()

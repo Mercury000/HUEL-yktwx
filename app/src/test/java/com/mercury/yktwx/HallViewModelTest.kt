@@ -94,7 +94,12 @@ class HallViewModelTest {
         assertEquals(listOf(FeeProject.FamilyWater), model.state.value.rooms.single().bindings.map { it.project })
         assertEquals("模拟解绑拒绝", model.state.value.error)
         assertEquals(listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater), fees.writes)
+        fees.networkGate = CompletableDeferred()
+        fees.networkEntered = false
         model.refresh()
+        await { fees.networkEntered }
+        assertEquals("模拟解绑拒绝", model.state.value.error)
+        fees.networkGate!!.complete(Unit)
         await { !model.state.value.loading }
         assertNull(model.state.value.error)
         assertEquals(2, fees.writes.size)

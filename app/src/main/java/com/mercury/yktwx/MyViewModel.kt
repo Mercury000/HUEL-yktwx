@@ -19,6 +19,7 @@ class MyUiState(
     val needsLogin: Boolean = false,
     val homeIdentity: HomeCardIdentity? = null,
     val homeIdentityError: String? = null,
+    val loaded: Boolean = false,
 ) { override fun toString() = "MyUiState([redacted])" }
 
 class MyViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
@@ -38,7 +39,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
         if (preview && username.isNotBlank()) {
             mutable.value = MyUiState(PersonalProfile("示例同学", "202600000001", "示例部门", "示例专业", null),
                 summary = BillSummary(20000, 20540), counts = BillCounts(2, 6),
-                homeIdentity = HomeCardIdentity("示例同学", "202600000001", "示例书院", "示例专业"))
+                homeIdentity = HomeCardIdentity("示例同学", "202600000001", "示例书院", "示例专业"), loaded = true)
             refreshedAt = System.currentTimeMillis()
         }
     }
@@ -51,7 +52,8 @@ class MyViewModel internal constructor(app: Application, private val repository:
         val current = mutable.value
         mutable.value = MyUiState(current.profile, current.avatar,
             current.summary.takeIf { current.month == month }, current.counts.takeIf { current.month == month }, month, true,
-            homeIdentity = current.homeIdentity)
+            profileError = current.profileError, summaryError = current.summaryError.takeIf { current.month == month },
+            homeIdentity = current.homeIdentity, homeIdentityError = current.homeIdentityError, loaded = current.loaded)
         task = viewModelScope.launch {
             var profile = current.profile
             var avatar = current.avatar
@@ -76,8 +78,6 @@ class MyViewModel internal constructor(app: Application, private val repository:
                 catch (e: Exception) { homeIdentityError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
             }
             if (attempt != generation) return@launch
-            mutable.value = MyUiState(profile, avatar, summary, counts, month, true, profileError,
-                homeIdentity = homeIdentity, homeIdentityError = homeIdentityError)
             try {
                 summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
                 counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
@@ -85,7 +85,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
             catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
             if (attempt != generation) return@launch
             mutable.value = MyUiState(profile, avatar, summary, counts, month, false, profileError, summaryError,
-                needsLogin = needsLogin, homeIdentity = homeIdentity, homeIdentityError = homeIdentityError)
+                needsLogin = needsLogin, homeIdentity = homeIdentity, homeIdentityError = homeIdentityError, loaded = true)
             refreshedAt = System.currentTimeMillis()
         }
     }

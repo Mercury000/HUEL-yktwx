@@ -18,10 +18,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +50,8 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
+    val identityPending = !state.loaded && state.profile == null && state.homeIdentity == null && state.profileError == null
+    val summaryPending = !state.loaded && state.summary == null && state.summaryError == null
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -67,14 +72,22 @@ internal fun MyPage(
                                     ProfileAvatar(state.avatar, 66.dp)
                                     Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        Text(state.homeIdentity?.name?.takeIf { it.isNotBlank() } ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        Text(state.homeIdentity?.sno ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
-                                            ?: state.profile?.professionName.orEmpty()
-                                        study.takeIf { it.isNotBlank() }?.let { value ->
-                                            Text(value, fontSize = 11.sp, lineHeight = 16.sp,
+                                        if (identityPending) {
+                                            DashboardPlaceholder(22.sp, Modifier.fillMaxWidth(), lineHeight = 30.sp)
+                                            DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 18.sp, sample = "0")
+                                        } else {
+                                            Text(state.homeIdentity?.name?.takeIf { it.isNotBlank() } ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户",
+                                                fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(state.homeIdentity?.sno ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
+                                                fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
+                                        val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
+                                            ?: state.profile?.professionName.orEmpty()
+                                        if (identityPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
+                                        else Text(study.ifBlank { "资料" }, modifier = if (study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier,
+                                            fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            color = if (study.isBlank()) Color.Transparent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                     Icon(MiuixIcons.ChevronForward, null, Modifier.size(18.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                 }
@@ -85,7 +98,7 @@ internal fun MyPage(
                         item {
                             val primary = MiuixTheme.colorScheme.primary
                             val foreground = MiuixTheme.colorScheme.onPrimary
-                            Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp, colors = CardDefaults.defaultColors(color = primary)) {
+                            Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp, colors = CardDefaults.defaultColors(color = primary)) {
                                 Column(Modifier.fillMaxWidth().drawBehind {
                                     drawRect(Brush.linearGradient(listOf(primary, androidx.compose.ui.graphics.lerp(primary, Color.White, .12f))))
                                     drawCircle(foreground.copy(alpha = .045f), radius = size.width * .46f,
@@ -100,21 +113,23 @@ internal fun MyPage(
                                         Row(Modifier.clip(CircleShape).background(statusBackground).padding(horizontal = 9.dp, vertical = 5.dp),
                                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Box(Modifier.size(4.dp).background(statusForeground, CircleShape))
-                                            Text(cardStatus(payment.problem, payment.account != null, payment.busy), fontSize = 10.sp,
+                                            Text(cardStatus(payment.problem, payment.account != null, payment.busy), fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
                                                 fontWeight = if (restricted) FontWeight.SemiBold else FontWeight.Normal, color = statusForeground)
                                         }
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Text(payment.account?.let { "¥ ${money(it.balanceCents)}" } ?: "¥ —", Modifier.weight(1f),
-                                            fontSize = 36.sp, fontWeight = FontWeight.SemiBold, color = foreground)
-                                        CompactButton(if (rechargeLoading) "读取中…" else "+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
+                                            fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            fontWeight = FontWeight.SemiBold, color = foreground)
+                                        CompactButton("+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
                                             color = foreground, textColor = primary)
                                     }
                                     HorizontalDivider(color = MiuixTheme.colorScheme.onPrimary.copy(alpha = .16f))
                                     Surface(onClick = onAccount, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
                                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
-                                            Text(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), fontSize = 11.sp, color = foreground.copy(alpha = .8f))
+                                            Text(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), fontSize = 11.sp,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis, color = foreground.copy(alpha = .8f))
                                             Text("账户详情", fontSize = 11.sp, color = foreground)
                                             Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = foreground)
                                         }
@@ -123,20 +138,21 @@ internal fun MyPage(
                             }
                         }
                         item {
-                            Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
+                            Card(Modifier.fillMaxWidth().testTag("my-summary-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth()) {
                                         Text("本月概览", Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                                         Text(monthTitle(state.month), fontSize = 10.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                                        MyAmount("支出", state.summary?.expensesCents, Modifier.weight(1f))
+                                        MyAmount("支出", state.summary?.expensesCents, Modifier.weight(1f), pending = summaryPending)
                                         Box(Modifier.width(1.dp).height(46.dp).background(MiuixTheme.colorScheme.onSurface.copy(alpha = .06f)))
-                                        MyAmount("收入", state.summary?.incomeCents, Modifier.weight(1f), income = true)
+                                        MyAmount("收入", state.summary?.incomeCents, Modifier.weight(1f), income = true, pending = summaryPending)
                                     }
                                     HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易", Modifier.weight(1f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        Text(state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易", Modifier.weight(1f),
+                                            fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
                                     if (state.summaryError != null) InlineError(state.summaryError, actionLabel = "重试", onAction = onRefresh)
@@ -163,10 +179,12 @@ internal fun MyPage(
 }
 
 @Composable
-private fun MyAmount(label: String, cents: Long?, modifier: Modifier, income: Boolean = false) {
+private fun MyAmount(label: String, cents: Long?, modifier: Modifier, income: Boolean = false, pending: Boolean = false) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        Text(cents?.let { "¥ ${money(it)}" } ?: "—", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
+        if (pending) DashboardPlaceholder(24.sp, Modifier.fillMaxWidth(), lineHeight = 32.sp, sample = "0")
+        else Text(cents?.let { "¥ ${money(it)}" } ?: "—", fontSize = 24.sp, lineHeight = 32.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
             color = if (income) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurface)
     }
 }
