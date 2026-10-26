@@ -109,40 +109,44 @@ fun CardServiceDialog(
 
 @Composable
 private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit) {
-    var password by remember(state.visible, state.selectedCard) { mutableStateOf("") }
+    val show = state.visible || (state.loading && state.selectedCard == null)
+    var presented by remember { mutableStateOf(state) }
+    if (show) SideEffect { presented = state }
+    val display = if (show) state else presented
+    var password by remember(display.visible, display.selectedCard) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
-    val card = state.selectedCard
-    val initialLoading = state.loading && card == null
-    OverlayDialog(show = state.visible || initialLoading,
-        title = if (initialLoading) "读取校园卡" else if (card != null || state.action == CampusCardAction.Unlost) "确认" + state.operation.label else "挂失 / 解挂",
-        summary = if (card != null && !state.loading && !state.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
+    val card = display.selectedCard
+    val initialLoading = display.loading && card == null
+    OverlayDialog(show = show,
+        title = if (initialLoading) "读取校园卡" else if (card != null || display.action == CampusCardAction.Unlost) "确认" + display.operation.label else "挂失 / 解挂",
+        summary = if (card != null && !display.loading && !display.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (initialLoading) CardSelectionPlaceholder()
-            if (state.cards.size > 1) state.cards.forEach { candidate ->
-                Button(onClick = { onSelectCard(candidate) }, enabled = !state.loading && !candidate.frozen && candidate.status == 0,
+            if (display.cards.size > 1) display.cards.forEach { candidate ->
+                Button(onClick = { onSelectCard(candidate) }, enabled = !display.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
                     Text(candidate.label + if (candidate.lost) " · 已挂失" else " · 未挂失")
                 }
             }
-            if (card != null && state.needsPassword) {
+            if (card != null && display.needsPassword) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextField(value = password,
                         onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
-                        enabled = !state.loading, visualTransformation = PasswordVisualTransformation(),
+                        enabled = !display.loading, visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
-                    FieldError(state.error)
+                    FieldError(display.error)
                 }
             } else {
-                if (!state.loading && card == null && state.error == null) Text(
-                    if (state.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
-                InlineError(state.error)
+                if (!display.loading && card == null && display.error == null) Text(
+                    if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
+                InlineError(display.error)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
-                    enabled = card != null && !state.loading && !state.preview && (!state.needsPassword || password.length == 6),
-                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "处理中…" else "确定") }
+                    enabled = card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
+                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "处理中…" else "确定") }
             }
         }
     }

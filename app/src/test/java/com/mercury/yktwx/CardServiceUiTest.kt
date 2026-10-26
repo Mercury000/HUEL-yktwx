@@ -341,7 +341,13 @@ class CardServiceUiTest {
             }
         }
         compose.onNodeWithText("确认挂失").assertExists()
+        compose.mainClock.autoAdvance = false
         compose.runOnIdle { current.value = current.value.copy(visible = false, selectedCard = null, completed = true) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("确认挂失").assertExists()
+        compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         compose.onNodeWithText("确认挂失").assertDoesNotExist()
         compose.onNodeWithText("操作成功").assertDoesNotExist()
