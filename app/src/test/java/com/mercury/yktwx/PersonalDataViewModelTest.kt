@@ -56,11 +56,13 @@ class PersonalDataViewModelTest {
         }
         val ykt = object : YktService by YktApi({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary { summaries++; return BillSummary(100, 200) }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
         }
         val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
-        await { entered }
+        await { entered && summaries == 1 }
+        val readsBeforeSwitch = summaries
         vault.username = "fake-owner-b"
         model.accountChanged(vault.username)
         assertNull(model.state.value.profile)
@@ -70,7 +72,7 @@ class PersonalDataViewModelTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertNull(model.state.value.profile)
         assertFalse(model.state.value.loading)
-        assertEquals(0, summaries)
+        assertEquals(readsBeforeSwitch, summaries)
     }
     @Test fun monthlyFailureKeepsOriginalProfileAndNeverInventsIncomeOrExpenses() {
         val profiles = object : ProfileService {
@@ -150,6 +152,94 @@ class PersonalDataViewModelTest {
         await { !model.state.value.loading }
         assertNull(model.state.value.summaryError)
         assertNotNull(model.state.value.summary)
+    }
+
+    @Test fun profileSummaryAndBothCountsBeginWithoutWaitingForEachOther() {
+        var profileEntered = false
+        var summaryEntered = false
+        val directions = mutableSetOf<Int>()
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String): PersonalProfile {
+                profileEntered = true; gate.await()
+                return PersonalProfile("示例姓名", "fake-id", "示例部门", "", null)
+            }
+            override suspend fun avatar(path: String): ByteArray? = null
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                summaryEntered = true; gate.await(); return BillSummary(100, 200)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+                directions += type; gate.await(); return type
+            }
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.refresh()
+        await { profileEntered && summaryEntered && directions.size == 2 }
+        assertTrue(model.state.value.loading)
+        assertNull(model.state.value.profile)
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertEquals("示例姓名", model.state.value.profile?.name)
+        assertEquals(100L, model.state.value.summary?.incomeCents)
+        assertEquals(3, model.state.value.counts!!.income + model.state.value.counts!!.expenses)
+    }
+
+    @Test fun avatarAndCardIdentityBeginTogetherAfterProfileProvidesTheirInputs() {
+        var avatarEntered = false
+        var identityEntered = false
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "", "/minio/demo.png")
+            override suspend fun avatar(path: String): ByteArray {
+                avatarEntered = true; gate.await(); return byteArrayOf(1)
+            }
+            override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity {
+                assertEquals("fake-id", sno)
+                identityEntered = true; gate.await(); return HomeCardIdentity("示例姓名", sno, "示例书院", "示例专业")
+            }
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(100, 200)
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.refresh()
+        await { avatarEntered && identityEntered }
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertArrayEquals(byteArrayOf(1), model.state.value.avatar)
+        assertEquals("示例书院", model.state.value.homeIdentity?.thirdLevelDepartment)
+    }
+
+    @Test fun failedCountDoesNotCancelThePendingMonthlySummary() {
+        var summaryEntered = false
+        var countFailed = false
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "", null)
+            override suspend fun avatar(path: String): ByteArray? = null
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                summaryEntered = true
+                withContext(NonCancellable) { gate.await() }
+                return BillSummary(100, 200)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+                countFailed = true; throw NetworkFailure()
+            }
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.refresh()
+        await { summaryEntered && countFailed }
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertEquals(100L, model.state.value.summary?.incomeCents)
+        assertNull(model.state.value.counts)
+        assertNotNull(model.state.value.summaryError)
+        assertEquals("示例姓名", model.state.value.profile?.name)
     }
 
     @Test fun lateDormReadCannotRestorePreviousAccountRoomAfterLogout() {
