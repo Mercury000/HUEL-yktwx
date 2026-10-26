@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,50 +88,54 @@ fun BillStatsPage(
                                     onDateSelected = onDateChange,
                                 )
                             }
-                            item(key = "tabs") {
-                                TabRow(
-                                    tabs = listOf("支出", "收入"),
-                                    selectedTabIndex = if (stats.type == 2) 0 else 1,
-                                    onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            when {
-                                stats.loading && !stats.loaded -> item(key = "loading") {
-                                    BillLoadingCard("正在加载统计")
-                                }
-                                stats.error != null && !stats.loaded -> item(key = "error") {
-                                    BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
-                                }
-                                stats.error != null -> item(key = "inline-error") {
-                                    InlineError(stats.error, actionLabel = "重试", onAction = onRetry)
-                                }
-                                else -> {
-                                    item(key = "overview") { StatsOverview(stats) }
-                                    if (stats.period.trendSupported) {
-                                        item(key = "trend") {
-                                            Card(Modifier.fillMaxWidth()) {
-                                                Column(Modifier.padding(20.dp)) {
-                                                    DailyBillChart(stats.daily, stats.period.mode)
-                                                }
-                                            }
-                                        }
-                                    }
-                                    item(key = "category") {
-                                        Card(Modifier.fillMaxWidth()) {
-                                            Column(Modifier.padding(20.dp)) {
-                                                CategoryDonutChart(stats.categories, stats.type)
-                                            }
-                                        }
-                                    }
-                                    if (stats.ranking.isNotEmpty()) {
-                                        item(key = "ranking") { StatsRanking(stats.ranking, onOpenDetail) }
-                                    }
-                                }
-                            }
+                            billStatsContent(stats, onTypeChange, onRetry, onOpenDetail)
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit, onOpenDetail: (BillRecord) -> Unit) {
+    item(key = "tabs") {
+        TabRow(
+            tabs = listOf("支出", "收入"),
+            selectedTabIndex = if (stats.type == 2) 0 else 1,
+            onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    when {
+        stats.loading && !stats.loaded -> item(key = "loading") {
+            BillLoadingCard("正在加载统计")
+        }
+        stats.error != null && !stats.loaded -> item(key = "error") {
+            BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
+        }
+        stats.error != null -> item(key = "inline-error") {
+            InlineError(stats.error, actionLabel = "重试", onAction = onRetry)
+        }
+        else -> {
+            item(key = "overview") { StatsOverview(stats) }
+            if (stats.period.trendSupported) {
+                item(key = "trend") {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(20.dp)) {
+                            DailyBillChart(stats.daily, stats.period.mode)
+                        }
+                    }
+                }
+            }
+            item(key = "category") {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(20.dp)) {
+                        CategoryDonutChart(stats.categories, stats.type)
+                    }
+                }
+            }
+            if (stats.ranking.isNotEmpty()) {
+                item(key = "ranking") { StatsRanking(stats.ranking, onOpenDetail) }
             }
         }
     }

@@ -79,7 +79,7 @@ class PaymentLostUiTest {
         lostApp(dark = true)
         compose.onNodeWithText("付款已暂停").assertIsDisplayed()
         compose.onNodeWithText("充值").assertIsDisplayed()
-        compose.onNodeWithText("¥ 0.00").assertIsDisplayed()
+        compose.onNodeWithText("¥ 186.50").assertIsDisplayed()
         screenshot("payment-lost-app-dark")
     }
     @Test fun contradictoryOldCodeIsNotRenderedAndRefreshIsOnlyAPullGesture() {

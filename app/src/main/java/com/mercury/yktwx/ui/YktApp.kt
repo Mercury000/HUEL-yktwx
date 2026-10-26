@@ -25,6 +25,12 @@ import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
 import com.mercury.yktwx.CardPasswordViewModel
 import com.mercury.yktwx.CardServiceViewModel
+import com.mercury.yktwx.MyViewModel
+import com.mercury.yktwx.MyUiState
+import com.mercury.yktwx.DormViewModel
+import com.mercury.yktwx.DormUiState
+import com.mercury.yktwx.data.FeeRoomBinding
+import com.mercury.yktwx.data.DormMeterDiscovery
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
@@ -60,13 +66,15 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Contacts
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { Fee, BillStats, BillDetail, Settings, Theme, References }
+private enum class Screen { Fee, BillDetail, Profile, Account, About, Settings, Theme, References }
 private enum class AuthPage { Restoring, Login, Main }
 
 @Composable
@@ -83,8 +91,10 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val feeModel: FeeViewModel = viewModel()
         val cardModel: CardServiceViewModel = viewModel()
         val passwordModel: CardPasswordViewModel = viewModel()
+        val myModel: MyViewModel = viewModel()
+        val dormModel: DormViewModel = viewModel()
         val context = LocalContext.current
-        LaunchedEffect(state.restoringLogin, state.needsLogin, state.username) {
+        LaunchedEffect(state.restoringLogin, state.needsLogin, state.username, state.preview) {
             if (!state.restoringLogin) {
                 val owner = state.username.takeUnless { state.needsLogin }
                 rechargeModel.accountChanged(owner.orEmpty())
@@ -92,6 +102,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                 cardModel.accountChanged(owner.orEmpty())
                 passwordModel.accountChanged(owner.orEmpty())
                 billViewModel.accountChanged(owner)
+                myModel.accountChanged(owner.orEmpty(), state.preview)
+                dormModel.accountChanged(owner.orEmpty(), state.preview)
             }
         }
         WechatLaunchEffect(rechargeModel.events, rechargeModel::canLaunchWechat, rechargeModel::wechatLaunched, rechargeModel::launchFailed)
@@ -112,7 +124,10 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             passwordModel.passwordChanges.collect { username -> viewModel.cardPasswordChanged(username) }
         }
         LaunchedEffect(cardModel) {
-            cardModel.cardChanges.collect { viewModel.cardStateChanged() }
+            cardModel.cardChanges.collect { viewModel.cardStateChanged(); myModel.refresh() }
+        }
+        LaunchedEffect(feeModel, dormModel) {
+            feeModel.roomChanges.collect { dormModel.invalidate() }
         }
         LaunchedEffect(cardModel, rechargeModel) {
             cardModel.rechargeRequests.collect { request ->
@@ -172,12 +187,15 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                         // Latest logged-out state has already removed payment codes.
                         val shellOwner = remember { state.username }
                         key(shellOwner) {
-                            MainContent(
-                                settings, state,
-                                if (interactive) billState else BillUiState(),
-                                viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel,
-                                isActive = interactive,
-                            )
+                            // One overlay host above both tabs and secondary page layers.
+                            Scaffold {
+                                MainContent(
+                                    settings, state,
+                                    if (interactive) billState else BillUiState(),
+                                    viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel,
+                                    isActive = interactive,
+                                )
+                            }
                         }
                     }
                 }
@@ -218,6 +236,8 @@ private fun MainContent(
     feeModel: FeeViewModel,
     cardModel: CardServiceViewModel,
     passwordModel: CardPasswordViewModel,
+    myModel: MyViewModel,
+    dormModel: DormViewModel,
     isActive: Boolean,
 ) {
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
@@ -225,17 +245,23 @@ private fun MainContent(
     val feeState by feeModel.state.collectAsStateWithLifecycle()
     val cardState by cardModel.state.collectAsStateWithLifecycle()
     val passwordState by passwordModel.state.collectAsStateWithLifecycle()
+    val collectedMyState by myModel.state.collectAsStateWithLifecycle()
+    val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
+    val myState = if (state.needsLogin) MyUiState() else collectedMyState
+    val dormState = if (state.needsLogin) DormUiState() else collectedDormState
     var feeProject by remember { mutableStateOf<FeeProject?>(null) }
     var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
+    var feeTarget by remember { mutableStateOf<FeeRoomBinding?>(null) }
+    var dormPaymentVisible by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
-    LaunchedEffect(isActive, billState.needsLogin) {
-        if (isActive && billState.needsLogin) viewModel.refresh()
+    LaunchedEffect(isActive, billState.needsLogin, myState.needsLogin, dormState.needsLogin) {
+        if (isActive && (billState.needsLogin || myState.needsLogin || dormState.needsLogin)) viewModel.refresh()
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
-    val feeActive = isActive && layers.contains(Screen.Fee)
+    val feeActive = isActive && (layers.contains(Screen.Fee) || dormPaymentVisible)
     DisposableEffect(feeActive) {
         onDispose { if (feeActive) feeModel.dismiss() }
     }
@@ -260,18 +286,22 @@ private fun MainContent(
         if (isActive && layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
     }
     fun close() {
-        if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) layers = layers.dropLast(1)
+        if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) {
+            if (layers.last() == Screen.Fee) { feeModel.dismiss(); dormModel.invalidate() }
+            layers = layers.dropLast(1)
+        }
     }
-    fun openFee(project: FeeProject) {
+    fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null) {
         if (!isActive || passwordState.loading || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         feeOpening = project
+        feeTarget = requestedRoom
+        dormPaymentVisible = false
         rechargeModel.dismiss()
         cardModel.dismiss()
         passwordModel.dismiss()
-        feeModel.open(project, state.username, state.preview)
+        feeModel.open(project, state.username, state.preview, requestedRoom)
     }
     fun closeFee() {
-        feeModel.dismiss()
         close()
     }
     val entryContext = LocalContext.current
@@ -283,7 +313,14 @@ private fun MainContent(
         } else if (!feeState.loading) {
             if (feeState.config != null && feeState.error == null) {
                 feeProject = project
-                open(Screen.Fee)
+                if (feeTarget != null) {
+                    if (feeTarget!!.sameTarget(feeState.currentRoom) && feeState.query?.thirdParty != null && feeState.query?.canPay == true) {
+                        dormPaymentVisible = true
+                    } else {
+                        Toast.makeText(entryContext, "当前电表无法缴费，请在管理中核实", Toast.LENGTH_SHORT).show()
+                        feeModel.dismiss()
+                    }
+                } else open(Screen.Fee)
                 feeOpening = null
             } else if (feeState.error != null) {
                 Toast.makeText(entryContext, feeState.error, Toast.LENGTH_SHORT).show()
@@ -295,16 +332,31 @@ private fun MainContent(
     fun openBillStats() {
         if (!isActive) return
         billViewModel.openStats()
-        open(Screen.BillStats)
     }
     fun openBillDetail(record: BillRecord) {
         if (!isActive) return
         billViewModel.openDetail(record)
         open(Screen.BillDetail)
     }
+    fun recharge() {
+        if (isActive && feeOpening == null && !passwordState.loading && !cardState.loading && !rechargeState.loading) {
+            cardModel.dismiss(); passwordModel.dismiss()
+            rechargeModel.open(state.username, state.account?.account, state.preview)
+        }
+    }
+    fun cardAction(action: CampusCardAction) {
+        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
+            rechargeModel.dismiss()
+            if (action == CampusCardAction.ChangePassword) {
+                cardModel.dismiss(); passwordModel.open(state.username, state.preview)
+            } else {
+                passwordModel.dismiss(); cardModel.open(action, state.username, state.preview)
+            }
+        }
+    }
     // Root tabs return to payment; secondary pages and popups keep their own back handling.
     BackHandler(
-        enabled = isActive && layers.isEmpty() &&
+        enabled = isActive && layers.isEmpty() && !dormPaymentVisible &&
             (tabs.selectedPage != 0 || pagerState.currentPage != 0),
     ) {
         tabs.animateToPage(0)
@@ -325,7 +377,10 @@ private fun MainContent(
         IslandLayerBackHandlers(
             enabled = isActive && settings.predictiveBack.value && layers.size == k + 1,
             motion = motion[k], maxTranslationPercent = distance,
-            onDismissed = { lastScreens[k] = null; layers = layers.take(k) },
+            onDismissed = {
+                if (layers.getOrNull(k) == Screen.Fee) { feeModel.dismiss(); dormModel.invalidate() }
+                lastScreens[k] = null; layers = layers.take(k)
+            },
         )
     }
     if (!settings.predictiveBack.value) BackHandler(enabled = isActive && layers.isNotEmpty()) { close() }
@@ -358,7 +413,7 @@ private fun MainContent(
                                     state, settings, bottom,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onLogout = { if (isActive) viewModel.logout() },
-                                    onRecharge = { if (isActive && !passwordState.loading) { cardModel.dismiss(); passwordModel.dismiss(); rechargeModel.open(state.username, state.account?.account, state.preview) } },
+                                    onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onUnlost = {
                                         val account = state.account?.account
@@ -375,20 +430,13 @@ private fun MainContent(
                                 1 -> HallPage(
                                     settings = settings,
                                     bottomPadding = bottom,
-                                    onOpenFee = ::openFee,
+                                    onOpenFee = { openFee(it) },
+                                    dorm = dormState,
+                                    isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
+                                    onActivate = dormModel::onActivate, onRefreshDorm = dormModel::refresh,
+                                    onOpenDormFee = { project, target -> openFee(project, target) },
                                     feeOpening = feeOpening,
-                                    onOpenCardService = { action ->
-                                        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
-                                            rechargeModel.dismiss()
-                                            if (action == CampusCardAction.ChangePassword) {
-                                                cardModel.dismiss()
-                                                passwordModel.open(state.username, state.preview)
-                                            } else {
-                                                passwordModel.dismiss()
-                                                cardModel.open(action, state.username, state.preview)
-                                            }
-                                        }
-                                    },
+                                    onOpenCardService = ::cardAction,
                                     cardServiceOpening = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
                                     cardServiceLoadingAction = if (passwordState.loading && !passwordState.visible) CampusCardAction.ChangePassword
                                         else cardState.action.takeIf { cardState.loading && !cardState.visible },
@@ -404,16 +452,25 @@ private fun MainContent(
                                     onFiltersApplied = billViewModel::applyFilters,
                                     onSearch = billViewModel::search,
                                     onOpenStats = ::openBillStats,
+                                    onShowDetails = billViewModel::showDetails,
+                                    onStatsTypeChange = billViewModel::selectStatsType,
+                                    onRefreshStats = billViewModel::refreshStats,
                                     onOpenDetail = ::openBillDetail,
                                     isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
                                     showBack = false,
                                     bottomPadding = bottom,
                                 )
-                                3 -> AboutTabPage(
+                                3 -> MyPage(
+                                    state = myState, payment = state, settings = settings, bottomPadding = bottom,
                                     isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
-                                    pageBottomContentPadding = bottom,
-                                    onOpenReferences = { open(Screen.References) },
-                                    onOpenSettings = { open(Screen.Settings) },
+                                    onActivate = myModel::onActivate,
+                                    onRefresh = { myModel.refresh(); viewModel.refresh(manual = true) },
+                                    onProfile = { open(Screen.Profile) }, onAccount = { open(Screen.Account) },
+                                    onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
+                                    onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                    onCardAction = ::cardAction,
+                                    cardBusy = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
+                                    onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
                                 )
                             }
                         }
@@ -431,7 +488,20 @@ private fun MainContent(
                         onFinish = {
                             val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
                             rechargeModel.finish()
-                            if (paid) viewModel.refresh()
+                            if (paid) { viewModel.refresh(); myModel.refresh(); billViewModel.refresh() }
+                        },
+                    )
+                    DormFeeDialog(
+                        state = feeState, visible = isActive && dormPaymentVisible,
+                        title = feeTarget?.let { DormMeterDiscovery.kind(it.names.values.lastOrNull().orEmpty()).label + "缴费" } ?: "宿舍缴费",
+                        onDismiss = { dormPaymentVisible = false; feeModel.dismiss() },
+                        onCreate = feeModel::create, onMethod = feeModel::chooseMethod,
+                        onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment,
+                        onContinuePayment = feeModel::continuePayment,
+                        onFinish = {
+                            val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
+                            dormPaymentVisible = false; feeModel.dismiss()
+                            if (paid) { viewModel.refresh(); billViewModel.refresh(); myModel.refresh(); dormModel.invalidate() }
                         },
                     )
                 }
@@ -448,7 +518,7 @@ private fun MainContent(
                     Screen.Fee -> FeePage(
                         state = feeState, settings = settings, onBack = ::closeFee,
                         onSelect = feeModel::select, onRefreshQuery = feeModel::refreshQuery,
-                        onRetry = { if (feeActive) feeProject?.let { feeModel.open(it, state.username, state.preview) } },
+                        onRetry = { if (feeActive) feeProject?.let { feeModel.open(it, state.username, state.preview, feeTarget) } },
                         onCreate = feeModel::create, onMethod = feeModel::chooseMethod,
                         onPayAccount = feeModel::payAccount,
                         onContinuePayment = feeModel::continuePayment,
@@ -460,24 +530,21 @@ private fun MainContent(
                         onFinish = {
                             val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
                             feeModel.cancelPayment()
-                            if (paid) { feeModel.refreshQuery(); viewModel.refresh(); billViewModel.refresh() }
+                            if (paid) { feeModel.refreshQuery(); viewModel.refresh(); billViewModel.refresh(); myModel.refresh(); dormModel.invalidate() }
                         }, interactive = feeActive,
                     )
-                    Screen.BillStats -> BillStatsPage(
-                        state = billState,
-                        settings = settings,
-                        onBack = { close() },
-                        onDateChange = billViewModel::selectStatsDate,
-                        onTypeChange = billViewModel::selectStatsType,
-                        onRetry = billViewModel::refreshStats,
-                        onOpenDetail = ::openBillDetail,
-                    )
+                    Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh)
+                    Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
+                        rechargeLoading = rechargeState.loading && !rechargeState.visible)
+                    Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
+                        onOpenReferences = { open(Screen.References) }, onOpenSettings = { open(Screen.Settings) }, onBack = ::close, showSettings = false)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
                     else -> SecondaryPage(
                         screen = screen,
                         settings = settings,
                         onBack = { close() },
                         onTheme = { open(Screen.Theme) },
+                        onLogout = { if (isActive) viewModel.logout() },
                     )
                 }
             }
@@ -487,8 +554,8 @@ private fun MainContent(
 
 @Composable
 private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected: (Int) -> Unit) {
-    val icons = listOf(MiuixIcons.Scan, AppIcons.Hall, AppIcons.Bill, MiuixIcons.Info)
-    val labels = listOf("付款", "大厅", "账单", "关于")
+    val icons = listOf(MiuixIcons.Scan, AppIcons.Hall, AppIcons.Bill, MiuixIcons.Contacts)
+    val labels = listOf("付款", "大厅", "账单", "我的")
     val floating = settings.floatingBottomBar.value
     val blur = settings.blurBottomBar.value
     if (floating && settings.floatingBottomBarStyle.value == 1) {
@@ -519,7 +586,9 @@ private fun SecondaryPage(
     settings: ThemeSettings,
     onBack: () -> Unit,
     onTheme: () -> Unit,
+    onLogout: () -> Unit,
 ) {
+    var showLogout by remember { mutableStateOf(false) }
     val title = when (screen) {
         Screen.Settings -> stringResource(R.string.settings_title)
         Screen.Theme -> stringResource(R.string.theme_title)
@@ -558,6 +627,11 @@ private fun SecondaryPage(
                                 )
                             }
                         }
+                        item {
+                            Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                                ArrowPreference(title = "退出登录", onClick = { showLogout = true })
+                            }
+                        }
                     }
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, contentPadding = contentPadding,
@@ -572,6 +646,13 @@ private fun SecondaryPage(
                     )
                     Screen.References -> ReferencesPage(modifier, contentPadding)
                     else -> Unit
+                }
+            }
+            OverlayDialog(show = showLogout, title = "退出登录", summary = "退出后将清除本机保存的登录信息。",
+                onDismissRequest = { showLogout = false }, renderInRootScaffold = true) {
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { showLogout = false }, modifier = Modifier.weight(1f)) { Text("取消") }
+                    Button(onClick = { showLogout = false; onLogout() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text("确定") }
                 }
             }
         }

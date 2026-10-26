@@ -194,52 +194,34 @@ internal fun BillDateSelector(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     var showSheet by remember { mutableStateOf(false) }
-    val today = LocalDate.now()
-    val previous = shiftBillDateFilter(filter, -1)
-    val canPrevious = !previous.start.isBefore(minimumDate)
-    val canNext = shiftBillDateFilter(filter, 1).start <= today
-    Card(modifier.fillMaxWidth()) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
+            Modifier.weight(1f).heightIn(min = 44.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { if (canPrevious) onDateSelected(previous) }) {
-                Icon(
-                    MiuixIcons.ChevronBackward, contentDescription = "上一时间段",
-                    modifier = Modifier.size(20.dp),
-                    tint = if (canPrevious) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.disabledOnSurface,
-                )
-            }
-            Surface(onClick = { showSheet = true }, modifier = Modifier.weight(1f), color = Color.Transparent) {
+            Surface(onClick = { showSheet = true }, color = Color.Transparent) {
                 Row(
-                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.Center,
+                    Modifier.padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         billDateLabel(filter),
                         modifier = Modifier.weight(1f, fill = false),
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(6.dp))
                     Icon(
-                        MiuixIcons.ExpandMore, contentDescription = "选择日期",
+                        AppIcons.DateDropdown, contentDescription = "选择日期",
                         modifier = Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
-            IconButton(onClick = { if (canNext) onDateSelected(shiftBillDateFilter(filter, 1)) }) {
-                Icon(
-                    MiuixIcons.ChevronForward, contentDescription = "下一时间段",
-                    modifier = Modifier.size(20.dp),
-                    tint = if (canNext) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.disabledOnSurface,
-                )
-            }
-            actions()
         }
+        actions()
     }
     BillDatePickerDialog(
         show = showSheet,

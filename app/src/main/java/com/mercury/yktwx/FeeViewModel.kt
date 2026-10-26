@@ -61,6 +61,8 @@ class FeeViewModel internal constructor(
     val state = mutable.asStateFlow()
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
     val events = launches.receiveAsFlow()
+    private val roomUpdates = Channel<Unit>(Channel.CONFLATED)
+    val roomChanges = roomUpdates.receiveAsFlow()
     private var task: Job? = null
     private var checkDeadline: Job? = null
     private var owner = ""
@@ -71,7 +73,7 @@ class FeeViewModel internal constructor(
         { !accountPaymentSubmitted && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
-    fun open(project: FeeProject, username: String, preview: Boolean) {
+    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null) {
         dismiss()
         owner = username
         mutable.value = FeeUiState(loading = true, preview = preview)
@@ -99,8 +101,14 @@ class FeeViewModel internal constructor(
                     val entrance = FeeUiState(config, levels = initial.levels,
                         options = mapOf(first.number to initial.options), preview = preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
-                    if (config.roomBinding != null) {
-                        restoreRoom(entrance, config.roomBinding, generation)
+                    val target = requestedRoom ?: config.roomBinding
+                    if (preview && requestedRoom != null) {
+                        mutable.value = FeeUiState(config, levels = initial.levels,
+                            selections = requestedRoom.selections, names = requestedRoom.names,
+                            options = initial.levels.associate { it.number to listOf(FeeOption(requestedRoom.selections.getValue(it.key), requestedRoom.names.getValue(it.key))) },
+                            query = previewQuery(project, true, initial.levels.last().number), preview = true)
+                    } else if (target != null) {
+                        restoreRoom(entrance, target, generation)
                     } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
                         mutable.value = copy(entrance, loading = true)
                         loadSelection(entrance, first, initial.options.single(), generation)
@@ -220,11 +228,13 @@ class FeeViewModel internal constructor(
                 }
                 if (generation != attempt) return@launchTask
                 val confirmed = if (target == null) fresh == null else target.sameTarget(fresh)
+                roomUpdates.trySend(Unit)
                 mutable.value = copy(mutable.value, roomBusy = false, roomBinding = fresh, roomBindingKnown = true,
                     error = if (confirmed) null else failure?.let(::message) ?: "房间绑定未更新，请稍后重试",
                     roomNotice = if (confirmed) (if (target == null) "已解绑" else "已保存为我的房间") else null)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
+                roomUpdates.trySend(Unit)
                 if (generation == attempt) mutable.value = copy(mutable.value, roomBusy = false, roomBindingKnown = false,
                     error = "无法确认保存或解绑结果，请重新打开页面核实，勿重复提交")
             }
@@ -321,7 +331,7 @@ class FeeViewModel internal constructor(
     }
     fun create(amount: Long) {
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
-        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || s.stage != FeeStage.Query || task?.isActive == true) return
+        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || s.refreshing || !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
         config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it); return }
         val generation=attempt
         accountPaymentSubmitted = false

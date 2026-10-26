@@ -126,14 +126,14 @@ class UiSmokeTest {
                 settings.setFloatingStyle(if (style == 2) 1 else 0)
             }
             compose.waitForIdle()
-            val labels = listOf("付款", "大厅", "账单", "关于")
+            val labels = listOf("付款", "大厅", "账单", "我的")
             val centers = labels.map { label ->
                 compose.onNode((hasText(label) or hasContentDescription(label)) and hasClickAction()).fetchSemanticsNode().boundsInRoot.center.x
             }
             assertTrue(centers.zipWithNext().all { (left, right) -> left < right })
             compose.onNode((hasText("大厅") or hasContentDescription("大厅")) and hasClickAction()).performClick()
-            compose.onNodeWithText("生活缴费").assertIsDisplayed()
-            compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+            compose.onNodeWithText("生活缴费").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("我的宿舍").assertExists()
             compose.onNodeWithContentDescription("付款条形码").assertIsNotDisplayed()
             compose.onAllNodes(hasContentDescription("付款条形码") and hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("生活缴费"))))
                 .assertCountEquals(0)
@@ -151,15 +151,15 @@ class UiSmokeTest {
         // Adjacent pager pages can already exist: verify visibility, not just existence.
         compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
         compose.onNode(hasText("账单") and hasClickAction()).performClick()
-        compose.onNodeWithContentDescription("账单统计").assertIsDisplayed()
+        compose.onNodeWithText("统计").assertIsDisplayed()
         compose.onNode(hasText("付款") and hasClickAction()).performClick()
         compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
     }
     @Test fun aboutSettingsThemeNavigateAndPersist() {
         content()
-        compose.onNode(hasText("关于") and hasClickAction())
+        compose.onNode(hasText("我的") and hasClickAction())
             .performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithText("设置").performScrollTo()
+        compose.onNodeWithText("应用设置").performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("主题").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("预测性返回动画").assertExists()
@@ -177,9 +177,9 @@ class UiSmokeTest {
     }
     @Test fun paymentMotionDetectionSwitchIsInSettingsOffByDefaultAndPersists() {
         content()
-        compose.onNode(hasText("关于") and hasClickAction())
+        compose.onNode(hasText("我的") and hasClickAction())
             .performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithText("设置").performScrollTo()
+        compose.onNodeWithText("应用设置").performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("转回检测支付").assertIsDisplayed()
         fun switch() = compose.onNode(isToggleable() and
@@ -201,15 +201,16 @@ class UiSmokeTest {
 
     @Test fun campusCardEntriesOpenStateDialogAndReuseRechargeSheet() {
         content()
-        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
-        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
-        compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
+        compose.onNode(hasText("我的") and hasClickAction()).performClick()
+        compose.onNodeWithText("校园卡管理").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("挂失 / 解挂").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("确认挂失").assertExists()
         compose.onNodeWithText("确定").assertIsNotEnabled()
         compose.activity.onBackPressedDispatcher.onBackPressed()
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("代人充值").performClick()
+        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
+        compose.onNodeWithText("代人充值").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithText("查询").assertExists()
         compose.onNode(hasSetTextAction() and hasText("学工号")).performTextInput("202600000002")

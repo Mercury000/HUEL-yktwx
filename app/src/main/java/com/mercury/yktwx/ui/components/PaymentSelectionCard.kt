@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Shared by recipient selection and payment-method selection. */
+/** Shared by recipient, dorm meter and payment-method selection. */
 @Composable
 internal fun PaymentSelectionCard(
     selected: Boolean,

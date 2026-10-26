@@ -5,7 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** All requests share one lock, so multiple expired-token callers cannot trigger a login storm. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi()) {
+class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi()) {
     private val mutex = Mutex()
     fun hasCredentials() = vault.credentials() != null
     fun username() = vault.credentials()?.username.orEmpty()
@@ -20,6 +20,12 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun refresh(): PaymentBatch = withSession { service.payment(it) }
     suspend fun paymentAccount(username: String): PaymentAccount = withSession(expectedUsername = username) {
         service.paymentAccount(it)
+    }
+    suspend fun personalProfile(username: String): PersonalProfile = withSession(expectedUsername = username) { profileService.profile(it) }
+    suspend fun homeIdentity(username: String, sno: String): HomeCardIdentity? = withSession(expectedUsername = username) { profileService.homeIdentity(it, sno) }
+    suspend fun profileAvatar(path: String): ByteArray? = profileService.avatar(path)
+    suspend fun dormRoom(username: String, config: FeeConfiguration): DormRoom? = withSession(expectedUsername = username) {
+        DormMeterDiscovery(feeService).discover(it, config)
     }
     internal suspend fun <T> withSession(retryAuthentication: Boolean = true, expectedUsername: String? = null, block: suspend (String) -> T): T = mutex.withLock {
         val credentials = vault.credentials() ?: throw AuthenticationRequired()
@@ -54,10 +60,10 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     ): BillPageData = withSession {
         service.bills(it, current, size, timeFrom, timeTo, typeId, amountFromCents, amountToCents, info)
     }
-    suspend fun billSummary(timeFrom: String, timeTo: String): BillSummary = withSession {
+    suspend fun billSummary(timeFrom: String, timeTo: String, username: String? = null): BillSummary = withSession(expectedUsername = username) {
         service.billSummary(it, timeFrom, timeTo)
     }
-    suspend fun billCounts(timeFrom: String, timeTo: String): BillCounts = withSession {
+    suspend fun billCounts(timeFrom: String, timeTo: String, username: String? = null): BillCounts = withSession(expectedUsername = username) {
         BillCounts(
             income = service.billCount(it, timeFrom, timeTo, 1),
             expenses = service.billCount(it, timeFrom, timeTo, 2),

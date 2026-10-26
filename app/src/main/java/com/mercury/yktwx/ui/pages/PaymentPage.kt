@@ -35,7 +35,6 @@ import com.mercury.yktwx.ui.ThemeSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
@@ -43,24 +42,11 @@ import java.util.Locale
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onLogout: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true) {
     val displayCode = state.code.takeIf { state.problem == null && !state.busy }
-    var showLogoutConfirmation by remember(state.username, state.needsLogin) { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
-                TopAppBar(
-                    title = "付款",
-                    largeTitle = "付款",
-                    scrollBehavior = scrollBehavior, color = Color.Transparent,
-                    actions = {
-                        IconButton(
-                            onClick = { showLogoutConfirmation = true },
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(AppIcons.Logout, contentDescription = "退出登录", tint = MiuixTheme.colorScheme.onSurface)
-                        }
-                    },
-                )
+                DashboardTopBar("付款")
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -79,12 +65,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        if (state.preview) item { Text(if (state.problem != null) "界面预览 · 非真实账户" else "界面预览 · 测试码不可用于支付", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary) }
                         item {
-                            Card(Modifier.fillMaxWidth().testTag("payment-code-card")) {
+                            Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("付款码", fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(Modifier.fillMaxWidth().height(paymentHeaderHeight()), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("付款码", fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
                                         Spacer(Modifier.weight(1f))
                                         val status = when {
                                             state.busy -> "核验中"
@@ -148,12 +133,13 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                         }
                         item {
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
+                                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(state.account?.name ?: "统一账户", fontWeight = FontWeight.SemiBold)
+                                        Icon(AppIcons.CardState, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        Text(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp), fontSize = 11.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         Spacer(Modifier.weight(1f))
-                                        Text(if (state.preview) "202600000000" else state.username, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -170,46 +156,32 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                 )
                                             }
                                         }
-                                        TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge,
+                                        CompactButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge,
                                             enabled = !rechargeLoading)
                                     }
                                 }
                             }
                         }
+                        if (state.preview) item { Text(if (state.problem != null) "界面预览 · 非真实账户" else "界面预览 · 测试码不可用于支付",
+                            fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                     }
                 }
             }
-            // Match the miuix demo: the root popup host renders above the app's
-            // bottom navigation, with only the component's system-safe insets.
-            OverlayDialog(
-                show = showLogoutConfirmation && !state.needsLogin,
-                title = "退出登录",
-                summary = "退出后将清除本机保存的登录信息。",
-                onDismissRequest = { showLogoutConfirmation = false },
-                defaultWindowInsetsPadding = true,
-                renderInRootScaffold = true,
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Button(onClick = { showLogoutConfirmation = false }, modifier = Modifier.weight(1f)) {
-                        Text("取消")
-                    }
-                    Button(
-                        onClick = {
-                            if (showLogoutConfirmation) {
-                                showLogoutConfirmation = false
-                                onLogout()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) { Text("确定") }
-                }
-            }
+
         }
     }
+}
+
+/** Reserve the padded status pill even when a plain refresh label is displayed. */
+@Composable
+private fun paymentHeaderHeight(): Dp {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val title = measurer.measure(AnnotatedString("付款码"),
+        style = TextStyle(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold))
+    val status = measurer.measure(AnnotatedString("核验中"),
+        style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp))
+    return maxOf(32.dp, with(density) { title.size.height.toDp() }, with(density) { status.size.height.toDp() } + 10.dp)
 }
 
 /** Stable body height measured without user/account/code data, so every state uses the same slots. */
