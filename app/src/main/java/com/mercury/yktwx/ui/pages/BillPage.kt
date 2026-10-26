@@ -1,6 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,7 +18,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,9 +75,16 @@ fun BillPage(
     isActive: Boolean = true,
     showBack: Boolean = true,
     bottomPadding: Dp = 0.dp,
+    onShowDetails: () -> Unit = {},
+    onStatsTypeChange: (Int) -> Unit = {},
+    onRefreshStats: () -> Unit = {},
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    var searchBounds by remember { mutableStateOf(Rect.Zero) }
+    var contentOrigin by remember { mutableStateOf(Offset.Zero) }
+    fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
     var showFilter by remember { mutableStateOf(false) }
     var query by remember(state.info) { mutableStateOf(state.info) }
     val groups = remember(state.items) { state.items.groupByDay() }
@@ -71,8 +92,14 @@ fun BillPage(
     val currentState by rememberUpdatedState(state)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // Adjacent tabs may be precomposed. Load only when the bill tab is active.
-    LaunchedEffect(isActive) {
-        if (isActive) onActivate() else showFilter = false
+    LaunchedEffect(isActive, state.statsVisible) {
+        if (isActive) onActivate()
+        if (!isActive || state.statsVisible) showFilter = false
+    }
+    LaunchedEffect(state.statsVisible, state.dateFilter) { listState.scrollToItem(0) }
+    LaunchedEffect(isActive, state.statsVisible) { if (!isActive || state.statsVisible) dismissSearch() }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.distinctUntilChanged().filter { it }.collect { dismissSearch() }
     }
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -84,7 +111,7 @@ fun BillPage(
             .filter { it }
             .collect {
                 val latest = currentState
-                if (!latest.loadingMore && latest.loadMoreError == null &&
+                if (!latest.statsVisible && !latest.loadingMore && latest.loadMoreError == null &&
                     latest.currentPage in 1 until latest.pages
                 ) {
                     currentOnLoadMore()
@@ -93,9 +120,16 @@ fun BillPage(
     }
 
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
-        Scaffold(topBar = {
+        Scaffold(modifier = Modifier.onGloballyPositioned { contentOrigin = it.positionInWindow() }
+            .pointerInput(focus, keyboard) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    if (!searchBounds.contains(down.position + contentOrigin)) dismissSearch()
+                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                }
+            }, topBar = {
             BlurredBar(topGradient = true) {
-                TopAppBar(
+                if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior) else TopAppBar(
                     title = "账单",
                     largeTitle = "账单",
                     scrollBehavior = scrollBehavior,
@@ -103,35 +137,38 @@ fun BillPage(
                     navigationIcon = {
                         if (showBack) IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
                     },
-                    actions = {
-                        IconButton(onClick = onOpenStats) {
-                            Icon(AppIcons.Chart, contentDescription = "账单统计", tint = MiuixTheme.colorScheme.onSurface)
-                        }
-                    },
                 )
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                PullToRefresh(
-                    isRefreshing = state.refreshing,
+                DashboardPullToRefresh(
+                    loading = if (state.statsVisible) state.stats.loading else state.loading || state.refreshing,
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
-                    topAppBarScrollBehavior = scrollBehavior,
-                    color = MiuixTheme.colorScheme.primary,
-                    refreshTexts = AppRefreshTexts,
+                    scrollBehavior = scrollBehavior,
                 ) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().overScrollVertical(),
                         contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 16.dp,
+                            top = padding.calculateTopPadding() + 8.dp,
                             bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
                             start = 16.dp,
                             end = 16.dp,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        item(key = "mode") {
+                            Box(Modifier.width(180.dp)) {
+                                TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
+                                    onTabSelected = { if (it == 0) onShowDetails() else onOpenStats() },
+                                    minWidth = 85.dp, maxWidth = 85.dp, height = 38.dp, cornerRadius = 12.dp, itemSpacing = 0.dp,
+                                    colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
+                                        contentColor = DashboardPalette.muted, selectedBackgroundColor = DashboardPalette.card,
+                                        selectedContentColor = DashboardPalette.ink))
+                            }
+                        }
                         if (state.needsLogin) {
                             item(key = "login") {
                                 BillErrorCard(
@@ -148,16 +185,12 @@ fun BillPage(
                                     minimumDate = BillListMinimumDate,
                                     onDateSelected = onDateSelected,
                                 ) {
-                                    Box {
+                                    if (!state.statsVisible) Box {
                                         IconButton(
                                             onClick = { showFilter = true },
                                             backgroundColor = if (state.activeFilterCount > 0) MiuixTheme.colorScheme.primaryContainer else Color.Transparent,
                                         ) {
-                                            Icon(
-                                                MiuixIcons.Filter, contentDescription = "筛选账单",
-                                                modifier = Modifier.size(20.dp),
-                                                tint = if (state.activeFilterCount > 0) MiuixTheme.colorScheme.onPrimaryContainer else MiuixTheme.colorScheme.onSurface,
-                                            )
+                                            Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
                                         if (state.activeFilterCount > 0) {
                                             Box(
@@ -168,20 +201,29 @@ fun BillPage(
                                     }
                                 }
                             }
-                            if (state.preview) item(key = "preview") { BillPreviewNote() }
+                            if (state.statsVisible) {
+                                billStatsContent(state.stats, onStatsTypeChange, onRefreshStats, onOpenDetail)
+                            } else {
                             item(key = "summary") { BillSummaryCard(state) }
                             item(key = "search") {
+                                Box(Modifier.fillMaxWidth()) {
                                 TextField(
                                     value = query,
                                     onValueChange = { query = it },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().testTag("bill-search")
+                                        .onGloballyPositioned { searchBounds = it.boundsInWindow() }
+                                        .semantics { contentDescription = "搜索商户或摘要" },
+                                    insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
                                     label = "搜索商户或摘要",
                                     useLabelAsPlaceholder = true,
                                     singleLine = true,
+                                    cornerRadius = 14.dp,
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                    colors = TextFieldDefaults.textFieldColors(),
                                     leadingIcon = {
                                         Icon(
                                             MiuixIcons.Search, contentDescription = null,
-                                            modifier = Modifier.padding(start = 16.dp, end = 10.dp).size(20.dp),
+                                            modifier = Modifier.padding(start = 14.dp, end = 10.dp).size(17.dp),
                                             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
                                     },
@@ -197,10 +239,11 @@ fun BillPage(
                                     },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                     keyboardActions = KeyboardActions(onSearch = {
-                                        keyboard?.hide()
+                                        dismissSearch()
                                         onSearch(query)
                                     }),
                                 )
+                                }
                             }
                             if (state.error != null && state.items.isNotEmpty()) {
                                 item(key = "inline-error") {
@@ -218,13 +261,21 @@ fun BillPage(
                                 else -> {
                                     items(groups, key = { it.key }) { group ->
                                         Column {
-                                            Text(
-                                                billDayLabel(group.date),
-                                                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
-                                                fontSize = 13.sp,
-                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                            )
-                                            Card(Modifier.fillMaxWidth()) {
+                                            Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically) {
+                                                Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                // Only complete, unfiltered ranges can support full daily subtotals.
+                                                if (state.loaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
+                                                    val expense = group.records.filter { !it.income }.sumOf { it.amountCents }
+                                                    val income = group.records.filter { it.income }.sumOf { it.amountCents }
+                                                    if (expense > 0) Text("支出 ¥ ${money(expense)}", fontSize = 10.sp,
+                                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                    if (income > 0) Text("收入 ¥ ${money(income)}", Modifier.padding(start = 8.dp), fontSize = 10.sp,
+                                                        color = MiuixTheme.colorScheme.primary)
+                                                }
+                                            }
+                                            Card(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
                                                 group.records.forEachIndexed { index, record ->
                                                     BillRow(record) { onOpenDetail(record) }
                                                     if (index != group.records.lastIndex) {
@@ -236,6 +287,8 @@ fun BillPage(
                                     }
                                     item(key = "footer") { BillFooter(state, onLoadMore) }
                                 }
+                            }
+                            if (state.preview) item(key = "preview") { BillPreviewNote() }
                             }
                         }
                     }
@@ -289,7 +342,7 @@ private fun BillSummaryCard(state: BillUiState) {
 private fun BillRow(record: BillRecord, onClick: () -> Unit) {
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), color = Color.Transparent) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BillIcon(record.icon, income = record.income)
@@ -307,11 +360,12 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Text(
-                signedMoney(record),
-                fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(signedMoney(record), fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
+                Text(record.fromAccount, Modifier.padding(top = 4.dp), fontSize = 10.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1)
+            }
         }
     }
 }

@@ -141,6 +141,45 @@ class BillViewModelTest {
         assertEquals(listOf("2026-09-03" to "2026-10-02"), service.requestRanges)
         assertEquals(BillDateMode.Range, model.state.value.dateFilter.mode)
     }
+    @Test fun detailsAndStatsShareDateAndChangingStatsDateDoesNotLoadHiddenList() {
+        service.requestGate.complete(Unit)
+        model.initialize()
+        await { vault.reads > 0 }
+        model.refresh()
+        await { model.state.value.loaded }
+        model.applyFilters("4", 100L, 2000L)
+        await { model.state.value.loaded }
+        model.openStats()
+        await { model.state.value.stats.loaded }
+        val listCalls = service.requests
+        val range = BillDateFilter.range(LocalDate.of(2026, 8, 12), LocalDate.of(2026, 9, 7))
+        model.selectDate(range)
+        await { model.state.value.stats.loaded }
+        assertTrue(model.state.value.statsVisible)
+        assertEquals(range, model.state.value.dateFilter)
+        assertEquals(range, model.state.value.stats.period)
+        assertEquals(listCalls, service.requests)
+        assertEquals("4", model.state.value.typeId)
+        model.showDetails()
+        await { model.state.value.loaded }
+        assertFalse(model.state.value.statsVisible)
+        assertEquals(range.timeFrom to range.timeTo, service.requestRanges.last())
+        assertEquals("4", model.state.value.typeId)
+    }
+    @Test fun myMonthlyShortcutReturnsToUnfilteredCurrentMonthDetails() {
+        service.requestGate.complete(Unit)
+        model.refresh(); await { model.state.value.loaded }
+        model.applyFilters("4", 100L, 5000L); await { model.state.value.loaded }
+        model.search("示例商户"); await { model.state.value.loaded }
+        model.openStats(); await { model.state.value.stats.loaded }
+        model.showCurrentMonth(); await { model.state.value.loaded }
+        assertFalse(model.state.value.statsVisible)
+        assertEquals(BillDateFilter.currentMonth(), model.state.value.dateFilter)
+        assertNull(model.state.value.typeId)
+        assertNull(model.state.value.amountFromCents)
+        assertNull(model.state.value.amountToCents)
+        assertEquals("", model.state.value.info)
+    }
 
     private fun loadExistingBills() {
         service.items = listOf(record)
@@ -202,10 +241,10 @@ class BillViewModelTest {
         override suspend fun billTypes(token: String) = listOf(BillType("4", "二维码支付", "qrCode-payment"))
         override suspend fun login(credentials: Credentials): Session = error("Unexpected login")
         override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")
-        override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = error("Unexpected categories")
+        override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()
         override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> =
-            error("Unexpected daily stats")
-        override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = error("Unexpected ranking")
+            emptyList()
+        override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = emptyList()
     }
 
     private companion object {

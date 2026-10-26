@@ -70,7 +70,7 @@ class MainTabBackNavigationTest {
 
     @Test fun hallBackGestureReturnsToPayment() {
         selectTab("大厅")
-        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
         back(commitGesture = true)
         assertPaymentRoot()
     }
@@ -83,7 +83,7 @@ class MainTabBackNavigationTest {
         compose.onNodeWithContentDescription("返回").assertIsDisplayed()
         compose.onNodeWithText("界面预览 · 不发起缴费").assertIsDisplayed()
         back()
-        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
         compose.onNode(hasText("大厅") and hasClickAction()).assertIsSelected()
         back()
         assertPaymentRoot()
@@ -91,20 +91,20 @@ class MainTabBackNavigationTest {
 
     @Test fun billBackGestureReturnsToPayment() {
         selectTab("账单")
-        compose.onNodeWithContentDescription("账单统计").assertIsDisplayed()
+        compose.onNodeWithText("统计").assertIsDisplayed()
         back(commitGesture = true)
         assertPaymentRoot()
     }
 
     @Test fun aboutBackGestureReturnsToPayment() {
-        selectTab("关于")
-        compose.onNodeWithText("设置").assertIsDisplayed()
+        selectTab("我的")
+        compose.onNodeWithText("应用设置").assertIsDisplayed()
         back(commitGesture = true)
         assertPaymentRoot()
     }
 
     @Test fun cancelledBackGestureKeepsCurrentTab() {
-        for (tab in listOf("大厅", "账单", "关于")) {
+        for (tab in listOf("大厅", "账单", "我的")) {
             selectTab(tab)
             compose.runOnIdle {
                 val dispatcher = compose.activity.onBackPressedDispatcher
@@ -120,7 +120,7 @@ class MainTabBackNavigationTest {
 
     @Test fun rootBackWorksWithPredictiveAnimationsDisabled() {
         compose.runOnIdle { settings.setPredictive(false) }
-        for (tab in listOf("大厅", "账单", "关于")) {
+        for (tab in listOf("大厅", "账单", "我的")) {
             selectTab(tab)
             back()
             assertPaymentRoot()
@@ -130,11 +130,11 @@ class MainTabBackNavigationTest {
     @Test fun secondaryPageBackReturnsToAboutBeforePayment() {
         for (predictive in listOf(true, false)) {
             compose.runOnIdle { settings.setPredictive(predictive) }
-            selectTab("关于")
-            compose.onNodeWithText("设置").performScrollTo().performClick()
+            selectTab("我的")
+            compose.onNodeWithText("应用设置").performScrollTo().performClick()
             compose.onNodeWithText("主题").assertIsDisplayed()
             back()
-            compose.onNodeWithText("设置").assertIsDisplayed()
+            compose.onNodeWithText("应用设置").assertIsDisplayed()
             compose.onNodeWithContentDescription("付款条形码").assertIsNotDisplayed()
             back()
             assertPaymentRoot()

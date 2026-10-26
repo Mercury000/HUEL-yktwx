@@ -59,29 +59,46 @@ class CardServiceUiTest {
     private fun page(mode: ColorSchemeMode) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme(mode) { HallPage(settings, 0.dp) }
+                AppTheme(mode) { HallPage(settings, 0.dp, dorm = DormUiState(loaded = true)) }
             }
         }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("校园卡服务"))
-        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
+        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
     }
-    @Test fun threeEntryCardIsBelowLivingFeesOnTheSameGrid() {
+    @Test fun hallKeepsLivingFeesAndOthersRechargeWithOwnCardManagementOnMyPage() {
         page(ColorSchemeMode.Light)
         compose.onNodeWithText("生活缴费").assertExists()
-        val life = compose.onNodeWithText("生活缴费").fetchSemanticsNode().boundsInRoot
-        val card = compose.onNodeWithText("校园卡服务").fetchSemanticsNode().boundsInRoot
-        assertTrue(card.top > life.top)
-        compose.onNodeWithContentDescription("挂失 / 解挂").assertIsDisplayed()
-        compose.onNodeWithContentDescription("代人充值").assertIsDisplayed()
-        compose.onNodeWithContentDescription("修改查询密码").assertIsDisplayed()
-        compose.onNodeWithContentDescription("挂失").assertDoesNotExist()
-        compose.onNodeWithContentDescription("解挂").assertDoesNotExist()
-        screenshot("campus-card-services-light")
+        compose.onNodeWithText("代人充值").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
+        compose.onNodeWithText("修改查询密码").assertDoesNotExist()
+        screenshot("hall-services-light")
     }
-    @Test fun threeEntryCardAlsoRendersInDarkTheme() {
+    @Test fun hallServicesAlsoRenderInDarkTheme() {
         page(ColorSchemeMode.Dark)
-        compose.onNodeWithText("校园卡服务").assertIsDisplayed()
-        screenshot("campus-card-services-dark")
+        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
+        screenshot("hall-services-dark")
+    }
+    @Test fun hallPullGestureRefreshesDorm() {
+        var refreshed = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    HallPage(settings, 0.dp, dorm = DormUiState(loaded = true), onRefreshDorm = { refreshed++ })
+                }
+            }
+        }
+        compose.onNode(hasScrollToIndexAction()).performTouchInput {
+            swipe(start = center.copy(y = height * .3f), end = center.copy(y = height * .9f), durationMillis = 600)
+        }
+        compose.waitForIdle()
+        assertTrue("Pull gesture must refresh dorm readings", refreshed > 0)
+    }
+    @Test fun backgroundDormLoadKeepsOtherServicesScrollable() {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) { HallPage(settings, 0.dp, dorm = DormUiState(loading = true)) }
+            }
+        }
+        compose.onNodeWithText("代人充值").performScrollTo().assertIsDisplayed()
     }
     @Test fun stateConfirmationIsCompactAndOnlyUnlostAsksForPassword() {
         val notLost = CampusCard("demo-card", "校园卡", "202600000001", false, false, 0)
@@ -266,8 +283,17 @@ class CardServiceUiTest {
         assertEquals(1, calls)
     }
     @Test fun servicePressIndicationStaysInsideCircleForBothGrids() {
-        page(ColorSchemeMode.Light)
+        val ownCardGrid = mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    if (ownCardGrid.value) CampusCardServicesCard(false, {})
+                    else HallPage(settings, 0.dp, dorm = DormUiState(loaded = true))
+                }
+            }
+        }
         for (label in listOf("校园网费", "挂失 / 解挂")) {
+            if (label == "挂失 / 解挂") compose.runOnIdle { ownCardGrid.value = true }
             val node = compose.onNodeWithContentDescription(label)
             node.assertHasClickAction()
             val before = node.captureToImage().asAndroidBitmap()

@@ -118,7 +118,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         initialized = true
         preview = BuildConfig.DEBUG && uiPreview
         if (preview) {
-            val account = PaymentAccount("demo", "000", "1", "统一账户", 0)
+            val account = PaymentAccount("demo", "000", "1", "统一账户", 18650)
             if (previewLost) {
                 mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", account = account,
                     preview = true, problem = PaymentCodeProblem.Lost)

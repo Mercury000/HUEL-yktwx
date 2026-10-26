@@ -58,6 +58,10 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
@@ -88,6 +92,8 @@ fun AboutPage(
     isActive: Boolean,
     onOpenReferences: () -> Unit,
     onOpenSettings: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    showSettings: Boolean = true,
 ) {
     val context = LocalContext.current
     val sourceUrl = stringResource(R.string.source_code_url)
@@ -132,6 +138,7 @@ fun AboutPage(
     Scaffold(
         topBar = {
             SmallTopAppBar(
+                navigationIcon = { onBack?.let { IconButton(onClick = it) { Icon(MiuixIcons.Back, "返回") } } },
                 title = stringResource(R.string.about_tab),
                 scrollBehavior = topAppBarScrollBehavior,
                 color = if (collapsed) surface else Color.Transparent,
@@ -258,7 +265,7 @@ fun AboutPage(
                                     title = stringResource(R.string.about_references),
                                     onClick = onOpenReferences,
                                 )
-                                ArrowPreference(
+                                if (showSettings) ArrowPreference(
                                     title = stringResource(R.string.settings_title),
                                     onClick = onOpenSettings,
                                 )

@@ -49,6 +49,7 @@ data class BillUiState(
     val error: String? = null,
     val loaded: Boolean = false,
     val detail: BillRecord? = null,
+    val statsVisible: Boolean = false,
     val stats: BillStatsState = BillStatsState(),
 ) {
     val activeFilterCount: Int
@@ -105,6 +106,7 @@ class BillViewModel internal constructor(
     }
 
     fun onActivate() {
+        if (mutable.value.statsVisible) { openStats(); return }
         if (!initialized || preview || loginCheck?.isActive == true || loadJob?.isActive == true) return
         loginCheck = viewModelScope.launch {
             val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
@@ -119,6 +121,7 @@ class BillViewModel internal constructor(
     }
 
     fun refresh() {
+        if (mutable.value.statsVisible) { refreshStats(); return }
         if (mutable.value.loading || mutable.value.refreshing) return
         if (preview) {
             mutable.value = previewState(mutable.value.dateFilter, mutable.value.stats.type)
@@ -133,14 +136,19 @@ class BillViewModel internal constructor(
         if (filter == mutable.value.dateFilter) return
         cancelListJobs()
         val current = mutable.value
+        statsJob?.cancel()
         mutable.value = current.copy(
             dateFilter = filter, items = emptyList(), summary = null, counts = null, total = 0, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            stats = BillStatsState(period = filter, type = current.stats.type),
         )
         if (preview) {
-            mutable.value = previewState(filter, mutable.value.stats.type)
+            mutable.value = previewState(filter, mutable.value.stats.type).copy(statsVisible = current.statsVisible,
+                typeId = current.typeId, amountFromCents = current.amountFromCents, amountToCents = current.amountToCents, info = current.info)
             lastLoadedAt = System.currentTimeMillis()
-        } else if (!mutable.value.needsLogin) load()
+        } else if (!mutable.value.needsLogin) {
+            if (current.statsVisible) loadStats() else load()
+        }
     }
 
     fun selectMonth(month: YearMonth) {
@@ -220,18 +228,28 @@ class BillViewModel internal constructor(
     fun openStats() {
         val current = mutable.value
         val samePeriod = current.stats.period == current.dateFilter
-        mutable.value = current.copy(stats = current.stats.copy(period = current.dateFilter))
+        mutable.value = current.copy(statsVisible = true, stats = if (samePeriod) current.stats else BillStatsState(period = current.dateFilter, type = current.stats.type))
+        if (samePeriod && current.stats.loading) return
         if (!samePeriod || !current.stats.loaded || System.currentTimeMillis() - lastStatsLoadedAt > CACHE_MS) loadStats()
     }
 
+    fun showDetails() {
+        mutable.value = mutable.value.copy(statsVisible = false)
+        onActivate()
+    }
+
+    fun showCurrentMonth() {
+        cancelListJobs(); statsJob?.cancel()
+        val current = mutable.value
+        val period = BillDateFilter.currentMonth()
+        mutable.value = if (preview) previewState(period) else BillUiState(needsLogin = current.needsLogin, types = current.types, dateFilter = period)
+        if (!preview && !current.needsLogin) load()
+    }
+
     fun selectStatsDate(filter: BillDateFilter) {
-        if (filter == mutable.value.stats.period) return
-        statsJob?.cancel()
-        mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(
-            period = filter, loading = false, error = null,
-            daily = emptyList(), categories = emptyList(), ranking = emptyList(), loaded = false,
-        ))
-        loadStats()
+        if (filter == mutable.value.dateFilter) { openStats(); return }
+        mutable.value = mutable.value.copy(statsVisible = true)
+        selectDate(filter)
     }
 
     fun selectStatsMonth(month: YearMonth) {
@@ -239,6 +257,7 @@ class BillViewModel internal constructor(
     }
 
     fun selectStatsType(type: Int) {
+        if (type !in 1..2) return
         if (type == mutable.value.stats.type) return
         statsJob?.cancel()
         mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(

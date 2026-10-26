@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,7 +43,7 @@ fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, onBack: () -> U
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical(),
+                    modifier = Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 16.dp,
                         bottom = padding.calculateBottomPadding() + 28.dp,

@@ -7,6 +7,25 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object AppIcons {
+    val DateDropdown = ImageVector.Builder("DateDropdown", 16.dp, 16.dp, 16f, 16f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
+            moveTo(3.5f, 5.5f); lineTo(8f, 10f); lineTo(12.5f, 5.5f)
+        }
+    }.build()
+    val AirConditioning = ImageVector.Builder("AirConditioning", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.6f) {
+            moveTo(12f, 3f); lineTo(12f, 21f)
+            moveTo(4.2f, 7.5f); lineTo(19.8f, 16.5f)
+            moveTo(4.2f, 16.5f); lineTo(19.8f, 7.5f)
+            moveTo(9f, 5f); lineTo(12f, 8f); lineTo(15f, 5f)
+            moveTo(9f, 19f); lineTo(12f, 16f); lineTo(15f, 19f)
+            moveTo(4.4f, 11f); lineTo(8.4f, 9.9f); lineTo(7.3f, 5.8f)
+            moveTo(16.7f, 18.2f); lineTo(15.6f, 14.1f); lineTo(19.6f, 13f)
+            moveTo(7.3f, 18.2f); lineTo(8.4f, 14.1f); lineTo(4.4f, 13f)
+            moveTo(19.6f, 11f); lineTo(15.6f, 9.9f); lineTo(16.7f, 5.8f)
+        }
+    }.build()
     val SaveRoom = ImageVector.Builder("SaveRoom", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(4f, 4f); lineTo(17f, 4f); lineTo(20f, 7f); lineTo(20f, 20f)

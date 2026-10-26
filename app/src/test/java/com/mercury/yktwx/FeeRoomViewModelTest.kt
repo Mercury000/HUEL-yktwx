@@ -115,6 +115,45 @@ class FeeRoomViewModelTest {
         assertEquals(FeeRoomAction.Unbind, model.state.value.roomAction)
         assertNull(model.state.value.roomDialog)
     }
+    @Test fun dormSiblingOpensExactMeterAndPreservesOfficialBindingWithoutSavePrompt() {
+        fees.saved = fees.room(0)
+        model.open(FeeProject.Wenbei, vault.username, false, fees.room(1))
+        await { !model.state.value.loading && model.state.value.query != null }
+        assertTrue(model.state.value.currentRoom!!.sameTarget(fees.room(1)))
+        assertTrue(model.state.value.roomBinding!!.sameTarget(fees.room(0)))
+        assertNull(model.state.value.roomDialog)
+        assertEquals(0, fees.writes)
+        model.refreshQuery()
+        await { !model.state.value.loading }
+        assertNull(model.state.value.roomDialog)
+        assertEquals(0, fees.writes)
+    }
+    @Test fun dormAmountCreatesOrderForExactSiblingWithoutWritingRoomOrPayingAutomatically() {
+        fees.saved = fees.room(0)
+        model.open(FeeProject.Wenbei, vault.username, false, fees.room(1))
+        await { !model.state.value.loading && model.state.value.query != null }
+        assertEquals(0, fees.creations)
+        model.create(100)
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
+        assertEquals(1, fees.creations)
+        val target = org.json.JSONObject(fees.createdTarget!!)
+        assertEquals(fees.room(1).selections.getValue("room"), target.getString("room"))
+        assertTrue(model.state.value.roomBinding!!.sameTarget(fees.room(0)))
+        assertEquals(0, fees.writes)
+        assertEquals(listOf("demo-method"), model.state.value.order!!.methods.map { it.id })
+        model.cancelPayment()
+        assertTrue(model.state.value.currentRoom!!.sameTarget(fees.room(1)))
+        assertNull(model.state.value.order)
+        assertEquals(1, fees.creations)
+    }
+    @Test fun unavailableDormMeterDoesNotCreateAnOrder() {
+        fees.canPay = false
+        model.open(FeeProject.Wenbei, vault.username, false, fees.room(0))
+        await { !model.state.value.loading && model.state.value.query != null }
+        model.create(100)
+        assertEquals(0, fees.creations)
+        assertEquals(FeeStage.Query, model.state.value.stage)
+    }
     @Test fun matchingSavedTargetCanBeUnboundEvenIfBalanceQueryFails() {
         fees.saved = fees.room(0); fees.detailFails = true
         open()
@@ -225,6 +264,9 @@ class FeeRoomViewModelTest {
         var writes = 0
         var writtenProject: FeeProject? = null
         var detailFails = false
+        var canPay = true
+        var creations = 0
+        var createdTarget: String? = null
         var readBackFails = false
         var applyWrite = true
         var writeFailure: Exception? = null
@@ -240,7 +282,7 @@ class FeeRoomViewModelTest {
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
             queryLevels += level
             if (detail && detailFails) throw NetworkFailure()
-            return if (detail) FeeQuery(thirdParty = "{}", display = listOf("剩余电量" to "100 度"))
+            return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString(), display = listOf("剩余电量" to "100 度"), canPay = canPay)
                 else FeeQuery(levels = levels, options = if (level == 0) listOf(FeeOption("demo-campus", "示例校区")) else rooms)
         }
         override suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?) {
@@ -249,7 +291,11 @@ class FeeRoomViewModelTest {
             if (applyWrite) saved = room
             writeFailure?.let { throw it }
         }
-        override suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder = error("No payment in room tests")
+        override suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder {
+            creations++; createdTarget = query.thirdParty
+            return FeeOrder(PendingRecharge(username, query.thirdParty!!, config.project.id, amountCents, 0, "DEMO-ORDER"),
+                listOf(FeeMethod("demo-method", "TSM", "微信", false, 0)))
+        }
         override suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation = error("No payment")
         override suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String) = error("No payment")
         override suspend fun launchFeeWechat(token: String, order: PendingRecharge, method: FeeMethod): WechatRechargeLaunch = error("No payment")
