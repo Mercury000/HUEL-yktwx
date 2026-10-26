@@ -4,14 +4,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.RechargeUiState
-import com.mercury.yktwx.data.RechargeMoney
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
@@ -25,8 +22,7 @@ fun RechargeDialog(
     onFinish: () -> Unit,
 ) {
     var amount by remember(state.config) { mutableStateOf("") }
-    val cents = RechargeMoney.cents(amount)
-    val amountError = state.config?.amountError(cents)
+    var recipientSelected by remember(state.config, state.visible) { mutableStateOf(true) }
     val isResult = state.pending != null
     OverlayBottomSheet(
         show = state.visible,
@@ -47,17 +43,10 @@ fun RechargeDialog(
             } else state.config?.let { config ->
                 if (state.preview) Text("界面预览 · 不发起支付", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
                 config.recipient?.let { recipient ->
-                    Text("收款人：" + recipient.name, fontSize = 15.sp)
-                    Text("充值账户：" + recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    Text("学工号：" + recipient.sno, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, !state.loading)
                 }
-                PaymentAmountInput(config, amount, { amount = it }, state.error, !state.loading)
-                Button(
-                    onClick = { cents?.let(onSubmit) }, enabled = !state.loading && !state.preview && amountError == null,
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Text(if (cents != null && amountError == null) "微信充值 ¥ " + RechargeMoney.yuan(cents) else "微信充值")
-                }
+                PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
+                    !state.preview && recipientSelected, state.error, onSubmit)
             }
         }
     }

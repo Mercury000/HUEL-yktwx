@@ -32,7 +32,7 @@ class CardServiceViewModelTest {
     private val model = CardServiceViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
     private val store = ViewModelStore().apply { put("card", model) }
     @After fun cleanup() {
-        service.writeGate.complete(Unit); service.queryGate.complete(Unit); service.cardGate.complete(Unit)
+        service.writeGate.complete(Unit); service.queryGate.complete(Unit); service.cardGate.complete(Unit); service.configGate.complete(Unit)
         store.clear(); shadowOf(Looper.getMainLooper()).idle()
     }
     @Test fun paymentUnlostOpensImmediatelyAndSelectsOnlyTheMatchingCard() {
@@ -177,51 +177,127 @@ class CardServiceViewModelTest {
         assertFalse(model.state.value.visible)
         assertNoResult()
     }
-    @Test fun recipientRequiresExplicitSelectionAndEditingClearsOldTarget() {
+    @Test fun lookupSelectsFirstAccountAndReadsAmountsWithoutSendingPayment() {
         openRecipients()
-        assertNull(model.state.value.selectedRecipient)
-        model.continueRecharge()
-        assertEquals(0, service.configurations)
-        model.selectRecipient(model.state.value.recipients.single())
+        assertSame(model.state.value.recipients.single(), model.state.value.selectedRecipient)
+        assertSame(model.state.value.selectedRecipient, model.state.value.rechargeConfig!!.recipient)
+        assertEquals(1, service.configurations)
+        assertNoRechargeRequest()
         model.clearRecipient()
         assertTrue(model.state.value.recipients.isEmpty())
         assertNull(model.state.value.selectedRecipient)
-        model.continueRecharge()
-        assertEquals(0, service.configurations)
+        assertNull(model.state.value.rechargeConfig)
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
     }
     @Test fun recipientCanBeDeselectedAndCannotContinueUntilReselected() {
         openRecipients()
         val recipient = model.state.value.recipients.single()
-        model.selectRecipient(recipient)
         assertSame(recipient, model.state.value.selectedRecipient)
         model.selectRecipient(recipient)
         assertNull(model.state.value.selectedRecipient)
         assertEquals(listOf(recipient), model.state.value.recipients)
-        model.continueRecharge()
-        assertEquals(0, service.configurations)
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
+        assertEquals(1, service.configurations)
         model.selectRecipient(recipient)
         assertSame(recipient, model.state.value.selectedRecipient)
-        model.continueRecharge()
-        // Selection cannot change once the selected recipient's configuration is being read.
+        model.continueRecharge(1000)
+        model.continueRecharge(5000)
+        // Selection cannot change while handing this confirmed amount to payment.
         model.selectRecipient(recipient)
         assertSame(recipient, model.state.value.selectedRecipient)
         await { service.configurations == 1 }
         val request = runBlocking { withTimeout(1_000) { model.rechargeRequests.first() } }
         assertSame(recipient, request.config.recipient)
+        assertEquals(1000L, request.amountCents)
+        assertNoRechargeRequest()
         assertEquals(1, service.queries)
     }
     @Test fun recipientCanContinueToSharedRechargeWithoutPayerConfiguration() {
         openRecipients()
         val selected = model.state.value.recipients.single()
-        model.selectRecipient(selected)
-        model.continueRecharge()
+        model.continueRecharge(1000)
         await { service.configurations == 1 }
         val request = runBlocking { model.rechargeRequests.first() }
         assertTrue(model.accepts(request))
         assertSame(selected, request.config.recipient)
         assertEquals("recipient-target", request.config.targetId)
+        assertEquals(1000L, request.amountCents)
         model.dismiss()
         assertFalse(model.accepts(request))
+    }
+    @Test fun selectingAnotherReturnedAccountUsesItsOwnAmountConfiguration() {
+        val second = RechargeRecipient("second-card", "second-target", "示例同学", "202600000002", "电子账户", 0)
+        service.extraRecipients = listOf(second)
+        model.open(CampusCardAction.OthersRecharge, vault.username, false)
+        await { !model.state.value.loading }
+        model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "abcde")
+        await { !model.state.value.loading && model.state.value.rechargeConfig != null }
+        assertSame(model.state.value.recipients.first(), model.state.value.selectedRecipient)
+        service.configGate = CompletableDeferred()
+        model.selectRecipient(second)
+        await { service.configurations == 2 }
+        assertTrue(model.state.value.loading)
+        assertNull(model.state.value.rechargeConfig)
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
+        service.configGate.complete(Unit)
+        await { !model.state.value.loading }
+        assertSame(second, model.state.value.rechargeConfig!!.recipient)
+        model.continueRecharge(5000)
+        val request = runBlocking { withTimeout(1_000) { model.rechargeRequests.first() } }
+        assertEquals("second-target", request.config.targetId)
+        assertEquals(5000L, request.amountCents)
+    }
+    @Test fun amountReadFailureKeepsResultsAndExplicitRetryDoesNotRepeatLookup() {
+        service.configFailure = NetworkFailure()
+        openRecipients()
+        assertNotNull(model.state.value.selectedRecipient)
+        assertNull(model.state.value.rechargeConfig)
+        assertNotNull(model.state.value.error)
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
+        service.configFailure = null
+        model.retryRecipientConfig()
+        await { !model.state.value.loading }
+        assertNotNull(model.state.value.rechargeConfig)
+        assertEquals(2, service.configurations)
+        assertEquals(1, service.queries)
+        assertEquals(1, service.captchas)
+        assertNoRechargeRequest()
+    }
+    @Test fun dismissedAmountReadCannotRestoreRecipientOrSendPayment() {
+        service.configGate = CompletableDeferred()
+        model.open(CampusCardAction.OthersRecharge, vault.username, false)
+        await { !model.state.value.loading }
+        model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "abcde")
+        await { service.configurations == 1 }
+        model.dismiss()
+        service.configGate.complete(Unit)
+        await { service.configResponses == 1 }
+        assertFalse(model.state.value.visible)
+        assertNull(model.state.value.rechargeConfig)
+        assertTrue(model.state.value.recipients.isEmpty())
+        assertNoRechargeRequest()
+    }
+    @Test fun invalidAmountSwitchedOwnerAndPreviewCannotStartRecipientPayment() {
+        openRecipients()
+        model.continueRecharge(50001)
+        assertNotNull(model.state.value.error)
+        assertNoRechargeRequest()
+        vault.username = "new-owner"
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
+        model.accountChanged(vault.username)
+        model.open(CampusCardAction.OthersRecharge, "preview", true)
+        await { !model.state.value.loading }
+        model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "")
+        await { !model.state.value.loading && model.state.value.rechargeConfig != null }
+        assertNotNull(model.state.value.selectedRecipient)
+        model.continueRecharge(1000)
+        assertNoRechargeRequest()
+        assertEquals(1, service.configurations)
     }
     @Test fun failedLookupClearsRecipientAndFetchesFreshCaptcha() {
         openRecipients()
@@ -340,6 +416,9 @@ class CardServiceViewModelTest {
             assertNull(withTimeoutOrNull(50) { model.cardChanges.first() })
         }
     }
+    private fun assertNoRechargeRequest() {
+        runBlocking { assertNull(withTimeoutOrNull(50) { model.rechargeRequests.first() }) }
+    }
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
@@ -373,6 +452,10 @@ class CardServiceViewModelTest {
         var cardReads = 0
         var cardResponses = 0
         var cardFailure: Exception? = null
+        var extraRecipients: List<RechargeRecipient> = emptyList()
+        var configFailure: Exception? = null
+        var configGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var configResponses = 0
         fun cards() = listOf(CampusCard("fake-card", "校园卡", "202600000001", lost, false, 0)) + extraCards
         override suspend fun cardConfiguration(token: String): CardServiceConfiguration {
             cardReads++
@@ -393,10 +476,12 @@ class CardServiceViewModelTest {
             queries++
             withContext(NonCancellable) { queryGate.await() }; queryResponses++
             queryFailure?.let { throw it }
-            return listOf(RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0))
+            return listOf(RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)) + extraRecipients
         }
         override suspend fun recipientRechargeConfiguration(token: String, recipient: RechargeRecipient): RechargeConfiguration {
             configurations++
+            withContext(NonCancellable) { configGate.await() }; configResponses++
+            configFailure?.let { throw it }
             return RechargeConfiguration("401", recipient.targetId, recipient.accountName, 0, listOf(1000, 5000), 1, 50000, true, false, recipient)
         }
     }

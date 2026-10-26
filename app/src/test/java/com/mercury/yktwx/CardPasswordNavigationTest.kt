@@ -60,9 +60,9 @@ class CardPasswordNavigationTest {
         val password = CardPasswordViewModel(app, repository)
         val bills = BillViewModel(app, repository)
         val mine = MyViewModel(app, repository)
-        val dorm = DormViewModel(app, repository)
+        val dorm = HallViewModel(app, repository)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + MyViewModel::class.java.name, mine)
-        compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + DormViewModel::class.java.name, dorm)
+        compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + HallViewModel::class.java.name, dorm)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + CardPasswordViewModel::class.java.name, password)
         assertSame(password, androidx.lifecycle.ViewModelProvider(compose.activity)[CardPasswordViewModel::class.java])
         compose.runOnIdle { payment.initialize(); bills.initialize(true) }

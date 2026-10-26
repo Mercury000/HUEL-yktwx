@@ -99,7 +99,7 @@ class PersonalDataViewModelTest {
                 return FeeConfiguration(project, "示例项目", RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false))
             }
         }
-        val model = DormViewModel(app, AccountRepository(YktApi(), vault, feeService = fees))
+        val model = HallViewModel(app, AccountRepository(YktApi(), vault, feeService = fees))
         store.put("dorm", model)
         model.accountChanged(vault.username); model.refresh()
         await { entered }

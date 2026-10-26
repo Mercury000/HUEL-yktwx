@@ -68,6 +68,73 @@ class FeeRoomViewModelTest {
         assertNotNull(model.state.value.roomDialog)
         assertEquals(0, fees.writes)
     }
+    @Test fun hallTemporaryPaymentStartsFreshAndNeverChangesExistingOfficialBinding() {
+        val official = fees.room(0)
+        fees.saved = official
+        model.open(FeeProject.Wenbei, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        assertEquals(setOf("campus"), model.state.value.hiddenLevels)
+        assertFalse(model.state.value.selections.containsKey("room"))
+        selectRoom(1)
+        assertNull(model.state.value.roomDialog)
+        assertSame(official, model.state.value.roomBinding)
+        model.create(100)
+        await { model.state.value.stage == FeeStage.Methods }
+        assertEquals(fees.rooms[1].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+        assertEquals(0, fees.writes)
+        assertSame(official, fees.saved)
+    }
+    @Test fun hallBindingRequiresExplicitRequestAndConfirmationAndCannotBindUnsupportedProject() {
+        fees.saved = fees.room(0)
+        model.open(FeeProject.Wenbei, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        selectRoom(1)
+        assertNull(model.state.value.roomDialog)
+        model.requestRoomAction()
+        assertTrue(fees.saved!!.sameTarget(model.state.value.roomDialog!!.previous))
+        assertEquals(0, fees.writes)
+        model.dismissRoomDialog()
+        assertEquals(0, fees.writes)
+        model.requestRoomAction(); model.confirmRoomAction()
+        await { !model.state.value.roomBusy && fees.writes == 1 }
+        assertTrue(fees.room(1).sameTarget(fees.saved))
+        model.open(FeeProject.Commercial, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        selectRoom(0); model.requestRoomAction()
+        assertNull(model.state.value.roomDialog)
+        assertEquals(1, fees.writes)
+    }
+    @Test fun unavailablePreferredMethodKeepsTheExistingOrderWithoutLaunchingOrRecreating() {
+        model.open(FeeProject.Wenbei, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        selectRoom(1)
+        model.createWithMethod(100, "ACCOUNTTSM")
+        await { model.state.value.stage == FeeStage.Methods && !model.state.value.loading }
+        assertEquals("所选支付方式不可用，请重新选择", model.state.value.error)
+        assertEquals(1, fees.creations)
+        assertEquals("TSM", model.state.value.order!!.methods.single().code)
+        assertEquals(0, fees.writes)
+        model.createWithMethod(100, "ACCOUNTTSM")
+        assertEquals(1, fees.creations)
+    }
+    @Test fun mergedFamilyActionsStillCreateSeparateWaterAndElectricOrders() {
+        model.open(FeeProject.FamilyElectric, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        selectRoom(0)
+        model.create(100)
+        await { model.state.value.stage == FeeStage.Methods }
+        assertEquals(FeeProject.FamilyElectric, fees.createdProject)
+        assertEquals(fees.rooms[0].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+
+        model.open(FeeProject.FamilyWater, vault.username, false, hall = true)
+        await { !model.state.value.loading && model.state.value.config != null }
+        selectRoom(1)
+        model.create(100)
+        await { model.state.value.stage == FeeStage.Methods }
+        assertEquals(FeeProject.FamilyWater, fees.createdProject)
+        assertEquals(fees.rooms[1].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+        assertEquals(0, fees.writes)
+    }
     @Test fun refreshingAnUnboundTargetDoesNotReopenCanceledSaveDialog() {
         open(); selectRoom(); model.dismissRoomDialog()
         model.refreshQuery()
@@ -266,6 +333,7 @@ class FeeRoomViewModelTest {
         var detailFails = false
         var canPay = true
         var creations = 0
+        var createdProject: FeeProject? = null
         var createdTarget: String? = null
         var readBackFails = false
         var applyWrite = true
@@ -292,7 +360,7 @@ class FeeRoomViewModelTest {
             writeFailure?.let { throw it }
         }
         override suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder {
-            creations++; createdTarget = query.thirdParty
+            creations++; createdProject = config.project; createdTarget = query.thirdParty
             return FeeOrder(PendingRecharge(username, query.thirdParty!!, config.project.id, amountCents, 0, "DEMO-ORDER"),
                 listOf(FeeMethod("demo-method", "TSM", "微信", false, 0)))
         }

@@ -70,20 +70,19 @@ class MainTabBackNavigationTest {
 
     @Test fun hallBackGestureReturnsToPayment() {
         selectTab("大厅")
-        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
+        compose.onNodeWithText("水电费").assertIsDisplayed()
         back(commitGesture = true)
         assertPaymentRoot()
     }
 
-    @Test fun feePageBackReturnsToHallBeforePayment() {
+    @Test fun feeSheetBackReturnsToHallBeforePayment() {
         compose.runOnIdle { settings.setPredictive(false) }
         selectTab("大厅")
-        compose.onNodeWithContentDescription("校园网费").performClick()
+        compose.onNodeWithTag("network-recharge").performClick()
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("返回").assertIsDisplayed()
-        compose.onNodeWithText("界面预览 · 不发起缴费").assertIsDisplayed()
+        compose.onNodeWithText("校园网充值").assertIsDisplayed()
         back()
-        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
+        compose.onNodeWithText("水电费").assertIsDisplayed()
         compose.onNode(hasText("大厅") and hasClickAction()).assertIsSelected()
         back()
         assertPaymentRoot()

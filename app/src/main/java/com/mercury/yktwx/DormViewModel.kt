@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.data.AccountRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,7 +12,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class DormUiState(val rooms: List<DormRoom> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false,
-                  val error: String? = null, val needsLogin: Boolean = false) { override fun toString() = "DormUiState([redacted])" }
+    val error: String? = null, val needsLogin: Boolean = false, val selectedIndex: Int = 0,
+    val network: FeeQuery? = null, val networkError: String? = null, val managing: Boolean = false,
+    val bindingProjects: Set<FeeProject> = emptySet()) {
+    val selectedRoom get() = rooms.getOrNull(selectedIndex) ?: rooms.firstOrNull()
+    override fun toString() = "DormUiState([redacted])"
+}
 class DormViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(DormUiState())

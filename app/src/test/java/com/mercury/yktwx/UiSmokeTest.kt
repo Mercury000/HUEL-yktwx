@@ -132,16 +132,18 @@ class UiSmokeTest {
             }
             assertTrue(centers.zipWithNext().all { (left, right) -> left < right })
             compose.onNode((hasText("大厅") or hasContentDescription("大厅")) and hasClickAction()).performClick()
-            compose.onNodeWithText("生活缴费").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("我的宿舍").assertExists()
+            compose.onNodeWithText("校园网").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("水电费").assertExists()
+            compose.onNodeWithText("代人充值").assertExists()
+            compose.onNodeWithText("生活缴费").assertDoesNotExist()
             compose.onNodeWithContentDescription("付款条形码").assertIsNotDisplayed()
-            compose.onAllNodes(hasContentDescription("付款条形码") and hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("生活缴费"))))
+            compose.onAllNodes(hasContentDescription("付款条形码") and hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("水电费"))))
                 .assertCountEquals(0)
             val image = compose.onRoot().captureToImage().asAndroidBitmap()
             File("../tools/hall-tab-style-$style.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
             compose.onNode((hasText("付款") or hasContentDescription("付款")) and hasClickAction()).performClick()
             compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
-            compose.onAllNodes((hasText("生活缴费") or hasText("校园卡服务")) and
+            compose.onAllNodes((hasText("水电费") or hasText("校园网")) and
                 hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("付款码")))).assertCountEquals(0)
         }
     }
@@ -216,14 +218,12 @@ class UiSmokeTest {
         compose.onNode(hasSetTextAction() and hasText("学工号")).performTextInput("202600000002")
         compose.onNodeWithText("查询").performClick()
         compose.waitForIdle()
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("下一步").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("下一步").assertIsNotEnabled()
-        compose.onNodeWithText("示例同学").performClick()
-        compose.onNodeWithText("下一步").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithText("收款人：示例同学").assertExists()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("充值金额").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("下一步").assertDoesNotExist()
+        compose.onNodeWithText("示例同学").assertExists()
+        compose.onNodeWithText("已选择").assertExists()
         compose.onNodeWithText("¥ 10").performClick()
-        compose.onNodeWithText("微信充值 ¥ 10.00").assertIsNotEnabled()
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
     }
 
     @Test fun rechargeEntryDoesNotDependOnBarcodeOrLoadedAccount() {

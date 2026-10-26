@@ -56,17 +56,20 @@ class CardServiceUiTest {
         output.parentFile?.mkdirs()
         output.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+    private fun recipientConfig(recipient: RechargeRecipient) = RechargeConfiguration("demo", recipient.targetId,
+        recipient.accountName, 0, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
     private fun page(mode: ColorSchemeMode) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(mode) { HallPage(settings, 0.dp, dorm = DormUiState(loaded = true)) }
             }
         }
-        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
+        compose.onNodeWithText("水电费").assertIsDisplayed()
     }
     @Test fun hallKeepsLivingFeesAndOthersRechargeWithOwnCardManagementOnMyPage() {
         page(ColorSchemeMode.Light)
-        compose.onNodeWithText("生活缴费").assertExists()
+        compose.onNodeWithText("校园网").assertExists()
+        compose.onNodeWithText("生活缴费").assertDoesNotExist()
         compose.onNodeWithText("代人充值").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
         compose.onNodeWithText("修改查询密码").assertDoesNotExist()
@@ -74,7 +77,7 @@ class CardServiceUiTest {
     }
     @Test fun hallServicesAlsoRenderInDarkTheme() {
         page(ColorSchemeMode.Dark)
-        compose.onNodeWithText("我的宿舍").assertIsDisplayed()
+        compose.onNodeWithText("水电费").assertIsDisplayed()
         screenshot("hall-services-dark")
     }
     @Test fun hallPullGestureRefreshesDorm() {
@@ -141,34 +144,41 @@ class CardServiceUiTest {
         compose.onNodeWithText("确认解挂").assertExists()
         screenshot("campus-card-field-error-dialog")
     }
-    @Test fun recipientConfirmationShowsCompleteValuesWithoutQueryFields() {
+    @Test fun recipientAmountPageShowsSelectedAccountAboveAmountWithoutExtraStep() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
-        val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge, recipients = listOf(recipient)))
-        var selected: RechargeRecipient? = null
-        var backs = 0
+        val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
+            recipients = listOf(recipient), selectedRecipient = recipient, rechargeConfig = recipientConfig(recipient)))
+        var submitted: Long? = null
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {},
-                    { backs++; current.value = current.value.copy(recipients = emptyList(), selectedRecipient = null) }, {}, { _, _, _ -> },
-                    { selected = it; current.value = current.value.copy(selectedRecipient = it) }, {}) } }
+                    {}, {}, { _, _, _ -> },
+                    { current.value = current.value.copy(selectedRecipient = if (current.value.selectedRecipient === it) null else it) },
+                    { submitted = it }) } }
             }
         }
-        compose.onNodeWithText("下一步").assertIsNotEnabled()
+        compose.onNodeWithText("下一步").assertDoesNotExist()
+        compose.onNodeWithText("重新查询").assertDoesNotExist()
+        compose.onNodeWithText("充值金额").assertIsDisplayed()
+        compose.onNodeWithText("支付方式").assertIsDisplayed()
+        compose.onNodeWithTag("recharge-recipient-recipient-target").assertIsSelected()
         compose.onNodeWithText("202600000002").assertExists()
         compose.onNodeWithText("示例同学").assertExists()
-        screenshot("campus-card-recipient-unselected-dialog")
-        compose.onNodeWithText("示例同学").performClick()
         compose.onNodeWithText("统一账户 · recipient-target").assertExists()
         compose.onNodeWithText("学工号").assertDoesNotExist()
         compose.onNodeWithText("证件号").assertDoesNotExist()
         compose.onNodeWithText("验证码").assertDoesNotExist()
-        assertSame(recipient, selected)
-        compose.onNodeWithText("下一步").assertIsEnabled()
+        val targetBottom = compose.onNodeWithTag("recharge-recipient-recipient-target").fetchSemanticsNode().boundsInRoot.bottom
+        val amountTop = compose.onNodeWithText("充值金额").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(targetBottom < amountTop)
+        compose.onNodeWithText("¥ 10").performClick()
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsEnabled()
+        compose.onNodeWithText("示例同学").performClick()
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
+        compose.onNodeWithText("示例同学").performClick()
         screenshot("campus-card-recipient-dialog")
-        compose.onNodeWithText("上一步").performClick()
-        assertEquals(1, backs)
-        compose.onNodeWithText("验证码").assertExists()
-        compose.onNodeWithText("下一步").assertDoesNotExist()
+        compose.onNodeWithText("充值 ¥ 10.00").performClick()
+        assertEquals(1000L, submitted)
     }
     @Test fun recipientSelectionChangesGreyToPrimaryWithMatchingTextContrast() {
         val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户", 0)
@@ -192,7 +202,7 @@ class CardServiceUiTest {
         assertEquals(primary.toArgb(), background())
         compose.onNodeWithText("已选择").assertExists()
     }
-    @Test fun tappingSelectedRecipientClearsHighlightAndDisablesNext() {
+    @Test fun queryDirectlyShowsAmountsAndDefaultSelectedRecipientCanBeToggled() {
         val model = CardServiceViewModel(compose.activity.application)
         val store = androidx.lifecycle.ViewModelStore().apply { put("card", model) }
         try {
@@ -208,18 +218,20 @@ class CardServiceUiTest {
             compose.runOnIdle { model.open(CampusCardAction.OthersRecharge, "preview", true) }
             compose.waitUntil(5_000) { !model.state.value.loading }
             compose.runOnIdle { model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "") }
-            compose.waitUntil(5_000) { model.state.value.recipients.isNotEmpty() }
-            compose.onNodeWithText("下一步").assertIsNotEnabled()
-            compose.onNodeWithText("示例同学").performClick()
+            compose.waitUntil(5_000) { !model.state.value.loading && model.state.value.rechargeConfig != null }
+            compose.onNodeWithText("下一步").assertDoesNotExist()
+            compose.onNodeWithText("充值金额").assertIsDisplayed()
             compose.onNodeWithText("已选择").assertExists()
-            compose.onNodeWithText("下一步").assertIsEnabled()
+            compose.onNodeWithText("¥ 10").performClick()
+            screenshot("campus-card-query-direct-amount")
             compose.onNodeWithText("示例同学").performClick()
             compose.onNodeWithText("已选择").assertDoesNotExist()
-            compose.onNodeWithText("下一步").assertIsNotEnabled()
+            compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
             compose.onNodeWithText("示例同学").assertExists()
             screenshot("campus-card-recipient-deselected-dialog")
             compose.onNodeWithText("示例同学").performClick()
-            compose.onNodeWithText("下一步").assertIsEnabled()
+            compose.onNodeWithText("已选择").assertExists()
+            compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
         } finally {
             compose.runOnIdle { store.clear() }
         }
@@ -228,7 +240,7 @@ class CardServiceUiTest {
         compose.activity.enableEdgeToEdge()
         val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户", 0)
         val state = CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
-            recipients = listOf(recipient), selectedRecipient = recipient)
+            recipients = listOf(recipient), selectedRecipient = recipient, rechargeConfig = recipientConfig(recipient))
         var view: android.view.View? = null
         var observedBottomInset = 0
         compose.setContent {
@@ -248,7 +260,7 @@ class CardServiceUiTest {
                 .setVisible(WindowInsetsCompat.Type.navigationBars(), true).build())
         }
         compose.waitUntil(5_000) { observedBottomInset == insetPixels }
-        val bounds = compose.onNodeWithText("下一步").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithText("充值").fetchSemanticsNode().boundsInRoot
         val height = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
         assertTrue("Sheet action overlaps system navigation inset", bounds.bottom <= height - insetPixels)
         screenshot("campus-card-recipient-navigation-safe")
@@ -282,44 +294,40 @@ class CardServiceUiTest {
         compose.onNodeWithText("挂失 / 解挂").performClick()
         assertEquals(1, calls)
     }
-    @Test fun servicePressIndicationStaysInsideCircleForBothGrids() {
-        val ownCardGrid = mutableStateOf(false)
+    @Test fun ownCardServicePressIndicationStaysInsideCircle() {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
-                    if (ownCardGrid.value) CampusCardServicesCard(false, {})
-                    else HallPage(settings, 0.dp, dorm = DormUiState(loaded = true))
+                    CampusCardServicesCard(false, {})
                 }
             }
         }
-        for (label in listOf("校园网费", "挂失 / 解挂")) {
-            if (label == "挂失 / 解挂") compose.runOnIdle { ownCardGrid.value = true }
-            val node = compose.onNodeWithContentDescription(label)
-            node.assertHasClickAction()
-            val before = node.captureToImage().asAndroidBitmap()
-            var density = 1f
-            compose.runOnIdle { density = compose.activity.resources.displayMetrics.density }
-            val centerX = before.width / 2f
-            val centerY = 32f * density // 8 dp top padding + 24 dp icon radius.
-            val radius = 24f * density
-            compose.mainClock.autoAdvance = false
-            node.performTouchInput { down(Offset(centerX, centerY)) }
-            compose.mainClock.advanceTimeBy(300)
-            val pressed = node.captureToImage().asAndroidBitmap()
-            var changed = 0
-            for (y in 0 until before.height) for (x in 0 until before.width) {
-                if (before.getPixel(x, y) != pressed.getPixel(x, y)) {
-                    changed++
-                    assertTrue("$label press highlight escaped its circular icon at ($x, $y)",
-                        hypot(x + 0.5f - centerX, y + 0.5f - centerY) <= radius + 2f)
-                }
+        val label = "挂失 / 解挂"
+        val node = compose.onNodeWithContentDescription(label)
+        node.assertHasClickAction()
+        val before = node.captureToImage().asAndroidBitmap()
+        var density = 1f
+        compose.runOnIdle { density = compose.activity.resources.displayMetrics.density }
+        val centerX = before.width / 2f
+        val centerY = 32f * density // 8 dp top padding + 24 dp icon radius.
+        val radius = 24f * density
+        compose.mainClock.autoAdvance = false
+        node.performTouchInput { down(Offset(centerX, centerY)) }
+        compose.mainClock.advanceTimeBy(300)
+        val pressed = node.captureToImage().asAndroidBitmap()
+        var changed = 0
+        for (y in 0 until before.height) for (x in 0 until before.width) {
+            if (before.getPixel(x, y) != pressed.getPixel(x, y)) {
+                changed++
+                assertTrue("$label press highlight escaped its circular icon at ($x, $y)",
+                    hypot(x + 0.5f - centerX, y + 0.5f - centerY) <= radius + 2f)
             }
-            assertTrue("$label has no visible press feedback", changed > 0)
-            screenshot(if (label == "校园网费") "life-fees-circular-press" else "campus-card-circular-press")
-            node.performTouchInput { cancel() }
-            compose.mainClock.autoAdvance = true
-            compose.waitForIdle()
         }
+        assertTrue("$label has no visible press feedback", changed > 0)
+        screenshot("campus-card-circular-press")
+        node.performTouchInput { cancel() }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
     }
     @Test fun successfulStateDoesNotRequireAnExtraCompletionClick() {
         val card = CampusCard("demo", "校园卡", "202600000001", false, false, 0)
@@ -336,7 +344,7 @@ class CardServiceUiTest {
         compose.onNodeWithText("操作成功").assertDoesNotExist()
         compose.onNodeWithText("完成").assertDoesNotExist()
     }
-    @Test fun captchaImageIsClickableBesideInputAndPreviousClearsCodeButKeepsRecipientInput() {
+    @Test fun captchaImageIsClickableBesideInputAndRefreshClearsCode() {
         val image = java.io.ByteArrayOutputStream().also {
             Bitmap.createBitmap(120, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.LTGRAY) }
                 .compress(Bitmap.CompressFormat.PNG, 100, it)
@@ -367,10 +375,8 @@ class CardServiceUiTest {
         screenshot("campus-card-query-dialog")
         compose.onNodeWithText("查询").performClick()
         compose.onNodeWithText("验证码").assertDoesNotExist()
-        compose.onNodeWithText("上一步").performClick()
-        assertEquals(2, refreshes)
-        compose.onAllNodes(hasSetTextAction()).onFirst().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("202600000002")))
-        compose.onAllNodes(hasSetTextAction()).onLast().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        compose.onNodeWithText("重新查询").assertDoesNotExist()
+        assertEquals(1, refreshes)
     }
     @Test fun rechargeSheetIncludesRecipientBeforeReusingAmountAndWechatButton() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
@@ -381,9 +387,11 @@ class CardServiceUiTest {
             }
         }
         compose.onNodeWithText("代人充值").assertExists()
-        compose.onNodeWithText("收款人：" + recipient.name).assertExists()
+        compose.onNodeWithText(recipient.name).assertExists()
+        compose.onNodeWithText("已选择").assertExists()
+        compose.onNodeWithText("充值金额").assertExists()
         compose.onNodeWithText("¥ 10").performClick()
-        compose.onNodeWithText("微信充值 ¥ 10.00").assertIsNotEnabled()
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
         screenshot("campus-card-others-recharge-dialog")
     }
 }

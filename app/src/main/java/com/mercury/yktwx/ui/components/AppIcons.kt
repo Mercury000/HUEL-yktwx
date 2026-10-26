@@ -7,6 +7,13 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object AppIcons {
+    val SwitchRoom = ImageVector.Builder("SwitchRoom", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
+            moveTo(4f, 8f); lineTo(20f, 8f); moveTo(16f, 4f); lineTo(20f, 8f); lineTo(16f, 12f)
+            moveTo(20f, 16f); lineTo(4f, 16f); moveTo(8f, 12f); lineTo(4f, 16f); lineTo(8f, 20f)
+        }
+    }.build()
     val DateDropdown = ImageVector.Builder("DateDropdown", 16.dp, 16.dp, 16f, 16f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {

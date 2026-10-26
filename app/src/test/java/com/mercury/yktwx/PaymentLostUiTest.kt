@@ -69,7 +69,7 @@ class PaymentLostUiTest {
         compose.onNodeWithText("校园卡查询密码").assertIsDisplayed()
         compose.onNodeWithText("确认挂失").assertDoesNotExist()
         compose.onNodeWithText("确定").assertIsNotEnabled() // Preview never submits a real operation.
-        compose.onNodeWithText("生活缴费").assertIsNotDisplayed()
+        compose.onNodeWithText("水电费").assertIsNotDisplayed()
         screenshot("payment-lost-unlost-dialog")
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithText("付款已暂停").assertIsDisplayed()
@@ -78,7 +78,7 @@ class PaymentLostUiTest {
     @Test fun darkLostAppKeepsBalanceRechargeAndStatusVisible() {
         lostApp(dark = true)
         compose.onNodeWithText("付款已暂停").assertIsDisplayed()
-        compose.onNodeWithText("充值").assertIsDisplayed()
+        compose.onNode(hasText("充值") and !hasTestTag("network-recharge")).assertIsDisplayed()
         compose.onNodeWithText("¥ 186.50").assertIsDisplayed()
         screenshot("payment-lost-app-dark")
     }
@@ -171,7 +171,7 @@ class PaymentLostUiTest {
         lostApp()
         compose.onNodeWithText("解挂").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("刷新卡状态").assertDoesNotExist()
-        compose.onNodeWithText("充值").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("充值") and !hasTestTag("network-recharge")).performScrollTo().assertIsDisplayed()
         screenshot("payment-lost-large-font")
     }
 }

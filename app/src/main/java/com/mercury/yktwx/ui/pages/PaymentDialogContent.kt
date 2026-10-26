@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -24,11 +25,51 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
+import com.mercury.yktwx.data.RechargeConfiguration
+import com.mercury.yktwx.data.RechargeRecipient
 import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** The amount and method form shared by hall fees and campus-card recharge. */
+@Composable
+internal fun PaymentAmountForm(
+    config: RechargeConfiguration, amount: String, onAmountChange: (String) -> Unit,
+    methods: List<String>, selectedMethod: Int, onMethod: (Int) -> Unit,
+    loading: Boolean, canSubmit: Boolean, error: String?, onSubmit: (Long) -> Unit,
+    onRetry: (() -> Unit)? = null,
+) {
+    val cents = RechargeMoney.cents(amount)
+    val valid = config.amountError(cents) == null
+    val keyboard = LocalSoftwareKeyboardController.current
+    Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    PaymentAmountInput(config, amount, onAmountChange, enabled = !loading)
+    Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    HallNeutralTabs(methods, selectedMethod) { if (!loading) onMethod(it) }
+    InlineError(error, actionLabel = if (onRetry == null) null else "重试", onAction = { onRetry?.invoke() })
+    Button(onClick = { if (canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
+        enabled = canSubmit && !loading && valid,
+        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+        Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
+    }
+}
+
+@Composable
+internal fun RecipientSelectionCard(recipient: RechargeRecipient, selected: Boolean,
+    onClick: () -> Unit, enabled: Boolean = true) {
+    PaymentSelectionCard(selected, onClick, Modifier.testTag("recharge-recipient-${recipient.targetId}"), enabled) { contentColor ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(recipient.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                color = contentColor, modifier = Modifier.weight(1f))
+            if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
+        }
+        Text(recipient.sno.ifBlank { recipient.cardAccount }, fontSize = 14.sp, color = contentColor)
+        Text(recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp,
+            color = contentColor.copy(alpha = .8f))
+    }
+}
 
 @Composable
 internal fun PaymentAmountInput(
