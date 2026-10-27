@@ -25,6 +25,10 @@ class FeePaymentRetry(val amountCents: Long, val methods: List<FeeMethod>) {
 class FeeRoomDialog(val action: FeeRoomAction, val target: FeeRoomBinding, val previous: FeeRoomBinding?) {
     override fun toString() = "FeeRoomDialog([redacted])"
 }
+private class WenbeiMeterResolution(
+    val binding: FeeRoomBinding,
+    val options: Map<Int, List<FeeOption>>,
+)
 class FeeUiState(
     val config: FeeConfiguration? = null, val loading: Boolean = false, val error: String? = null,
     val levels: List<FeeLevel> = emptyList(), val options: Map<Int, List<FeeOption>> = emptyMap(),
@@ -39,14 +43,18 @@ class FeeUiState(
     val roomBusy: Boolean = false, val roomDialog: FeeRoomDialog? = null,
     val roomNotice: String? = null,
     val paymentRetry: FeePaymentRetry? = null,
+    val switchingProject: FeeProject? = null,
+    val switchingMeterKind: DormMeterKind? = null,
 ) {
-    val canContinuePayment get() = !preview && !loading && stage == FeeStage.Result &&
+    val canContinuePayment get() = !preview && !loading && switchingProject == null && switchingMeterKind == null &&
+        stage == FeeStage.Result &&
         resultPhase == RechargePhase.Failed && query?.thirdParty != null &&
         paymentRetry?.methods?.isNotEmpty() == true
     val currentRoom get() = FeeRoomBinding.from(levels, selections, names)
     val roomAction get() = if (currentRoom?.sameTarget(roomBinding) == true) FeeRoomAction.Unbind else FeeRoomAction.Save
     val roomActionEnabled get() = config?.roomBindingEnabled == true && roomBindingKnown &&
-        stage == FeeStage.Query && !loading && !selecting && !roomBusy && currentRoom != null &&
+        stage == FeeStage.Query && !loading && !selecting && !roomBusy &&
+        switchingProject == null && switchingMeterKind == null && currentRoom != null &&
         (roomAction == FeeRoomAction.Unbind || (query?.thirdParty != null && query.tip == null))
     override fun toString() = "FeeUiState([redacted])"
 }
@@ -75,10 +83,9 @@ class FeeViewModel internal constructor(
         { !accountPaymentSubmitted && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
-    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null,
-        matchRoomNames: Boolean = false) {
+    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null) {
         dismiss()
-        fixedHallTarget = requestedRoom != null && !matchRoomNames
+        fixedHallTarget = requestedRoom != null
         owner = username
         mutable.value = FeeUiState(loading = true, preview = preview)
         val generation = attempt
@@ -105,13 +112,13 @@ class FeeViewModel internal constructor(
                         options = mapOf(first.number to initial.options), preview = preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
                     val target = requestedRoom
-                    if (preview && requestedRoom != null && !matchRoomNames) {
+                    if (preview && requestedRoom != null) {
                         mutable.value = FeeUiState(config, levels = initial.levels,
                             selections = requestedRoom.selections, names = requestedRoom.names,
                             options = initial.levels.associate { it.number to listOf(FeeOption(requestedRoom.selections.getValue(it.key), requestedRoom.names.getValue(it.key))) },
                             query = previewQuery(project, true, initial.levels.last().number), preview = true)
                     } else if (target != null) {
-                        restoreRoom(entrance, target, generation, matchRoomNames)
+                        restoreRoom(entrance, target, generation)
                     } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
                         mutable.value = copy(entrance, loading = true)
                         loadSelection(entrance, first, initial.options.single(), generation)
@@ -132,15 +139,107 @@ class FeeViewModel internal constructor(
         val family = setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
         if (fixedHallTarget || state.config?.project !in family || project !in family ||
             state.config?.project == project || state.stage != FeeStage.Query || state.loading || state.selecting ||
-            state.roomBusy || state.roomDialog != null) return false
+            state.roomBusy || state.roomDialog != null || state.switchingProject != null ||
+            state.switchingMeterKind != null || task?.isActive == true) return false
         val household = state.currentRoom ?: return false
-        open(project, owner, state.preview, household, matchRoomNames = true)
+        val generation = attempt
+        mutable.value = copy(state, loading = true, error = null, query = null, switchingProject = project)
+        launchTask {
+            try {
+                val config = if (state.preview) FeeConfiguration(project,
+                    RechargeConfiguration(project.id, "", listOf(1000, 5000, 10000), 1, 200000, true, false),
+                    roomBindingEnabled = true)
+                    else repository.feeConfiguration(owner, project)
+                if (generation != attempt) return@launchTask
+                val initial = feeQueryFor(project, 0, emptyMap(), false, state.preview)
+                if (initial.tip != null) throw YktException(initial.tip)
+                val levels = initial.levels.sortedBy { it.number }
+                if (levels.isEmpty() || levels.map { it.key }.toSet() != household.selections.keys) {
+                    throw YktException("未找到此房间对应的水表或电表，请重新选择房间")
+                }
+                var options = initial.options
+                val optionsByNumber = linkedMapOf<Int, List<FeeOption>>()
+                val selections = linkedMapOf<String, String>()
+                val names = linkedMapOf<String, String>()
+                var detail: FeeQuery? = null
+                for ((index, level) in levels.withIndex()) {
+                    optionsByNumber[level.number] = options
+                    val sourceName = household.names[level.key]
+                        ?: throw YktException("未找到此房间对应的水表或电表，请重新选择房间")
+                    val option = options.singleOrNull {
+                        physicalLabel(it.name) == physicalLabel(sourceName)
+                    } ?: throw YktException("未找到此房间对应的水表或电表，请重新选择房间")
+                    selections[level.key] = option.id
+                    names[level.key] = option.name
+                    if (index == levels.lastIndex) {
+                        detail = feeQueryFor(project, level.number, selections.toMap(), true, state.preview)
+                        break
+                    }
+                    val next = feeQueryFor(project, level.number, selections.toMap(), false, state.preview)
+                    if (next.tip != null) throw YktException(next.tip)
+                    options = next.options
+                }
+                val resolved = detail ?: throw YktException("未找到此房间对应的水表或电表，请重新选择房间")
+                if (resolved.tip != null) throw YktException(resolved.tip)
+                if (generation != attempt) return@launchTask
+                mutable.value = copy(mutable.value, config = config, levels = levels, options = optionsByNumber,
+                    selections = selections, names = names, query = resolved, loading = false, selecting = false,
+                    error = null, hiddenLevels = state.hiddenLevels.filterTo(mutableSetOf()) {
+                        it in levels.map { level -> level.key }.toSet()
+                    },
+                    roomBinding = config.roomBinding, roomBindingKnown = !config.invalidRoomBinding,
+                    switchingProject = null, switchingMeterKind = null)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (generation == attempt) mutable.value = copy(mutable.value, loading = false, selecting = false,
+                    query = state.query, error = message(e), switchingProject = null, switchingMeterKind = null)
+            }
+        }
         return true
+    }
+
+    /** Resolve the sibling meter without making the user walk the other branch's pickers again. */
+    fun selectDormMeterKind(kind: DormMeterKind) {
+        val state = mutable.value
+        val project = state.config?.project ?: return
+        if (fixedHallTarget || project !in setOf(FeeProject.Zhengdong, FeeProject.Wenbei) ||
+            state.stage != FeeStage.Query || state.loading || state.selecting || state.roomBusy ||
+            state.roomDialog != null || state.switchingProject != null || state.switchingMeterKind != null ||
+            task?.isActive == true || state.currentRoom == null) return
+        val choices = dormMeterChoices(state.levels.filterNot { it.key in state.hiddenLevels }, state.options) ?: return
+        val selected = choices.selectedChoice(state.selections[choices.level.key]) ?: return
+        val selectedOption = selected.options.firstOrNull { it.id == state.selections[choices.level.key] } ?: return
+        if (DormMeterDiscovery.kind(selectedOption.name) == kind) return
+        val target = selected.option(kind) ?: return
+        if (project == FeeProject.Zhengdong) {
+            select(choices.level, target)
+            return
+        }
+        val generation = attempt
+        mutable.value = copy(state, selecting = true, error = null, query = null, switchingMeterKind = kind)
+        launchTask {
+            try {
+                val resolved = resolveWenbeiMeter(state, choices, target, generation)
+                if (generation != attempt) return@launchTask
+                val detail = feeQueryFor(project, state.levels.last().number,
+                    resolved.binding.selections, true, state.preview)
+                if (detail.tip != null) throw YktException(detail.tip)
+                mutable.value = copy(mutable.value, options = resolved.options,
+                    selections = resolved.binding.selections, names = resolved.binding.names,
+                    query = detail, selecting = false, error = null, switchingProject = null,
+                    switchingMeterKind = null)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (generation == attempt) mutable.value = copy(mutable.value, query = state.query,
+                    selecting = false, switchingProject = null, switchingMeterKind = null, error = message(e))
+            }
+        }
     }
 
     fun select(level: FeeLevel, option: FeeOption) {
         val state = mutable.value
         if (state.config == null || state.loading || state.selecting || state.roomBusy || state.roomDialog != null || state.stage != FeeStage.Query ||
+            state.switchingProject != null || state.switchingMeterKind != null ||
             state.options[level.number]?.none { it.id == option.id } != false) return
         val generation = attempt
         mutable.value = copy(state, selecting = true, error = null)
@@ -172,9 +271,8 @@ class FeeViewModel internal constructor(
             query = if (next == null) query else null)
     }
 
-    private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long,
-        matchRoomNames: Boolean = false) {
-        val unavailable = if (matchRoomNames) "未找到此房间对应的水表或电表，请重新选择房间" else "已保存的房间选项已失效，请重新选择后保存"
+    private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long) {
+        val unavailable = "已保存的房间选项已失效，请重新选择后保存"
         mutable.value = copy(entrance, loading = true)
         if (binding.selections.keys != entrance.levels.map { it.key }.toSet()) {
             mutable.value = copy(entrance, error = unavailable)
@@ -184,9 +282,7 @@ class FeeViewModel internal constructor(
             for ((index, level) in entrance.levels.withIndex()) {
                 val current = mutable.value
                 val options = current.options[level.number].orEmpty()
-                val option = if (matchRoomNames) options.singleOrNull {
-                    physicalLabel(it.name) == physicalLabel(binding.names.getValue(level.key))
-                } else options.firstOrNull { it.id == binding.selections[level.key] }
+                val option = options.firstOrNull { it.id == binding.selections[level.key] }
                 if (option == null) {
                     mutable.value = copy(current, loading = false, error = unavailable)
                     return
@@ -203,6 +299,79 @@ class FeeViewModel internal constructor(
         catch (e: Exception) {
             if (attempt == generation) mutable.value = copy(mutable.value, loading = false, error = message(e))
         }
+    }
+
+    private suspend fun resolveWenbeiMeter(
+        state: FeeUiState,
+        choices: DormMeterChoices,
+        target: FeeOption,
+        generation: Long,
+    ): WenbeiMeterResolution {
+        val project = state.config?.project ?: throw YktException("缴费项目已失效")
+        val source = state.currentRoom ?: throw YktException("请先选择完整房间")
+        val levels = state.levels.sortedBy { it.number }
+        val buildingIndex = levels.indexOf(choices.level)
+        val roomIndex = levels.lastIndex
+        val floorIndex = roomIndex - 1
+        if (buildingIndex < 0 || floorIndex <= buildingIndex) throw YktException("未找到对应的空调或照明房间")
+        val floor = levels[floorIndex]
+        val room = levels[roomIndex]
+        val targetKind = DormMeterDiscovery.kind(target.name)
+        val optionsByNumber = linkedMapOf<Int, List<FeeOption>>()
+        val selections = linkedMapOf<String, String>()
+        val names = linkedMapOf<String, String>()
+        for (index in 0 until buildingIndex) {
+            val level = levels[index]
+            val id = source.selections[level.key] ?: throw YktException("未找到对应的空调或照明房间")
+            selections[level.key] = id
+            names[level.key] = source.names[level.key] ?: throw YktException("未找到对应的空调或照明房间")
+            optionsByNumber[level.number] = state.options[level.number].orEmpty()
+        }
+        selections[choices.level.key] = target.id
+        names[choices.level.key] = target.name
+        optionsByNumber[choices.level.number] = state.options[choices.level.number].orEmpty()
+
+        val floorQuery = feeQueryFor(project, choices.level.number, selections.toMap(), false, state.preview)
+        if (floorQuery.tip != null) throw YktException(floorQuery.tip)
+        optionsByNumber[floor.number] = floorQuery.options
+        val wantedRoom = wenbeiRoomKey(source.names[room.key]
+            ?: throw YktException("未找到对应的空调或照明房间"))
+        val candidates = mutableListOf<Triple<FeeOption, FeeOption, List<FeeOption>>>()
+        for (floorOption in floorQuery.options) {
+            if (generation != attempt) throw CancellationException()
+            val querySelections = selections.toMutableMap().apply { this[floor.key] = floorOption.id }
+            val roomQuery = feeQueryFor(project, floor.number, querySelections, false, state.preview)
+            if (roomQuery.tip != null) throw YktException(roomQuery.tip)
+            val matches = roomQuery.options.filter {
+                DormMeterDiscovery.kind(it.name) == targetKind && wenbeiRoomKey(it.name) == wantedRoom
+            }
+            if (matches.size > 1) throw YktException("该房间对应的空调或照明不唯一，请重新选择房间")
+            matches.singleOrNull()?.let { candidates += Triple(floorOption, it, roomQuery.options) }
+        }
+        val resolved = candidates.singleOrNull()
+            ?: throw YktException("未找到此房间对应的空调或照明，请重新选择房间")
+        selections[floor.key] = resolved.first.id
+        names[floor.key] = resolved.first.name
+        selections[room.key] = resolved.second.id
+        names[room.key] = resolved.second.name
+        optionsByNumber[room.number] = resolved.third
+        val binding = FeeRoomBinding.from(levels, selections, names)
+            ?: throw YktException("房间信息异常，请重新选择")
+        return WenbeiMeterResolution(binding, optionsByNumber)
+    }
+
+    private fun wenbeiRoomKey(name: String): String {
+        val groups = Regex("\\d+").findAll(physicalLabel(name)).map { match ->
+            match.value.toIntOrNull()?.toString() ?: match.value
+        }.toList()
+        return groups.lastOrNull() ?: physicalLabel(name)
+    }
+
+    private suspend fun feeQueryFor(project: FeeProject, level: Int, selections: Map<String, String>,
+        detail: Boolean, preview: Boolean): FeeQuery = if (preview) {
+        previewQuery(project, detail, level, selections)
+    } else {
+        repository.feeQuery(owner, project, level, selections, detail)
     }
 
     fun requestRoomAction() {
@@ -222,6 +391,7 @@ class FeeViewModel internal constructor(
         val config = state.config ?: return
         val dialog = state.roomDialog ?: return
         if (!state.roomActionEnabled || state.roomBusy || task?.isActive == true ||
+            state.switchingProject != null || state.switchingMeterKind != null ||
             !dialog.target.sameTarget(state.currentRoom) || dialog.action != state.roomAction) return
         val generation = attempt
         val target = if (dialog.action == FeeRoomAction.Save) dialog.target else null
@@ -320,7 +490,9 @@ class FeeViewModel internal constructor(
     fun createWithMethod(amount: Long, methodCode: String) {
         if (methodCode !in setOf("ACCOUNTTSM", "TSM")) return
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
-        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
+        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting ||
+            s.switchingProject != null || s.switchingMeterKind != null ||
+            !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
         config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it); return }
         val generation=attempt
         accountPaymentSubmitted = false
@@ -510,9 +682,10 @@ class FeeViewModel internal constructor(
     private fun unknownDetail(reason: String? = null) = listOfNotNull(reason,
         "请稍后在账单中核实，确认前请勿重复缴费").joinToString("。")
     private fun message(e:Exception)=if(e is YktException)e.message ?: "服务暂不可用" else "服务数据异常，请稍后重试"
-    private fun previewQuery(project: FeeProject, detail: Boolean, level: Int): FeeQuery {
+    private fun previewQuery(project: FeeProject, detail: Boolean, level: Int,
+        selections: Map<String, String> = mutable.value.selections): FeeQuery {
         if (detail) {
-            val roomId = mutable.value.selections["room"].orEmpty()
+            val roomId = selections["room"].orEmpty()
             val display = when {
                 project.network -> listOf("用户套餐" to "学生宽带套餐", "用户状态" to "正常")
                 project == FeeProject.FamilyWater -> listOf("剩余水量(吨)" to "28.60")
@@ -523,7 +696,7 @@ class FeeViewModel internal constructor(
         }
         val levels = if (project.network) emptyList() else listOf(FeeLevel("campus", 1, "校区"),
             FeeLevel("building", 2, "楼栋"), FeeLevel("floor", 3, "楼层"), FeeLevel("room", 4, "房间"))
-        val buildingId = mutable.value.selections["building"].orEmpty()
+        val buildingId = selections["building"].orEmpty()
         val letter = buildingId.removePrefix("demo-building-").substringBefore('-').ifEmpty { "A" }
         val wenbeiKind = if (buildingId.endsWith("AirConditioning")) DormMeterKind.AirConditioning else DormMeterKind.Lighting
         val options = when (level) {
@@ -547,6 +720,7 @@ class FeeViewModel internal constructor(
     }
     private fun copy(
         s: FeeUiState,
+        config: FeeConfiguration? = s.config,
         loading: Boolean = s.loading,
         error: String? = s.error,
         levels: List<FeeLevel> = s.levels,
@@ -567,7 +741,10 @@ class FeeViewModel internal constructor(
         roomDialog: FeeRoomDialog? = s.roomDialog,
         roomNotice: String? = s.roomNotice,
         paymentRetry: FeePaymentRetry? = s.paymentRetry,
-    ) = FeeUiState(s.config, loading, error, levels, options, selections, names, query, order,
+        switchingProject: FeeProject? = s.switchingProject,
+        switchingMeterKind: DormMeterKind? = s.switchingMeterKind,
+    ) = FeeUiState(config, loading, error, levels, options, selections, names, query, order,
         method, preparation, stage, resultPhase, s.preview, hiddenLevels, selecting,
-        roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice, paymentRetry)
+        roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice, paymentRetry,
+        switchingProject, switchingMeterKind)
 }

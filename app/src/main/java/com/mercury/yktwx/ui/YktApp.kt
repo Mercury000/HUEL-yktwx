@@ -311,6 +311,10 @@ private fun MainContent(
             feeOpening = null
         }
     }
+    LaunchedEffect(feeState.config?.project, dormPaymentVisible) {
+        val config = feeState.config
+        if (dormPaymentVisible && config != null) feeProject = config.project
+    }
     fun openBillStats() {
         if (!isActive) return
         billViewModel.openStats()
@@ -482,8 +486,9 @@ private fun MainContent(
                         onDismissRoomDialog = feeModel::dismissRoomDialog, onConsumeRoomNotice = feeModel::consumeRoomNotice,
                         onCreate = feeModel::createWithMethod, onMethod = feeModel::chooseMethod,
                         onProject = {
-                            if (feeTarget == null && feeModel.selectFamilyProject(it)) feeProject = it
-                        }, bindingProjects = dormState.bindingProjects,
+                            if (feeTarget == null) feeModel.selectFamilyProject(it)
+                        }, onMeterKind = feeModel::selectDormMeterKind,
+                        bindingProjects = dormState.bindingProjects,
                         onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment,
                         onContinuePayment = feeModel::continuePayment,
                         onFinish = {

@@ -5,6 +5,47 @@ import kotlinx.coroutines.CancellationException
 enum class DormMeterKind(val label: String) { Lighting("照明"), AirConditioning("空调"), Other("电表") }
 internal data class DormMeterReading(val label: String, val value: String, val unit: String)
 
+internal class DormMeterChoice(val label: String, val options: List<FeeOption>) {
+    fun option(kind: DormMeterKind) = options.firstOrNull { DormMeterDiscovery.kind(it.name) == kind }
+}
+
+internal class DormMeterChoices(val level: FeeLevel, val choices: List<DormMeterChoice>) {
+    fun selectedChoice(optionId: String?) = choices.firstOrNull { choice ->
+        choice.options.any { it.id == optionId }
+    }
+}
+
+/**
+ * The server exposes lighting and air conditioning either at the room level (Zhengdong)
+ * or at the building level (Wenbei). Return the first level that can be presented as
+ * one physical option with meter variants underneath.
+ */
+internal fun dormMeterChoices(levels: List<FeeLevel>, options: Map<Int, List<FeeOption>>): DormMeterChoices? {
+    for (level in levels.sortedBy { it.number }) {
+        val available = options[level.number].orEmpty()
+        val grouped = linkedMapOf<String, MutableList<FeeOption>>()
+        for (option in available) {
+            val kind = DormMeterDiscovery.kind(option.name)
+            val key = if (kind == DormMeterKind.Other) "option:${option.id}" else "meter:${meterStem(option.name)}"
+            grouped.getOrPut(key) { mutableListOf() }.add(option)
+        }
+        val choices = grouped.values.flatMap { siblings ->
+            val kinds = siblings.map { DormMeterDiscovery.kind(it.name) }.toSet()
+            if (siblings.size == 2 && kinds == setOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning)) {
+                listOf(DormMeterChoice(meterStem(siblings.first().name),
+                    siblings.sortedBy { DormMeterDiscovery.kind(it.name).ordinal }))
+            } else {
+                siblings.map { DormMeterChoice(it.name, listOf(it)) }
+            }
+        }
+        if (choices.any { it.options.size == 2 }) return DormMeterChoices(level, choices)
+    }
+    return null
+}
+
+private fun meterStem(name: String): String =
+    name.removeSuffix("照明").removeSuffix("空调").trim()
+
 /** Format only units supplied by the query; billing_unit is a payment unit, not a meter balance. */
 internal fun meterReading(label: String, value: String): DormMeterReading {
     if (label == "信息") DormMeterDiscovery.remainingKwh(value)?.let {

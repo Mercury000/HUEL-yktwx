@@ -30,7 +30,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     onPayAccount: (String, String) -> Unit, onCancelPayment: () -> Unit, onFinish: () -> Unit,
     onContinuePayment: (FeeMethod) -> Unit, onRoomAction: () -> Unit,
     onConfirmRoomAction: () -> Unit, onDismissRoomDialog: () -> Unit, onConsumeRoomNotice: () -> Unit,
-    onProject: (FeeProject) -> Unit = {}, bindingProjects: Set<FeeProject> = emptySet(),
+    onProject: (FeeProject) -> Unit = {}, onMeterKind: (DormMeterKind) -> Unit = {},
+    bindingProjects: Set<FeeProject> = emptySet(),
 ) {
     var amount by remember(state.config, visible) { mutableStateOf("") }
     var amountStep by remember(visible, project, fixedTarget) { mutableStateOf(fixedTarget != null || project?.network == true) }
@@ -51,9 +52,11 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     }
     val cents = RechargeMoney.cents(amount)
     val config = state.config
+    val displayProject = state.switchingProject ?: config?.project ?: project
     val ready = !state.loading && !state.selecting && state.query?.canPay == true &&
         state.query.thirdParty != null && state.query.tip == null &&
-        config?.project == project &&
+        state.switchingProject == null && state.switchingMeterKind == null &&
+        config?.project == displayProject &&
         (fixedTarget == null || fixedTarget.sameTarget(state.currentRoom))
     val orderAmount = state.order?.pending?.amountCents ?: state.paymentRetry?.amountCents ?: cents ?: 0
     val meterName = fixedTarget?.let { target ->
@@ -86,15 +89,16 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                     } else if (!amountStep && project?.network != true) {
-                        val targetEnabled = !state.loading && !state.selecting && !state.roomBusy && state.roomDialog == null
-                        HallFeeTargetOptions(state, onSelect, targetEnabled)
-                        if (state.currentRoom != null && project in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                        val targetEnabled = !state.loading && !state.selecting && !state.roomBusy &&
+                            state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
+                        HallFeeTargetOptions(state, onSelect, onMeterKind, targetEnabled)
+                        if (state.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
                             val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
                                 .filter { !saveOnly || it in bindingProjects }
                             if (projects.size > 1) FeeMeterTypeSelector("缴费类型",
                                 projects.map { if (it == FeeProject.FamilyElectric) "电费" else "水费" },
-                                projects.indexOf(project).coerceAtLeast(0), targetEnabled) { index ->
-                                if (projects[index] != project) onProject(projects[index])
+                                projects.indexOf(displayProject).coerceAtLeast(0), targetEnabled) { index ->
+                                if (projects[index] != displayProject) onProject(projects[index])
                             }
                         }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
@@ -114,7 +118,6 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
                         if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     } else {
-                        if (fixedTarget == null && project?.network != true) DashboardLink("返回选房", { amountStep = false }, arrow = false)
                         HallFeeSummary(state, Modifier.testTag("hall-payment-target"), targetSelected,
                             { targetSelected = !targetSelected }, !state.loading && !state.selecting,
                             project, fixedTarget)
@@ -208,39 +211,63 @@ private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, sel
         }
     }
 
-/** Group meter variants only when the live server options contain both siblings. */
+/** One physical location picker, with server-provided meter variants below it. */
 @Composable
-internal fun HallFeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOption) -> Unit, enabled: Boolean) {
+internal fun HallFeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOption) -> Unit,
+    onMeterKind: (DormMeterKind) -> Unit, enabled: Boolean) {
     val levels = state.levels.filterNot { it.key in state.hiddenLevels }
-    val last = state.levels.lastOrNull()
-    val options = last?.let { state.options[it.number] }.orEmpty()
-    fun stem(option: FeeOption) = option.name.removeSuffix("照明").removeSuffix("空调").trim()
-    val groups = options.groupBy(::stem)
-    val paired = state.config?.project in listOf(FeeProject.Zhengdong, FeeProject.Wenbei) && groups.isNotEmpty() &&
-        groups.values.all { siblings -> siblings.size == 2 && siblings.map { DormMeterDiscovery.kind(it.name) }.toSet() ==
-            setOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning) }
+    val project = state.switchingProject ?: state.config?.project
+    val meterChoices = if (project in setOf(FeeProject.Zhengdong, FeeProject.Wenbei))
+        dormMeterChoices(levels, state.options) else null
+
     @Composable fun field(level: FeeLevel) {
         val available = state.options[level.number].orEmpty()
         val selected = available.indexOfFirst { it.id == state.selections[level.key] } + 1
-        FeeLocationDropdown(level.name, available.map { it.name }, selected, enabled) { index ->
+        val labels = if (project == FeeProject.Wenbei && meterChoices != null &&
+            level.number > meterChoices.level.number) available.map { physicalLabel(it.name) }
+            else available.map { it.name }
+        FeeLocationDropdown(level.name, labels, selected, enabled) { index ->
             available.getOrNull(index)?.let { onSelect(level, it) }
         }
     }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        val ordinary = levels.filterNot { it == last && paired }
-        ordinary.forEach { field(it) }
-        if (paired && last != null) {
-            val selected = options.firstOrNull { it.id == state.selections[last.key] }
-            val names = groups.keys.toList()
-            FeeLocationDropdown("房间", names, selected?.let { names.indexOf(stem(it)) + 1 } ?: 0, enabled) { index ->
-                names.getOrNull(index)?.let { name ->
-                    groups[name]?.firstOrNull { it.name.endsWith("照明") }?.let { onSelect(last, it) }
+        levels.forEach { level ->
+            if (meterChoices?.level == level) {
+                val choices = meterChoices.choices
+                val selectedChoice = meterChoices.selectedChoice(state.selections[level.key])
+                FeeLocationDropdown(level.name, choices.map { it.label },
+                    selectedChoice?.let { choices.indexOf(it) + 1 } ?: 0, enabled) { index ->
+                    choices.getOrNull(index)?.let { choice ->
+                        val preferred = choice.option(DormMeterKind.Lighting) ?: choice.options.firstOrNull()
+                        preferred?.let { onSelect(level, it) }
+                    }
                 }
+            } else {
+                field(level)
             }
-            if (selected != null) {
-                val siblings = groups.getValue(stem(selected)).sortedBy { DormMeterDiscovery.kind(it.name).ordinal }
-                FeeMeterTypeSelector("电表", siblings.map { DormMeterDiscovery.kind(it.name).label },
-                    siblings.indexOf(selected).coerceAtLeast(0), enabled) { onSelect(last, siblings[it]) }
+        }
+        if (state.currentRoom != null) {
+            val selectedChoice = meterChoices?.let { choices ->
+                choices.selectedChoice(state.selections[choices.level.key])
+            }
+            val siblings = selectedChoice?.options.orEmpty()
+            if (siblings.size > 1) {
+                val types = siblings.map { DormMeterDiscovery.kind(it.name) }
+                val selectedId = meterChoices?.let { it.level.key }?.let(state.selections::get)
+                val selectedKind = state.switchingMeterKind ?: DormMeterDiscovery.kind(
+                    selectedChoice?.options?.firstOrNull { it.id == selectedId }?.name.orEmpty())
+                FeeMeterTypeSelector("电表", types.map { it.label },
+                    types.indexOf(selectedKind).coerceAtLeast(0), enabled) { index ->
+                        siblings.getOrNull(index)?.let { target ->
+                            val meterLevel = meterChoices?.level
+                            if (meterLevel != null && meterLevel == state.levels.lastOrNull()) {
+                                onSelect(meterLevel, target)
+                            } else {
+                                onMeterKind(DormMeterDiscovery.kind(target.name))
+                            }
+                        }
+                    }
             }
         }
     }
