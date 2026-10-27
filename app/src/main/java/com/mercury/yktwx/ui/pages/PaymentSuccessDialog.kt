@@ -33,7 +33,7 @@ internal fun PaymentSuccessDialog(amountCents: Long?, onDismiss: () -> Unit) {
         // Remember the amount for the closing animation after the result is dismissed.
         val amount = amountCents ?: lastAmount
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(scroll).padding(horizontal = 24.dp)) {
-            PaymentResultContent(RechargePhase.Paid, false, amount, null, onDismiss, subject = "支付")
+            PaymentResultContent(RechargePhase.Paid, false, amount, null, onDismiss, subject = "支付", enabled = amountCents != null)
         }
     }
 }

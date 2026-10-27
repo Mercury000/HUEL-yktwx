@@ -183,6 +183,7 @@ fun BillPage(
                                     filter = state.dateFilter,
                                     minimumDate = BillListMinimumDate,
                                     onDateSelected = onDateSelected,
+                                    isActive = isActive,
                                 ) {
                                     if (!state.statsVisible) Box {
                                         IconButton(
@@ -297,7 +298,7 @@ fun BillPage(
                 }
             }
             BillFilterSheet(
-                show = showFilter,
+                show = showFilter && isActive && !state.statsVisible,
                 types = state.types,
                 appliedTypeId = state.typeId,
                 appliedFrom = state.amountFromCents,
@@ -412,18 +413,11 @@ private fun BillFilterSheet(
     onDismiss: () -> Unit,
     onApply: (String?, Long?, Long?) -> Unit,
 ) {
-    var typeId by remember { mutableStateOf(appliedTypeId) }
-    var min by remember { mutableStateOf(appliedFrom?.let(::moneyInput).orEmpty()) }
-    var max by remember { mutableStateOf(appliedTo?.let(::moneyInput).orEmpty()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(show) {
-        if (show) {
-            typeId = appliedTypeId
-            min = appliedFrom?.let(::moneyInput).orEmpty()
-            max = appliedTo?.let(::moneyInput).orEmpty()
-            error = null
-        }
-    }
+    val session = rememberOverlaySession(show)
+    var typeId by remember(session) { mutableStateOf(appliedTypeId) }
+    var min by remember(session) { mutableStateOf(appliedFrom?.let(::moneyInput).orEmpty()) }
+    var max by remember(session) { mutableStateOf(appliedTo?.let(::moneyInput).orEmpty()) }
+    var error by remember(session) { mutableStateOf<String?>(null) }
     OverlayBottomSheet(
         show = show,
         title = "筛选账单",
@@ -440,9 +434,9 @@ private fun BillFilterSheet(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                BillFilterPill("全部", typeId == null) { typeId = null }
+                BillFilterPill("全部", typeId == null, show) { typeId = null }
                 types.forEach { type ->
-                    BillFilterPill(type.name, typeId == type.id) { typeId = type.id }
+                    BillFilterPill(type.name, typeId == type.id, show) { typeId = type.id }
                 }
             }
             Text("金额范围（元）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -454,13 +448,13 @@ private fun BillFilterSheet(
                 ) {
                     TextField(
                         value = min, onValueChange = { min = it.amountInput() },
-                        modifier = Modifier.weight(1f), label = "最低", singleLine = true,
+                        modifier = Modifier.weight(1f), label = "最低", singleLine = true, enabled = show,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                     )
                     Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     TextField(
                         value = max, onValueChange = { max = it.amountInput() },
-                        modifier = Modifier.weight(1f), label = "最高", singleLine = true,
+                        modifier = Modifier.weight(1f), label = "最高", singleLine = true, enabled = show,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                     )
                 }
@@ -471,7 +465,7 @@ private fun BillFilterSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton("重置", onClick = {
+                TextButton("重置", enabled = show, onClick = {
                     typeId = null
                     min = ""
                     max = ""
@@ -479,6 +473,7 @@ private fun BillFilterSheet(
                 })
                 Spacer(Modifier.weight(1f))
                 Button(
+                    enabled = show,
                     onClick = {
                         val from = min.centsOrNull()
                         val to = max.centsOrNull()

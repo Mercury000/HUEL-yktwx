@@ -146,6 +146,7 @@ class FeeSelectorUiTest {
         capture("family-target-dark")
     }
     @Test fun bindingAndTemporaryLoadingNeverShowThePaymentForm() {
+        var visible by mutableStateOf(true)
         var saveOnly by mutableStateOf(true)
         var current by mutableStateOf(FeeUiState(loading = true))
         var bindingRequests = 0
@@ -153,7 +154,7 @@ class FeeSelectorUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold {
-                    HallFeeDialog(current, true, FeeProject.FamilyElectric, null, saveOnly = saveOnly,
+                    HallFeeDialog(current, visible, FeeProject.FamilyElectric, null, saveOnly = saveOnly,
                         onDismiss = {}, onSelect = { _, _ -> }, onRetry = {},
                         onCreate = { _, _ -> paymentRequests++ }, onMethod = {}, onPayAccount = { _, _ -> },
                         onCancelPayment = {}, onFinish = {}, onContinuePayment = {},
@@ -194,6 +195,18 @@ class FeeSelectorUiTest {
         assertEquals(1, bindingRequests)
         assertEquals(0, paymentRequests)
         capture("binding-ready")
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { visible = false; current = FeeUiState() }
+        repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithText("楼栋").assertExists()
+        compose.onNodeWithText("绑定房间").assertIsNotEnabled()
+        assertSelecting()
+        compose.runOnIdle { visible = true; current = FeeUiState(loading = true) }
+        repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithText("楼栋").assertDoesNotExist()
+        compose.onNodeWithContentDescription("正在读取房间选项").assertExists()
+        assertSelecting()
+        compose.mainClock.autoAdvance = true
         compose.runOnIdle { saveOnly = false; current = FeeUiState(loading = true) }
         compose.onNodeWithContentDescription("正在读取房间选项").assertIsDisplayed()
         assertSelecting()
@@ -214,12 +227,13 @@ class FeeSelectorUiTest {
                 names = original.names, query = original.query)
         }
         var project by mutableStateOf(FeeProject.FamilyWater)
+        var visible by mutableStateOf(true)
         var target by mutableStateOf(ready(project).currentRoom)
         var current by mutableStateOf(FeeUiState(loading = true))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) { Scaffold {
-                    HallFeeDialog(current, true, project, target, onDismiss = {}, onSelect = { _, _ -> },
+                    HallFeeDialog(current, visible, project, target, onDismiss = {}, onSelect = { _, _ -> },
                         onRetry = {}, onCreate = { _, _ -> }, onMethod = {}, onPayAccount = { _, _ -> },
                         onCancelPayment = {}, onFinish = {}, onContinuePayment = {}, onRoomAction = {},
                         onConfirmRoomAction = {}, onDismissRoomDialog = {}, onConsumeRoomNotice = {})
@@ -250,6 +264,22 @@ class FeeSelectorUiTest {
             capture("payment-ready-${service.id}")
             compose.onNodeWithTag("hall-payment-target").performClick().assertIsNotSelected()
             assertEquals(targetBounds.height, compose.onNodeWithTag("hall-payment-target").fetchSemanticsNode().boundsInRoot.height, 1f)
+            val formHeight = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().let { it.bottom - it.top }
+            compose.mainClock.autoAdvance = false
+            compose.runOnIdle { visible = false; current = FeeUiState(); target = null }
+            repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            compose.onNodeWithText("充值 ¥ 10.00").assertExists().assertIsNotEnabled()
+            compose.onNodeWithTag("hall-payment-target").assertIsNotSelected().assertIsNotEnabled()
+            val summary = if (service.network) "学生宽带套餐" else "剩余用量  86.4"
+            compose.onNodeWithText(summary, useUnmergedTree = true).assertExists()
+            assertEquals(formHeight.value,
+                compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().let { (it.bottom - it.top).value }, .001f)
+            compose.runOnIdle { visible = true; target = loaded.currentRoom; current = FeeUiState(loading = true) }
+            repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            compose.onNodeWithText("充值 ¥ 10.00").assertDoesNotExist()
+            compose.onNodeWithContentDescription("正在读取充值信息").assertExists()
+            compose.onNodeWithTag("hall-payment-target").assertIsSelected()
+            compose.mainClock.autoAdvance = true
         }
     }
 }

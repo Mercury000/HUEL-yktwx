@@ -156,9 +156,9 @@ internal fun BillIcon(icon: String, modifier: Modifier = Modifier, size: Dp = 40
 }
 
 @Composable
-internal fun BillFilterPill(text: String, selected: Boolean, onClick: () -> Unit) {
+internal fun BillFilterPill(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(
-        onClick = onClick,
+        onClick = onClick, enabled = enabled,
         shape = RoundedCornerShape(50),
         color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
@@ -178,15 +178,16 @@ internal fun BillDateSelector(
     minimumDate: LocalDate,
     onDateSelected: (BillDateFilter) -> Unit,
     modifier: Modifier = Modifier,
+    isActive: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    var showSheet by remember { mutableStateOf(false) }
+    var showSheet by remember(isActive) { mutableStateOf(false) }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).heightIn(min = 44.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(onClick = { showSheet = true }, color = Color.Transparent) {
+            Surface(onClick = { showSheet = true }, enabled = isActive, color = Color.Transparent) {
                 Row(
                     Modifier.padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.Start,
@@ -216,8 +217,10 @@ internal fun BillDateSelector(
         minimumDate = minimumDate,
         onDismiss = { showSheet = false },
         onConfirm = {
-            showSheet = false
-            onDateSelected(it)
+            if (isActive && showSheet) {
+                showSheet = false
+                onDateSelected(it)
+            }
         },
     )
 }
@@ -231,11 +234,11 @@ private fun BillDatePickerDialog(
     onConfirm: (BillDateFilter) -> Unit,
 ) {
     val today = LocalDate.now()
-    var mode by remember { mutableStateOf(filter.mode) }
-    var rangeStart by remember { mutableStateOf(filter.start) }
-    var rangeEnd by remember { mutableStateOf(filter.end) }
-    var activeStart by remember { mutableStateOf(true) }
-    var pickerDate by remember { mutableStateOf(filter.start) }
+    val session = rememberOverlaySession(show)
+    var mode by remember(session) { mutableStateOf(filter.mode) }
+    var rangeStart by remember(session) { mutableStateOf(filter.start.coerceIn(minimumDate, today)) }
+    var rangeEnd by remember(session) { mutableStateOf(filter.end.coerceIn(rangeStart, today)) }
+    var activeStart by remember(session) { mutableStateOf(true) }
     val modes = remember { listOf(BillDateMode.Day, BillDateMode.Month, BillDateMode.Year, BillDateMode.Range) }
 
     fun dateForMode(nextMode: BillDateMode, start: LocalDate, end: LocalDate): LocalDate = when (nextMode) {
@@ -244,6 +247,8 @@ private fun BillDatePickerDialog(
         BillDateMode.Year -> maxOf(LocalDate.of(start.year, 1, 1), minimumDate)
         BillDateMode.Range -> (if (activeStart) start else end).coerceIn(minimumDate, today)
     }
+
+    var pickerDate by remember(session) { mutableStateOf(dateForMode(mode, rangeStart, rangeEnd)) }
 
     fun selectedFilter(): BillDateFilter = when (mode) {
         BillDateMode.Day -> BillDateFilter.day(pickerDate)
@@ -264,6 +269,7 @@ private fun BillDatePickerDialog(
     }
 
     fun updatePickerDate(next: LocalDate) {
+        if (!show) return
         if (next.isBefore(minimumDate) || next.isAfter(today)) return
         if (mode == BillDateMode.Range) updateRangeDate(next) else pickerDate = next
     }
@@ -279,22 +285,11 @@ private fun BillDatePickerDialog(
         pickerDate = dateForMode(mode, rangeStart, rangeEnd)
     }
 
-    LaunchedEffect(show) {
-        if (show) {
-            mode = filter.mode
-            rangeStart = filter.start.coerceAtLeast(minimumDate)
-            rangeEnd = filter.end.coerceAtMost(today)
-            if (rangeStart > rangeEnd) rangeEnd = rangeStart
-            activeStart = true
-            pickerDate = dateForMode(filter.mode, rangeStart, rangeEnd)
-        }
-    }
-
     OverlayDialog(
         show = show,
         title = "选择日期",
         onDismissRequest = onDismiss,
-    ) {
+    ) { key(session) {
         Column(
             Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -303,7 +298,8 @@ private fun BillDatePickerDialog(
                 title = "日期范围",
                 items = listOf("按日", "按月", "按年", "自定义时间段"),
                 selectedIndex = modes.indexOf(mode),
-                onSelectedIndexChange = { index -> selectMode(modes[index]) },
+                enabled = show,
+                onSelectedIndexChange = { index -> if (show) selectMode(modes[index]) },
                 insideMargin = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
             )
             if (mode == BillDateMode.Range) {
@@ -318,8 +314,10 @@ private fun BillDatePickerDialog(
                         selected = activeStart,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            activeStart = true
-                            pickerDate = rangeStart
+                            if (show) {
+                                activeStart = true
+                                pickerDate = rangeStart
+                            }
                         },
                     )
                     Text("至", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -329,8 +327,10 @@ private fun BillDatePickerDialog(
                         selected = !activeStart,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            activeStart = false
-                            pickerDate = minOf(rangeEnd, today)
+                            if (show) {
+                                activeStart = false
+                                pickerDate = minOf(rangeEnd, today)
+                            }
                         },
                     )
                 }
@@ -376,19 +376,21 @@ private fun BillDatePickerDialog(
                 TextButton(
                     modifier = Modifier.weight(1f),
                     text = "取消",
+                    enabled = show,
                     minHeight = 50.dp,
                     onClick = onDismiss,
                 )
                 TextButton(
                     modifier = Modifier.weight(1f),
                     text = "确定",
+                    enabled = show,
                     minHeight = 50.dp,
                     colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = { onConfirm(selectedFilter()) },
+                    onClick = { if (show) onConfirm(selectedFilter()) },
                 )
             }
         }
-    }
+    } }
 }
 
 @Composable
