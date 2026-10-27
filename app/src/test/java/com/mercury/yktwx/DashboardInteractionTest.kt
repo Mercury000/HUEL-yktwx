@@ -154,6 +154,42 @@ class DashboardInteractionTest {
         password.assertIsEnabled()
     }
 
+    @Test fun billsShowSkeletonBeforeActivationAndOnlyShowEmptyAfterLoadingCompletes() {
+        var state by mutableStateOf(BillUiState())
+        var active by mutableStateOf(false)
+        var activations = 0
+        content {
+            BillPage(state, settings, {}, { activations++ }, {}, {}, {}, { _, _, _ -> }, {},
+                onOpenStats = {}, onOpenDetail = {}, isActive = active, showBack = false)
+        }
+        fun assertInitialSkeleton() {
+            compose.onNodeWithContentDescription("正在加载账单").assertIsDisplayed()
+            compose.onNodeWithText("当前时间段还没有账单").assertDoesNotExist()
+            compose.onAllNodesWithText("—").assertCountEquals(0)
+        }
+        // The adjacent tab is composed before activation, and the credential check is async.
+        assertInitialSkeleton()
+        assertEquals(0, activations)
+        compose.runOnIdle { active = true }
+        assertInitialSkeleton()
+        assertEquals(1, activations)
+        compose.runOnIdle { state = state.copy(loading = true) }
+        assertInitialSkeleton()
+        compose.runOnIdle { state = state.copy(loading = false, loaded = true, summary = BillSummary(0, 0)) }
+        compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
+        compose.onNodeWithText("当前时间段还没有账单").assertIsDisplayed()
+
+        // Errors and expired credentials must replace placeholders, not leave a perpetual load.
+        compose.runOnIdle { state = BillUiState(error = "账单加载失败，请稍后重试") }
+        compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
+        compose.onNodeWithText("当前时间段还没有账单").assertDoesNotExist()
+        compose.onNodeWithText("账单加载失败，请稍后重试").assertIsDisplayed()
+        compose.runOnIdle { state = BillUiState(needsLogin = true) }
+        compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
+        compose.onNodeWithText("当前时间段还没有账单").assertDoesNotExist()
+        compose.onNodeWithText("登录已失效，请重新登录。").assertIsDisplayed()
+    }
+
     @Test fun billsScrollDuringBackgroundReadAndPullDetailsAndStats() {
         val model = BillViewModel(compose.activity.application).apply { initialize(true) }
         val state = mutableStateOf(model.state.value.copy(loading = true))

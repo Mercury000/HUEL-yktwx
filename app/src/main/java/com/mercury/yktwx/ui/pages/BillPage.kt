@@ -250,7 +250,10 @@ fun BillPage(
                                 }
                             }
                             when {
-                                state.loading && state.items.isEmpty() -> item(key = "loading") { BillLoadingCard() }
+                                // Precomposed tabs and the credential check precede loading=true.
+                                // An unread list is not a confirmed empty result.
+                                state.items.isEmpty() && (state.loading || !state.loaded && state.error == null) ->
+                                    item(key = "loading") { BillLoadingCard() }
                                 state.error != null && state.items.isEmpty() -> item(key = "error") {
                                     BillErrorCard(state.error, onAction = onRefresh)
                                 }
@@ -314,7 +317,7 @@ private fun BillSummaryCard(state: BillUiState) {
     val label = billDateScopeLabel(state.dateFilter)
     val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
     val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
-    val pending = state.loading && !state.loaded && state.summary == null
+    val pending = !state.loaded && state.error == null && state.summary == null
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
