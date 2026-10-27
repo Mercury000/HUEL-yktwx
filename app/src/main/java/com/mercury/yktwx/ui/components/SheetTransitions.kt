@@ -12,6 +12,11 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -22,6 +27,24 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val SheetPageDuration = 320
+
+/** Retain display values during exit; never pass passwords, captcha keys or payment preparations. */
+@Composable
+internal fun <T> rememberWhileShown(shown: Boolean, value: T): T {
+    var displayed by remember { mutableStateOf(value) }
+    if (shown) SideEffect { displayed = value }
+    return if (shown) value else displayed
+}
+
+/** A new opening starts at its requested page, including when the previous exit is unfinished. */
+@Composable
+internal fun rememberOverlaySession(shown: Boolean): Any {
+    var wasShown by remember { mutableStateOf(false) }
+    var session by remember { mutableStateOf(Any()) }
+    if (shown && !wasShown) session = Any()
+    wasShown = shown
+    return session
+}
 
 internal fun Modifier.sheetContentSize(): Modifier = animateContentSize(
     animationSpec = tween(SheetPageDuration, easing = FastOutSlowInEasing),

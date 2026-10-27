@@ -18,9 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.InlineError
+import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private data class FeePasswordDisplay(
+    val amountCents: Long, val accounts: List<FeeAccount>, val type: String, val loading: Boolean, val error: String?,
+)
 
 @Composable
 internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,
@@ -36,24 +41,26 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
         onPay(type, value)
     }
     OverlayDialog(show = show, title = "一卡通支付",
-        onDismissRequest = { password = ""; keyboard?.hide(); onDismiss() }, renderInRootScaffold = true) {
+        onDismissRequest = { if (show) { password = ""; keyboard?.hide(); onDismiss() } }, renderInRootScaffold = true) {
+        val display = rememberWhileShown(show, FeePasswordDisplay(amountCents, preparation?.accounts.orEmpty(), type, loading, error))
+        val enabled = show && !display.loading
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("¥ " + RechargeMoney.yuan(amountCents), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            if ((preparation?.accounts?.size ?: 0) > 1) preparation?.accounts?.forEach { account ->
-                Button(onClick = { type = account.type }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
-                    colors = if (type == account.type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(account.name) }
+            Text("¥ " + RechargeMoney.yuan(display.amountCents), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+            if (display.accounts.size > 1) display.accounts.forEach { account ->
+                Button(onClick = { type = account.type }, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+                    colors = if (display.type == account.type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(account.name) }
             }
-            preparation?.accounts?.firstOrNull { it.type == type }?.let { Text("可用余额 ¥ " + RechargeMoney.yuan(it.balanceCents), fontSize = 13.sp,
+            display.accounts.firstOrNull { it.type == display.type }?.let { Text("可用余额 ¥ " + RechargeMoney.yuan(it.balanceCents), fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center) }
             TextField(value = password, onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) },
-                label = "六位支付密码", singleLine = true, useLabelAsPlaceholder = true, enabled = !loading,
+                label = "六位支付密码", singleLine = true, useLabelAsPlaceholder = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.fillMaxWidth())
-            InlineError(error)
-            Button(onClick = { pay() }, enabled = password.length == 6 && !loading && type.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (loading) "正在支付…" else "确定支付") }
+            InlineError(display.error)
+            Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }
         }
     }
 }

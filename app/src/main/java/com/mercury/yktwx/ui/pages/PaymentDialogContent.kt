@@ -46,17 +46,18 @@ internal fun PaymentAmountForm(
     methods: List<String>, selectedMethod: Int, onMethod: (Int) -> Unit,
     loading: Boolean, canSubmit: Boolean, error: String?, onSubmit: (Long) -> Unit,
     onRetry: (() -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     val cents = RechargeMoney.cents(amount)
     val valid = config.amountError(cents) == null
     val keyboard = LocalSoftwareKeyboardController.current
     Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    PaymentAmountInput(config, amount, onAmountChange, enabled = !loading)
+    PaymentAmountInput(config, amount, onAmountChange, enabled = enabled && !loading)
     Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    HallNeutralTabs(methods, selectedMethod) { if (!loading) onMethod(it) }
-    InlineError(error, actionLabel = if (onRetry == null) null else "重试", onAction = { onRetry?.invoke() })
-    Button(onClick = { if (canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
-        enabled = canSubmit && !loading && valid,
+    HallNeutralTabs(methods, selectedMethod) { if (enabled && !loading) onMethod(it) }
+    InlineError(error, actionLabel = if (onRetry == null) null else "重试", onAction = { if (enabled && !loading) onRetry?.invoke() })
+    Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
+        enabled = enabled && canSubmit && !loading && valid,
         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
         Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
     }

@@ -110,11 +110,13 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
             }
         } }
     }
-    OverlayDialog(show = visible && removal != null, title = "解绑房间", summary = removal?.hallLabel,
+    val removing = visible && removal != null
+    val removalLabel = rememberWhileShown(removing, removal?.hallLabel)
+    OverlayDialog(show = removing, title = "解绑房间", summary = removalLabel,
         onDismissRequest = { removal = null }, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { removal = null }, modifier = Modifier.weight(1f)) { Text("取消") }
-            Button(onClick = { removal?.let(onRemove); removal = null }, modifier = Modifier.weight(1f),
+            Button(onClick = { removal = null }, enabled = removing, modifier = Modifier.weight(1f)) { Text("取消") }
+            Button(onClick = { removal?.let(onRemove); removal = null }, enabled = removing, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("解绑") }
         }
     }

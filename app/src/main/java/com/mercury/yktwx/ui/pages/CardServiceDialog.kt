@@ -25,6 +25,8 @@ import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetPageContent
 import com.mercury.yktwx.ui.components.sheetContentSize
+import com.mercury.yktwx.ui.components.rememberOverlaySession
+import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -45,36 +47,52 @@ fun CardServiceDialog(
     onContinueRecharge: (Long) -> Unit,
     onRetryRecharge: () -> Unit = {},
 ) {
-    if (state.action != CampusCardAction.OthersRecharge) {
-        CardStateDialog(state, onDismiss, onSelectCard, onChangeCard)
-        return
-    }
-    // Input is local, not SavedState. A new sheet starts with empty query and captcha fields.
-    var queryType by remember(state.visible) { mutableStateOf(RecipientQueryType.StudentNumber) }
-    var identifier by remember(state.visible) { mutableStateOf("") }
-    var captchaCode by remember(state.visible, state.captcha) { mutableStateOf("") }
-    var amount by remember(state.visible, state.recipients) { mutableStateOf("") }
+    // Keep each overlay mounted while its own closing animation runs.
+    CardStateDialog(state, onDismiss, onSelectCard, onChangeCard)
+    RecipientRechargeSheet(state, onDismiss, onRefreshCaptcha, onRecipientEdited, onQueryRecipient,
+        onSelectRecipient, onContinueRecharge, onRetryRecharge)
+}
+
+@Composable
+private fun RecipientRechargeSheet(
+    state: CardServiceUiState, onDismiss: () -> Unit, onRefreshCaptcha: () -> Unit,
+    onRecipientEdited: () -> Unit, onQueryRecipient: (RecipientQueryType, String, String) -> Unit,
+    onSelectRecipient: (RechargeRecipient) -> Unit, onContinueRecharge: (Long) -> Unit,
+    onRetryRecharge: () -> Unit,
+) {
+    val show = state.visible && state.action == CampusCardAction.OthersRecharge
+    val session = rememberOverlaySession(show)
+    val targetPage = rememberWhileShown(show,
+        if (state.recipients.isNotEmpty()) RecipientSheetPage.Amount else RecipientSheetPage.Query)
     val keyboard = LocalSoftwareKeyboardController.current
-    val confirming = state.recipients.isNotEmpty()
-    OverlayBottomSheet(show = state.visible, title = "代人充值", onDismissRequest = onDismiss,
+    OverlayBottomSheet(show = show, title = "代人充值", onDismissRequest = onDismiss,
         renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        SheetPageContent(if (confirming) RecipientSheetPage.Amount else RecipientSheetPage.Query,
+        key(session) {
+    // Only presentation data survives dismissal; the captcha key stays in live state.
+    val display = rememberWhileShown(show, state.copy(captcha = null))
+    // Input is local, not SavedState. A new sheet starts with empty query and captcha fields.
+    var queryType by remember { mutableStateOf(RecipientQueryType.StudentNumber) }
+    var identifier by remember { mutableStateOf("") }
+    var captchaCode by remember(show, state.captcha) { mutableStateOf("") }
+    var amount by remember(display.recipients) { mutableStateOf("") }
+        SheetPageContent(targetPage,
             Modifier.bottomSheetSafeArea()) { page, interactive ->
-        val enabled = interactive && state.visible && !state.loading
+        val enabled = interactive && show && !display.loading
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (page == RecipientSheetPage.Amount) {
-                state.recipients.forEach { recipient ->
-                    RecipientSelectionCard(recipient, state.selectedRecipient === recipient,
+                display.recipients.forEach { recipient ->
+                    RecipientSelectionCard(recipient, display.selectedRecipient === recipient,
                         { onSelectRecipient(recipient) }, enabled)
                 }
-                val config = state.rechargeConfig
+                val config = display.rechargeConfig
                 if (config != null) {
-                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, !enabled,
-                        enabled && !state.preview && config.recipient === state.selectedRecipient, state.error, onContinueRecharge)
+                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, display.loading,
+                        !display.preview && config.recipient === display.selectedRecipient, display.error, onContinueRecharge,
+                        enabled = enabled)
                 } else {
-                    if (state.loading) PaymentAmountPlaceholder()
-                    InlineError(state.error, actionLabel = "重试", onAction = onRetryRecharge)
+                    if (display.loading) PaymentAmountPlaceholder()
+                    InlineError(display.error, actionLabel = "重试", onAction = { if (enabled) onRetryRecharge() })
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -90,34 +108,34 @@ fun CardServiceDialog(
                 }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
                     modifier = Modifier.fillMaxWidth())
-                val bitmap = remember(state.captcha) { state.captcha?.image?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+                val bitmap = rememberWhileShown(show, remember(state.captcha) {
+                    state.captcha?.image?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                })
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.width(112.dp).height(56.dp).clickable(enabled = enabled, role = Role.Button,
                         onClickLabel = "更换验证码", onClick = { captchaCode = ""; onRefreshCaptcha() }), contentAlignment = Alignment.Center) {
                         if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
-                        else if (state.loading) CircularProgressIndicator(Modifier.size(24.dp))
-                        else Text(if (state.preview) "预览" else "点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        else if (display.loading) CircularProgressIndicator(Modifier.size(24.dp))
+                        else Text(if (display.preview) "预览" else "点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
                         enabled = enabled, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
-                InlineError(state.error)
+                InlineError(display.error)
                 Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
                     enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "查询中…" else "查询") }
+                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "查询中…" else "查询") }
             }
-        }
+        } }
         }
     }
 }
 
 @Composable
 private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit) {
-    val show = state.visible
-    var presented by remember { mutableStateOf(state) }
-    if (show) SideEffect { presented = state }
-    val display = if (show) state else presented
-    var password by remember(display.visible, display.selectedCard) { mutableStateOf("") }
+    val show = state.visible && state.action != CampusCardAction.OthersRecharge
+    val display = rememberWhileShown(show, state.copy(captcha = null))
+    var password by remember(show, display.selectedCard) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val card = display.selectedCard
     val initialLoading = display.loading && card == null
@@ -130,7 +148,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 CircularProgressIndicator(Modifier.size(28.dp))
             }
             if (display.cards.size > 1) display.cards.forEach { candidate ->
-                Button(onClick = { onSelectCard(candidate) }, enabled = !display.loading && !candidate.frozen && candidate.status == 0,
+                Button(onClick = { onSelectCard(candidate) }, enabled = show && !display.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
                     Text(candidate.label + if (candidate.lost) " · 已挂失" else " · 未挂失")
                 }
@@ -139,7 +157,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextField(value = password,
                         onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
-                        enabled = !display.loading, visualTransformation = PasswordVisualTransformation(),
+                        enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
                     FieldError(display.error)
                 }
@@ -149,9 +167,9 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 InlineError(display.error)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
-                    enabled = card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
+                    enabled = show && card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
                     modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "处理中…" else "确定") }
             }
         }
