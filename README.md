@@ -60,6 +60,10 @@ macOS / Linux 使用 `./gradlew`。
 
 本地 `release` 构建不配置签名；`personal` **不是正式发布签名构建**。不要把私钥、密码或签名配置提交到 Git。
 
+`release` / `personal` 保留 R8 代码优化和资源裁剪，并压缩 APK 内的 DEX，以减小下载文件；`debug` / `preview` 不压缩 DEX，便于快速打包调试。DEX 压缩不改变代码内容，APK 变小不代表安装后的磁盘占用同比减少。
+
+本地默认开启 Gradle 构建缓存、配置缓存和项目并行执行，最多使用 4 个 Gradle worker 控制并发内存峰值（可用 `--max-workers` 覆盖）。重复执行相同构建命令可复用配置；任务输出也可在输入一致时从构建缓存恢复。日常构建无需先执行 `clean`。首次构建仍需要生成缓存；排查配置缓存兼容问题时可临时追加 `--no-configuration-cache`。
+
 ### 自动发布
 
 `.github/workflows/build.yml` 在推送 `main` 时读取 `app/build.gradle.kts` 的 `versionCode` / `versionName`，并检查 `versionCode` 对应的 tag 是否存在：
@@ -67,6 +71,8 @@ macOS / Linux 使用 `./gradlew`。
 - 已存在：构建 debug APK 并上传为 workflow artifact。
 - 不存在：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 tag 为 `versionCode`、名称为 `versionName` 的 GitHub Release。
 - 也可手动触发 workflow，选择 debug 或 release；手动 release 只构建签名 APK，不创建 Release。
+
+Actions 通过 `setup-gradle` 复用依赖和 Gradle 构建缓存，PR 只读取缓存；手动构建及 PR 使用浅克隆，自动发布保留完整历史及 tag。临时 runner 每次仅调用一次 Gradle，禁用配置缓存以避免生成无法跨运行复用的配置；本地配置缓存不受影响。debug artifact 使用较低压缩等级以减少上传前的压缩耗时，release 直接上传已打包的 APK。
 
 ### 安装与 UI 预览
 

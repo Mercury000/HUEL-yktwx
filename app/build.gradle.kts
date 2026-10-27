@@ -39,6 +39,12 @@ android {
         }
     }
 }
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        // Compress distributable APKs; keep local debug/preview packaging fast.
+        variant.packaging.dex.useLegacyPackaging.set(!variant.debuggable)
+    }
+}
 java { toolchain { languageVersion = JavaLanguageVersion.of(22) } }
 kotlin { jvmToolchain(22) }
 dependencies {
