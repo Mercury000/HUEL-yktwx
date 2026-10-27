@@ -151,20 +151,17 @@ private fun LazyListScope.billStatsLoading(trendSupported: Boolean) {
             }
         }
     }
-    if (trendSupported) item(key = "loading-trend") { StatsChartPlaceholder() }
-    item(key = "loading-category") { StatsChartPlaceholder() }
-}
-
-@Composable
-private fun StatsChartPlaceholder() {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            DashboardPlaceholder(15.sp, Modifier.fillMaxWidth(), fraction = .35f, lineHeight = 22.sp)
-            Row(Modifier.fillMaxWidth().height(150.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Bottom) {
-                listOf(.42f, .68f, .52f, .82f, .61f, .74f).forEach { fraction ->
-                    ContentPlaceholder(Modifier.weight(1f).fillMaxHeight(fraction), cornerRadius = 8.dp)
-                }
+    if (trendSupported) item(key = "loading-trend") {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp)) {
+                DailyBillChartPlaceholder()
+            }
+        }
+    }
+    item(key = "loading-category") {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp)) {
+                CategoryDonutChartPlaceholder()
             }
         }
     }

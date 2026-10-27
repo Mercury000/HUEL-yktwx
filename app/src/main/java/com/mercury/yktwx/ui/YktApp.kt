@@ -454,6 +454,7 @@ private fun MainContent(
                                     onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onCardAction = ::cardAction,
                                     cardBusy = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
+                                    cardLoading = cardState.loading && !cardState.visible && cardState.action == CampusCardAction.ManageState,
                                     onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
                                 )
                             }

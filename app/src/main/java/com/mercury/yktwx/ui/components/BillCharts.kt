@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -108,6 +111,78 @@ internal fun DailyBillChart(
 private fun pointShort(point: BillDailyPoint, mode: BillDateMode): String =
     if (mode == BillDateMode.Year) "${point.date.monthValue}月"
     else "${point.date.monthValue}.${point.date.dayOfMonth}"
+
+@Composable
+internal fun DailyBillChartPlaceholder(modifier: Modifier = Modifier) {
+    val placeholder = MiuixTheme.colorScheme.onSurface.copy(alpha = .08f)
+    val grid = MiuixTheme.colorScheme.dividerLine
+    Column(modifier.fillMaxWidth().semantics { contentDescription = "正在加载趋势图" }) {
+        BillChartHeaderPlaceholder()
+        Spacer(Modifier.height(12.dp))
+        Canvas(Modifier.fillMaxWidth().height(150.dp).clearAndSetSemantics {}) {
+            val chartTop = 8.dp.toPx()
+            val chartHeight = size.height - chartTop
+            for (i in 0..4) {
+                val y = chartTop + chartHeight * i / 4f
+                drawLine(grid.copy(alpha = .45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+            }
+            val heights = listOf(.64f, .42f, .5f, .26f, .44f, .18f, .32f)
+            val line = Path().apply {
+                heights.forEachIndexed { index, height ->
+                    val x = size.width * index / heights.lastIndex
+                    val y = chartTop + chartHeight * height
+                    if (index == 0) moveTo(x, y) else lineTo(x, y)
+                }
+            }
+            drawPath(line, placeholder, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            repeat(3) { DashboardPlaceholder(11.sp, Modifier.width(36.dp), fraction = 1f, sample = "0.00") }
+        }
+    }
+}
+
+@Composable
+internal fun CategoryDonutChartPlaceholder(modifier: Modifier = Modifier) {
+    val placeholder = MiuixTheme.colorScheme.onSurface.copy(alpha = .08f)
+    Column(modifier.fillMaxWidth().semantics { contentDescription = "正在加载分类占比图" }) {
+        BillChartHeaderPlaceholder()
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(180.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize().clearAndSetSemantics {}) {
+                    val strokeWidth = 22.dp.toPx()
+                    drawCircle(placeholder, radius = (size.minDimension - strokeWidth) / 2,
+                        center = center, style = Stroke(width = strokeWidth))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    DashboardPlaceholder(12.sp, Modifier.width(56.dp), fraction = 1f)
+                    DashboardPlaceholder(20.sp, Modifier.width(88.dp), fraction = 1f, sample = "¥ 0.00")
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        repeat(3) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                ContentPlaceholder(Modifier.size(8.dp), cornerRadius = 4.dp)
+                Spacer(Modifier.width(8.dp))
+                DashboardPlaceholder(13.sp, Modifier.weight(1f), fraction = .45f)
+                DashboardPlaceholder(13.sp, Modifier.width(64.dp), fraction = .8f, sample = "¥ 0.00")
+                Box(Modifier.width(42.dp), contentAlignment = Alignment.CenterEnd) {
+                    DashboardPlaceholder(12.sp, Modifier.width(28.dp), fraction = 1f, sample = "00%")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BillChartHeaderPlaceholder() {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        DashboardPlaceholder(15.sp, Modifier.weight(1f), fraction = .35f)
+        DashboardPlaceholder(12.sp, Modifier.width(72.dp), fraction = 1f)
+    }
+}
 
 @Composable
 internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modifier: Modifier = Modifier) {
