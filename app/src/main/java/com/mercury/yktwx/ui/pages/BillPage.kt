@@ -440,26 +440,24 @@ private fun BillFilterSheet(
                 }
             }
             Text("金额范围（元）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextField(
-                        value = min, onValueChange = { min = it.amountInput() },
-                        modifier = Modifier.weight(1f), label = "最低", singleLine = true, enabled = show,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
-                    )
-                    Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    TextField(
-                        value = max, onValueChange = { max = it.amountInput() },
-                        modifier = Modifier.weight(1f), label = "最高", singleLine = true, enabled = show,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                    )
-                }
-                FieldError(error)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextField(
+                    value = min, onValueChange = { min = it.amountInput() },
+                    modifier = Modifier.weight(1f), label = "最低", singleLine = true, enabled = show,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                )
+                Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                TextField(
+                    value = max, onValueChange = { max = it.amountInput() },
+                    modifier = Modifier.weight(1f), label = "最高", singleLine = true, enabled = show,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                )
             }
+            InlineError(error)
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

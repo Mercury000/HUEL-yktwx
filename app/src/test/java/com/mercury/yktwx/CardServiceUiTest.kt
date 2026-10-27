@@ -121,7 +121,7 @@ class CardServiceUiTest {
         compose.onNodeWithText("校园卡查询密码").assertExists()
         screenshot("campus-card-state-unlost-dialog")
     }
-    @Test fun stateFailureStaysInsideTheDialogAsInlineOrFieldError() {
+    @Test fun stateFailureUsesTheSameInlineErrorWithOrWithoutPassword() {
         val notLost = CampusCard("demo-card", "校园卡", "202600000001", false, false, 0)
         val lost = CampusCard("demo-card", "校园卡", "202600000001", true, false, 0)
         val current = mutableStateOf(CardServiceUiState(visible = true, cards = listOf(notLost),
@@ -139,7 +139,7 @@ class CardServiceUiTest {
         compose.onNodeWithText("查询密码错误").assertIsDisplayed()
         compose.onNodeWithText("校园卡查询密码").assertExists()
         compose.onNodeWithText("确认解挂").assertExists()
-        screenshot("campus-card-field-error-dialog")
+        screenshot("campus-card-unlost-inline-error-dialog")
     }
     @Test fun recipientAmountPageShowsSelectedAccountAboveAmountWithoutExtraStep() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")

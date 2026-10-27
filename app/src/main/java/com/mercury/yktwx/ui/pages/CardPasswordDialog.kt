@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardPasswordUiState
 import com.mercury.yktwx.data.CampusCard
-import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
@@ -47,6 +46,9 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
         onDismissRequest = ::dismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         val display = rememberWhileShown(state.visible, state)
         val enabled = state.visible && !display.loading
+        val error = rememberWhileShown(state.visible,
+            if (confirmation.length == 6 && newPassword.length == 6 && confirmation != newPassword)
+                "两次输入的新密码不一致" else display.error)
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (display.cards.size > 1) display.cards.forEach { card ->
                 Button(onClick = { onSelectCard(card) }, enabled = enabled,
@@ -63,16 +65,12 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth())
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextField(value = confirmation, onValueChange = { confirmation = it.filter { c -> c in '0'..'9' }.take(6) },
-                    label = "确认新查询密码", singleLine = true, enabled = enabled,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.fillMaxWidth())
-                FieldError(if (confirmation.length == 6 && newPassword.length == 6 && confirmation != newPassword)
-                    "两次输入的新密码不一致" else null)
-            }
-            InlineError(display.error)
+            TextField(value = confirmation, onValueChange = { confirmation = it.filter { c -> c in '0'..'9' }.take(6) },
+                label = "确认新查询密码", singleLine = true, enabled = enabled,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.fillMaxWidth())
+            InlineError(error)
             if (display.preview) Text("预览模式不会修改密码", fontSize = 13.sp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = ::dismiss, enabled = state.visible && !display.submitting, modifier = Modifier.weight(1f)) { Text("取消") }
