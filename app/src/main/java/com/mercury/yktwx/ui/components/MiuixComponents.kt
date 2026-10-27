@@ -74,19 +74,3 @@ internal fun InlineError(
         }
     }
 }
-
-/** Shared validation text directly below the field it belongs to. */
-@Composable
-internal fun FieldError(message: String?, modifier: Modifier = Modifier) {
-    AnimatedVisibility(
-        visible = !message.isNullOrBlank(),
-        modifier = modifier,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
-    ) {
-        Text(
-            message.orEmpty(), modifier = Modifier.fillMaxWidth().padding(start = 16.dp),
-            fontSize = 12.sp, lineHeight = 16.sp, color = MiuixTheme.colorScheme.error,
-        )
-    }
-}

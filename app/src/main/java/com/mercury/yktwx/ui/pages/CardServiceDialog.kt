@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
-import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetPageContent
@@ -154,18 +153,15 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 }
             }
             if (card != null && display.needsPassword) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextField(value = password,
-                        onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
-                        enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
-                    FieldError(display.error)
-                }
+                TextField(value = password,
+                    onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
+                    enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
             } else {
                 if (!display.loading && card == null && display.error == null) Text(
                     if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
-                InlineError(display.error)
             }
+            InlineError(display.error)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },

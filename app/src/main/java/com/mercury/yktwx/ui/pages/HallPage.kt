@@ -254,7 +254,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, onChoose: (Fee
                     Text(extra.joinToString(" · ") { "${it.label} ${it.value}${it.unit}" }, fontSize = 11.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
-                if (meter.error != null) Text(meter.error, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
+                InlineError(meter.error)
                 Surface(
                     onClick = { onPay(project, meter.room) },
                     enabled = opening == null,
