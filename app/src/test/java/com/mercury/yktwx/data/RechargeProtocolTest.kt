@@ -31,8 +31,12 @@ class RechargeProtocolTest {
         assertNotNull(fixed.amountError(100))
         assertNotNull(fixed.amountError(6000))
         val ints = RechargeConfiguration("401", "fake", emptyList(), 1, 50000, true, true)
-        assertNotNull(ints.amountError(1001))
+        assertEquals("请输入有效的整数金额", ints.amountError(null))
+        assertEquals("仅支持整数金额", ints.amountError(1001))
         assertNull(ints.amountError(1000))
+        val decimals = RechargeConfiguration("401", "fake", emptyList(), 1, 50000, true, false)
+        assertEquals("请输入有效金额，最多两位小数", decimals.amountError(null))
+        assertNull(decimals.amountError(1001))
     }
     @Test fun frontendSignatureMatchesOfflineFakeFixture() {
         val p = RechargeProtocol.signed(mapOf("amount" to "10.00", "empty" to "", "zero" to "0"), "20261021070000", "fake-nonce")

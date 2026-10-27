@@ -9,7 +9,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
     private val http = PaymentHttp(openConnection)
     private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null) =
         http.request(path, token, params, form)
-    private fun json(response: PaymentHttp.Response) = http.json(response)
+    private fun json(response: PaymentHttp.Response) = http.json(response, rechargePayment = true)
     override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
         val data = json(request("/berserker-app/frontInfo", token)).getJSONObject("data")
         val front = JSONObject(data.getString("getFrontConfig"))
@@ -23,16 +23,14 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
     companion object {
         internal fun amountConfiguration(id: String, target: String, front: JSONObject,
             fee: JSONObject, recipient: RechargeRecipient? = null): RechargeConfiguration {
-            val minimum = fee.rechargeText("retain_money").takeIf { it.isNotBlank() }?.let {
-                RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常")
-            } ?: 1L
-            val configuredMax = listOf(fee.rechargeText("maxmoney"), front.rechargeText("rechargeMaxAmount"))
-                .filter { it.isNotBlank() }.map { RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常") }.minOrNull()
-            val maximum = minOf(configuredMax ?: 50_000L, 50_000L)
+            val minimum = fee.rechargeLimit("retain_money")
+            // The official page applies the fee item's bound after the general front config.
+            val maximum = fee.rechargeLimit("maxmoney") ?: front.rechargeLimit("rechargeMaxAmount")
             val options = fee.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }
-                .distinct().filter { it in minimum..maximum }
+                .distinct().filter { (minimum == null || it >= minimum) && (maximum == null || it <= maximum) }
             val flag = fee.rechargeText("flag").getOrNull(7)
-            if (minimum > maximum || (flag == '1' && options.isEmpty())) throw YktException("没有可用的充值金额")
+            if (minimum != null && maximum != null && minimum > maximum || (flag == '1' && options.isEmpty()))
+                throw YktException("没有可用的充值金额")
             return RechargeConfiguration(id, target, options, minimum, maximum, flag != '1', flag == '2', recipient)
         }
     }
@@ -97,14 +95,14 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
             "synAccessSource" to "h5", "abstracts" to JSONObject().put("type", "recharge").put("othersRecharge", config.recipient != null).toString(),
         ))
         val response = request("/charge/order/thirdOrder", token, form = form)
+        RechargeErrors.creationFailure(response)
         if (response.status != 302 || response.location == null) {
-            // Never treat an ambiguous POST outcome as permission to create another order.
-            throw YktException("充值下单状态未确认，请在官网核实，勿重复充值")
+            throw YktException("充值下单响应异常")
         }
         return RechargeProtocol.orderFromLocation(response.location)
     }
     override suspend fun launchRecharge(token: String, pending: PendingRecharge): WechatRechargeLaunch {
-        val order = pending.orderId ?: throw YktException("订单号尚未确认，请在官网核实")
+        val order = pending.orderId ?: throw YktException("订单号缺失")
         val info = json(request("/charge/pay/getpayinfo", token, mapOf("orderid" to order, "userAgent" to "h5")))
         val o = info.getJSONObject("order")
         if (o.rechargeText("orderid") != order || RechargeMoney.responseCents(o.opt("tranamt")) != pending.amountCents) throw YktException("充值订单信息不匹配")
@@ -127,16 +125,16 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         return http.wechatLaunch(payload.rechargeText("paysubmit"), pending)
     }
     override suspend fun rechargeResult(token: String, pending: PendingRecharge): RechargeResult {
-        val order = pending.orderId ?: throw YktException("订单号未确认，请在官网核实，勿重复充值")
+        val order = pending.orderId ?: throw YktException("订单号缺失")
         val payload = json(request("/charge/order/personal_data", token, buildMap { put("orderid", order); pending.payId?.let { put("payid", it) } }))
-        val list = payload.optJSONArray("orderList") ?: throw YktException("订单结果未确认")
+        val list = payload.optJSONArray("orderList") ?: throw YktException("订单查询响应异常")
         // The official result page synthesizes status=0 for an empty orderList.
         // Only a valid successful response with an actual empty array uses this
-        // fallback; HTTP errors, malformed responses and mismatches stay unknown.
+        // fallback; request/response errors remain request errors.
         if (list.length() == 0) return RechargeResult(false, 0)
-        if (list.length() != 1) throw YktException("订单结果未确认")
+        if (list.length() != 1) throw YktException("订单查询响应异常")
         val o = list.getJSONObject(0)
-        if (o.rechargeText("orderid") != order) throw YktException("订单结果与本次充值不匹配，请在官网核实")
+        if (o.rechargeText("orderid") != order) throw YktException("订单结果与本次充值不匹配")
         // Unlike the empty-list fallback, null status on an existing record is
         // NOT explicitly normalized by the official normal H5 result flow.
         val status = o.rechargeText("status").toIntOrNull() ?: -1
@@ -157,9 +155,9 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         // include all fields needed to prove its account, amount and fee item.
         val matches = textMatches("third_party", pending.targetId) && amountMatches &&
             (pending.payId == null || textMatches("payid", pending.payId)) && feeMatches
-        if (!matches) throw YktException("订单结果与本次充值不匹配，请在官网核实")
-        if (!paid) return RechargeResult(false, status)
-        if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常，请在官网核实")
+        if (!matches) throw YktException("订单结果与本次充值不匹配")
+        if (!paid) return RechargeResult(false, status, (o.opt("msg") as? String)?.takeIf { it.isNotEmpty() })
+        if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常")
         return RechargeResult(true, status)
     }
 }

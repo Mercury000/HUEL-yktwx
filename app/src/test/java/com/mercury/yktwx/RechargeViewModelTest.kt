@@ -80,11 +80,22 @@ class RechargeViewModelTest {
         service.creationFailure = NetworkFailure()
         model.submit(1000)
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals(RechargePhase.Amount, model.state.value.phase)
         assertNull(model.state.value.pending?.orderId)
-        model.submit(1000)
         model.checkResult()
         assertEquals(1, service.creations)
+        assertEquals(0, service.launches)
+        assertEquals(0, service.resultQueries)
+        model.finish()
+        open()
+        service.creationFailure = RechargePaymentRejected("金额大于每笔交易允许的最大金额800元")
+        model.submit(1000)
+        await { !model.state.value.loading }
+        assertEquals(RechargePhase.Failed, model.state.value.phase)
+        assertEquals("金额大于每笔交易允许的最大金额800元", model.state.value.error)
+        assertNull(model.state.value.pending?.orderId)
+        model.checkResult(); model.submit(1000)
+        assertEquals(2, service.creations)
         assertEquals(0, service.launches)
         assertEquals(0, service.resultQueries)
     }
@@ -110,26 +121,41 @@ class RechargeViewModelTest {
         assertEquals(1, service.resultQueries)
     }
 
-    @Test fun unconfirmedResultsExhaustReadBudgetWithoutRepeatingPayment() {
+    @Test fun serverStatusesAndMessagesControlResultsWithoutRepeatingPayment() {
         prepareOrder()
         service.resultStatus = -1
+        service.resultMessage = "后端订单提示"
         model.checkResult()
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals(RechargePhase.Checking, model.state.value.phase)
+        assertEquals("后端订单提示", model.state.value.error)
         assertEquals(3, service.resultQueries)
         assertEquals(1, service.creations)
         assertEquals(1, service.launches)
+        for (status in listOf(0, 2)) {
+            service.resultStatus = status
+            model.checkResult()
+            await { !model.state.value.loading }
+            assertEquals(if (status == 0) RechargePhase.Failed else RechargePhase.TimedOut, model.state.value.phase)
+            assertEquals("后端订单提示", model.state.value.error)
+            assertEquals(1, service.creations)
+        }
     }
 
-    @Test fun failedQueriesStayUnknownInsteadOfClaimingPaidOrUnpaid() {
+    @Test fun queryFailureShowsRequestErrorAndAllowsReadOnlyRetry() {
         prepareOrder()
         service.resultFailure = NetworkFailure()
         model.checkResult()
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
-        assertEquals(3, service.resultQueries)
+        assertEquals(RechargePhase.Checking, model.state.value.phase)
+        assertEquals(NetworkFailure().message, model.state.value.error)
+        assertEquals(1, service.resultQueries)
         assertEquals(1, service.creations)
         assertEquals(1, service.launches)
+        service.resultFailure = null
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        assertEquals(2, service.resultQueries)
     }
 
     @Test fun dismissedCreationCannotLaunchOrOverwriteReopenedAttempt() {
@@ -182,7 +208,7 @@ class RechargeViewModelTest {
         // Even before the UI delivers accountChanged, the old owner's result must be rejected.
         service.resultGate.complete(Unit)
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals(RechargePhase.Checking, model.state.value.phase)
         assertEquals(1, service.resultQueries)
         assertFalse(model.canLaunchWechat())
     }
@@ -250,6 +276,7 @@ class RechargeViewModelTest {
         var launchFailure: Exception? = null
         var resultFailure: Exception? = null
         var resultStatus = 1
+        var resultMessage: String? = null
         var configurationGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var creationGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var resultGate = CompletableDeferred<Unit>().apply { complete(Unit) }
@@ -283,7 +310,7 @@ class RechargeViewModelTest {
             withContext(NonCancellable) { resultGate.await() }
             resultResponses++
             resultFailure?.let { throw it }
-            return RechargeResult(resultStatus == 1, resultStatus)
+            return RechargeResult(resultStatus == 1, resultStatus, resultMessage)
         }
     }
     @Test fun explicitLostRejectionEndsOwnAndOthersRechargeWithoutLaunchOrQuery() {
@@ -309,19 +336,19 @@ class RechargeViewModelTest {
         }
     }
 
-    @Test fun lostLaunchResponseStaysUnknownAndKeepsOrderForManualReadOnlyCheck() {
+    @Test fun launchRequestFailureReturnsToAmountWithoutAutomaticQuery() {
         open()
         service.launchFailure = NetworkFailure()
         model.submit(1000)
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
-        assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
+        assertEquals(RechargePhase.Amount, model.state.value.phase)
+        assertNull(model.state.value.pending)
+        assertEquals(NetworkFailure().message, model.state.value.error)
         assertFalse(model.canLaunchWechat())
         model.checkResult()
-        await { model.state.value.phase == RechargePhase.Paid }
         assertEquals(1, service.creations)
         assertEquals(1, service.launches)
-        assertEquals(1, service.resultQueries)
+        assertEquals(0, service.resultQueries)
     }
 
     @Test fun paymentParameterFetchIsNotYetAwaitingExternalPayment() {
@@ -338,14 +365,14 @@ class RechargeViewModelTest {
         assertEquals(0, service.resultQueries)
     }
 
-    @Test fun unknownBusinessMessageRemainsUnknownWithoutLosingOfficialText() {
+    @Test fun requestErrorReturnsToAmountWithoutLosingOfficialText() {
         open()
         service.launchFailure = YktException("新的业务提示")
         model.submit(1000)
         await { !model.state.value.loading }
-        assertEquals(RechargePhase.Unknown, model.state.value.phase)
+        assertEquals(RechargePhase.Amount, model.state.value.phase)
         assertEquals("新的业务提示", model.state.value.error)
-        assertEquals("FAKE-ORDER", model.state.value.pending?.orderId)
+        assertNull(model.state.value.pending)
         assertEquals(0, service.resultQueries)
     }
 

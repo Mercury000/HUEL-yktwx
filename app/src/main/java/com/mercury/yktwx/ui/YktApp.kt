@@ -470,6 +470,7 @@ private fun MainContent(
                     // Keep recharge under the root Scaffold so its overlay has a popup host.
                     RechargeDialog(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
+                        onCheck = rechargeModel::checkResult,
                         onFinish = {
                             val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
                             rechargeModel.finish()
@@ -491,6 +492,7 @@ private fun MainContent(
                         bindingProjects = dormState.bindingProjects,
                         onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment,
                         onContinuePayment = feeModel::continuePayment,
+                        onCheck = feeModel::checkResult,
                         onFinish = {
                             val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
                             dormPaymentVisible = false; feeOpening = null; feeModel.dismiss()

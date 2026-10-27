@@ -64,6 +64,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     onConfirmRoomAction: () -> Unit, onDismissRoomDialog: () -> Unit, onConsumeRoomNotice: () -> Unit,
     onProject: (FeeProject) -> Unit = {}, onMeterKind: (DormMeterKind) -> Unit = {},
     bindingProjects: Set<FeeProject> = emptySet(),
+    onCheck: (() -> Unit)? = null,
 ) {
     val session = rememberOverlaySession(visible)
     val form = rememberWhileShown(visible && state.stage == FeeStage.Query,
@@ -195,7 +196,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     display?.let { result ->
                         PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
                             { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
-                            subject = "充值", retryMethods = result.methods, enabled = resultActive,
+                            subject = "充值", retryMethods = result.methods, enabled = resultActive, onCheck = onCheck,
                             onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
                     }
                 }

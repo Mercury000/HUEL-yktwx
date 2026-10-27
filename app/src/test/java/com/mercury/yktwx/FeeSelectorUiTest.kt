@@ -1,12 +1,20 @@
 package com.mercury.yktwx
 
 import android.graphics.Bitmap
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.pages.HallFeeDialog
@@ -26,6 +34,8 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FeeSelectorUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private var contentView: View? = null
+    private var observedImeBottom = 0
     private val levels = listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("floor", 2, "楼层"), FeeLevel("room", 3, "房间"))
     private fun state(project: FeeProject, kind: String = "", complete: Boolean = true): FeeUiState {
         val names = mapOf("building" to "示例A栋", "floor" to "示例楼层", "room" to "示例A栋-房间A$kind")
@@ -45,6 +55,8 @@ class FeeSelectorUiTest {
         onProject: (FeeProject) -> Unit = {}, onCreate: (Long, String) -> Unit = { _, _ -> },
         bindingProjects: Set<FeeProject> = setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
         compose.setContent {
+            contentView = LocalView.current
+            observedImeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(if (dark()) ColorSchemeMode.Dark else ColorSchemeMode.Light) { Scaffold {
                     val current = state()
@@ -89,6 +101,73 @@ class FeeSelectorUiTest {
         compose.runOnIdle { dark = true; current = state(FeeProject.FamilyWater) }
         capture("fixed-water-dark")
     }
+    @Test fun amountRulesExplainDisabledPaymentWithoutKeyboardDone() {
+        val rules = RechargeConfiguration("412", "", listOf(1000), 1000, 50000, true, true)
+        val current = FeeUiState(config = FeeConfiguration(FeeProject.Network, rules), query = FeeQuery(thirdParty = "{}"))
+        var submitted: Long? = null
+        content({ current }, onCreate = { cents, _ -> submitted = cents })
+        val input = compose.onNode(hasSetTextAction())
+        val formatError = "请输入有效的整数金额"
+        compose.onNodeWithText("自定义金额（元，仅限整数）").assertExists()
+        compose.onNodeWithText(formatError).assertDoesNotExist()
+        input.performClick()
+        compose.runOnIdle {
+            val keyboardHeight = (280 * compose.activity.resources.displayMetrics.density).toInt()
+            ViewCompat.dispatchApplyWindowInsets(contentView!!, WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, keyboardHeight))
+                .setVisible(WindowInsetsCompat.Type.ime(), true).build())
+        }
+        compose.waitUntil(5_000) { observedImeBottom > 0 }
+        val anchoredBottom = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().bottom
+        compose.mainClock.autoAdvance = false
+        input.performTextReplacement("9")
+        repeat(32) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            compose.onNodeWithText("重试").assertDoesNotExist()
+            val content = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot()
+            val button = compose.onNodeWithText("充值").getUnclippedBoundsInRoot()
+            assertEquals(anchoredBottom.value, content.bottom.value, 1f)
+            assertTrue("Amount action is clipped during error entry", button.bottom.value <= content.bottom.value + 1f)
+        }
+        compose.mainClock.autoAdvance = true
+        for ((amount, message) in listOf("9" to "最低充值 ¥ 10", "501" to "单次最高 ¥ 500",
+            "10.50" to "仅支持整数金额", "10.001" to formatError)) {
+            input.performTextReplacement(amount)
+            compose.onNodeWithText(message).assertIsDisplayed()
+            compose.onNodeWithText("充值").assertIsNotEnabled()
+            compose.onNodeWithText("请输入有效金额，最多两位小数").assertDoesNotExist()
+            compose.onNodeWithText("重试").assertDoesNotExist()
+        }
+        input.performTextReplacement("")
+        compose.onNodeWithText(formatError).assertDoesNotExist()
+        input.performTextReplacement("501")
+        compose.onNodeWithText("单次最高 ¥ 500").assertIsDisplayed()
+        val hint = compose.onNodeWithText("单次最高 ¥ 500").fetchSemanticsNode().boundsInRoot
+        assertTrue(hint.top > compose.onNodeWithText("支付方式").fetchSemanticsNode().boundsInRoot.bottom)
+        assertTrue(hint.bottom < compose.onNodeWithText("充值").fetchSemanticsNode().boundsInRoot.top)
+        capture("payment-amount-limit")
+        val bottom = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().bottom
+        compose.mainClock.autoAdvance = false
+        input.performTextReplacement("500")
+        repeat(32) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            compose.onNodeWithText("重试").assertDoesNotExist()
+            assertEquals(bottom.value, compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().bottom.value, 1f)
+        }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("单次最高 ¥ 500").assertDoesNotExist()
+        compose.onNodeWithText("充值 ¥ 500.00").assertIsEnabled()
+        input.performImeAction()
+        compose.onNodeWithText(formatError).assertDoesNotExist()
+        compose.onNodeWithText("¥ 10").performClick()
+        compose.onNodeWithText("最低充值 ¥ 10").assertDoesNotExist()
+        compose.onNodeWithText("仅支持整数金额").assertDoesNotExist()
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsEnabled().performClick()
+        assertEquals(1000L, submitted)
+    }
+
     @Test fun familyAndStudentMeterChoicesFollowRoomAndDisappearOnAmountStep() {
         var current by mutableStateOf(state(FeeProject.Zhengdong, "照明"))
         var selectedOption: FeeOption? = null

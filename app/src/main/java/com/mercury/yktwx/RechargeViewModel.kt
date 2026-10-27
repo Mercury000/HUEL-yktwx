@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
-enum class RechargePhase { Amount, Creating, AwaitingPayment, Checking, Paid, Failed, Unknown }
+enum class RechargePhase { Amount, Creating, AwaitingPayment, Checking, Paid, Failed, TimedOut }
 class RechargeUiState(
     val visible: Boolean = false,
     val loading: Boolean = false,
@@ -45,7 +45,7 @@ class RechargeViewModel internal constructor(
     private var resultQueriesCompleted = 0
     private var paymentExplicitlyRejected = false
     private val paymentReturn = PaymentReturnObserver(
-        viewModelScope, { task }, { mutable.value.phase == RechargePhase.Checking }, ::checkResult,
+        viewModelScope, { task }, { mutable.value.loading && mutable.value.phase == RechargePhase.Checking }, ::checkResult,
     )
 
     fun open(username: String, preferredCard: String?, preview: Boolean) {
@@ -99,7 +99,7 @@ class RechargeViewModel internal constructor(
                 if (current != attempt) return@launch
                 requireOwner(created)
                 if (!paymentReturn.canLaunch) {
-                    showResult(RechargePhase.Unknown, "支付未完成，请重新发起充值")
+                    requestError("未能打开微信")
                     return@launch
                 }
                 update(loading = false, phase = RechargePhase.AwaitingPayment)
@@ -113,7 +113,7 @@ class RechargeViewModel internal constructor(
                 }
             }
             catch (e: Exception) {
-                if (current == attempt) showResult(RechargePhase.Unknown, resultError(e))
+                if (current == attempt) requestError(resultError(e))
             }
         }
     }
@@ -129,7 +129,7 @@ class RechargeViewModel internal constructor(
         val pending = mutable.value.pending ?: return
         if (pending.orderId == null || mutable.value.preview ||
             (paymentExplicitlyRejected || mutable.value.phase == RechargePhase.Paid) || task?.isActive == true) return
-        if (mutable.value.phase != RechargePhase.Checking) resultQueriesCompleted = 0
+        if (mutable.value.phase != RechargePhase.Checking || !mutable.value.loading) resultQueriesCompleted = 0
         paymentReturn.consume()
         val current = attempt
         update(visible = true, loading = true, phase = RechargePhase.Checking, error = null)
@@ -152,24 +152,16 @@ class RechargeViewModel internal constructor(
                     }
                     if (resultQueriesCompleted == 3) {
                         when (result.serverStatus) {
-                            0 -> showResult(RechargePhase.Failed)
-                            2 -> showResult(RechargePhase.Failed, "支付已超时")
-                            else -> showResult(RechargePhase.Unknown, "暂时无法确认订单状态")
+                            0 -> showResult(RechargePhase.Failed, result.message)
+                            2 -> showResult(RechargePhase.TimedOut, result.message)
+                            else -> queryError(result.message ?: "订单状态异常")
                         }
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
                     if (current != attempt) return@launch
-                    // Login/owner changes cannot be repaired by further reads.
-                    // Other failed reads count as attempts and may recover on
-                    // the next query instead of aborting the whole loop.
-                    if (repository.username() != pending.username ||
-                        e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) {
-                        showResult(RechargePhase.Unknown, resultError(e))
-                        return@launch
-                    }
-                    resultQueriesCompleted++
-                    if (resultQueriesCompleted == 3) showResult(RechargePhase.Unknown, resultError(e))
+                    queryError(resultError(e))
+                    return@launch
                 }
             }
         }
@@ -179,6 +171,15 @@ class RechargeViewModel internal constructor(
         if (pending.username != owner || repository.username() != pending.username) throw YktException("账户已切换")
     }
     private fun showResult(phase: RechargePhase, error: String? = null) = update(visible = true, loading = false, phase = phase, error = error)
+    private fun requestError(message: String) {
+        paymentReturn.reset()
+        update(visible = true, loading = false, phase = RechargePhase.Amount, pending = null, error = message)
+    }
+    private fun queryError(message: String) {
+        paymentReturn.reset()
+        // A request error is shown on the result page, not classified as a transaction outcome.
+        update(visible = true, loading = false, phase = RechargePhase.Checking, error = message)
+    }
     fun accountChanged(username: String) {
         if (owner.isNotEmpty() && username != owner) dismiss()
     }
@@ -203,9 +204,9 @@ class RechargeViewModel internal constructor(
     fun onWindowFocusChanged(hasFocus: Boolean) = paymentReturn.focus(hasFocus)
     fun onBackground() = paymentReturn.background()
     private fun resultError(e: Exception) = when (e) {
-        is NetworkFailure -> "网络异常，请稍后查看账单"
+        is NetworkFailure -> e.message ?: "网络连接失败"
         is AuthenticationRequired, is InvalidCredentials, is CaptchaRequired -> "登录已失效，请重新登录"
-        else -> safeError(e, "暂未确认本次付款，请稍后查看账单")
+        else -> safeError(e, "服务响应异常")
     }
     private fun safeError(e: Exception, fallback: String) = if (e is YktException) e.message ?: fallback else fallback
     private fun update(

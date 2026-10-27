@@ -14,12 +14,14 @@ import java.security.cert.Certificate
 import javax.net.ssl.HttpsURLConnection
 
 class FeeApiTest {
-    private class FakeHttps(url: URL, private val body: String, private val status: Int = 200) : HttpsURLConnection(url) {
+    private class FakeHttps(url: URL, private val body: String, private val status: Int = 200,
+        private val location: String? = null) : HttpsURLConnection(url) {
         override fun connect() {}
         override fun disconnect() {}
         override fun usingProxy() = false
         val sent = ByteArrayOutputStream()
         override fun getResponseCode() = status
+        override fun getHeaderField(name: String?) = if (name.equals("Location", true)) location else null
         override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
         override fun getErrorStream() = ByteArrayInputStream(body.toByteArray())
         override fun getOutputStream() = sent
@@ -72,9 +74,29 @@ class FeeApiTest {
             val api = FeeApi { url -> FakeHttps(url, roomConfig(project, scene = scene)).also(calls::add) }
             val config = api.feeConfiguration("fake-token", project)
             assertTrue(config.roomBindingEnabled)
+            assertNull(config.amountRules.minimumCents)
+            assertNull(config.amountRules.maximumCents)
+            assertNull(config.amountRules.amountError(1_000_000))
             assertEquals("demo-room&示例水表", config.roomBinding?.selections?.get("room_id"))
             assertEquals(project.id, URLDecoder.decode(calls.single().url.query, "UTF-8").substringAfter("feeitemid=").substringBefore('&'))
         }
+    }
+    @Test fun amountBoundsAndIntegerModeUseReturnedFieldsNotProjectIds() = runBlocking {
+        val item = JSONObject().put("feeitemid", 448).put("retain_money", "1")
+            .put("maxmoney", "1000").put("flag", "1100000000").put("layout", "50,100,200,500")
+        val api = FeeApi { url -> FakeHttps(url, JSONObject().put("code", 200).put("feeitem", item).toString()) }
+        val rules = api.feeConfiguration("fake-token", FeeProject.FamilyElectric).amountRules
+        assertEquals(100L, rules.minimumCents)
+        assertEquals(100_000L, rules.maximumCents)
+        assertFalse(rules.integerOnly)
+        assertNull(rules.amountError(101))
+        assertEquals("最低充值 ¥ 1", rules.amountError(99))
+        assertEquals("单次最高 ¥ 1000", rules.amountError(100_001))
+        item.put("flag", "1100000200").put("maxmoney", JSONObject.NULL)
+        val changed = api.feeConfiguration("fake-token", FeeProject.FamilyElectric).amountRules
+        assertTrue(changed.integerOnly)
+        assertNull(changed.maximumCents)
+        assertEquals("仅支持整数金额", changed.amountError(101))
     }
     @Test fun disabledAndMultiRoomConfigurationsDoNotEnableSingleRoomActions() = runBlocking {
         for ((project, status, info) in listOf(Triple(FeeProject.Commercial, 0, 0),
@@ -117,6 +139,28 @@ class FeeApiTest {
         try { api.setFeeRoom("fake-token", FeeProject.Wenbei, null); fail("Expected rejection") }
         catch (_: YktException) { }
         assertEquals(1, requests)
+    }
+
+    @Test fun creationPreservesBackendRejectionsAcrossProjectsWithoutInventingBounds() = runBlocking {
+        val message = "金额大于每笔交易允许的最大金额300元"
+        val location = "/plat/notfound?msg=" + java.net.URLEncoder.encode(java.net.URLEncoder.encode(message, "UTF-8"), "UTF-8")
+        for (project in FeeProject.entries) for (redirect in listOf(false, true)) {
+            val calls = mutableListOf<FakeHttps>()
+            val api = FeeApi { url -> FakeHttps(url,
+                "{\"code\":500,\"success\":false,\"data\":null,\"msg\":\"$message\"}",
+                if (redirect) 302 else 200, if (redirect) location else null).also(calls::add) }
+            val rules = RechargeConfiguration(project.id, "", emptyList(), null, null, true, false)
+            val error = assertThrows(FeePaymentRejected::class.java) {
+                runBlocking { api.createFee("fake-token", "test-user", FeeConfiguration(project, rules),
+                    FeeQuery(thirdParty = "{}"), 99_999_900) }
+            }
+            assertEquals(message, error.message)
+            assertEquals(FeeRejectionReason.Other, error.reason)
+            assertEquals(listOf("/blade-pay/pay"), calls.map { it.url.path })
+            assertEquals("0", fields(calls.single())["paystep"])
+            assertFalse(calls.single().instanceFollowRedirects)
+            assertNull(rules.maximumCents)
+        }
     }
 
     private fun pending() = PendingRecharge("test-user", "{\"room\":\"demo-room\"}", "410", 100, "FAKE-ORDER", "64")
@@ -184,29 +228,36 @@ class FeeApiTest {
         }
     }
 
-    @Test fun officialErrorTextDoesNotDetermineServerFailureOrRejection() {
+    @Test fun officialCashierUsesCodeAndStateWithoutAnErrorAllowlist() {
         val http = PaymentHttp { error("No requests allowed") }
-        for (text in listOf("账户余额不足", "订单已过期", "<script>secret-token</script>")) {
-            try {
-                http.json(PaymentHttp.Response(200, JSONObject().put("code", 400).put("msg", text).toString(), null), feePayment = true)
-                fail("Expected rejection")
-            } catch (e: FeePaymentRejected) {
-                assertEquals(FeeRejectionReason.Other, e.reason)
-                assertEquals(text, e.message)
+        for (body in listOf(
+            """{"code":500,"msg":"金额超出交易限额"}""",
+            """{"code":999,"msg":"新的业务提示"}""",
+            """{"code":400,"success":true,"data":"FAKE-ORDER","msg":"后端拒绝"}""",
+            """{"code":60005,"msg":"任意语言的提示"}""",
+        )) {
+            val rejected = assertThrows(FeePaymentRejected::class.java) {
+                http.json(PaymentHttp.Response(200, body, null), feePayment = true)
             }
+            assertEquals(JSONObject(body).getString("msg"), rejected.message)
         }
-        for ((status, response) in listOf(503 to "{\"code\":400}", 200 to "{\"code\":500,\"msg\":\"密码错误\"}",
-            200 to "{\"code\":999}", 200 to "{\"code\":400,\"data\":\"FAKE-ORDER\"}", 200 to "{\"code\":400,\"state\":200}",
-            200 to "{\"code\":60005,\"success\":true,\"data\":null}",
-            200 to "{\"code\":60005,\"success\":false,\"data\":\"FAKE-ORDER\"}",
-            200 to "{\"code\":60005,\"success\":false,\"state\":200}",
-            200 to "{\"code\":60005}", 200 to "{\"code\":400,\"success\":true}",
-            200 to "not-json")) {
-            try { http.json(PaymentHttp.Response(status, response, null), feePayment = true); fail("Expected uncertainty") }
-            catch (e: YktException) { assertFalse(e is FeePaymentRejected) }
+        // Exact success branches in the official old cashier's ge().
+        for (body in listOf(
+            """{"code":200,"success":false}""", """{"code":302}""",
+            """{"code":60005,"state":200}""", """{"state":200}""", "{}",
+        )) {
+            assertNotNull(http.json(PaymentHttp.Response(200, body, null), feePayment = true))
         }
-        try { http.json(PaymentHttp.Response(200, "{\"code\":401}", null), feePayment = true); fail("Expected login failure") }
-        catch (_: AuthenticationRequired) { }
+        for ((status, body) in listOf(503 to """{"code":400,"msg":"服务不可用"}""", 200 to "not-json")) {
+            val error = assertThrows(YktException::class.java) {
+                http.json(PaymentHttp.Response(status, body, null), feePayment = true)
+            }
+            assertFalse(error is FeePaymentRejected)
+        }
+        val auth = assertThrows(AuthenticationRequired::class.java) {
+            http.json(PaymentHttp.Response(200, """{"code":401,"msg":"后端登录提示"}""", null), feePayment = true)
+        }
+        assertEquals("后端登录提示", auth.message)
     }
 
     @Test fun manualPasswordCorrectionRechecksServerExpiryBeforeAnotherPayment() = runBlocking {
@@ -262,11 +313,11 @@ class FeeApiTest {
             }
             assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
         }
-        for (response in listOf("{\"code\":60050,\"success\":true,\"data\":null}",
-            "{\"code\":60050,\"success\":false,\"data\":\"FAKE-ORDER\"}",
-            "{\"code\":60050,\"success\":false,\"state\":200}", "{\"code\":60050}")) {
-            assertNull(FeePaymentErrors.rejection(JSONObject(response)))
+        for (response in listOf("""{"code":60050,"success":true,"data":null}""",
+            """{"code":60050,"success":false,"data":"FAKE-ORDER"}""", """{"code":60050}""")) {
+            assertNotNull(FeePaymentErrors.rejection(JSONObject(response)))
         }
+        assertNull(FeePaymentErrors.rejection(JSONObject("""{"code":60050,"state":200}""")))
     }
 
     @Test fun lowOrStaleBalanceDoesNotOverrideBackendRejectionPriority() = runBlocking {
@@ -291,15 +342,23 @@ class FeeApiTest {
         assertEquals(1, calls.count { it.url.path == "/blade-pay/pay" })
     }
 
-    @Test fun emptyOrderResultDoesNotMeanPaymentFailed() = runBlocking {
+    @Test fun emptyOrderResultUsesOfficialStatusZeroFallback() = runBlocking {
         val api = FeeApi { url -> FakeHttps(url, "{\"code\":200,\"orderList\":[]}") }
         val result = api.feeResult("fake-token", pending())
         assertFalse(result.paid)
-        assertNull(result.serverStatus)
+        assertEquals(0, result.serverStatus)
+        for (status in listOf(0, 2, 9)) {
+            val order = JSONObject().put("orderid", pending().orderId).put("status", status).put("msg", "后端订单提示")
+            val response = JSONObject().put("code", 200).put("orderList", JSONArray().put(order))
+            val checked = FeeApi { url -> FakeHttps(url, response.toString()) }.feeResult("fake-token", pending())
+            assertEquals("后端订单提示", checked.message)
+            assertEquals(status, checked.serverStatus)
+            assertFalse(checked.paid)
+        }
     }
 
     @Test fun officialMessagesAreVerbatimAndOnlyMissingOrEmptyTextUsesError() {
-        for (code in listOf(60005, 60050, 400)) {
+        for (code in listOf(60005, 60050, 400, 500, 99999)) {
             for (text in listOf("账户已挂失", "  原始提示\n ", "<b>业务提示</b>", "详细提示".repeat(80))) {
                 val body = JSONObject().put("code", code).put("success", false).put("data", JSONObject.NULL).put("msg", text)
                 assertEquals(text, FeePaymentErrors.rejection(body)!!.message)

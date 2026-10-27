@@ -10,7 +10,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -31,7 +30,6 @@ import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
 import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.data.RechargeRecipient
-import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import com.mercury.yktwx.ui.components.ContentPlaceholder
@@ -49,13 +47,18 @@ internal fun PaymentAmountForm(
     enabled: Boolean = true,
 ) {
     val cents = RechargeMoney.cents(amount)
-    val valid = config.amountError(cents) == null
+    val amountError = config.amountError(cents)
+    val valid = amountError == null
+    // Keep validation live, and share the same banner as server errors above the action.
+    val validationMessage = amountError.takeIf { amount.isNotBlank() }
+    val canRetry = validationMessage == null && !error.isNullOrBlank() && onRetry != null
     val keyboard = LocalSoftwareKeyboardController.current
     Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     PaymentAmountInput(config, amount, onAmountChange, enabled = enabled && !loading)
     Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     HallNeutralTabs(methods, selectedMethod) { if (enabled && !loading) onMethod(it) }
-    InlineError(error, actionLabel = if (onRetry == null) null else "重试", onAction = { if (enabled && !loading) onRetry?.invoke() })
+    InlineError(validationMessage ?: error, actionLabel = if (canRetry) "重试" else null,
+        onAction = { if (enabled && !loading && canRetry) onRetry() })
     Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
         enabled = enabled && canSubmit && !loading && valid,
         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
@@ -84,7 +87,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
                 }
             }
             if (config?.allowCustom != false) PaymentControlPlaceholder {
-                TextField(value = "", onValueChange = {}, label = "自定义金额（元）",
+                TextField(value = "", onValueChange = {}, label = paymentAmountLabel(config),
                     useLabelAsPlaceholder = true, singleLine = true, enabled = false,
                     modifier = Modifier.fillMaxWidth())
             }
@@ -128,21 +131,17 @@ internal fun PaymentAmountInput(
     config: com.mercury.yktwx.data.RechargeConfiguration,
     amount: String,
     onAmountChange: (String) -> Unit,
-    error: String? = null,
     enabled: Boolean = true,
 ) {
-    var validationMessage by remember(config) { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val cents = RechargeMoney.cents(amount)
-    val amountError = config.amountError(cents)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         config.amountsCents.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { preset ->
                     Button(
                         onClick = {
-                            validationMessage = null
                             onAmountChange(RechargeMoney.label(preset))
                             focusManager.clearFocus()
                             keyboard?.hide()
@@ -153,33 +152,28 @@ internal fun PaymentAmountInput(
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
-        if (config.allowCustom) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (config.allowCustom) {
             TextField(
                 value = amount,
                 onValueChange = { value ->
                     if (value.length <= 11 && value.all { it in '0'..'9' || it == '.' } && value.count { it == '.' } <= 1) {
                         onAmountChange(value)
-                        validationMessage = null
                     }
                 },
-                label = "自定义金额（元）", useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
-                modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
-                    if (focus.isFocused) validationMessage = null
-                },
+                label = paymentAmountLabel(config), useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = if (config.integerOnly) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
-                    validationMessage = if (amount.isBlank()) null else amountError
                     focusManager.clearFocus()
                     keyboard?.hide()
                 }),
             )
-            // Only an explicit keyboard Done can show a format hint. Neither
-            // preset selection nor focus loss renders a transient validation row.
-            FieldError(validationMessage)
         }
-        InlineError(error)
     }
 }
+
+private fun paymentAmountLabel(config: RechargeConfiguration?) =
+    if (config?.integerOnly == true) "自定义金额（元，仅限整数）" else "自定义金额（元）"
 
 @Composable
 internal fun PaymentResultContent(
@@ -192,17 +186,19 @@ internal fun PaymentResultContent(
     retryMethods: List<FeeMethod> = emptyList(),
     onContinuePayment: (FeeMethod) -> Unit = {},
     enabled: Boolean = true,
+    onCheck: (() -> Unit)? = null,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
-    val failed = phase == RechargePhase.Failed && !busy
+    val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
+    val queryError = phase == RechargePhase.Checking && !loading
     val methods = retryMethods.distinctBy { it.id to it.code }
-    val canContinue = failed && methods.isNotEmpty()
+    val canContinue = phase == RechargePhase.Failed && !busy && methods.isNotEmpty()
     var selectedMethod by remember(phase, detail, retryMethods) { mutableStateOf<FeeMethod?>(null) }
     val title = when (phase) {
         RechargePhase.Paid -> subject + "成功"
         RechargePhase.Failed -> subject + "失败"
-        RechargePhase.Unknown -> "结果待确认"
-        RechargePhase.Checking -> "正在确认结果"
+        RechargePhase.TimedOut -> "支付超时"
+        RechargePhase.Checking -> if (loading) "正在查询结果" else "支付结果"
         RechargePhase.Creating -> "正在发起" + subject
         else -> "请在微信中完成支付"
     }
@@ -217,25 +213,29 @@ internal fun PaymentResultContent(
     ) {
         if (busy) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else {
+        } else if (!queryError) {
             ResultMark(phase, color)
         }
-        Spacer(Modifier.height(if (busy) 16.dp else 20.dp))
+        if (!queryError) Spacer(Modifier.height(if (busy) 16.dp else 20.dp))
         Text(title, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(if (busy) 8.dp else 12.dp))
         Text(
-            if (failed) detail?.takeIf { it.isNotBlank() } ?: "未能完成支付，请稍后重试"
+            // Official result page: order.msg || transactionFailedDescription (status 0 and 2).
+            if (failed) detail?.takeIf { it.isNotEmpty() } ?: "若扣款成功，请稍后在账单查看"
             else "¥ " + RechargeMoney.yuan(amountCents),
             modifier = Modifier.fillMaxWidth(),
             fontSize = if (failed) 17.sp else 36.sp,
             fontWeight = if (failed) FontWeight.Normal else FontWeight.SemiBold,
             textAlign = TextAlign.Center,
         )
-        val resultDetail = detail ?: if (phase == RechargePhase.Unknown) "稍后可在账单中核实" else null
-        if (!busy && !failed && phase != RechargePhase.Paid && resultDetail != null) {
+        if (queryError) {
+            Spacer(Modifier.height(16.dp))
+            InlineError(detail, actionLabel = if (onCheck != null) "重试" else null,
+                onAction = { if (enabled) onCheck?.invoke() })
+        } else if (!busy && !failed && phase != RechargePhase.Paid && detail != null) {
             Spacer(Modifier.height(12.dp))
             Text(
-                resultDetail,
+                detail,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 13.sp, textAlign = TextAlign.Center,
             )
