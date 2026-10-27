@@ -64,8 +64,7 @@ class CardPasswordViewModelTest {
     }
     private val ykt = object : YktService by YktApi({ error("Unexpected network") }) {
         override suspend fun login(credentials: Credentials): Session { logins++; return Session("new-fake-token", Long.MAX_VALUE) }
-        override suspend fun payment(token: String) = PaymentBatch(listOf("00000000000000000000"), 60, System.currentTimeMillis(),
-            PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 100))
+        override suspend fun payment(token: String) = PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 100))
     }
     private val repository = AccountRepository(ykt, vault, cardService = service)
     private val app = ApplicationProvider.getApplicationContext<Application>()
@@ -96,7 +95,7 @@ class CardPasswordViewModelTest {
         val username = runBlocking { withTimeout(1000) { model.passwordChanges.first() } }
         payment.cardPasswordChanged(username)
         await { payment.state.value.needsLogin && !payment.state.value.busy }
-        assertNull(payment.state.value.code); assertNull(payment.state.value.batch); assertNull(payment.state.value.account)
+        assertNull(payment.state.value.code); assertNull(payment.state.value.account)
         assertEquals("查询密码修改成功，请重新登录", runBlocking { withTimeout(1000) { payment.messages.first() } })
         payment.onForeground(); shadowOf(Looper.getMainLooper()).idle()
         assertEquals(0, logins)

@@ -1,10 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.indication
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -19,9 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -53,7 +46,6 @@ fun HallPage(
     feeOpening: FeeProject? = null,
     onOpenCardService: (CampusCardAction) -> Unit = {},
     cardServiceOpening: Boolean = false,
-    cardServiceLoadingAction: CampusCardAction? = null,
     dorm: DormUiState = DormUiState(),
     isActive: Boolean = false,
     onActivate: () -> Unit = {},
@@ -271,56 +263,4 @@ internal fun HallBadge(text: String, air: Boolean = false) {
     Text(text, Modifier.clip(RoundedCornerShape(4.dp)).background(if (air) DashboardPalette.airPanel else DashboardPalette.field)
         .padding(horizontal = 5.dp, vertical = 2.dp), fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
         color = if (air) DashboardPalette.airAccent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
-}
-
-/** Campus card services share the three-column grid used by living fees. */
-@Composable
-internal fun CampusCardServicesCard(opening: Boolean, onOpen: (CampusCardAction) -> Unit, loadingAction: CampusCardAction? = null) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("校园卡服务", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(CampusCardAction.ManageState, CampusCardAction.OthersRecharge, CampusCardAction.ChangePassword).forEach { action ->
-                    ServiceEntry(
-                        label = action.label,
-                        icon = when (action) {
-                            CampusCardAction.ManageState -> AppIcons.CardState
-                            CampusCardAction.ChangePassword -> AppIcons.Password
-                            else -> AppIcons.OthersRecharge
-                        },
-                        loading = loadingAction == action,
-                        enabled = !opening,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onOpen(action) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** The whole entry is tappable, but its press indication stays inside the circular icon. */
-@Composable
-private fun ServiceEntry(label: String, icon: ImageVector, loading: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Column(
-        modifier = modifier
-            .semantics { contentDescription = label }
-            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp)
-                .clip(CircleShape)
-                .background(MiuixTheme.colorScheme.secondaryContainer)
-                .indication(interactionSource, LocalIndication.current),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (loading) CircularProgressIndicator(Modifier.size(24.dp))
-            else Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MiuixTheme.colorScheme.primary)
-        }
-        Text(label, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-    }
 }

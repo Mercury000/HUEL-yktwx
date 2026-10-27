@@ -22,7 +22,6 @@ import com.mercury.yktwx.ui.components.BillListMinimumDate
 import com.mercury.yktwx.ui.pages.BillPage
 import com.mercury.yktwx.ui.pages.MyPage
 import com.mercury.yktwx.ui.pages.PersonalProfilePage
-import com.mercury.yktwx.ui.pages.DormFeeDialog
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -219,29 +218,4 @@ class DashboardInteractionTest {
         search.assertIsNotFocused()
     }
 
-    @Test fun dormMeterStartsSelectedAndAmountConfirmationRequiresSelection() {
-        val initial = FeeUiState(config = FeeConfiguration(FeeProject.Zhengdong, "郑东电费",
-            RechargeConfiguration("410", "", "", 0, listOf(1000), 1, 10000, true, false)),
-            levels = listOf(FeeLevel("room", 1, "房间")), selections = mapOf("room" to "demo-light"),
-            names = mapOf("room" to "示例A栋房间A照明"), query = FeeQuery(thirdParty = "{}"))
-        var submitted: Long? = null
-        content {
-            Scaffold {
-                DormFeeDialog(initial, true, "照明缴费", {}, { submitted = it }, {}, { _, _ -> }, {}, {}, {})
-            }
-        }
-        val target = compose.onNodeWithTag("dorm-payment-target")
-        target.assertIsSelected()
-        compose.onNodeWithText("示例A栋房间A").assertIsDisplayed()
-        compose.onNodeWithText("郑东电费 · 照明").assertIsDisplayed()
-        compose.onNodeWithText("¥ 10").performClick()
-        val submit = compose.onNodeWithText("缴费 ¥ 10.00")
-        submit.assertIsEnabled()
-        target.performClick().assertIsNotSelected()
-        submit.assertIsNotEnabled()
-        assertNull(submitted)
-        target.performClick().assertIsSelected()
-        submit.assertIsEnabled().performClick()
-        assertEquals(1000L, submitted)
-    }
 }

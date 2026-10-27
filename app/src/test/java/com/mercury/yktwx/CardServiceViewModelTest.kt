@@ -228,7 +228,7 @@ class CardServiceViewModelTest {
         assertFalse(model.accepts(request))
     }
     @Test fun selectingAnotherReturnedAccountUsesItsOwnAmountConfiguration() {
-        val second = RechargeRecipient("second-card", "second-target", "示例同学", "202600000002", "电子账户", 0)
+        val second = RechargeRecipient("second-card", "second-target", "示例同学", "202600000002", "电子账户")
         service.extraRecipients = listOf(second)
         model.open(CampusCardAction.OthersRecharge, vault.username, false)
         await { !model.state.value.loading }
@@ -304,7 +304,7 @@ class CardServiceViewModelTest {
         model.selectRecipient(model.state.value.recipients.single())
         model.refreshCaptcha()
         await { !model.state.value.loading }
-        service.queryFailure = RecipientLookupRejected(true, "验证码有误")
+        service.queryFailure = RecipientLookupRejected("验证码有误")
         model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "wrong")
         await { !model.state.value.loading }
         assertTrue(model.state.value.recipients.isEmpty())
@@ -476,13 +476,13 @@ class CardServiceViewModelTest {
             queries++
             withContext(NonCancellable) { queryGate.await() }; queryResponses++
             queryFailure?.let { throw it }
-            return listOf(RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)) + extraRecipients
+            return listOf(RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")) + extraRecipients
         }
         override suspend fun recipientRechargeConfiguration(token: String, recipient: RechargeRecipient): RechargeConfiguration {
             configurations++
             withContext(NonCancellable) { configGate.await() }; configResponses++
             configFailure?.let { throw it }
-            return RechargeConfiguration("401", recipient.targetId, recipient.accountName, 0, listOf(1000, 5000), 1, 50000, true, false, recipient)
+            return RechargeConfiguration("401", recipient.targetId, listOf(1000, 5000), 1, 50000, true, false, recipient)
         }
     }
     @Test fun preflightAndBusinessFailuresStayInDialogWithOriginalMessageAndNoReadback() {

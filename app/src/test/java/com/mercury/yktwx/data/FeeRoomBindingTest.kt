@@ -14,7 +14,6 @@ class FeeRoomBindingTest {
         assertEquals(values, parsed.selections)
         assertEquals(names, parsed.names)
         assertEquals("示例照明", parsed.dialogLabel)
-        assertEquals("示例校区 · 示例照明", parsed.label)
         assertTrue(room.sameTarget(parsed))
         assertFalse(room.toString().contains("示例"))
         assertFalse(room.toString().contains("demo-room"))
@@ -22,7 +21,6 @@ class FeeRoomBindingTest {
     @Test fun conciseDialogLabelDoesNotRepeatBuildingAndFloorAlreadyInMeterName() {
         val room = FeeRoomBinding.parse("campus:demo-campus#\$#示例校区;building:demo-building#\$#示例A号楼;floor:demo-floor#\$#示例楼层;room:demo-room#\$#示例A-房间A照明")!!
         assertEquals("示例A-房间A照明", room.dialogLabel)
-        assertTrue(room.label.contains("示例校区"))
         assertEquals("示例A号楼 · 示例楼层 · 房间A照明",
             FeeRoomBinding.parse(room.sceneInfo().replace("示例A-房间A照明", "房间A照明"))!!.dialogLabel)
     }

@@ -2,7 +2,6 @@ package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +29,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRecord>) {
@@ -40,7 +38,6 @@ internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRec
 internal val AppRefreshTexts = listOf("下拉刷新", "松开刷新", "正在刷新", "刷新完成")
 
 internal val BillListMinimumDate = LocalDate.of(2010, 2, 1)
-internal val BillStatsMinimumDate = LocalDate.of(2010, 1, 1)
 
 internal fun money(cents: Long): String = String.format(Locale.CHINA, "%.2f", cents / 100.0)
 
@@ -48,8 +45,6 @@ internal fun signedMoney(record: BillRecord): String =
     (if (record.income) "+" else "-") + "¥ " + money(record.amountCents)
 
 internal fun monthTitle(month: YearMonth): String = "${month.year}年${month.monthValue}月"
-
-internal fun monthShort(month: YearMonth): String = "${month.monthValue}月"
 
 internal fun billDateLabel(filter: BillDateFilter): String = when (filter.mode) {
     BillDateMode.Day -> fullBillDate(filter.start)
@@ -68,16 +63,6 @@ internal fun billDateScopeLabel(filter: BillDateFilter, today: LocalDate = Local
         BillDateMode.Year -> "${filter.start.year}年"
         BillDateMode.Range -> billRangeScopeLabel(filter.start, filter.end)
     }
-
-internal fun shiftBillDateFilter(filter: BillDateFilter, step: Long): BillDateFilter = when (filter.mode) {
-    BillDateMode.Day -> BillDateFilter.day(filter.start.plusDays(step))
-    BillDateMode.Month -> BillDateFilter.month(YearMonth.from(filter.start).plusMonths(step))
-    BillDateMode.Year -> BillDateFilter.year(filter.start.year + step.toInt())
-    BillDateMode.Range -> {
-        val days = ChronoUnit.DAYS.between(filter.start, filter.end) + 1
-        BillDateFilter.range(filter.start.plusDays(days * step), filter.end.plusDays(days * step))
-    }
-}
 
 private fun fullBillDate(date: LocalDate): String =
     "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
@@ -620,9 +605,4 @@ internal fun BillPreviewNote() {
         fontSize = 13.sp,
         color = MiuixTheme.colorScheme.primary,
     )
-}
-
-@Composable
-internal fun BillStatusDot(color: Color) {
-    Box(Modifier.size(6.dp).background(color, CircleShape))
 }

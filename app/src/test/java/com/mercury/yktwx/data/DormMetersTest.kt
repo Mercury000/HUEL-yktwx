@@ -12,8 +12,7 @@ class DormMetersTest {
     private fun binding(option: FeeOption) = FeeRoomBinding.from(levels,
         mapOf("campus" to "campus-a", "building" to "building-a", "floor" to "floor-a", "room" to option.id),
         mapOf("campus" to "示例校区", "building" to "示例A栋", "floor" to "示例楼层", "room" to option.name))!!
-    private fun config(room: FeeRoomBinding?) = FeeConfiguration(FeeProject.Zhengdong, "示例项目",
-        RechargeConfiguration("410", "", "", 0, listOf(100), 1, 10000, true, false), true, room)
+    private fun config(room: FeeRoomBinding?) = FeeConfiguration(FeeProject.Zhengdong, RechargeConfiguration("410", "", listOf(100), 1, 10000, true, false), true, room)
     private inner class FakeFees : FeeService by FeeApi({ error("Unexpected real request") }) {
         var options = listOf(ac, FeeOption("other-room", "示例A栋-房间B照明"), lighting)
         var failure: Exception? = null
@@ -42,7 +41,7 @@ class DormMetersTest {
         val room = DormMeterDiscovery(fees).discover("fake-token", config(official))!!
         assertSame(official, room.binding)
         assertEquals(listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning), room.meters.map { it.kind })
-        assertEquals(listOf("86.4", "32.8"), room.meters.map { it.remainingKwh })
+        assertEquals(listOf("86.4", "32.8"), room.meters.map { it.readings.firstOrNull()?.value })
         assertEquals(listOf(lighting.id, ac.id), fees.details.map { it["room"] })
         assertTrue(fees.details.all { it["campus"] == "campus-a" && it["building"] == "building-a" && it["floor"] == "floor-a" })
         assertEquals("示例A栋-房间A", room.label)
@@ -66,8 +65,8 @@ class DormMetersTest {
     @Test fun oneMeterFailureDoesNotEraseOtherMeterOrInventZero() = runBlocking {
         val fees = FakeFees().apply { failure = NetworkFailure() }
         val room = DormMeterDiscovery(fees).discover("fake-token", config(binding(lighting)))!!
-        assertEquals("86.4", room.meters[0].remainingKwh)
-        assertNull(room.meters[1].remainingKwh)
+        assertEquals("86.4", room.meters[0].readings.firstOrNull()?.value)
+        assertNull(room.meters[1].readings.firstOrNull()?.value)
         assertNotNull(room.meters[1].error)
     }
     @Test fun noBindingMakesNoQueriesAndStaleTargetCannotSelectNearbyRoom() = runBlocking {
@@ -131,7 +130,7 @@ class DormMetersTest {
                 return FeeQuery(levels, choices)
             }
         }
-        val cfg = FeeConfiguration(FeeProject.Wenbei, "文北", config(selected).amountRules, true, selected)
+        val cfg = FeeConfiguration(FeeProject.Wenbei, config(selected).amountRules, true, selected)
         val room = DormMeterDiscovery(service).discover("fake-token", cfg)!!
         assertEquals(2, room.meters.size)
         assertEquals("air-building", details[1]["building"])
@@ -162,7 +161,7 @@ class DormMetersTest {
         val oldNames = FeeRoomBinding.from(levels, selected.selections,
             selected.names + ("building" to "旧楼栋照明") + ("room" to "旧房间照明"))!!
         val renamed = DormMeterDiscovery(service).discover("fake-token", FeeConfiguration(
-            FeeProject.Wenbei, cfg.name, cfg.amountRules, true, oldNames))!!
+            FeeProject.Wenbei, cfg.amountRules, true, oldNames))!!
         assertSame(oldNames, renamed.binding)
         assertEquals(2, renamed.meters.size)
         assertEquals("5-201照明", renamed.meters[0].room.names["room"])
@@ -210,7 +209,7 @@ class DormMetersTest {
         var writes = 0
         val service = object : FeeService by FeeApi({ error("Unexpected real request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject) =
-                FeeConfiguration(project, project.label, config(null).amountRules, true,
+                FeeConfiguration(project, config(null).amountRules, true,
                     if (project != boundProject) null else {
                         val actual = if (project == FeeProject.FamilyWater) waterBinding else electricBinding
                         if (staleNames) FeeRoomBinding.from(levels, actual.selections,
@@ -242,7 +241,7 @@ class DormMetersTest {
             assertEquals(listOf(project), merged.bindings.map { it.project })
             assertEquals("度", merged.meters[0].readings.single().unit)
             assertEquals("吨", merged.meters[1].readings.single().unit)
-            assertNull(merged.meters[1].remainingKwh)
+            assertEquals("45.86", merged.meters[1].readings.single().value)
             assertEquals(listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater),
                 mergeFamilyRooms(listOf(merged)).single().meters.map { it.project })
         }

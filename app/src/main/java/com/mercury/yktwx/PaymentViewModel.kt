@@ -21,7 +21,6 @@ data class PaymentUiState(
     val busy: Boolean = false,
     val error: String? = null,
     val username: String = "",
-    val batch: PaymentBatch? = null,
     val code: String? = null,
     val secondsLeft: Long = 0,
     val preview: Boolean = false,
@@ -29,7 +28,7 @@ data class PaymentUiState(
     val restoringLogin: Boolean = false,
     // Account presentation outlives a code batch; never keep old payment codes
     // merely to preserve the card while a refresh is in flight.
-    val account: PaymentAccount? = batch?.account,
+    val account: PaymentAccount? = null,
     val problem: PaymentCodeProblem? = null,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
@@ -123,8 +122,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", account = account,
                     preview = true, problem = PaymentCodeProblem.Lost)
             } else {
-                val batch = PaymentBatch(List(10) { "00000000000000000000" }, 60, System.currentTimeMillis(), account)
-                mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", batch = batch, code = batch.codes[0], secondsLeft = 60, preview = true)
+                val batch = PaymentBatch(List(10) { "00000000000000000000" }, 60, account)
+                mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", account = batch.account, code = batch.codes[0], secondsLeft = 60, preview = true)
             }
             return
         }
@@ -233,7 +232,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             return
         }
         val interval = batch.displayIntervalSeconds
-        mutable.value = PaymentUiState(false, username = username, batch = batch, code = batch.codes[0], secondsLeft = interval)
+        mutable.value = PaymentUiState(false, username = username, account = batch.account, code = batch.codes[0], secondsLeft = interval)
         ticker?.cancel()
         ticker = viewModelScope.launch {
             val started = SystemClock.elapsedRealtime()

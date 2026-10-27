@@ -118,7 +118,7 @@ class BillViewModelTest {
         model.refresh()
         assertTrue(model.state.value.refreshing)
         val nextMonth = java.time.YearMonth.from(model.state.value.dateFilter.start).minusMonths(1)
-        model.selectMonth(nextMonth)
+        model.selectDate(BillDateFilter.month(nextMonth))
         assertFalse(model.state.value.refreshing)
         assertTrue(model.state.value.loading)
         vault.credentialsGate!!.countDown()
@@ -233,12 +233,12 @@ class BillViewModelTest {
             requests++
             requestGate.await()
             failure?.let { throw it }
-            return BillPageData(items, items.size, current, if (items.isEmpty()) 0 else 1, size)
+            return BillPageData(items, current, if (items.isEmpty()) 0 else 1)
         }
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
         override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int =
             if (type == 1) items.count { it.income } else items.count { !it.income }
-        override suspend fun billTypes(token: String) = listOf(BillType("4", "二维码支付", "qrCode-payment"))
+        override suspend fun billTypes(token: String) = listOf(BillType("4", "二维码支付"))
         override suspend fun login(credentials: Credentials): Session = error("Unexpected login")
         override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()

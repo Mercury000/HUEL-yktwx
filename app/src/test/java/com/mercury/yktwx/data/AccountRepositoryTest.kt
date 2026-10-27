@@ -43,7 +43,7 @@ class AccountRepositoryTest {
         override suspend fun payment(token: String): PaymentBatch {
             payments++
             if (paymentFailures.isNotEmpty()) throw paymentFailures.removeAt(0)
-            return PaymentBatch(listOf("00000000000000000000"), 60, 0, PaymentAccount("0", "0", "0", "Demo", 0))
+            return PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("0", "0", "0", "Demo", 0))
         }
         override suspend fun bills(
             token: String,
@@ -55,7 +55,7 @@ class AccountRepositoryTest {
             amountFromCents: Long?,
             amountToCents: Long?,
             info: String?,
-        ) = BillPageData(emptyList(), 0, current, 0, size)
+        ) = BillPageData(emptyList(), current, 0)
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
         override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int = 0
         override suspend fun billTypes(token: String): List<BillType> = emptyList()
@@ -121,7 +121,7 @@ class AccountRepositoryTest {
                 payments++
                 if (payments == 2) entered.complete(Unit)
                 release.await()
-                return PaymentBatch(emptyList(), 60, 0, PaymentAccount("0", "0", "0", "Demo", 0))
+                return PaymentBatch(emptyList(), 60, PaymentAccount("0", "0", "0", "Demo", 0))
             }
         }
         val repo = AccountRepository(s, MemoryVault())
@@ -144,7 +144,7 @@ class AccountRepositoryTest {
                     release.await()
                     throw AuthenticationRequired()
                 }
-                return PaymentBatch(emptyList(), 60, 0, PaymentAccount("0", "0", "0", "Demo", 0))
+                return PaymentBatch(emptyList(), 60, PaymentAccount("0", "0", "0", "Demo", 0))
             }
         }
         val v = MemoryVault(); val repo = AccountRepository(s, v)

@@ -23,12 +23,12 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         val flag = item.rechargeText("flag").getOrNull(7)
         val options = item.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }.distinct().filter { it in min..max }
         if (min > max || (flag == '1' && options.isEmpty())) throw YktException("没有可用的缴费金额")
-        val rules = RechargeConfiguration(project.id, "", "", 0, options, min, max, flag != '1', flag == '2')
+        val rules = RechargeConfiguration(project.id, "", options, min, max, flag != '1', flag == '2')
         val enabled = !project.network && item.optInt("bindStatus") == 1 &&
             item.optJSONObject("feeitemImplBean")?.optInt("bindinfo") == 1
         val scene = response.rechargeText("sceneinfo")
         val binding = if (enabled) FeeRoomBinding.parse(scene) else null
-        return FeeConfiguration(project, item.rechargeText("name").ifBlank { project.label }, rules,
+        return FeeConfiguration(project, rules,
             enabled, binding, enabled && scene.isNotBlank() && binding == null)
     }
 
@@ -83,7 +83,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         ), sign = true).getJSONObject("data")
         val id = data.rechargeText("orderid")
         if (!RechargeProtocol.validId(id)) throw YktException("订单创建结果未确认，请在官网核实")
-        val pending = PendingRecharge(username, target, config.project.id, amountCents, System.currentTimeMillis(), id)
+        val pending = PendingRecharge(username, target, config.project.id, amountCents, id)
         val info = orderInfo(token, pending)
         val methods = info.optJSONArray("payList") ?: throw YktException("没有可用的支付方式")
         val supported = (0 until methods.length()).map { methods.getJSONObject(it) }.filter {
@@ -183,14 +183,14 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             put("orderid", order.orderId ?: throw YktException("订单未确认")); order.payId?.let { put("payid", it) }
         })
         val list = payload.optJSONArray("orderList") ?: throw YktException("订单结果未确认")
-        if (list.length() == 0) return RechargeResult(false, order.amountCents, null, null)
+        if (list.length() == 0) return RechargeResult(false, null)
         if (list.length() != 1) throw YktException("订单结果异常")
         val o = list.getJSONObject(0)
         val status = o.rechargeText("status").toIntOrNull() ?: -1
         verifyOrder(o, order, strict = status == 1, verifyPayId = true)
-        if (status != 1) return RechargeResult(false, order.amountCents, null, status)
+        if (status != 1) return RechargeResult(false, status)
         if (RechargeMoney.responseCents(o.opt("actulamt")) != order.amountCents) throw YktException("实付金额不匹配")
-        return RechargeResult(true, order.amountCents, null, status)
+        return RechargeResult(true, status)
     }
     private fun verifyOrder(o: JSONObject, order: PendingRecharge, strict: Boolean, verifyPayId: Boolean) {
         if (o.rechargeText("orderid") != order.orderId) throw YktException("缴费订单不匹配")

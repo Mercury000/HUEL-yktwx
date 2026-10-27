@@ -21,7 +21,6 @@ class RechargeUiState(
     val pending: PendingRecharge? = null,
     val phase: RechargePhase = RechargePhase.Amount,
     val error: String? = null,
-    val balanceCents: Long? = null,
     val preview: Boolean = false,
 ) {
     override fun toString() = "RechargeUiState([redacted])"
@@ -58,7 +57,7 @@ class RechargeViewModel internal constructor(
         task = viewModelScope.launch {
             try {
                 val config = if (preview) RechargeConfiguration(
-                    "demo", "demo", "统一账户", 0, listOf(1000, 5000, 10000), 1, 50000, true, false,
+                    "demo", "demo", listOf(1000, 5000, 10000), 1, 50000, true, false,
                 ) else repository.rechargeConfiguration(preferredCard)
                 if (attempt == current) mutable.value = RechargeUiState(visible = true, config = config, preview = preview)
             } catch (e: CancellationException) { throw e }
@@ -86,7 +85,7 @@ class RechargeViewModel internal constructor(
         config.amountError(amountCents)?.let { update(error = it); return }
         if (repository.username() != owner) { update(error = "账户已切换，请重新打开充值"); return }
         val current = attempt
-        val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, System.currentTimeMillis(), recipient = config.recipient)
+        val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, recipient = config.recipient)
         update(loading = true, pending = pending, phase = RechargePhase.Creating, error = null)
         task = viewModelScope.launch {
             try {

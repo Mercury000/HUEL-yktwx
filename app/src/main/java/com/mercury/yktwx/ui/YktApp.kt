@@ -64,7 +64,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Scan
-import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -301,7 +300,7 @@ private fun MainContent(
         rechargeModel.dismiss()
         cardModel.dismiss()
         passwordModel.dismiss()
-        feeModel.open(project, state.username, state.preview, requestedRoom, hall = true)
+        feeModel.open(project, state.username, state.preview, requestedRoom)
     }
     LaunchedEffect(feeOpening, feeState.loading, feeState.config, feeState.error, isActive) {
         if (feeOpening == null) return@LaunchedEffect
@@ -394,7 +393,6 @@ private fun MainContent(
                                 0 -> PaymentPage(
                                     state, settings, bottom,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
-                                    onLogout = { if (isActive) viewModel.logout() },
                                     onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onUnlost = {
@@ -422,8 +420,6 @@ private fun MainContent(
                                     feeOpening = feeOpening,
                                     onOpenCardService = ::cardAction,
                                     cardServiceOpening = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
-                                    cardServiceLoadingAction = if (passwordState.loading && !passwordState.visible) CampusCardAction.ChangePassword
-                                        else cardState.action.takeIf { cardState.loading && !cardState.visible },
                                 )
                                 2 -> BillPage(
                                     state = billState,
@@ -481,7 +477,7 @@ private fun MainContent(
                         project = feeProject, fixedTarget = feeTarget, saveOnly = feeSaveOnly,
                         onDismiss = { dormPaymentVisible = false; feeOpening = null; feeModel.dismiss() },
                         onSelect = feeModel::select,
-                        onRetry = { feeProject?.let { feeModel.open(it, state.username, state.preview, feeTarget, hall = true) } },
+                        onRetry = { feeProject?.let { feeModel.open(it, state.username, state.preview, feeTarget) } },
                         onRoomAction = feeModel::requestRoomAction, onConfirmRoomAction = feeModel::confirmRoomAction,
                         onDismissRoomDialog = feeModel::dismissRoomDialog, onConsumeRoomNotice = feeModel::consumeRoomNotice,
                         onCreate = feeModel::createWithMethod, onMethod = feeModel::chooseMethod,
@@ -511,7 +507,7 @@ private fun MainContent(
                     Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
                         rechargeLoading = rechargeState.loading && !rechargeState.visible)
                     Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
-                        onOpenReferences = { open(Screen.References) }, onOpenSettings = { open(Screen.Settings) }, onBack = ::close, showSettings = false)
+                        onOpenReferences = { open(Screen.References) }, onBack = ::close)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
                     else -> SecondaryPage(
                         screen = screen,

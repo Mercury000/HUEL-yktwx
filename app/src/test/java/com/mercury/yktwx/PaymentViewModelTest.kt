@@ -55,7 +55,7 @@ class PaymentViewModelTest {
             withContext(NonCancellable) { paymentGate.await() }
             responses++
             if (!allowed) throw PaymentCodeUnavailable(currentAccount, "持卡人已挂失！", currentProblem)
-            return PaymentBatch(listOf("00000000000000000000"), 60, 0, account)
+            return PaymentBatch(listOf(payments.toString().padStart(20, '0')), 60, account)
         }
     }
     private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
@@ -101,7 +101,6 @@ class PaymentViewModelTest {
         await { !model.state.value.busy }
         assertEquals(1234L, model.state.value.account!!.balanceCents)
         assertNull(model.state.value.code)
-        assertNull(model.state.value.batch)
         assertEquals("持卡人已挂失！", model.state.value.error)
         assertEquals(2, payments)
     }
@@ -112,21 +111,20 @@ class PaymentViewModelTest {
         codeAvailable = true
         model.onForeground()
         await { model.state.value.code != null }
-        val first = model.state.value.batch
+        val first = model.state.value.code
         codeAvailable = false
         problem = PaymentCodeProblem.Lost
         model.cardStateChanged()
         assertNull(model.state.value.code)
         await { !model.state.value.busy }
         assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
-        assertNull(model.state.value.batch)
         assertEquals(0L, model.state.value.secondsLeft)
         assertEquals(6496L, model.state.value.account!!.balanceCents)
         codeAvailable = true
         model.cardStateChanged()
         await { model.state.value.code != null }
         assertNull(model.state.value.problem)
-        assertNotSame(first, model.state.value.batch)
+        assertNotEquals(first, model.state.value.code)
         assertEquals(3, payments)
     }
 
@@ -145,7 +143,6 @@ class PaymentViewModelTest {
         await { responses == 2 && !model.state.value.busy }
         assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
         assertNull(model.state.value.code)
-        assertNull(model.state.value.batch)
     }
 
     @Test fun failedCardVerificationIsNotPresentedAsALostCard() {
@@ -173,7 +170,7 @@ class PaymentViewModelTest {
     }
     @Test fun decreasedBalanceShowsDifferenceAndRefreshesCodeAndBalance() {
         readyForTurn()
-        val first = model.state.value.batch
+        val first = model.state.value.code
         account = account.with(balanceCents = 5996)
         model.paymentTurnReturned()
         await { model.paymentSuccess.value != null && !model.state.value.busy }
@@ -181,7 +178,7 @@ class PaymentViewModelTest {
         assertEquals(5996L, model.state.value.account!!.balanceCents)
         assertEquals(1, accountQueries)
         assertEquals(2, payments)
-        assertNotSame(first, model.state.value.batch)
+        assertNotEquals(first, model.state.value.code)
         model.dismissPaymentSuccess()
         model.paymentTurnStarted(); model.paymentTurnReturned()
         await { accountQueries == 2 }
@@ -195,7 +192,7 @@ class PaymentViewModelTest {
         await { accountQueries == 1 }
         assertNull(model.paymentSuccess.value)
         assertNull(model.state.value.error)
-        assertSame(before.batch, model.state.value.batch)
+        assertEquals(before.code, model.state.value.code)
         assertEquals(1, payments)
         model.cancelPaymentDetection()
         model.paymentTurnStarted()
@@ -276,7 +273,7 @@ class PaymentViewModelTest {
         assertEquals(1, payments)
         assertNull(model.paymentSuccess.value)
         assertNull(model.state.value.error)
-        assertSame(before.batch, model.state.value.batch)
+        assertEquals(before.code, model.state.value.code)
         assertEquals(before.account!!.balanceCents, model.state.value.account!!.balanceCents)
     }
     @Test fun allFailedQueriesAlsoRemainSilentAndStop() {

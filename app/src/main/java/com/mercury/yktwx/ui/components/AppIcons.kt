@@ -7,13 +7,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object AppIcons {
-    val SwitchRoom = ImageVector.Builder("SwitchRoom", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
-            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
-            moveTo(4f, 8f); lineTo(20f, 8f); moveTo(16f, 4f); lineTo(20f, 8f); lineTo(16f, 12f)
-            moveTo(20f, 16f); lineTo(4f, 16f); moveTo(8f, 12f); lineTo(4f, 16f); lineTo(8f, 20f)
-        }
-    }.build()
+
     val DateDropdown = ImageVector.Builder("DateDropdown", 16.dp, 16.dp, 16f, 16f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
@@ -33,50 +27,7 @@ object AppIcons {
             moveTo(19.6f, 11f); lineTo(15.6f, 9.9f); lineTo(16.7f, 5.8f)
         }
     }.build()
-    val SaveRoom = ImageVector.Builder("SaveRoom", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(4f, 4f); lineTo(17f, 4f); lineTo(20f, 7f); lineTo(20f, 20f)
-            lineTo(4f, 20f); close()
-            moveTo(8f, 4f); lineTo(8f, 9f); lineTo(16f, 9f); lineTo(16f, 4f)
-            moveTo(8f, 20f); lineTo(8f, 14f); lineTo(16f, 14f); lineTo(16f, 20f)
-        }
-    }.build()
-    val UnbindRoom = ImageVector.Builder("UnbindRoom", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(9f, 14f); lineTo(7f, 16f); curveTo(5f, 18f, 2f, 15f, 4f, 13f); lineTo(7f, 10f)
-            moveTo(15f, 10f); lineTo(17f, 8f); curveTo(19f, 6f, 22f, 9f, 20f, 11f); lineTo(17f, 14f)
-            moveTo(10f, 7f); lineTo(9f, 4f)
-            moveTo(14f, 17f); lineTo(15f, 20f)
-            moveTo(3f, 3f); lineTo(21f, 21f)
-        }
-    }.build()
-    val Payment = ImageVector.Builder("Payment", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(4f, 9f); lineTo(4f, 4f); lineTo(9f, 4f)
-            moveTo(15f, 4f); lineTo(20f, 4f); lineTo(20f, 9f)
-            moveTo(20f, 15f); lineTo(20f, 20f); lineTo(15f, 20f)
-            moveTo(9f, 20f); lineTo(4f, 20f); lineTo(4f, 15f)
-            moveTo(8f, 8f); lineTo(11f, 8f); lineTo(11f, 11f); lineTo(8f, 11f); close()
-            moveTo(14f, 8f); lineTo(16f, 8f); lineTo(16f, 11f)
-            moveTo(8f, 14f); lineTo(8f, 16f); lineTo(11f, 16f)
-            moveTo(14f, 14f); lineTo(16f, 14f); lineTo(16f, 16f); lineTo(14f, 16f); close()
-        }
-    }.build()
-    val About = ImageVector.Builder("About", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(12f, 3f); curveTo(17f, 3f, 21f, 7f, 21f, 12f); curveTo(21f, 17f, 17f, 21f, 12f, 21f)
-            curveTo(7f, 21f, 3f, 17f, 3f, 12f); curveTo(3f, 7f, 7f, 3f, 12f, 3f); close()
-            moveTo(12f, 11f); lineTo(12f, 17f)
-            moveTo(12f, 7f); lineTo(12f, 8f)
-        }
-    }.build()
-    val Logout = ImageVector.Builder("Logout", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(10f, 4f); lineTo(4f, 4f); lineTo(4f, 20f); lineTo(10f, 20f)
-            moveTo(9f, 12f); lineTo(20f, 12f)
-            moveTo(16f, 8f); lineTo(20f, 12f); lineTo(16f, 16f)
-        }
-    }.build()
+
     val Electricity = ImageVector.Builder("Electricity", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(13f, 3f); lineTo(5f, 13f); lineTo(11f, 13f)
@@ -116,21 +67,7 @@ object AppIcons {
             moveTo(8f, 16f); lineTo(13f, 16f)
         }
     }.build()
-    val Chart = ImageVector.Builder("Chart", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(4f, 4f); lineTo(4f, 20f); lineTo(20f, 20f)
-            moveTo(7f, 15f); lineTo(11f, 11f); lineTo(14f, 14f); lineTo(20f, 7f)
-            moveTo(20f, 7f); lineTo(20f, 11f)
-            moveTo(20f, 7f); lineTo(16f, 7f)
-        }
-    }.build()
-    val Password = ImageVector.Builder("Password", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
-            moveTo(7f, 10f); lineTo(7f, 7f); curveTo(7f, 1f, 17f, 1f, 17f, 7f); lineTo(17f, 10f)
-            moveTo(4f, 10f); lineTo(20f, 10f); lineTo(20f, 21f); lineTo(4f, 21f); close()
-            moveTo(12f, 14f); lineTo(12f, 17f)
-        }
-    }.build()
+
     val CardState = ImageVector.Builder("CardState", 24.dp, 24.dp, 24f, 24f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
             moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 19f); lineTo(3f, 19f); close()

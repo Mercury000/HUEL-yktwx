@@ -1,8 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -15,89 +13,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BillStatsState
-import com.mercury.yktwx.BillUiState
-import com.mercury.yktwx.data.BillDateFilter
 import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillRecord
-import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-
-@Composable
-fun BillStatsPage(
-    state: BillUiState,
-    settings: ThemeSettings,
-    onBack: () -> Unit,
-    onDateChange: (BillDateFilter) -> Unit,
-    onTypeChange: (Int) -> Unit,
-    onRetry: () -> Unit,
-    onOpenDetail: (BillRecord) -> Unit,
-) {
-    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-    val stats = state.stats
-    BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
-        Scaffold(topBar = {
-            BlurredBar(topGradient = true) {
-                TopAppBar(
-                    title = "账单统计",
-                    largeTitle = "账单统计",
-                    scrollBehavior = scrollBehavior,
-                    color = Color.Transparent,
-                    navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
-                    },
-                )
-            }
-        }) { padding ->
-            BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                PullToRefresh(
-                    isRefreshing = stats.loading && stats.loaded,
-                    onRefresh = onRetry,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
-                    topAppBarScrollBehavior = scrollBehavior,
-                    color = MiuixTheme.colorScheme.primary,
-                    refreshTexts = AppRefreshTexts,
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().overScrollVertical(),
-                        contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 16.dp,
-                            bottom = padding.calculateBottomPadding() + 28.dp,
-                            start = 16.dp,
-                            end = 16.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        if (state.needsLogin) {
-                            item(key = "login") {
-                                BillErrorCard(
-                                    "登录已失效，请返回付款页重新登录。",
-                                    title = "登录已失效",
-                                    actionLabel = "返回",
-                                    onAction = onBack,
-                                )
-                            }
-                        } else {
-                            item(key = "date") {
-                                BillDateSelector(
-                                    filter = stats.period,
-                                    minimumDate = BillStatsMinimumDate,
-                                    onDateSelected = onDateChange,
-                                )
-                            }
-                            billStatsContent(stats, onTypeChange, onRetry, onOpenDetail)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit, onOpenDetail: (BillRecord) -> Unit) {
     item(key = "tabs") {

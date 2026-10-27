@@ -4,12 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.geometry.Offset
-import kotlin.math.hypot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.WindowInsets
@@ -57,7 +54,7 @@ class CardServiceUiTest {
         output.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     private fun recipientConfig(recipient: RechargeRecipient) = RechargeConfiguration("demo", recipient.targetId,
-        recipient.accountName, 0, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
+        listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
     private fun page(mode: ColorSchemeMode) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -145,7 +142,7 @@ class CardServiceUiTest {
         screenshot("campus-card-field-error-dialog")
     }
     @Test fun recipientAmountPageShowsSelectedAccountAboveAmountWithoutExtraStep() {
-        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
+        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
         val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
             recipients = listOf(recipient), selectedRecipient = recipient, rechargeConfig = recipientConfig(recipient)))
         var submitted: Long? = null
@@ -181,7 +178,7 @@ class CardServiceUiTest {
         assertEquals(1000L, submitted)
     }
     @Test fun recipientSelectionChangesGreyToPrimaryWithMatchingTextContrast() {
-        val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户", 0)
+        val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户")
         val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge, recipients = listOf(recipient)))
         var grey = Color.Unspecified
         var primary = Color.Unspecified
@@ -238,7 +235,7 @@ class CardServiceUiTest {
     }
     @Test fun recipientBottomSheetKeepsActionAboveInjectedNavigationBar() {
         compose.activity.enableEdgeToEdge()
-        val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户", 0)
+        val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户")
         val state = CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
             recipients = listOf(recipient), selectedRecipient = recipient, rechargeConfig = recipientConfig(recipient))
         var view: android.view.View? = null
@@ -282,56 +279,7 @@ class CardServiceUiTest {
         compose.onNodeWithText("读取校园卡").assertDoesNotExist()
         compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
     }
-    @Test fun serviceIconHasOneClickTargetAndLoadingBlocksRepeatedEntry() {
-        var calls = 0
-        val loading = mutableStateOf(false)
-        compose.setContent {
-            AppTheme { CampusCardServicesCard(loading.value, { calls++; loading.value = true },
-                CampusCardAction.ManageState.takeIf { loading.value }) }
-        }
-        compose.onAllNodes(hasClickAction()).assertCountEquals(3)
-        compose.onAllNodes(hasClickAction(), useUnmergedTree = true).assertCountEquals(3)
-        compose.onNodeWithContentDescription("挂失 / 解挂").performClick()
-        assertEquals(1, calls)
-        compose.onNodeWithContentDescription("挂失 / 解挂").assertIsNotEnabled()
-        compose.onNodeWithText("挂失 / 解挂").performClick()
-        assertEquals(1, calls)
-    }
-    @Test fun ownCardServicePressIndicationStaysInsideCircle() {
-        compose.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme(ColorSchemeMode.Light) {
-                    CampusCardServicesCard(false, {})
-                }
-            }
-        }
-        val label = "挂失 / 解挂"
-        val node = compose.onNodeWithContentDescription(label)
-        node.assertHasClickAction()
-        val before = node.captureToImage().asAndroidBitmap()
-        var density = 1f
-        compose.runOnIdle { density = compose.activity.resources.displayMetrics.density }
-        val centerX = before.width / 2f
-        val centerY = 32f * density // 8 dp top padding + 24 dp icon radius.
-        val radius = 24f * density
-        compose.mainClock.autoAdvance = false
-        node.performTouchInput { down(Offset(centerX, centerY)) }
-        compose.mainClock.advanceTimeBy(300)
-        val pressed = node.captureToImage().asAndroidBitmap()
-        var changed = 0
-        for (y in 0 until before.height) for (x in 0 until before.width) {
-            if (before.getPixel(x, y) != pressed.getPixel(x, y)) {
-                changed++
-                assertTrue("$label press highlight escaped its circular icon at ($x, $y)",
-                    hypot(x + 0.5f - centerX, y + 0.5f - centerY) <= radius + 2f)
-            }
-        }
-        assertTrue("$label has no visible press feedback", changed > 0)
-        screenshot("campus-card-circular-press")
-        node.performTouchInput { cancel() }
-        compose.mainClock.autoAdvance = true
-        compose.waitForIdle()
-    }
+
     @Test fun successfulStateDoesNotRequireAnExtraCompletionClick() {
         val card = CampusCard("demo", "校园卡", "202600000001", false, false, 0)
         val current = mutableStateOf(CardServiceUiState(visible = true, cards = listOf(card), selectedCard = card))
@@ -358,7 +306,7 @@ class CardServiceUiTest {
             Bitmap.createBitmap(120, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.LTGRAY) }
                 .compress(Bitmap.CompressFormat.PNG, 100, it)
         }.toByteArray()
-        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
+        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
         val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
             captcha = RecipientCaptcha("initial-key", image)))
         var refreshes = 0
@@ -388,8 +336,8 @@ class CardServiceUiTest {
         assertEquals(1, refreshes)
     }
     @Test fun rechargeSheetIncludesRecipientBeforeReusingAmountAndWechatButton() {
-        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
-        val config = RechargeConfiguration("demo", recipient.targetId, "统一账户", 0, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
+        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
+        val config = RechargeConfiguration("demo", recipient.targetId, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold { RechargeDialog(RechargeUiState(visible = true, config = config, preview = true), {}, {}, {}) } }

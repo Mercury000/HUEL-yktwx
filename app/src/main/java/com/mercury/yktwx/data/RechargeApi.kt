@@ -17,11 +17,11 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val id = front.rechargeText("recharge")
         if (!id.matches(Regex("[0-9]{1,12}"))) throw YktException("充值项目配置异常")
         val fee = json(request("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id))).getJSONObject("feeitem")
-        val account = selectedAccount(token, preferredTarget, ecard, allowCardMatch = true)
-        return amountConfiguration(id, account.first, account.second.first, account.second.second, front, fee)
+        val account = selectedAccount(token, preferredTarget, ecard)
+        return amountConfiguration(id, account, front, fee)
     }
     companion object {
-        internal fun amountConfiguration(id: String, target: String, name: String, balance: Long, front: JSONObject,
+        internal fun amountConfiguration(id: String, target: String, front: JSONObject,
             fee: JSONObject, recipient: RechargeRecipient? = null): RechargeConfiguration {
             val minimum = fee.rechargeText("retain_money").takeIf { it.isNotBlank() }?.let {
                 RechargeMoney.cents(it) ?: throw YktException("充值限额配置异常")
@@ -33,7 +33,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
                 .distinct().filter { it in minimum..maximum }
             val flag = fee.rechargeText("flag").getOrNull(7)
             if (minimum > maximum || (flag == '1' && options.isEmpty())) throw YktException("没有可用的充值金额")
-            return RechargeConfiguration(id, target, name, balance, options, minimum, maximum, flag != '1', flag == '2', recipient)
+            return RechargeConfiguration(id, target, options, minimum, maximum, flag != '1', flag == '2', recipient)
         }
     }
 
@@ -41,14 +41,13 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         token: String,
         preferredTarget: String?,
         ecard: JSONObject,
-        allowCardMatch: Boolean = false,
-    ): Pair<String, Pair<String, Long>> {
+    ): String {
         val cardType = ecard.rechargeText("type")
         val data = json(request("/berserker-app/ykt/tsm/queryCard", token, mapOf("scene" to "recharge"))).getJSONObject("data")
         if (data.rechargeText("retcode") != "0") throw YktException("没有可充值账户")
         val cards = data.optJSONArray("card") ?: throw YktException("没有可充值账户")
-        val candidates = mutableListOf<Pair<String, Pair<String, Long>>>()
-        val sameCardCandidates = mutableListOf<Pair<String, Pair<String, Long>>>()
+        val candidates = mutableListOf<String>()
+        val sameCardCandidates = mutableListOf<String>()
         var unavailable: RechargeTargetUnavailable? = null
         for (i in 0 until cards.length()) {
             val card = cards.getJSONObject(i)
@@ -63,32 +62,29 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
                 continue
             }
             val cardAccount = card.rechargeText("account")
-            val cardCandidates = mutableListOf<Pair<String, Pair<String, Long>>>()
+            val cardCandidates = mutableListOf<String>()
             if (cardType != "1" && cardAccount.isNotBlank()) {
-                cardCandidates += cardAccount to (card.rechargeText("cardname").ifBlank { "校园卡" } to (card.optLong("db_balance") + card.optLong("unsettle_amount")))
+                cardCandidates += cardAccount
             }
             if (cardType != "2") {
                 val accounts = card.optJSONArray("accinfo")
-                val electronic = mutableListOf<Pair<String, Pair<String, Long>>>()
+                val electronic = mutableListOf<String>()
                 for (j in 0 until (accounts?.length() ?: 0)) {
                     val a = accounts!!.getJSONObject(j)
                     val target = a.rechargeText("type")
-                    if (target.isNotBlank()) electronic += target to (a.rechargeText("name").ifBlank { "统一账户" } to a.optLong("balance"))
+                    if (target.isNotBlank()) electronic += target
                 }
                 // Match the website's default electronic-account ordering.
-                cardCandidates += electronic.sortedBy { it.first }
+                cardCandidates += electronic.sorted()
             }
             candidates += cardCandidates
             if (cardAccount == preferredTarget) sameCardCandidates += cardCandidates
         }
         if (preferredTarget != null) {
-            if (allowCardMatch) {
-                // Initial selection is scoped to the homepage card. Never fall back
-                // to another card just because payment's payacc differs.
-                sameCardCandidates.firstOrNull()?.let { return it }
-            }
-            candidates.firstOrNull { it.first == preferredTarget }?.let { return it }
-            throw YktException(if (allowCardMatch) "当前卡片没有可充值账户" else "原充值账户不可用，请在官网核实")
+            // Keep initial selection scoped to the homepage card.
+            sameCardCandidates.firstOrNull()?.let { return it }
+            candidates.firstOrNull { it == preferredTarget }?.let { return it }
+            throw YktException("当前卡片没有可充值账户")
         }
         return candidates.firstOrNull() ?: throw (unavailable ?: RechargeTargetUnavailable("没有可充值的正常账户"))
     }
@@ -137,7 +133,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         // The official result page synthesizes status=0 for an empty orderList.
         // Only a valid successful response with an actual empty array uses this
         // fallback; HTTP errors, malformed responses and mismatches stay unknown.
-        if (list.length() == 0) return RechargeResult(false, pending.amountCents, null, 0)
+        if (list.length() == 0) return RechargeResult(false, 0)
         if (list.length() != 1) throw YktException("订单结果未确认")
         val o = list.getJSONObject(0)
         if (o.rechargeText("orderid") != order) throw YktException("订单结果与本次充值不匹配，请在官网核实")
@@ -162,8 +158,8 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
         val matches = textMatches("third_party", pending.targetId) && amountMatches &&
             (pending.payId == null || textMatches("payid", pending.payId)) && feeMatches
         if (!matches) throw YktException("订单结果与本次充值不匹配，请在官网核实")
-        if (!paid) return RechargeResult(false, pending.amountCents, null, status)
+        if (!paid) return RechargeResult(false, status)
         if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常，请在官网核实")
-        return RechargeResult(true, pending.amountCents, null, status)
+        return RechargeResult(true, status)
     }
 }

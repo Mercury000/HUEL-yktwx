@@ -32,8 +32,8 @@ class RechargeApiTest {
         override fun getPeerPrincipal(): Principal? = null
         override fun getLocalPrincipal(): Principal? = null
     }
-    private fun pending() = PendingRecharge("123456", "fake-account", "401", 1000, 0, "FAKE-ORDER", "81")
-    private fun config() = RechargeConfiguration("401", "fake-account", "统一账户", 1000, listOf(1000, 5000, 10000), 1, 50000, true, false)
+    private fun pending() = PendingRecharge("123456", "fake-account", "401", 1000, "FAKE-ORDER", "81")
+    private fun config() = RechargeConfiguration("401", "fake-account", listOf(1000, 5000, 10000), 1, 50000, true, false)
     private fun params(text: String) = text.split('&').filter { it.isNotEmpty() }.associate {
         val p = it.split('=', limit = 2); URLDecoder.decode(p[0], "UTF-8") to URLDecoder.decode(p.getOrElse(1) { "" }, "UTF-8")
     }
@@ -57,7 +57,6 @@ class RechargeApiTest {
         val c = api.rechargeConfiguration("fake-token", "fake-account")
         assertEquals(listOf(1000L, 5000L, 10000L), c.amountsCents)
         assertEquals("fake-account", c.targetId)
-        assertEquals(2000, c.balanceCents)
         assertTrue(c.allowCustom)
         assertEquals("recharge", params(calls.last().url.query)["scene"])
         assertTrue(calls.all { it.disconnected && it.getRequestProperty("Cookie") == null && it.getRequestProperty("synjones-auth") == "bearer fake-token" })
@@ -113,8 +112,6 @@ class RechargeApiTest {
         val api = RechargeApi { url -> FakeHttps(url, 200, if (url.path.endsWith("queryCard")) cards().toString() else result(1).toString()) }
         val paid = api.rechargeResult("fake-token", pending())
         assertTrue(paid.paid)
-        assertEquals(1000, paid.amountCents)
-        assertNull(paid.balanceCents)
         val unpaid = RechargeApi { url -> FakeHttps(url, 200, result(0).toString()) }.rechargeResult("fake-token", pending())
         assertFalse(unpaid.paid)
         val conflictingFields = listOf<Pair<String, Any>>(
@@ -144,8 +141,8 @@ class RechargeApiTest {
     }
     @Test fun othersRechargeSignsRecipientTargetAndRetainsMetadataInPendingOrder() = runBlocking {
         lateinit var call: FakeHttps
-        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户", 0)
-        val config = RechargeConfiguration("401", "other-target", "统一账户", 0, listOf(1000), 1, 50000, true, false, recipient)
+        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户")
+        val config = RechargeConfiguration("401", "other-target", listOf(1000), 1, 50000, true, false, recipient)
         val api = RechargeApi { url -> FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also { call = it } }
         api.createRecharge("fake-token", config, 1000)
         val p = params(call.sent.toString("UTF-8"))
@@ -153,14 +150,14 @@ class RechargeApiTest {
         assertTrue(JSONObject(p.getValue("abstracts")).getBoolean("othersRecharge"))
         assertEquals("recharge", JSONObject(p.getValue("abstracts")).getString("type"))
         assertEquals("10.00", p["tranamt"]); assertEquals(64, p.getValue("SIGN").length)
-        val pending = PendingRecharge("payer", config.targetId, "401", 1000, 0, recipient = recipient).withOrder("FAKE-ORDER", "81")
+        val pending = PendingRecharge("payer", config.targetId, "401", 1000, recipient = recipient).withOrder("FAKE-ORDER", "81")
         assertSame(recipient, pending.recipient); assertEquals("other-target", pending.targetId)
     }
 
     @Test fun lostRechargeIsRefusedBeforeAnyExternalBridgeForOwnAndOtherTargets() = runBlocking {
         for (other in listOf(false, true)) {
-            val recipient = RechargeRecipient("fake-card", "fake-account", "示例", "123456", "统一账户", 0)
-            val pending = PendingRecharge("123456", "fake-account", "401", 1000, 0, "FAKE-ORDER", "81", if (other) recipient else null)
+            val recipient = RechargeRecipient("fake-card", "fake-account", "示例", "123456", "统一账户")
+            val pending = PendingRecharge("123456", "fake-account", "401", 1000, "FAKE-ORDER", "81", if (other) recipient else null)
             val calls = mutableListOf<FakeHttps>()
             val api = RechargeApi { url ->
                 val text = when (url.path) {

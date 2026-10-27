@@ -31,8 +31,7 @@ class FeeSelectorUiTest {
         val names = mapOf("building" to "示例A栋", "floor" to "示例楼层", "room" to "示例A栋-房间A$kind")
         val selections = mapOf("building" to "building-${project.id}", "floor" to "floor-${project.id}", "room" to "room-${project.id}-$kind")
         return FeeUiState(
-            config = FeeConfiguration(project, project.label,
-                RechargeConfiguration(project.id, "", "", 0, listOf(1000), 1, 200000, true, false), roomBindingEnabled = true),
+            config = FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(1000), 1, 200000, true, false), roomBindingEnabled = true),
             levels = levels, names = if (complete) names else names - "room",
             selections = if (complete) selections else selections - "room",
             options = levels.associate { level -> level.number to if (level.key == "room" && project == FeeProject.Zhengdong)
@@ -150,8 +149,7 @@ class FeeSelectorUiTest {
     @Test fun paymentSheetKeepsTargetAndFormHeightWhileDetailsLoad() {
         fun ready(project: FeeProject): FeeUiState {
             val original = state(project)
-            val config = FeeConfiguration(project, project.label,
-                RechargeConfiguration(project.id, "", "", 0, listOf(1000, 5000, 10000), 1, 200000, true, false))
+            val config = FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(1000, 5000, 10000), 1, 200000, true, false))
             return if (project.network) FeeUiState(config = config,
                 query = FeeQuery(thirdParty = "{}", display = listOf("用户套餐" to "学生宽带套餐", "用户状态" to "正常")))
             else FeeUiState(config = config, levels = original.levels, selections = original.selections,

@@ -30,7 +30,7 @@ class KeyboardEncoderTest {
     }
     @Test fun displayIntervalDoesNotTreatExpiresAsOfflinePromise() {
         val account = PaymentAccount("0", "0", "0", "demo", 0)
-        assertEquals(60L, PaymentBatch(emptyList(), 17280, 0, account).displayIntervalSeconds)
-        assertEquals(10L, PaymentBatch(emptyList(), 10, 0, account).displayIntervalSeconds)
+        assertEquals(60L, PaymentBatch(emptyList(), 17280, account).displayIntervalSeconds)
+        assertEquals(10L, PaymentBatch(emptyList(), 10, account).displayIntervalSeconds)
     }
 }

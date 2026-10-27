@@ -93,10 +93,9 @@ class UiSmokeTest {
             AppTheme {
                 BillPage(
                     state = BillUiState(
-                        preview = true, items = listOf(record), total = 1,
-                        currentPage = 1, pages = 1, loaded = true,
+                        preview = true, items = listOf(record), currentPage = 1, pages = 1, loaded = true,
                         summary = BillSummary(20000, 20540),
-                        types = listOf(BillType("4", "二维码支付", "qrCode-payment")),
+                        types = listOf(BillType("4", "二维码支付")),
                     ),
                     settings = settings,
                     onBack = {}, onActivate = {}, onRefresh = {}, onLoadMore = {},
@@ -231,7 +230,7 @@ class UiSmokeTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { PaymentPage(PaymentUiState(needsLogin = false, username = "123", error = "付款码暂不可用"),
-                    settings, 0.dp, {}, {}, onRecharge = { clicked = true }) }
+                    settings, 0.dp, {}, onRecharge = { clicked = true }) }
             }
         }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("充值"))
@@ -243,7 +242,7 @@ class UiSmokeTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { PaymentPage(PaymentUiState(needsLogin = false, busy = true, username = "123",
-                    account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)), settings, 0.dp, {}, {}) }
+                    account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)), settings, 0.dp, {}) }
             }
         }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("充值"))

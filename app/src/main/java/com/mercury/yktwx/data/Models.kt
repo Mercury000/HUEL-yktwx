@@ -9,7 +9,7 @@ class Session(val accessToken: String, val expiresAtMillis: Long) {
     override fun toString() = "Session([redacted])"
 }
 class PaymentAccount(val account: String, val payacc: String, val paytype: String, val name: String, val balanceCents: Long)
-class PaymentBatch(val codes: List<String>, val expiresSeconds: Long, val receivedAtMillis: Long, val account: PaymentAccount) {
+class PaymentBatch(val codes: List<String>, private val expiresSeconds: Long, val account: PaymentAccount) {
     // Match the official frontend's 60s display interval; never infer offline usability.
     val displayIntervalSeconds get() = minOf(60L, expiresSeconds).coerceAtLeast(1)
     override fun toString() = "PaymentBatch([redacted])"

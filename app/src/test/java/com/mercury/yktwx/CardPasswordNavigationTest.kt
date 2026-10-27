@@ -85,6 +85,6 @@ class CardPasswordNavigationTest {
         assertEquals("查询密码修改成功，请重新登录", ShadowToast.getTextOfLatestToast())
         assertEquals(1, writes); assertEquals(0, logins)
         assertNull(vault.credentials()); assertNull(vault.session())
-        assertNull(payment.state.value.code); assertNull(payment.state.value.batch)
+        assertNull(payment.state.value.code)
     }
 }

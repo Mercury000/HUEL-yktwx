@@ -9,7 +9,7 @@ enum class FeeProject(val id: String, val label: String, val network: Boolean = 
     FamilyWater("449", "家属区水费"), Commercial("408", "商业街水电费"),
 }
 class FeeConfiguration(
-    val project: FeeProject, val name: String, val amountRules: RechargeConfiguration,
+    val project: FeeProject, val amountRules: RechargeConfiguration,
     val roomBindingEnabled: Boolean = false, val roomBinding: FeeRoomBinding? = null,
     val invalidRoomBinding: Boolean = false,
 ) {

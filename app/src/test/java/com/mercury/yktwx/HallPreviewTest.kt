@@ -205,10 +205,9 @@ class HallPreviewTest {
     }
 
     @Test fun paymentMethodsStayBesideAmountAndReuseRecipientSelectionStyle() {
-        val config = FeeConfiguration(FeeProject.Zhengdong, "郑东宿舍电费",
-            RechargeConfiguration(FeeProject.Zhengdong.id, "", "", 0, listOf(1000, 5000, 10000), 1, 200000, true, false),
+        val config = FeeConfiguration(FeeProject.Zhengdong, RechargeConfiguration(FeeProject.Zhengdong.id, "", listOf(1000, 5000, 10000), 1, 200000, true, false),
             roomBindingEnabled = true)
-        val pending = PendingRecharge("preview-user", "{}", FeeProject.Zhengdong.id, 1000, 0, "PREVIEW-ORDER")
+        val pending = PendingRecharge("preview-user", "{}", FeeProject.Zhengdong.id, 1000, "PREVIEW-ORDER")
         var selectedMethod: FeeMethod? = null
         var state by mutableStateOf(FeeUiState(config = config, preview = true, stage = FeeStage.Methods,
             query = FeeQuery(thirdParty = "{}", display = listOf("剩余电量" to "86.4 度")),
@@ -255,7 +254,7 @@ class HallPreviewTest {
             listOf(FeeAccount("preview-account", "统一账户", 8600)), "preview-uuid", "9876543210")
         var state by mutableStateOf(FeeUiState(stage = FeeStage.Password,
             order = FeeOrder(PendingRecharge("preview-user", "{}", FeeProject.Zhengdong.id,
-                1000, 0, "PREVIEW-ORDER"), listOf(method)), preparation = preparation))
+                1000, "PREVIEW-ORDER"), listOf(method)), preparation = preparation))
         var submitted: Pair<String, String>? = null
         var canceled = 0
         var dismissed = 0
@@ -302,8 +301,7 @@ class HallPreviewTest {
         val levels = listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("room", 2, "房间"))
         val target = FeeRoomBinding.from(levels, mapOf("building" to "sample-building", "room" to "sample-room"),
             mapOf("building" to "示例A栋", "room" to "房间A照明"))!!
-        val config = FeeConfiguration(FeeProject.Zhengdong, "郑东宿舍电费",
-            RechargeConfiguration(FeeProject.Zhengdong.id, "", "", 0, listOf(1000), 1, 200000, true, false),
+        val config = FeeConfiguration(FeeProject.Zhengdong, RechargeConfiguration(FeeProject.Zhengdong.id, "", listOf(1000), 1, 200000, true, false),
             roomBindingEnabled = true)
         fun queryState(known: Boolean = true, busy: Boolean = false, error: String? = null,
             notice: String? = null, dialog: FeeRoomDialog? = null) = FeeUiState(config = config,

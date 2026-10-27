@@ -192,12 +192,11 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val response = http.request("/berserker-app/ykt/tsm/idtypeQueryCard", token, mapOf("idtype" to type.key, "id" to id,
             "scene" to "recharge", "captcha_header_key" to captcha.key, "captcha_header_code" to code.trim()))
         val raw = runCatching { JSONObject(response.body) }.getOrNull()
-        if (response.status == 200 && raw?.optInt("code") in listOf(8002, 8003)) throw RecipientLookupRejected(true, "验证码有误，请重新输入")
-        val data = http.json(response).optJSONObject("data") ?: throw RecipientLookupRejected(false, "未查询到收款账户")
-        if (data.rechargeText("retcode") != "0") throw RecipientLookupRejected(false,
-            if (data.rechargeText("retcode") == "60003") "账户信息不存在，请检查学工号或证件号" else "查询失败，请核实收款人信息")
+        if (response.status == 200 && raw?.optInt("code") in listOf(8002, 8003)) throw RecipientLookupRejected("验证码有误，请重新输入")
+        val data = http.json(response).optJSONObject("data") ?: throw RecipientLookupRejected("未查询到收款账户")
+        if (data.rechargeText("retcode") != "0") throw RecipientLookupRejected(if (data.rechargeText("retcode") == "60003") "账户信息不存在，请检查学工号或证件号" else "查询失败，请核实收款人信息")
         val (_, ecard, _) = settings(token)
-        val list = data.optJSONArray("card") ?: throw RecipientLookupRejected(false, "没有可充值账户")
+        val list = data.optJSONArray("card") ?: throw RecipientLookupRejected("没有可充值账户")
         val result = mutableListOf<RechargeRecipient>()
         var unavailable: RechargeTargetUnavailable? = null
         for (i in 0 until list.length()) {
@@ -207,18 +206,18 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
             catch (e: RechargeTargetUnavailable) { unavailable = unavailable ?: e; continue }
             val account = card.rechargeText("account")
             if (account.isBlank()) continue
-            fun add(target: String, name: String, balance: Long) {
-                if (target.isNotBlank()) result += RechargeRecipient(account, target, card.rechargeText("name"), card.rechargeText("sno"), name, balance)
+            fun add(target: String, name: String) {
+                if (target.isNotBlank()) result += RechargeRecipient(account, target, card.rechargeText("name"), card.rechargeText("sno"), name)
             }
-            if (ecard.rechargeText("type") != "1") add(account, card.rechargeText("cardname").ifBlank { "校园卡" }, card.optLong("db_balance") + card.optLong("unsettle_amount"))
+            if (ecard.rechargeText("type") != "1") add(account, card.rechargeText("cardname").ifBlank { "校园卡" })
             if (ecard.rechargeText("type") != "2") {
                 val accounts = card.optJSONArray("accinfo")
                 (0 until (accounts?.length() ?: 0)).map { accounts!!.getJSONObject(it) }.sortedBy { it.rechargeText("type") }.forEach {
-                    add(it.rechargeText("type"), it.rechargeText("name").ifBlank { "统一账户" }, it.optLong("balance"))
+                    add(it.rechargeText("type"), it.rechargeText("name").ifBlank { "统一账户" })
                 }
             }
         }
-        if (result.isEmpty()) throw RecipientLookupRejected(false, unavailable?.message ?: "没有正常的可充值账户，请在官网检查卡状态")
+        if (result.isEmpty()) throw RecipientLookupRejected(unavailable?.message ?: "没有正常的可充值账户，请在官网检查卡状态")
         return result
     }
     override suspend fun recipientRechargeConfiguration(token: String, recipient: RechargeRecipient): RechargeConfiguration {
@@ -226,6 +225,6 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val id = front.rechargeText("recharge")
         if (!id.matches(Regex("[0-9]{1,12}"))) throw YktException("充值项目配置异常")
         val fee = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id)).getJSONObject("feeitem")
-        return RechargeApi.amountConfiguration(id, recipient.targetId, recipient.accountName, recipient.balanceCents, front, fee, recipient)
+        return RechargeApi.amountConfiguration(id, recipient.targetId, front, fee, recipient)
     }
 }

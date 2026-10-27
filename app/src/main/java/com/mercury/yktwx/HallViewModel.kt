@@ -42,12 +42,7 @@ class HallViewModel internal constructor(
     fun onActivate() { if (!mutable.value.loaded || System.currentTimeMillis() - refreshedAt > 60_000) refresh() }
     fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) refreshPending = true }
     fun selectRoom(index: Int) { if (!mutable.value.managing && index in mutable.value.rooms.indices) update(selectedIndex = index) }
-    fun setDefault(room: DormRoom) {
-        if (owner.isBlank() || mutable.value.managing) return
-        displayPreferences.edit().putString(displayKey(), room.project.id).apply()
-        selectRoom(mutable.value.rooms.indexOf(room))
-    }
-    fun isDefault(room: DormRoom) = room.bindings.any { displayPreferences.getString(displayKey(), null) == it.project.id }
+
     fun remove(room: DormRoom) {
         if (owner.isBlank() || mutable.value.managing || task?.isActive == true || mutable.value.rooms.none { it === room }) return
         val attempt = generation

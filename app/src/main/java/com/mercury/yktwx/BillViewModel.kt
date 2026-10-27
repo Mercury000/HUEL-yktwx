@@ -34,7 +34,6 @@ data class BillUiState(
     val items: List<BillRecord> = emptyList(),
     val summary: BillSummary? = null,
     val counts: BillCounts? = null,
-    val total: Int = 0,
     val currentPage: Int = 0,
     val pages: Int = 0,
     val types: List<BillType> = emptyList(),
@@ -138,7 +137,7 @@ class BillViewModel internal constructor(
         val current = mutable.value
         statsJob?.cancel()
         mutable.value = current.copy(
-            dateFilter = filter, items = emptyList(), summary = null, counts = null, total = 0, currentPage = 0, pages = 0,
+            dateFilter = filter, items = emptyList(), summary = null, counts = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
             stats = BillStatsState(period = filter, type = current.stats.type),
         )
@@ -151,17 +150,13 @@ class BillViewModel internal constructor(
         }
     }
 
-    fun selectMonth(month: YearMonth) {
-        selectDate(BillDateFilter.month(month))
-    }
-
     fun applyFilters(typeId: String?, amountFromCents: Long?, amountToCents: Long?) {
         val current = mutable.value
         if (current.typeId == typeId && current.amountFromCents == amountFromCents && current.amountToCents == amountToCents) return
         cancelListJobs()
         mutable.value = current.copy(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
-            items = emptyList(), summary = null, total = 0, currentPage = 0, pages = 0,
+            items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
         )
         if (!preview && !mutable.value.needsLogin) load()
@@ -172,7 +167,7 @@ class BillViewModel internal constructor(
         if (value == mutable.value.info) return
         cancelListJobs()
         mutable.value = mutable.value.copy(
-            info = value, items = emptyList(), summary = null, total = 0, currentPage = 0, pages = 0,
+            info = value, items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
         )
         if (!preview && !mutable.value.needsLogin) load()
@@ -208,7 +203,7 @@ class BillViewModel internal constructor(
                 val availablePages = if (exhausted) loadedPage else page.pages.coerceAtLeast(loadedPage)
                 mutable.value = latest.copy(
                     items = latest.items + newItems,
-                    total = page.total, currentPage = loadedPage, pages = availablePages,
+                    currentPage = loadedPage, pages = availablePages,
                     loadingMore = false, loadMoreError = null,
                 )
             } catch (e: CancellationException) {
@@ -246,16 +241,6 @@ class BillViewModel internal constructor(
         if (!preview && !current.needsLogin) load()
     }
 
-    fun selectStatsDate(filter: BillDateFilter) {
-        if (filter == mutable.value.dateFilter) { openStats(); return }
-        mutable.value = mutable.value.copy(statsVisible = true)
-        selectDate(filter)
-    }
-
-    fun selectStatsMonth(month: YearMonth) {
-        selectStatsDate(BillDateFilter.month(month))
-    }
-
     fun selectStatsType(type: Int) {
         if (type !in 1..2) return
         if (type == mutable.value.stats.type) return
@@ -273,10 +258,6 @@ class BillViewModel internal constructor(
 
     fun openDetail(record: BillRecord) {
         mutable.value = mutable.value.copy(detail = record)
-    }
-
-    fun clearDetail() {
-        mutable.value = mutable.value.copy(detail = null)
     }
 
     private fun load(manualRefresh: Boolean = false) {
@@ -346,7 +327,7 @@ class BillViewModel internal constructor(
                     latest.amountToCents != amountTo || latest.info != info
                 ) return@launch
                 mutable.value = latest.copy(
-                    needsLogin = false, items = page.items, summary = summary, counts = counts, total = page.total,
+                    needsLogin = false, items = page.items, summary = summary, counts = counts,
                     currentPage = page.current, pages = page.pages, types = types,
                     loading = false, refreshing = false, error = null, loaded = true,
                 )
@@ -428,10 +409,10 @@ class BillViewModel internal constructor(
             preview = true, needsLogin = false, dateFilter = period, items = records,
             summary = BillSummary(20000, 20540),
             counts = BillCounts(records.count { it.income }, records.count { !it.income }),
-            total = records.size, currentPage = 1, pages = 1,
+            currentPage = 1, pages = 1,
             types = listOf(
-                BillType("1", "消费", "consume"), BillType("2", "充值", "recharge"),
-                BillType("3", "退款", "refund"), BillType("4", "二维码支付", "qrCode-payment"),
+                BillType("1", "消费"), BillType("2", "充值"),
+                BillType("3", "退款"), BillType("4", "二维码支付"),
             ),
             loaded = true, stats = previewStats(period, statsType),
         )
@@ -461,12 +442,12 @@ class BillViewModel internal constructor(
             BillDateMode.Day, BillDateMode.Range -> emptyList()
         }
         val categories = if (type == 2) listOf(
-            BillCategory("二维码支付", 15000, "4", "qrCode-payment"),
-            BillCategory("消费", 4000, "1", "consume"),
-            BillCategory("退款", 1540, "3", "refund"),
+            BillCategory("二维码支付", 15000),
+            BillCategory("消费", 4000),
+            BillCategory("退款", 1540),
         ) else listOf(
-            BillCategory("充值", 18000, "2", "recharge"),
-            BillCategory("退款", 2000, "3", "refund"),
+            BillCategory("充值", 18000),
+            BillCategory("退款", 2000),
         )
         val ranking = records.filter { (it.typeFrom == "1") == (type == 1) }.sortedByDescending { it.amountCents }.take(5)
         return BillStatsState(

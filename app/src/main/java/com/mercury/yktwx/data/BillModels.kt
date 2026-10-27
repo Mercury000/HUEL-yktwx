@@ -76,23 +76,19 @@ data class BillRecord(
 
 data class BillPageData(
     val items: List<BillRecord>,
-    val total: Int,
     val current: Int,
     val pages: Int,
-    val size: Int,
 )
 
 data class BillSummary(val incomeCents: Long, val expensesCents: Long)
 
 data class BillCounts(val income: Int, val expenses: Int)
 
-data class BillType(val id: String, val name: String, val icon: String)
+data class BillType(val id: String, val name: String)
 
 data class BillCategory(
     val name: String,
     val amountCents: Long,
-    val typeId: String,
-    val icon: String,
 )
 
 data class BillDailyPoint(val date: LocalDate, val amountCents: Long)
@@ -105,10 +101,8 @@ internal object BillParser {
         }
         return BillPageData(
             items = items,
-            total = data.optInt("total"),
             current = data.optInt("current", 1),
             pages = data.optInt("pages"),
-            size = data.optInt("size"),
         )
     }
 
@@ -119,7 +113,7 @@ internal object BillParser {
 
     fun types(data: JSONArray): List<BillType> = (0 until data.length()).mapNotNull { index ->
         data.optJSONObject(index)?.let { item ->
-            BillType(item.text("id"), item.text("name"), item.text("icon"))
+            BillType(item.text("id"), item.text("name"))
         }
     }
 
@@ -128,8 +122,6 @@ internal object BillParser {
             BillCategory(
                 name = item.text("turnoverType"),
                 amountCents = item.cents("amount"),
-                typeId = item.text("typeId"),
-                icon = item.text("icon"),
             )
         }
     }.sortedByDescending { it.amountCents }

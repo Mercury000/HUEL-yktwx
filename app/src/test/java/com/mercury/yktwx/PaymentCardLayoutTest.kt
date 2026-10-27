@@ -43,7 +43,7 @@ class PaymentCardLayoutTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
-                    PaymentPage(current.value, settings, 0.dp, onRefresh = {}, onLogout = {})
+                    PaymentPage(current.value, settings, 0.dp, onRefresh = {})
                 }
             }
         }
