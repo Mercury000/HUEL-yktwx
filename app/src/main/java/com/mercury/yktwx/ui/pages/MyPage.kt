@@ -46,7 +46,7 @@ internal fun MyPage(
     isActive: Boolean, onActivate: () -> Unit, onRefresh: () -> Unit,
     onProfile: () -> Unit, onAccount: () -> Unit, onBills: () -> Unit,
     onRecharge: () -> Unit, rechargeLoading: Boolean,
-    onCardAction: (CampusCardAction) -> Unit, cardBusy: Boolean,
+    onCardAction: (CampusCardAction) -> Unit, manageLoading: Boolean, passwordLoading: Boolean,
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
@@ -166,10 +166,10 @@ internal fun MyPage(
                             Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
                                 Text("校园卡管理", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                                 DashboardPreference(title = "挂失 / 解挂", startAction = { ProfileServiceIcon(MiuixIcons.BankCards) },
-                                    enabled = !cardBusy, onClick = { onCardAction(CampusCardAction.ManageState) })
+                                    enabled = !manageLoading, onClick = { onCardAction(CampusCardAction.ManageState) })
                                 HorizontalDivider(Modifier.padding(start = 62.dp), color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                 DashboardPreference(title = "修改查询密码", startAction = { ProfileServiceIcon(MiuixIcons.Lock) },
-                                    enabled = !cardBusy, onClick = { onCardAction(CampusCardAction.ChangePassword) })
+                                    enabled = !passwordLoading, onClick = { onCardAction(CampusCardAction.ChangePassword) })
                             }
                         }
                         item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "应用设置", startAction = { Icon(MiuixIcons.Settings, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary) }, onClick = onSettings) } }
@@ -247,7 +247,7 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
                 ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, payment.busy))
             }
         }
-        item { TextButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge, enabled = !rechargeLoading,
+        item { TextButton("充值", onClick = onRecharge, enabled = !rechargeLoading,
             modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary()) }
     }
 }

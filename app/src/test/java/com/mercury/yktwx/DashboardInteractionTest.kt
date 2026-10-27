@@ -109,7 +109,8 @@ class DashboardInteractionTest {
             MyPage(MyUiState(loading = loading.value), PaymentUiState(), settings, 100.dp,
                 isActive = true, onActivate = {}, onRefresh = { refreshes++; loading.value = true },
                 onProfile = {}, onAccount = {}, onBills = {}, onRecharge = {}, rechargeLoading = false,
-                onCardAction = {}, cardBusy = false, onSettings = {}, onAbout = {})
+                onCardAction = {}, manageLoading = false, passwordLoading = false,
+                onSettings = {}, onAbout = {})
         }
         val list = compose.onNode(verticalList)
         list.performTouchInput { swipeUp() }
@@ -123,6 +124,35 @@ class DashboardInteractionTest {
         compose.waitForIdle()
         pull()
         assertEquals(2, refreshes)
+    }
+
+    @Test fun cardManagementOnlyDisablesTheActionThatIsLoading() {
+        var manageLoading by mutableStateOf(false)
+        var passwordLoading by mutableStateOf(false)
+        var rechargeLoading by mutableStateOf(false)
+        val actions = mutableListOf<CampusCardAction>()
+        content {
+            MyPage(MyUiState(loaded = true), PaymentUiState(), settings, 0.dp,
+                isActive = false, onActivate = {}, onRefresh = {},
+                onProfile = {}, onAccount = {}, onBills = {}, onRecharge = {}, rechargeLoading = rechargeLoading,
+                onCardAction = { actions += it }, manageLoading = manageLoading,
+                passwordLoading = passwordLoading, onSettings = {}, onAbout = {})
+        }
+        val manage = compose.onNode(hasText("挂失 / 解挂") and hasClickAction())
+        val password = compose.onNode(hasText("修改查询密码") and hasClickAction())
+        manage.assertIsEnabled()
+        password.assertIsEnabled()
+        compose.runOnIdle { manageLoading = true }
+        manage.assertDoesNotExist()
+        password.assertIsEnabled().performClick()
+        assertEquals(listOf(CampusCardAction.ChangePassword), actions)
+        compose.runOnIdle { manageLoading = false; passwordLoading = true }
+        manage.assertIsEnabled().performClick()
+        password.assertDoesNotExist()
+        assertEquals(listOf(CampusCardAction.ChangePassword, CampusCardAction.ManageState), actions)
+        compose.runOnIdle { passwordLoading = false; rechargeLoading = true }
+        manage.assertIsEnabled()
+        password.assertIsEnabled()
     }
 
     @Test fun billsScrollDuringBackgroundReadAndPullDetailsAndStats() {

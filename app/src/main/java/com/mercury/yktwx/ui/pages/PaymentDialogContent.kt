@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -61,17 +63,47 @@ internal fun PaymentAmountForm(
 }
 
 @Composable
-internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier) {
+internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: RechargeConfiguration? = null,
+    methods: List<String> = listOf("微信")) {
     Column(modifier.fillMaxWidth().semantics { contentDescription = "正在读取充值信息" },
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f, lineHeight = 20.sp)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            repeat(3) { ContentPlaceholder(Modifier.weight(1f).height(48.dp), cornerRadius = 16.dp) }
+        DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            val amounts = config?.amountsCents ?: listOf(1000L, 5000L, 10000L)
+            amounts.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { amount ->
+                        PaymentControlPlaceholder(Modifier.weight(1f)) {
+                            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                                Text("¥ " + RechargeMoney.label(amount))
+                            }
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            if (config?.allowCustom != false) PaymentControlPlaceholder {
+                TextField(value = "", onValueChange = {}, label = "自定义金额（元）",
+                    useLabelAsPlaceholder = true, singleLine = true, enabled = false,
+                    modifier = Modifier.fillMaxWidth())
+            }
         }
-        ContentPlaceholder(Modifier.fillMaxWidth().height(56.dp), cornerRadius = 16.dp)
-        DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f, lineHeight = 20.sp)
-        ContentPlaceholder(Modifier.fillMaxWidth().height(48.dp), cornerRadius = 16.dp)
-        ContentPlaceholder(Modifier.fillMaxWidth().height(50.dp), cornerRadius = 16.dp)
+        DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
+        PaymentControlPlaceholder { HallNeutralTabs(methods, 0) {} }
+        InlineError(null)
+        PaymentControlPlaceholder {
+            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary()) { Text("充值") }
+        }
+    }
+}
+
+/** Measure with the same controls as the form so font scale and library defaults also match. */
+@Composable
+private fun PaymentControlPlaceholder(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().drawWithContent {}.clearAndSetSemantics {}) { content() }
+        ContentPlaceholder(Modifier.matchParentSize(), cornerRadius = 16.dp)
     }
 }
 

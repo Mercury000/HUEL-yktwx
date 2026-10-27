@@ -74,12 +74,16 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     OverlayBottomSheet(show = visible && state.stage != FeeStage.Password, title = title, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
     }, renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(top = 8.dp),
+        Column(Modifier.fillMaxWidth().testTag("hall-payment-content").bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when (state.stage) {
                 FeeStage.Query -> {
                     if (config == null) {
-                        if (state.loading) PaymentAmountPlaceholder()
+                        if (state.loading) {
+                            if (amountStep) HallFeeSummary(state, Modifier.testTag("hall-payment-target"),
+                                project = project, fixedTarget = fixedTarget)
+                            PaymentAmountPlaceholder(methods = if (project?.network == true) listOf("一卡通") else listOf("一卡通", "微信"))
+                        }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                     } else if (!amountStep && project?.network != true) {
                         val targetEnabled = !state.loading && !state.selecting && !state.refreshing && !state.roomBusy && state.roomDialog == null
@@ -112,9 +116,12 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     } else {
                         if (fixedTarget == null && project?.network != true) DashboardLink("返回选房", { amountStep = false }, arrow = false)
                         HallFeeSummary(state, Modifier.testTag("hall-payment-target"), targetSelected,
-                            { targetSelected = !targetSelected }, !state.loading && !state.selecting)
+                            { targetSelected = !targetSelected }, !state.loading && !state.selecting,
+                            project, fixedTarget)
                         val codes = if (project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
-                        PaymentAmountForm(config.amountRules, amount, { amount = it },
+                        if (state.loading && state.query == null) PaymentAmountPlaceholder(config = config.amountRules,
+                            methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
+                        else PaymentAmountForm(config.amountRules, amount, { amount = it },
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
                             { methodCode = codes[it] }, state.loading || state.selecting || state.refreshing || state.roomBusy,
                             ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
@@ -163,9 +170,19 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
 
 @Composable
 private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, selected: Boolean = true,
-    onSelect: () -> Unit = {}, enabled: Boolean = false) {
+    onSelect: () -> Unit = {}, enabled: Boolean = false,
+    project: FeeProject? = state.config?.project, fixedTarget: FeeRoomBinding? = null) {
+    val pending = state.query == null && (state.loading || state.selecting || state.refreshing)
+    val room = state.currentRoom ?: fixedTarget
     PaymentSelectionCard(selected = selected, onClick = onSelect, modifier = modifier, enabled = enabled) { contentColor ->
-            if (state.config?.project?.network == true) {
+            val placeholderColor = contentColor.copy(alpha = .2f)
+            if (project?.network == true) {
+                if (pending) repeat(2) {
+                    Row(Modifier.fillMaxWidth()) {
+                        DashboardPlaceholder(13.sp, Modifier.weight(1f), fraction = .45f, color = placeholderColor)
+                        DashboardPlaceholder(14.sp, Modifier.width(112.dp), fraction = 1f, color = placeholderColor)
+                    }
+                }
                 state.query?.display?.filter { "套餐" in it.first || "状态" in it.first }?.forEach { (name, value) ->
                     Row(Modifier.fillMaxWidth()) {
                         Text(name, Modifier.weight(1f), fontSize = 13.sp, color = contentColor.copy(alpha = .75f))
@@ -173,11 +190,15 @@ private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, sel
                     }
                 }
             } else {
-                state.currentRoom?.let {
+                room?.let {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(it.dialogLabel, Modifier.weight(1f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = contentColor)
                         if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
                     }
+                }
+                if (pending) {
+                    if (room == null) DashboardPlaceholder(17.sp, Modifier.fillMaxWidth(), color = placeholderColor)
+                    DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), fraction = .65f, color = placeholderColor)
                 }
                 state.query?.display.orEmpty().forEach { (label, value) ->
                     Text(if (value.startsWith(label)) value else "$label  $value", fontSize = 13.sp,
