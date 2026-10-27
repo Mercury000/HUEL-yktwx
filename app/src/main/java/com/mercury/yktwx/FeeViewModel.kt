@@ -35,7 +35,7 @@ class FeeUiState(
     val selections: Map<String, String> = emptyMap(), val names: Map<String, String> = emptyMap(),
     val query: FeeQuery? = null, val order: FeeOrder? = null, val method: FeeMethod? = null,
     val preparation: FeeAccountPreparation? = null, val stage: FeeStage = FeeStage.Query,
-    val resultPhase: RechargePhase = RechargePhase.Creating, val preview: Boolean = false,
+    val resultPhase: RechargePhase = RechargePhase.Amount, val preview: Boolean = false,
     val hiddenLevels: Set<String> = emptySet(),
     val selecting: Boolean = false,
     val roomBinding: FeeRoomBinding? = config?.roomBinding,
@@ -430,7 +430,7 @@ class FeeViewModel internal constructor(
         endPaymentAttempt()
         mutable.value = copy(mutable.value, loading = false, error = null,
             order = null, method = null, preparation = null, paymentRetry = null, stage = FeeStage.Query,
-            resultPhase = RechargePhase.Creating)
+            resultPhase = RechargePhase.Amount)
     }
     private fun endPaymentAttempt() {
         attempt++
@@ -474,11 +474,11 @@ class FeeViewModel internal constructor(
             if (generation != attempt) return@launchTask
             // Keep the failed channel excluded even if the new order's method list has changed.
             val alternatives = order.methods.filter { current -> retry.methods.any { it.code == current.code } }
-            mutable.value = copy(mutable.value, loading = false,
-                order = FeeOrder(order.pending, alternatives), stage = FeeStage.Methods)
             // The previous list is presentation-only. Only the new order authorizes a method.
             val currentMethod = alternatives.firstOrNull { it.id == method.id && it.code == method.code }
             if (currentMethod == null) {
+                mutable.value = copy(mutable.value, loading = false,
+                    order = FeeOrder(order.pending, alternatives), stage = FeeStage.Methods)
                 if (alternatives.isEmpty()) result(RechargePhase.Failed, "其他支付方式已不可用，请重新发起缴费")
                 else mutable.value = copy(mutable.value, error = "支付方式已变化，请重新选择")
                 return@launchTask
@@ -497,15 +497,18 @@ class FeeViewModel internal constructor(
         val generation=attempt
         accountPaymentSubmitted = false
         val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount)
-        mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()),paymentRetry=null)
+        mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()),paymentRetry=null,
+            resultPhase=RechargePhase.Creating)
         launchTask {
             try {
                 val order=repository.createFee(marker.username,config,q,amount)
                 if (generation==attempt) {
-                    mutable.value=copy(mutable.value,loading=false,order=order,stage=FeeStage.Methods)
                     val selected = order.methods.singleOrNull { it.code == methodCode }
-                    if (selected != null) prepareMethod(mutable.value, selected, generation)
-                    else mutable.value = copy(mutable.value, error = "所选支付方式不可用，请重新选择")
+                    // Keep the amount form loading until the chosen method is ready.
+                    // The method picker is only needed when the server requires a new choice.
+                    if (selected != null) prepareMethod(copy(mutable.value, order = order), selected, generation)
+                    else mutable.value = copy(mutable.value, loading = false, order = order,
+                        stage = FeeStage.Methods, error = "所选支付方式不可用，请重新选择")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: FeePaymentRejected) {

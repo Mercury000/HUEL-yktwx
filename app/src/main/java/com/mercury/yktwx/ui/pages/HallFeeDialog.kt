@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.FeeStage
 import com.mercury.yktwx.FeeRoomAction
 import com.mercury.yktwx.FeeUiState
+import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -24,7 +25,12 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private enum class HallFeePage { Target, Amount, Methods, Result }
+private enum class HallFeePage { Target, Amount, Result }
+
+private data class HallFeeResultDisplay(
+    val phase: RechargePhase, val loading: Boolean, val amountCents: Long,
+    val detail: String?, val methods: List<FeeMethod>,
+)
 
 /** One root-hosted sheet for target selection, amount, server payment channels and results. */
 @Composable
@@ -45,7 +51,6 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     var bindingPending by remember(visible, project) { mutableStateOf(false) }
     var targetSelected by remember(visible, project, state.selections) { mutableStateOf(true) }
     var methodCode by remember(visible, project) { mutableStateOf("ACCOUNTTSM") }
-    var methodId by remember(visible, project) { mutableStateOf<String?>(null) }
     LaunchedEffect(state.roomNotice) {
         if (bindingPending && state.roomNotice != null) {
             bindingPending = false; saveCommon = false
@@ -78,8 +83,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     val requestedPage = when {
         saveOnly -> HallFeePage.Target
         state.stage == FeeStage.Password -> null
-        state.stage == FeeStage.Result -> HallFeePage.Result
-        state.stage == FeeStage.Methods -> HallFeePage.Methods
+        state.stage == FeeStage.Result || state.stage == FeeStage.Methods -> HallFeePage.Result
         amountStep || project?.network == true -> HallFeePage.Amount
         else -> HallFeePage.Target
     }
@@ -147,27 +151,28 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             active && ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
                         else InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
                 }
-                HallFeePage.Methods -> {
-                    HallFeeSummary(state)
-                    Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("¥ " + RechargeMoney.yuan(orderAmount), fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-                    Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    InlineError(state.error)
-                    val methods = state.order?.methods.orEmpty()
-                    val selectedIndex = methods.indexOfFirst { it.id == methodId }.takeIf { it >= 0 }
-                        ?: methods.indexOfFirst { it.code == methodCode }.takeIf { it >= 0 }
-                        ?: if (methods.isEmpty()) -1 else 0
-                    HallNeutralTabs(methods.map { it.name }, selectedIndex.coerceAtLeast(0)) {
-                        if (active && !state.loading) { methodCode = methods[it].code; methodId = methods[it].id }
+                HallFeePage.Result -> {
+                    // Unavailable methods reuse the same choices without creating another order.
+                    val choosingMethod = state.stage == FeeStage.Methods
+                    val resultActive = active && (choosingMethod || state.stage == FeeStage.Result)
+                    // Dismissal clears the live state before the exit animation ends.
+                    // Retain only display values inside this page, never the order or password data.
+                    var display by remember { mutableStateOf<HallFeeResultDisplay?>(null) }
+                    if (resultActive) display = HallFeeResultDisplay(
+                        phase = if (choosingMethod) {
+                            if (state.loading) RechargePhase.Creating else RechargePhase.Failed
+                        } else state.resultPhase,
+                        loading = state.loading, amountCents = orderAmount, detail = state.error,
+                        methods = if (choosingMethod) state.order?.methods.orEmpty()
+                            else if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
+                    )
+                    display?.let { result ->
+                        PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
+                            { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
+                            subject = "充值", retryMethods = result.methods,
+                            onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
                     }
-                    Button(onClick = { methods.getOrNull(selectedIndex)?.let(onMethod) },
-                        enabled = active && !state.loading && selectedIndex >= 0, modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "正在准备支付…" else "确定支付") }
-                    DashboardLink("修改金额", onCancelPayment, arrow = false, enabled = active && !state.loading)
                 }
-                HallFeePage.Result -> PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
-                    { if (active) onFinish() }, subject = "充值", retryMethods = if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
-                    onContinuePayment = { if (active) onContinuePayment(it) })
             }
         }
         }

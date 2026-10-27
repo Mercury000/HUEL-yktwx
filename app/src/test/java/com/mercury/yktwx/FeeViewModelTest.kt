@@ -30,6 +30,7 @@ class FeeViewModelTest {
 
     @After fun cleanup() {
         fees.createGate.complete(Unit)
+        fees.prepareGate.complete(Unit)
         fees.gate.complete(Unit)
         fees.resultGate.complete(Unit)
         store.clear()
@@ -127,8 +128,15 @@ class FeeViewModelTest {
     @Test fun hallPreferredCardMethodPreparesOneOrderAndWaitsForPasswordConfirmation() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
+        fees.prepareGate = CompletableDeferred()
         model.createWithMethod(100, "ACCOUNTTSM")
         model.createWithMethod(100, "ACCOUNTTSM")
+        await { fees.preparedOrders.size == 1 }
+        assertEquals(FeeStage.Query, model.state.value.stage)
+        assertTrue(model.state.value.loading)
+        assertNull(model.state.value.preparation)
+        assertEquals(0, fees.payments)
+        fees.prepareGate.complete(Unit)
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Password }
         assertEquals(1, fees.creations)
         assertEquals(listOf("FAKE-ORDER"), fees.preparedOrders)
@@ -140,6 +148,26 @@ class FeeViewModelTest {
         assertNotNull(model.state.value.query?.thirdParty)
         assertNull(model.state.value.preparation)
         assertNull(model.state.value.order)
+    }
+
+    @Test fun unavailablePreferredMethodStillRequiresExplicitSelection() {
+        fees.methods = listOf(fees.wechatMethod)
+        model.open(FeeProject.Network, "test-user", false)
+        await { !model.state.value.loading && model.state.value.query != null }
+        model.createWithMethod(100, fees.accountMethod.code)
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
+        assertEquals("所选支付方式不可用，请重新选择", model.state.value.error)
+        assertEquals(listOf(fees.wechatMethod), model.state.value.order?.methods)
+        assertEquals(0, fees.launches)
+        assertEquals(0, fees.preparedOrders.size)
+        model.onForeground()
+        model.onResumed(true)
+        model.chooseMethod(fees.wechatMethod)
+        await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
+        assertEquals(1, fees.creations)
+        assertEquals(1, fees.launches)
+        assertEquals(listOf("FAKE-ORDER"), fees.launchedOrders)
+        assertEquals(0, fees.payments)
     }
 
     @Test fun hallPreferredMethodLateOrderCannotRestoreDialogOrLaunchAfterDismissal() {
@@ -289,6 +317,7 @@ class FeeViewModelTest {
     @Test fun repeatedContinueOnlyCreatesAndPreparesOnce() {
         rejectWechat()
         fees.createGate = CompletableDeferred()
+        fees.prepareGate = CompletableDeferred()
         model.continuePayment(fees.accountMethod)
         model.continuePayment(fees.wechatMethod)
         assertTrue(model.state.value.loading)
@@ -296,7 +325,13 @@ class FeeViewModelTest {
         assertNull(model.state.value.order?.pending?.orderId)
         await { fees.creations == 2 }
         fees.createGate.complete(Unit)
-        await { model.state.value.stage == FeeStage.Password }
+        await { fees.preparedOrders.size == 1 }
+        assertEquals(FeeStage.Result, model.state.value.stage)
+        assertEquals(RechargePhase.Creating, model.state.value.resultPhase)
+        assertTrue(model.state.value.loading)
+        assertNull(model.state.value.preparation)
+        fees.prepareGate.complete(Unit)
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Password }
         assertEquals(2, fees.creations)
         assertEquals(1, fees.preparedOrders.size)
         assertEquals(1, fees.launches)
@@ -387,6 +422,8 @@ class FeeViewModelTest {
         val before = model.state.value
         model.cancelPayment()
         assertEquals(FeeStage.Query, model.state.value.stage)
+        assertEquals(RechargePhase.Amount, model.state.value.resultPhase)
+        assertFalse(model.state.value.loading)
         assertSame(before.config, model.state.value.config)
         assertSame(before.query, model.state.value.query)
         assertEquals(before.selections, model.state.value.selections)
@@ -407,6 +444,12 @@ class FeeViewModelTest {
         assertEquals(FeeStage.Result, model.state.value.stage)
         assertCannotContinue()
         assertNull(model.state.value.order)
+        model.dismiss()
+        assertEquals(FeeStage.Query, model.state.value.stage)
+        assertEquals(RechargePhase.Amount, model.state.value.resultPhase)
+        assertFalse(model.state.value.loading)
+        assertEquals(1, fees.creations)
+        assertEquals(1, fees.payments)
     }
 
     @Test fun paymentPreparationRejectionUsesFailureResultAndNoPasswordPayment() {
@@ -559,6 +602,7 @@ class FeeViewModelTest {
         val createdTargets = mutableListOf<String>()
         val createdProjects = mutableListOf<FeeProject>()
         var createGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var prepareGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var ignoreCreateCancellation = false
         var createFailure: Exception? = null
         var prepareFailure: Exception? = null
@@ -585,6 +629,7 @@ class FeeViewModelTest {
         }
         override suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation {
             preparedOrders += order.orderId!!
+            prepareGate.await()
             prepareFailure?.let { throw it }
             return FeeAccountPreparation(order.orderId, method.id, listOf(FeeAccount("demo-type", "统一账户", 1000)),
                 "fake-uuid-${order.orderId}", "9876543210")
