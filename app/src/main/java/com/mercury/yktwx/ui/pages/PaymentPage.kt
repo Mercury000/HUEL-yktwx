@@ -157,7 +157,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                 )
                                             }
                                         }
-                                        CompactButton(if (rechargeLoading) "读取中…" else "充值", onClick = onRecharge,
+                                        CompactButton("充值", onClick = onRecharge,
                                             enabled = !rechargeLoading)
                                     }
                                 }

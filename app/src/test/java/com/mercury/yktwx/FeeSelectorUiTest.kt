@@ -147,4 +147,53 @@ class FeeSelectorUiTest {
         compose.runOnIdle { dark = true }
         capture("family-target-dark")
     }
+    @Test fun paymentSheetKeepsTargetAndFormHeightWhileDetailsLoad() {
+        fun ready(project: FeeProject): FeeUiState {
+            val original = state(project)
+            val config = FeeConfiguration(project, project.label,
+                RechargeConfiguration(project.id, "", "", 0, listOf(1000, 5000, 10000), 1, 200000, true, false))
+            return if (project.network) FeeUiState(config = config,
+                query = FeeQuery(thirdParty = "{}", display = listOf("用户套餐" to "学生宽带套餐", "用户状态" to "正常")))
+            else FeeUiState(config = config, levels = original.levels, selections = original.selections,
+                names = original.names, query = original.query)
+        }
+        var project by mutableStateOf(FeeProject.FamilyWater)
+        var target by mutableStateOf(ready(project).currentRoom)
+        var current by mutableStateOf(FeeUiState(loading = true))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) { Scaffold {
+                    HallFeeDialog(current, true, project, target, onDismiss = {}, onSelect = { _, _ -> },
+                        onRetry = {}, onCreate = { _, _ -> }, onMethod = {}, onPayAccount = { _, _ -> },
+                        onCancelPayment = {}, onFinish = {}, onContinuePayment = {}, onRoomAction = {},
+                        onConfirmRoomAction = {}, onDismissRoomDialog = {}, onConsumeRoomNotice = {})
+                } }
+            }
+        }
+        for (service in listOf(FeeProject.FamilyWater, FeeProject.Network)) {
+            val loaded = ready(service)
+            compose.runOnIdle { project = service; target = loaded.currentRoom; current = FeeUiState(loading = true) }
+            compose.mainClock.advanceTimeBy(1500)
+            val targetBounds = compose.onNodeWithTag("hall-payment-target").assertIsSelected().fetchSemanticsNode().boundsInRoot
+            val sheetBounds = compose.onNodeWithTag("hall-payment-content").fetchSemanticsNode().boundsInRoot
+            capture("payment-loading-${service.id}")
+            val stages = listOf(FeeUiState(config = loaded.config, loading = true, levels = loaded.levels),
+                FeeUiState(config = loaded.config, loading = true, levels = loaded.levels,
+                    selections = loaded.selections, names = loaded.names), loaded)
+            stages.forEach { next ->
+                compose.runOnIdle { current = next }
+                compose.mainClock.advanceTimeBy(1500)
+                val actualTarget = compose.onNodeWithTag("hall-payment-target").fetchSemanticsNode().boundsInRoot
+                val actualSheet = compose.onNodeWithTag("hall-payment-content").fetchSemanticsNode().boundsInRoot
+                assertEquals("${service.id} target height", targetBounds.height, actualTarget.height, 1f)
+                assertEquals("${service.id} sheet height", sheetBounds.height, actualSheet.height, 1f)
+                assertEquals("${service.id} sheet top", sheetBounds.top, actualSheet.top, 1f)
+            }
+            compose.onNodeWithText("¥ 10").assertIsDisplayed().performClick()
+            compose.onNodeWithText("充值 ¥ 10.00").assertIsEnabled()
+            capture("payment-ready-${service.id}")
+            compose.onNodeWithTag("hall-payment-target").performClick().assertIsNotSelected()
+            assertEquals(targetBounds.height, compose.onNodeWithTag("hall-payment-target").fetchSemanticsNode().boundsInRoot.height, 1f)
+        }
+    }
 }

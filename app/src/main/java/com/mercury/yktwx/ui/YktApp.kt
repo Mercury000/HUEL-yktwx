@@ -453,7 +453,8 @@ private fun MainContent(
                                     onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
                                     onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onCardAction = ::cardAction,
-                                    cardBusy = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
+                                    manageLoading = cardState.loading && cardState.action == CampusCardAction.ManageState,
+                                    passwordLoading = passwordState.loading,
                                     onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
                                 )
                             }

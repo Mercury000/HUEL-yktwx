@@ -403,4 +403,14 @@ class CardServiceUiTest {
         compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
         screenshot("campus-card-others-recharge-dialog")
     }
+    @Test fun loadingCardRechargeUsesTheSharedAmountSkeleton() {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold { RechargeDialog(RechargeUiState(loading = true), {}, {}, {}) } }
+            }
+        }
+        compose.onNodeWithText("卡片充值").assertIsDisplayed()
+        compose.onNodeWithContentDescription("正在读取充值信息").assertIsDisplayed()
+        compose.onNodeWithText("读取中…").assertDoesNotExist()
+    }
 }

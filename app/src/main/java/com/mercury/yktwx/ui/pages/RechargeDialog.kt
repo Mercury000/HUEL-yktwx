@@ -24,8 +24,9 @@ fun RechargeDialog(
     var amount by remember(state.config) { mutableStateOf("") }
     var recipientSelected by remember(state.config, state.visible) { mutableStateOf(true) }
     val isResult = state.pending != null
+    val loadingConfig = state.loading && !isResult && state.config == null
     OverlayBottomSheet(
-        show = state.visible,
+        show = state.visible || loadingConfig,
         title = if (isResult) null else if (state.config?.recipient != null) "代人充值" else "卡片充值",
         onDismissRequest = onDismiss,
         renderInRootScaffold = true,
@@ -40,13 +41,18 @@ fun RechargeDialog(
             if (isResult) {
                 PaymentResultContent(state.phase, state.loading, state.pending.amountCents, state.error, onFinish,
                     subject = if (state.pending.recipient != null) "代充值" else "充值")
-            } else state.config?.let { config ->
-                if (state.preview) Text("界面预览 · 不发起支付", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
-                config.recipient?.let { recipient ->
-                    RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, !state.loading)
+            } else {
+                val config = state.config
+                if (config != null) {
+                    if (state.preview) Text("界面预览 · 不发起支付", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
+                    config.recipient?.let { recipient ->
+                        RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, !state.loading)
+                    }
+                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
+                        !state.preview && recipientSelected, state.error, onSubmit)
+                } else if (loadingConfig) {
+                    PaymentAmountPlaceholder(methods = listOf("微信"))
                 }
-                PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
-                    !state.preview && recipientSelected, state.error, onSubmit)
             }
         }
     }

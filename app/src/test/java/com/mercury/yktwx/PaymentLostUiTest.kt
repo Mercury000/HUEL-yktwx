@@ -82,6 +82,19 @@ class PaymentLostUiTest {
         compose.onNodeWithText("¥ 186.50").assertIsDisplayed()
         screenshot("payment-lost-app-dark")
     }
+    @Test fun rechargeButtonKeepsItsLabelWhileOpeningTheSheet() {
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    PaymentPage(PaymentUiState(needsLogin = false,
+                        account = PaymentAccount("fake", "fake", "1", "统一账户", 12860)),
+                        settings, 0.dp, onRefresh = {}, onLogout = {}, rechargeLoading = true)
+                }
+            }
+        }
+        compose.onNode(hasText("充值") and hasClickAction()).assertIsNotEnabled()
+        compose.onNodeWithText("读取中…").assertDoesNotExist()
+    }
     @Test fun contradictoryOldCodeIsNotRenderedAndRefreshIsOnlyAPullGesture() {
         var unlost = 0
         var refreshed = 0
