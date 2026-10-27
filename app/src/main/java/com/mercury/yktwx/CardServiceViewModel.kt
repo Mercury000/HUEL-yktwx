@@ -184,7 +184,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         mutable.value = s.copy(loading = true, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null, error = null)
         launchTask {
             try {
-                val recipients = if (s.preview) listOf(RechargeRecipient("demo-recipient", "demo-target", "示例同学", "202600000002", "统一账户", 0))
+                val recipients = if (s.preview) listOf(RechargeRecipient("demo-recipient", "demo-target", "示例同学", "202600000002", "统一账户"))
                     else repository.rechargeRecipients(username, type, value, s.captcha!!, code)
                 if (attempt != current) return@launchTask
                 val first = recipients.firstOrNull() ?: throw YktException("未查询到可充值账户")
@@ -225,8 +225,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     }
     private suspend fun loadRecipientConfig(recipient: RechargeRecipient, username: String, current: Long) {
         try {
-            val config = if (mutable.value.preview) RechargeConfiguration("demo", recipient.targetId, recipient.accountName, 0,
-                listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
+            val config = if (mutable.value.preview) RechargeConfiguration("demo", recipient.targetId, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
                 else repository.recipientRechargeConfiguration(username, recipient)
             if (current != attempt) return
             if (config.recipient !== recipient || config.targetId != recipient.targetId) throw YktException("充值账户配置不匹配，请重新查询")

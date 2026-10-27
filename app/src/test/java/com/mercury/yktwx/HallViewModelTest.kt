@@ -164,8 +164,7 @@ class HallViewModelTest {
             if (project == FeeProject.Zhengdong && projectGate != null) {
                 blockedProjectEntered = true; projectGate!!.await()
             }
-            return FeeConfiguration(project, project.label,
-                RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false),
+            return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false),
                 !project.network && project != FeeProject.Commercial, saved[project])
         }
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int,

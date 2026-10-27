@@ -20,11 +20,7 @@ internal fun meterReading(label: String, value: String): DormMeterReading {
 class DormMeter(val kind: DormMeterKind, val room: FeeRoomBinding, val query: FeeQuery?, val error: String? = null,
     val project: FeeProject? = null) {
     internal val readings get() = query?.display.orEmpty().map { (label, value) -> meterReading(label, value) }
-    val remainingKwh: String? get() = query?.display?.firstNotNullOfOrNull { (label, value) ->
-        DormMeterDiscovery.remainingKwh(value) ?: value.trim().takeIf {
-            "剩余电量" in label && ("度" in label || "kWh" in label) && it.matches(Regex("-?\\d+(?:\\.\\d+)?"))
-        }
-    }
+
     override fun toString() = "DormMeter([redacted])"
 }
 class DormRoom(

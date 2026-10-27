@@ -6,7 +6,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 class RechargeProtocolTest {
-    private fun pending() = PendingRecharge("123456", "fake-account", "401", 1000, 0, "FAKE-ORDER", "81")
+    private fun pending() = PendingRecharge("123456", "fake-account", "401", 1000, "FAKE-ORDER", "81")
     private fun form(order: String = "FAKE-ORDER", host: String = "wx.tenpay.com", extra: String = ""): String {
         val redirect = URLEncoder.encode("https://yktwx2.huel.edu.cn/payment/?name=result&orderid=" + order + "&payid=81", StandardCharsets.UTF_8)
         return "<form method='POST' action='https://" + host + "/cgi-bin/mmpayweb-bin/checkmweb?prepay_id=fake-prepay&amp;ct=1&amp;sign=fake-sign&amp;package=fake&amp;redirect_url=" + redirect + "'><input name='' value='' type='hidden'>" + extra + "</form><script>DO_NOT_EXECUTE()</script>"
@@ -25,12 +25,12 @@ class RechargeProtocolTest {
         rejected { RechargeMoney.responseCents("10.001") }
     }
     @Test fun amountRulesHonorConfiguredOptionsAndLimits() {
-        val fixed = RechargeConfiguration("401", "fake", "统一账户", 0, listOf(1000, 5000), 1000, 5000, false, false)
+        val fixed = RechargeConfiguration("401", "fake", listOf(1000, 5000), 1000, 5000, false, false)
         assertNull(fixed.amountError(1000))
         assertNotNull(fixed.amountError(2000))
         assertNotNull(fixed.amountError(100))
         assertNotNull(fixed.amountError(6000))
-        val ints = RechargeConfiguration("401", "fake", "统一账户", 0, emptyList(), 1, 50000, true, true)
+        val ints = RechargeConfiguration("401", "fake", emptyList(), 1, 50000, true, true)
         assertNotNull(ints.amountError(1001))
         assertNull(ints.amountError(1000))
     }

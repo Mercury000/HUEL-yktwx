@@ -14,56 +14,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mercury.yktwx.FeeStage
-import com.mercury.yktwx.FeeUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.InlineError
-import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-@Composable
-internal fun FeePaymentDialogs(
-    state: FeeUiState, interactive: Boolean, orderAmount: Long,
-    onMethod: (FeeMethod) -> Unit, onPayAccount: (String, String) -> Unit,
-    onCancelPayment: () -> Unit, onFinish: () -> Unit,
-    onContinuePayment: (FeeMethod) -> Unit,
-) {
-    OverlayBottomSheet(show = interactive && state.stage == FeeStage.Methods, title = "支付方式",
-        onDismissRequest = onCancelPayment, renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("¥ " + RechargeMoney.yuan(orderAmount), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            InlineError(state.error)
-            state.order?.methods.orEmpty().forEach { method ->
-                val busy = state.loading && state.method?.id == method.id
-                Button(onClick = { onMethod(method) }, enabled = !state.loading,
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-                    Text(if (busy) "正在准备支付" else method.name + "支付")
-                }
-            }
-        }
-    }
-    FeePasswordDialog(
-        show = interactive && state.stage == FeeStage.Password,
-        amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
-        onDismiss = onCancelPayment, onPay = onPayAccount,
-    )
-    OverlayBottomSheet(show = interactive && state.stage == FeeStage.Result, title = null,
-        onDismissRequest = onFinish, renderInRootScaffold = true, insideMargin = DpSize(0.dp, 0.dp)) {
-        Box(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
-                onFinish, subject = "缴费",
-                retryMethods = if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
-                onContinuePayment = onContinuePayment)
-        }
-    }
-}
 
 @Composable
 internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,

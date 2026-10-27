@@ -248,7 +248,7 @@ class PersonalDataViewModelTest {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
                 entered = true
                 withContext(NonCancellable) { gate.await() }
-                return FeeConfiguration(project, "示例项目", RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false))
+                return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false))
             }
         }
         val model = HallViewModel(app, AccountRepository(YktApi(), vault, feeService = fees))

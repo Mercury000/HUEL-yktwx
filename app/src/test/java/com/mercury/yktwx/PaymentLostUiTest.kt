@@ -88,7 +88,7 @@ class PaymentLostUiTest {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false,
                         account = PaymentAccount("fake", "fake", "1", "统一账户", 12860)),
-                        settings, 0.dp, onRefresh = {}, onLogout = {}, rechargeLoading = true)
+                        settings, 0.dp, onRefresh = {}, rechargeLoading = true)
                 }
             }
         }
@@ -103,7 +103,7 @@ class PaymentLostUiTest {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false, code = "00000000000000000000", secondsLeft = 60,
                         account = PaymentAccount("fake", "fake", "1", "统一账户", 12860), problem = PaymentCodeProblem.Lost),
-                        settings, 0.dp, onRefresh = { refreshed++ }, onLogout = {}, onUnlost = { unlost++ })
+                        settings, 0.dp, onRefresh = { refreshed++ }, onUnlost = { unlost++ })
                 }
             }
         }
@@ -128,7 +128,7 @@ class PaymentLostUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false, problem = PaymentCodeProblem.StatusUnverified),
-                        settings, 0.dp, onRefresh = {}, onLogout = {})
+                        settings, 0.dp, onRefresh = {})
                 }
             }
         }
@@ -142,7 +142,7 @@ class PaymentLostUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false, problem = PaymentCodeProblem.Frozen),
-                        settings, 0.dp, onRefresh = {}, onLogout = {})
+                        settings, 0.dp, onRefresh = {})
                 }
             }
         }
@@ -156,7 +156,7 @@ class PaymentLostUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false, error = "示例服务端错误"),
-                        settings, 0.dp, onRefresh = {}, onLogout = {})
+                        settings, 0.dp, onRefresh = {})
                 }
             }
         }
@@ -170,7 +170,7 @@ class PaymentLostUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PaymentUiState(needsLogin = false, busy = true, problem = PaymentCodeProblem.Lost,
-                        code = "00000000000000000000"), settings, 0.dp, onRefresh = {}, onLogout = {})
+                        code = "00000000000000000000"), settings, 0.dp, onRefresh = {})
                 }
             }
         }

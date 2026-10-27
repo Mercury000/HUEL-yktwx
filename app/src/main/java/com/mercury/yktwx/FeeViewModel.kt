@@ -32,7 +32,7 @@ class FeeUiState(
     val query: FeeQuery? = null, val order: FeeOrder? = null, val method: FeeMethod? = null,
     val preparation: FeeAccountPreparation? = null, val stage: FeeStage = FeeStage.Query,
     val resultPhase: RechargePhase = RechargePhase.Creating, val preview: Boolean = false,
-    val hiddenLevels: Set<String> = emptySet(), val refreshing: Boolean = false,
+    val hiddenLevels: Set<String> = emptySet(),
     val selecting: Boolean = false,
     val roomBinding: FeeRoomBinding? = config?.roomBinding,
     val roomBindingKnown: Boolean = config?.invalidRoomBinding != true,
@@ -46,7 +46,7 @@ class FeeUiState(
     val currentRoom get() = FeeRoomBinding.from(levels, selections, names)
     val roomAction get() = if (currentRoom?.sameTarget(roomBinding) == true) FeeRoomAction.Unbind else FeeRoomAction.Save
     val roomActionEnabled get() = config?.roomBindingEnabled == true && roomBindingKnown &&
-        stage == FeeStage.Query && !loading && !selecting && !refreshing && !roomBusy && currentRoom != null &&
+        stage == FeeStage.Query && !loading && !selecting && !roomBusy && currentRoom != null &&
         (roomAction == FeeRoomAction.Unbind || (query?.thirdParty != null && query.tip == null))
     override fun toString() = "FeeUiState([redacted])"
 }
@@ -70,24 +70,21 @@ class FeeViewModel internal constructor(
     private var attempt = 0L
     private var completedChecks = 0
     private var accountPaymentSubmitted = false
-    private var hallMode = false
     private var fixedHallTarget = false
     private val paymentReturn = PaymentReturnObserver(viewModelScope, { task },
         { !accountPaymentSubmitted && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
     fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null,
-        hall: Boolean = false, matchRoomNames: Boolean = false) {
+        matchRoomNames: Boolean = false) {
         dismiss()
-        hallMode = hall
-        fixedHallTarget = hall && requestedRoom != null && !matchRoomNames
+        fixedHallTarget = requestedRoom != null && !matchRoomNames
         owner = username
         mutable.value = FeeUiState(loading = true, preview = preview)
         val generation = attempt
         launchTask {
             try {
-                val config = if (preview) FeeConfiguration(project, project.label,
-                    RechargeConfiguration(project.id, "", "", 0, if (project.network) listOf(1500,3000,4500) else listOf(1000,5000,10000), 1, 200000, true, false),
+                val config = if (preview) FeeConfiguration(project, RechargeConfiguration(project.id, "", if (project.network) listOf(1500,3000,4500) else listOf(1000,5000,10000), 1, 200000, true, false),
                     roomBindingEnabled = !project.network && project != FeeProject.Commercial)
                     else repository.feeConfiguration(username, project)
                 if (attempt != generation) return@launchTask
@@ -107,7 +104,7 @@ class FeeViewModel internal constructor(
                     val entrance = FeeUiState(config, levels = initial.levels,
                         options = mapOf(first.number to initial.options), preview = preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
-                    val target = requestedRoom ?: config.roomBinding.takeUnless { hall }
+                    val target = requestedRoom
                     if (preview && requestedRoom != null && !matchRoomNames) {
                         mutable.value = FeeUiState(config, levels = initial.levels,
                             selections = requestedRoom.selections, names = requestedRoom.names,
@@ -133,11 +130,11 @@ class FeeViewModel internal constructor(
     fun selectFamilyProject(project: FeeProject): Boolean {
         val state = mutable.value
         val family = setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
-        if (!hallMode || fixedHallTarget || state.config?.project !in family || project !in family ||
+        if (fixedHallTarget || state.config?.project !in family || project !in family ||
             state.config?.project == project || state.stage != FeeStage.Query || state.loading || state.selecting ||
-            state.refreshing || state.roomBusy || state.roomDialog != null) return false
+            state.roomBusy || state.roomDialog != null) return false
         val household = state.currentRoom ?: return false
-        open(project, owner, state.preview, household, hall = true, matchRoomNames = true)
+        open(project, owner, state.preview, household, matchRoomNames = true)
         return true
     }
 
@@ -146,7 +143,7 @@ class FeeViewModel internal constructor(
         if (state.config == null || state.loading || state.selecting || state.roomBusy || state.roomDialog != null || state.stage != FeeStage.Query ||
             state.options[level.number]?.none { it.id == option.id } != false) return
         val generation = attempt
-        mutable.value = copy(state, selecting = true, error = null, refreshing = false)
+        mutable.value = copy(state, selecting = true, error = null)
         launchTask {
             try { loadSelection(state, level, option, generation) }
             catch (e: CancellationException) { throw e }
@@ -157,7 +154,7 @@ class FeeViewModel internal constructor(
     }
 
     private suspend fun loadSelection(state: FeeUiState, level: FeeLevel, option: FeeOption, generation: Long,
-        allowRoomPrompt: Boolean = true, continueLoading: Boolean = false) {
+        continueLoading: Boolean = false) {
         val config = state.config ?: return
         val keep = state.levels.filter { it.number < level.number }.map { it.key }.toSet()
         val selections = state.selections.filterKeys { it in keep } + (level.key to option.id)
@@ -173,7 +170,6 @@ class FeeViewModel internal constructor(
         mutable.value = copy(mutable.value, loading = continueLoading, selecting = false, error = query.tip, stage = state.stage,
             options = if (next == null) mutable.value.options else mutable.value.options + (next.number to query.options),
             query = if (next == null) query else null)
-        if (next == null && allowRoomPrompt) offerRoomSave()
     }
 
     private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long,
@@ -195,7 +191,7 @@ class FeeViewModel internal constructor(
                     mutable.value = copy(current, loading = false, error = unavailable)
                     return
                 }
-                loadSelection(current, level, option, generation, allowRoomPrompt = false,
+                loadSelection(current, level, option, generation,
                     continueLoading = index != entrance.levels.lastIndex)
                 if (attempt != generation) return
                 if (mutable.value.error != null) {
@@ -207,12 +203,6 @@ class FeeViewModel internal constructor(
         catch (e: Exception) {
             if (attempt == generation) mutable.value = copy(mutable.value, loading = false, error = message(e))
         }
-    }
-
-    private fun offerRoomSave() {
-        val state = mutable.value
-        if (hallMode || state.preview || state.roomBinding != null || !state.roomActionEnabled || state.roomDialog != null) return
-        mutable.value = copy(state, roomDialog = FeeRoomDialog(FeeRoomAction.Save, state.currentRoom!!, null))
     }
 
     fun requestRoomAction() {
@@ -264,37 +254,11 @@ class FeeViewModel internal constructor(
         }
     }
 
-    fun refreshQuery() {
-        val state = mutable.value
-        val config = state.config ?: return
-        if (state.loading || state.roomBusy || state.roomDialog != null || state.stage != FeeStage.Query || task?.isActive == true) return
-        val generation = attempt
-        val last = state.levels.lastOrNull { state.selections.containsKey(it.key) }
-        val detail = config.project.network || state.levels.isEmpty() || last == state.levels.lastOrNull()
-        val requestLevel = last?.number ?: 0
-        val next = state.levels.firstOrNull { it.number > requestLevel }
-        mutable.value = copy(state, loading = true, refreshing = true, error = null)
-        launchTask {
-            try {
-                val query = if (state.preview) previewQuery(config.project, detail, requestLevel)
-                    else repository.feeQuery(owner, config.project, requestLevel, state.selections, detail)
-                if (generation == attempt) {
-                    mutable.value = copy(mutable.value, loading = false, refreshing = false,
-                        error = query.tip, query = if (detail) query else null,
-                        options = if (!detail && next != null) mutable.value.options + (next.number to query.options) else mutable.value.options)
-                }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) {
-                if (generation == attempt) mutable.value = copy(mutable.value, loading = false, refreshing = false, error = message(e))
-            }
-        }
-    }
-
     /** Dismissing an unpaid UI ends only this attempt; it does not pop the fee page. */
     fun cancelPayment() {
         if (mutable.value.stage !in setOf(FeeStage.Methods, FeeStage.Password, FeeStage.Result)) return
         endPaymentAttempt()
-        mutable.value = copy(mutable.value, loading = false, refreshing = false, error = null,
+        mutable.value = copy(mutable.value, loading = false, error = null,
             order = null, method = null, preparation = null, paymentRetry = null, stage = FeeStage.Query,
             resultPhase = RechargePhase.Creating)
     }
@@ -321,7 +285,7 @@ class FeeViewModel internal constructor(
         endPaymentAttempt()
         val generation = attempt
         val marker = PendingRecharge(owner, query.thirdParty ?: return, config.project.id,
-            retry.amountCents, System.currentTimeMillis())
+            retry.amountCents)
         mutable.value = copy(s, loading = true, error = null, order = FeeOrder(marker, emptyList()),
             method = null, preparation = null, paymentRetry = null, resultPhase = RechargePhase.Creating)
         launchTask {
@@ -352,29 +316,24 @@ class FeeViewModel internal constructor(
             prepareMethod(copy(mutable.value, order = order), currentMethod, generation)
         }
     }
-    fun create(amount: Long) = createOrder(amount, null)
+
     fun createWithMethod(amount: Long, methodCode: String) {
         if (methodCode !in setOf("ACCOUNTTSM", "TSM")) return
-        createOrder(amount, methodCode)
-    }
-    private fun createOrder(amount: Long, methodCode: String?) {
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
-        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || s.refreshing || !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
+        if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting || !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
         config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it); return }
         val generation=attempt
         accountPaymentSubmitted = false
-        val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount, System.currentTimeMillis())
+        val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount)
         mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()),paymentRetry=null)
         launchTask {
             try {
                 val order=repository.createFee(marker.username,config,q,amount)
                 if (generation==attempt) {
                     mutable.value=copy(mutable.value,loading=false,order=order,stage=FeeStage.Methods)
-                    if (methodCode != null) {
-                        val selected = order.methods.singleOrNull { it.code == methodCode }
-                        if (selected != null) prepareMethod(mutable.value, selected, generation)
-                        else mutable.value = copy(mutable.value, error = "所选支付方式不可用，请重新选择")
-                    }
+                    val selected = order.methods.singleOrNull { it.code == methodCode }
+                    if (selected != null) prepareMethod(mutable.value, selected, generation)
+                    else mutable.value = copy(mutable.value, error = "所选支付方式不可用，请重新选择")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: FeePaymentRejected) {
@@ -601,7 +560,6 @@ class FeeViewModel internal constructor(
         stage: FeeStage = s.stage,
         resultPhase: RechargePhase = s.resultPhase,
         hiddenLevels: Set<String> = s.hiddenLevels,
-        refreshing: Boolean = s.refreshing,
         selecting: Boolean = s.selecting,
         roomBinding: FeeRoomBinding? = s.roomBinding,
         roomBindingKnown: Boolean = s.roomBindingKnown,
@@ -610,6 +568,6 @@ class FeeViewModel internal constructor(
         roomNotice: String? = s.roomNotice,
         paymentRetry: FeePaymentRetry? = s.paymentRetry,
     ) = FeeUiState(s.config, loading, error, levels, options, selections, names, query, order,
-        method, preparation, stage, resultPhase, s.preview, hiddenLevels, refreshing, selecting,
+        method, preparation, stage, resultPhase, s.preview, hiddenLevels, selecting,
         roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice, paymentRetry)
 }

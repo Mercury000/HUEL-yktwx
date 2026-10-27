@@ -105,7 +105,6 @@ class BillApiTest {
             "fake-token", 2, 8, "2026-10-01", "2026-10-31", "4", 100, 5000, " 食堂 ",
         )
         assertEquals(1, page.items.size)
-        assertEquals(1, page.total)
         assertEquals(2, page.current)
         assertEquals(1, page.pages)
 
@@ -207,7 +206,7 @@ class BillApiTest {
         assertEquals(20540, summary.expensesCents)
 
         val type = fake.api.billTypes("fake-token").single()
-        assertEquals(BillType("4", "二维码支付", "qrCode-payment"), type)
+        assertEquals(BillType("4", "二维码支付"), type)
 
         val categories = fake.api.billCategories("fake-token", 2, "2026-10-01", "2026-10-31")
         assertEquals(listOf("超市", "餐饮"), categories.map { it.name })

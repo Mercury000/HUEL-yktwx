@@ -21,8 +21,6 @@ object RechargeMoney {
 class RechargeConfiguration(
     val feeItemId: String,
     val targetId: String,
-    val accountName: String,
-    val balanceCents: Long,
     val amountsCents: List<Long>,
     val minimumCents: Long,
     val maximumCents: Long,
@@ -47,13 +45,12 @@ class PendingRecharge(
     val targetId: String,
     val feeItemId: String,
     val amountCents: Long,
-    val createdAtMillis: Long,
     val orderId: String? = null,
     val payId: String? = null,
     val recipient: RechargeRecipient? = null,
 ) {
     fun withOrder(orderId: String, payId: String?) = PendingRecharge(
-        username, targetId, feeItemId, amountCents, createdAtMillis, orderId, payId, recipient,
+        username, targetId, feeItemId, amountCents, orderId, payId, recipient,
     )
     override fun toString() = "PendingRecharge([redacted])"
 }
@@ -64,19 +61,13 @@ class RechargeOrder(val orderId: String, val payId: String?) {
 class WechatRechargeLaunch(val uri: String) {
     override fun toString() = "WechatRechargeLaunch([redacted])"
 }
-class RechargeResult(val paid: Boolean, val amountCents: Long, val balanceCents: Long?, val serverStatus: Int? = null)
+class RechargeResult(val paid: Boolean, val serverStatus: Int? = null)
 
 interface RechargeService {
     suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration
     suspend fun createRecharge(token: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder
     suspend fun launchRecharge(token: String, pending: PendingRecharge): WechatRechargeLaunch
     suspend fun rechargeResult(token: String, pending: PendingRecharge): RechargeResult
-}
-
-interface RechargeStore {
-    fun pending(username: String): PendingRecharge?
-    fun save(pending: PendingRecharge)
-    fun clear(username: String)
 }
 
 internal fun JSONObject.rechargeText(key: String): String = optString(key).takeUnless { it == "null" }.orEmpty()

@@ -195,8 +195,8 @@ class RechargeViewModelTest {
     }
 
     @Test fun othersRechargeUsesSameCreationLaunchAndResultFlowWithRecipientMetadata() {
-        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户", 0)
-        val config = RechargeConfiguration("401", recipient.targetId, recipient.accountName, 0, listOf(1000), 1, 50000, true, false, recipient)
+        val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户")
+        val config = RechargeConfiguration("401", recipient.targetId, listOf(1000), 1, 50000, true, false, recipient)
         model.onForeground()
         model.onResumed(true)
         model.openOthers(vault.username, config, false)
@@ -258,7 +258,7 @@ class RechargeViewModelTest {
         override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
             configurations++
             configurationGate.await()
-            return RechargeConfiguration("401", "fake-account", "统一账户", 0, listOf(1000, 5000), 1, 50_000, true, false)
+            return RechargeConfiguration("401", "fake-account", listOf(1000, 5000), 1, 50_000, true, false)
         }
 
         override suspend fun createRecharge(token: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder {
@@ -283,15 +283,14 @@ class RechargeViewModelTest {
             withContext(NonCancellable) { resultGate.await() }
             resultResponses++
             resultFailure?.let { throw it }
-            return RechargeResult(resultStatus == 1, pending.amountCents, null, resultStatus)
+            return RechargeResult(resultStatus == 1, resultStatus)
         }
     }
     @Test fun explicitLostRejectionEndsOwnAndOthersRechargeWithoutLaunchOrQuery() {
         for (other in listOf(false, true)) {
             if (other) {
-                val recipient = RechargeRecipient("other-card", "other-target", "示例", "123456", "统一账户", 0)
-                model.openOthers(vault.username, RechargeConfiguration("401", "other-target", "统一账户", 0,
-                    listOf(1000), 1, 50_000, true, false, recipient), false)
+                val recipient = RechargeRecipient("other-card", "other-target", "示例", "123456", "统一账户")
+                model.openOthers(vault.username, RechargeConfiguration("401", "other-target", listOf(1000), 1, 50_000, true, false, recipient), false)
             } else open()
             service.launchFailure = RechargePaymentRejected("账户已挂失")
             val previousCreations = service.creations

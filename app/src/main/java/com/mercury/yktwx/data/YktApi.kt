@@ -136,7 +136,7 @@ class YktApi(
             if (codes.any { code -> code.length != 20 || code.any { it !in '0'..'9' } }) throw YktException("付款码数据异常")
             val expiry = data.optLong("expires")
             if (expiry <= 0) throw YktException("付款码有效期异常")
-            return PaymentBatch(codes, expiry, started, account)
+            return PaymentBatch(codes, expiry, account)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: AuthenticationRequired) { throw e }
         catch (e: YktException) { throw PaymentCodeUnavailable(account, e.message ?: "付款码暂不可用") }
@@ -175,9 +175,8 @@ class YktApi(
             "current" to "1", "size" to "1", "timeFrom" to timeFrom, "timeTo" to timeTo,
             "type" to type.toString(),
         )
-        return BillParser.page(
-            request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data"),
-        ).total
+        return request("/berserker-search/search/personal/turnover", params, token)
+            .getJSONObject("data").optInt("total")
     }
     override suspend fun billTypes(token: String): List<BillType> =
         BillParser.types(request("/berserker-search/search/turnoverType", token = token).getJSONArray("data"))

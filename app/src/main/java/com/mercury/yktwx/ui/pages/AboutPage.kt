@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -91,9 +90,7 @@ fun AboutPage(
     padding: PaddingValues,
     isActive: Boolean,
     onOpenReferences: () -> Unit,
-    onOpenSettings: () -> Unit,
     onBack: (() -> Unit)? = null,
-    showSettings: Boolean = true,
 ) {
     val context = LocalContext.current
     val sourceUrl = stringResource(R.string.source_code_url)
@@ -264,10 +261,6 @@ fun AboutPage(
                                 ArrowPreference(
                                     title = stringResource(R.string.about_references),
                                     onClick = onOpenReferences,
-                                )
-                                if (showSettings) ArrowPreference(
-                                    title = stringResource(R.string.settings_title),
-                                    onClick = onOpenSettings,
                                 )
                             }
                             Spacer(Modifier.height(12.dp))

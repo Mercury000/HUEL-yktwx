@@ -51,7 +51,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     }
     val cents = RechargeMoney.cents(amount)
     val config = state.config
-    val ready = !state.loading && !state.selecting && !state.refreshing && state.query?.canPay == true &&
+    val ready = !state.loading && !state.selecting && state.query?.canPay == true &&
         state.query.thirdParty != null && state.query.tip == null &&
         config?.project == project &&
         (fixedTarget == null || fixedTarget.sameTarget(state.currentRoom))
@@ -86,7 +86,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         }
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                     } else if (!amountStep && project?.network != true) {
-                        val targetEnabled = !state.loading && !state.selecting && !state.refreshing && !state.roomBusy && state.roomDialog == null
+                        val targetEnabled = !state.loading && !state.selecting && !state.roomBusy && state.roomDialog == null
                         HallFeeTargetOptions(state, onSelect, targetEnabled)
                         if (state.currentRoom != null && project in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
                             val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
@@ -123,7 +123,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
                         else PaymentAmountForm(config.amountRules, amount, { amount = it },
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
-                            { methodCode = codes[it] }, state.loading || state.selecting || state.refreshing || state.roomBusy,
+                            { methodCode = codes[it] }, state.loading || state.selecting || state.roomBusy,
                             ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
                     }
                 }
@@ -172,7 +172,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
 private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, selected: Boolean = true,
     onSelect: () -> Unit = {}, enabled: Boolean = false,
     project: FeeProject? = state.config?.project, fixedTarget: FeeRoomBinding? = null) {
-    val pending = state.query == null && (state.loading || state.selecting || state.refreshing)
+    val pending = state.query == null && (state.loading || state.selecting)
     val room = state.currentRoom ?: fixedTarget
     PaymentSelectionCard(selected = selected, onClick = onSelect, modifier = modifier, enabled = enabled) { contentColor ->
             val placeholderColor = contentColor.copy(alpha = .2f)

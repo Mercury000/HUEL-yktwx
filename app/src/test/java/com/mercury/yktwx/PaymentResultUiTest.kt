@@ -1,6 +1,5 @@
 package com.mercury.yktwx
 
-import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -19,11 +18,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.AppTheme
-import com.mercury.yktwx.ui.ThemeSettings
-import com.mercury.yktwx.ui.pages.FeePage
+import com.mercury.yktwx.ui.pages.HallFeeDialog
 import com.mercury.yktwx.ui.pages.PaymentResultContent
 import org.junit.Assert.*
 import org.junit.Rule
@@ -33,6 +30,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.Scaffold
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
@@ -220,26 +218,27 @@ class PaymentResultUiTest {
         screenshot("fee-payment-failure-large-font")
     }
 
-    @Test fun feePageConnectsDraftToInlineRetryAndKeepsAmountForNextPayment() {
+    @Test fun hallFeeDialogConnectsDraftToInlineRetryAndKeepsTarget() {
         val state = FeeUiState(
-            config = FeeConfiguration(FeeProject.Network, "示例网费",
-                RechargeConfiguration("412", "", "", 0, listOf(1000), 1, 10000, true, false)),
+            config = FeeConfiguration(FeeProject.Network, RechargeConfiguration("412", "", listOf(1000), 1, 10000, true, false)),
             query = FeeQuery(thirdParty = "{}"), stage = FeeStage.Result, resultPhase = RechargePhase.Failed,
             error = "持卡人已挂失！", paymentRetry = FeePaymentRetry(1000, listOf(wechat)),
         )
         var submitted: FeeMethod? = null
         val current = mutableStateOf(state)
         var cancellations = 0
-        val settings = ThemeSettings(ApplicationProvider.getApplicationContext<Context>())
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme {
-                    FeePage(current.value, settings, {}, { _, _ -> }, {}, {}, {}, {}, { _, _ -> },
+                AppTheme { Scaffold {
+                    HallFeeDialog(current.value, true, FeeProject.Network, null,
+                        onDismiss = {}, onSelect = { _, _ -> }, onRetry = {}, onCreate = { _, _ -> },
+                        onMethod = {}, onPayAccount = { _, _ -> }, onRoomAction = {},
+                        onConfirmRoomAction = {}, onDismissRoomDialog = {}, onConsumeRoomNotice = {},
                         onFinish = {
                             cancellations++
                             current.value = FeeUiState(config = state.config, query = state.query)
                         }, onCancelPayment = {}, onContinuePayment = { submitted = it })
-                }
+                } }
             }
         }
         compose.onNodeWithText("持卡人已挂失！").assertExists()
@@ -261,19 +260,20 @@ class PaymentResultUiTest {
         val preparation = FeeAccountPreparation("FAKE-ORDER", account.id,
             listOf(FeeAccount("demo-type", "统一账户", 1000)), "fake-uuid", "9876543210")
         val initial = FeeUiState(
-            config = FeeConfiguration(FeeProject.Network, "示例网费",
-                RechargeConfiguration("412", "", "", 0, listOf(1000), 1, 10000, true, false)),
+            config = FeeConfiguration(FeeProject.Network, RechargeConfiguration("412", "", listOf(1000), 1, 10000, true, false)),
             query = FeeQuery(thirdParty = "{}"), stage = FeeStage.Password,
-            order = FeeOrder(PendingRecharge("test-user", "{}", "412", 1000, 0, "FAKE-ORDER", account.id), methods),
+            order = FeeOrder(PendingRecharge("test-user", "{}", "412", 1000, "FAKE-ORDER", account.id), methods),
             method = account, preparation = preparation,
         )
         val current = mutableStateOf(initial)
         val passwords = mutableListOf<String>()
-        val settings = ThemeSettings(ApplicationProvider.getApplicationContext<Context>())
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme {
-                    FeePage(current.value, settings, {}, { _, _ -> }, {}, {}, {}, {},
+                AppTheme { Scaffold {
+                    HallFeeDialog(current.value, true, FeeProject.Network, null,
+                        onDismiss = {}, onSelect = { _, _ -> }, onRetry = {}, onCreate = { _, _ -> },
+                        onMethod = {}, onContinuePayment = {}, onRoomAction = {},
+                        onConfirmRoomAction = {}, onDismissRoomDialog = {}, onConsumeRoomNotice = {},
                         onPayAccount = { type, password ->
                             assertEquals("demo-type", type)
                             passwords += password
@@ -281,7 +281,7 @@ class PaymentResultUiTest {
                                 stage = FeeStage.Password, order = initial.order, method = account,
                                 preparation = preparation, error = "账户密码错误")
                         }, onFinish = {}, onCancelPayment = {})
-                }
+                } }
             }
         }
         fun input() = compose.onNode(hasSetTextAction() and

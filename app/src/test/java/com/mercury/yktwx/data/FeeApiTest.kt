@@ -119,7 +119,7 @@ class FeeApiTest {
         assertEquals(1, requests)
     }
 
-    private fun pending() = PendingRecharge("test-user", "{\"room\":\"demo-room\"}", "410", 100, 0, "FAKE-ORDER", "64")
+    private fun pending() = PendingRecharge("test-user", "{\"room\":\"demo-room\"}", "410", 100, "FAKE-ORDER", "64")
     private fun method() = FeeMethod("64", "ACCOUNTTSM", "一卡通", false, 0)
     private fun preparation() = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 1000)), "fake-uuid", "9876543210")
     private fun orderInfo(expiry: String = "2026-10-21 12:30:00", status: Int = 0) = JSONObject().put("code", 200)

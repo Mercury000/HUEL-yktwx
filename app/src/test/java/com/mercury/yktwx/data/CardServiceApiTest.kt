@@ -121,7 +121,6 @@ class CardServiceApiTest {
         val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse()).also(calls::add) }
         val recipient = lookup(api).single()
         assertEquals("recipient-electronic", recipient.targetId); assertEquals("recipient-card", recipient.cardAccount)
-        assertEquals(300L, recipient.balanceCents)
         val p = params(calls.first().url.query)
         assertEquals("sno", p["idtype"]); assertEquals("202600000002", p["id"]); assertEquals("recharge", p["scene"])
         assertEquals("fake-key", p["captcha_header_key"]); assertEquals("abcde", p["captcha_header_code"])
@@ -130,9 +129,9 @@ class CardServiceApiTest {
     }
     @Test fun nestedAccountMissingIsNotOuterSuccessAndCaptchaErrorIsDistinct() {
         val missing = CardServiceApi { url -> FakeHttps(url, "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"60003\",\"card\":null},\"msg\":\"操作成功\"}") }
-        try { lookup(missing); fail("Expected missing account") } catch (e: RecipientLookupRejected) { assertFalse(e.invalidCaptcha); assertTrue(e.message!!.contains("不存在")) }
+        try { lookup(missing); fail("Expected missing account") } catch (e: RecipientLookupRejected) { assertTrue(e.message!!.contains("不存在")) }
         val captcha = CardServiceApi { url -> FakeHttps(url, "{\"code\":8002,\"success\":false,\"data\":null}") }
-        try { lookup(captcha); fail("Expected captcha failure") } catch (e: RecipientLookupRejected) { assertTrue(e.invalidCaptcha) }
+        try { lookup(captcha); fail("Expected captcha failure") } catch (e: RecipientLookupRejected) { assertTrue(e.message!!.contains("验证码")) }
     }
     @Test fun captchaReadsTopLevelKeyAndBoundedInlineImage() = runBlocking {
         val api = CardServiceApi { url -> FakeHttps(url, "{\"key\":\"fake-key\",\"image\":\"data:image/png;base64,AQID\"}") }
@@ -143,7 +142,7 @@ class CardServiceApiTest {
         val calls = mutableListOf<FakeHttps>()
         val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration()
             else "{\"code\":200,\"feeitem\":{\"layout\":\"10,50,100\",\"flag\":\"1100000000\"}}").also(calls::add) }
-        val recipient = RechargeRecipient("recipient-card", "recipient-electronic", "示例同学", "202600000002", "统一账户", 300)
+        val recipient = RechargeRecipient("recipient-card", "recipient-electronic", "示例同学", "202600000002", "统一账户")
         val config = api.recipientRechargeConfiguration("fake-token", recipient)
         assertSame(recipient, config.recipient); assertEquals(recipient.targetId, config.targetId)
         assertEquals(listOf(1000L, 5000L, 10000L), config.amountsCents)
@@ -186,8 +185,9 @@ class CardServiceApiTest {
         assertTrue(c.lostNeedsPassword); assertFalse(c.unlostNeedsPassword)
     }
     @Test fun recipientUiValuesAreNotMaskedButStringificationIsRedacted() {
-        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户", 0)
-        assertEquals("示例同学 · 202600000002", recipient.label)
+        val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
+        assertEquals("示例同学", recipient.name)
+        assertEquals("202600000002", recipient.sno)
         assertEquals("RechargeRecipient([redacted])", recipient.toString())
     }
 
@@ -196,7 +196,6 @@ class CardServiceApiTest {
         val api = CardServiceApi { url -> FakeHttps(url,
             if (url.path.endsWith("frontInfo")) configuration() else cardResponse(1)).also(calls::add) }
         val error = assertThrows(RecipientLookupRejected::class.java) { lookup(api) }
-        assertFalse(error.invalidCaptcha)
         assertEquals("已挂失，禁止充值，请先解挂", error.message)
         assertTrue(calls.all { it.requestMethod == "GET" })
         assertTrue(calls.none { it.url.path.endsWith("queryCard") })

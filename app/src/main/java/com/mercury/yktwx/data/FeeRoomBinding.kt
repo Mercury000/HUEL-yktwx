@@ -4,7 +4,6 @@ package com.mercury.yktwx.data
 class FeeRoomBinding private constructor(
     val selections: Map<String, String>, val names: Map<String, String>,
 ) {
-    val label get() = names.values.joinToString(" · ")
     /** Prefer the meter label; only add location when it is not already part of that label. */
     val dialogLabel: String get() {
         val rawRoom = names["room"] ?: names["room_id"] ?: return names.values.lastOrNull().orEmpty()

@@ -125,7 +125,7 @@ class FeeViewModelTest {
     }
 
     @Test fun hallPreferredCardMethodPreparesOneOrderAndWaitsForPasswordConfirmation() {
-        model.open(FeeProject.Network, "test-user", false, hall = true)
+        model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
         model.createWithMethod(100, "ACCOUNTTSM")
         model.createWithMethod(100, "ACCOUNTTSM")
@@ -143,7 +143,7 @@ class FeeViewModelTest {
     }
 
     @Test fun hallPreferredMethodLateOrderCannotRestoreDialogOrLaunchAfterDismissal() {
-        model.open(FeeProject.Network, "test-user", false, hall = true)
+        model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
         fees.createGate = CompletableDeferred()
         fees.ignoreCreateCancellation = true
@@ -254,9 +254,7 @@ class FeeViewModelTest {
         store.put("short-fees", shortModel)
         shortModel.open(FeeProject.Network, "test-user", false)
         await { !shortModel.state.value.loading && shortModel.state.value.query != null }
-        shortModel.create(100)
-        await { shortModel.state.value.stage == FeeStage.Methods }
-        shortModel.chooseMethod(fees.accountMethod)
+        shortModel.createWithMethod(100, fees.accountMethod.code)
         await { shortModel.state.value.stage == FeeStage.Password }
         fees.failure = NetworkFailure()
         fees.resultGate = CompletableDeferred()
@@ -375,13 +373,11 @@ class FeeViewModelTest {
         assertNull(model.state.value.paymentRetry)
     }
 
-    @Test fun failedChannelCannotBeReintroducedByAnotherIdOrCode() {
-        val sameCodeDifferentId = FeeMethod("65", "ACCOUNTTSM", "一卡通别名", false, 0)
+    @Test fun failedChannelCannotBeReintroducedBySameIdWithAnotherCode() {
         val sameIdDifferentCode = FeeMethod("64", "TSM", "异常渠道", false, 0)
-        fees.methods = listOf(fees.accountMethod, sameCodeDifferentId, sameIdDifferentCode, fees.wechatMethod)
+        fees.methods = listOf(fees.accountMethod, sameIdDifferentCode, fees.wechatMethod)
         rejectAccount()
         assertEquals(listOf(fees.wechatMethod), model.state.value.paymentRetry?.methods)
-        model.continuePayment(sameCodeDifferentId)
         model.continuePayment(sameIdDifferentCode)
         assertEquals(1, fees.creations)
     }
@@ -416,10 +412,8 @@ class FeeViewModelTest {
     @Test fun paymentPreparationRejectionUsesFailureResultAndNoPasswordPayment() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
         fees.prepareFailure = FeePaymentRejected(FeeRejectionReason.Other, "服务端准备失败")
-        model.chooseMethod(fees.accountMethod)
+        model.createWithMethod(100, fees.accountMethod.code)
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
         assertEquals("服务端准备失败", model.state.value.error)
         assertTrue(model.state.value.canContinuePayment)
@@ -430,10 +424,8 @@ class FeeViewModelTest {
     @Test fun passwordCodeDuringPreparationDoesNotEnterPasswordCorrection() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
         fees.prepareFailure = FeePaymentRejected(FeeRejectionReason.Password, "账户密码错误")
-        model.chooseMethod(fees.accountMethod)
+        model.createWithMethod(100, fees.accountMethod.code)
         await { !model.state.value.loading }
         assertEquals(FeeStage.Result, model.state.value.stage)
         assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
@@ -446,7 +438,7 @@ class FeeViewModelTest {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
         fees.createFailure = FeePaymentRejected(FeeRejectionReason.Other, "服务端下单拒绝")
-        model.create(100)
+        model.createWithMethod(100, "ACCOUNTTSM")
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
         assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
         assertEquals("服务端下单拒绝", model.state.value.error)
@@ -456,10 +448,8 @@ class FeeViewModelTest {
     @Test fun unpaidWechatResultIsNotProofOfClosedChannelAndCannotContinue() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
         model.onForeground(); model.onResumed(true)
-        model.chooseMethod(fees.wechatMethod)
+        model.createWithMethod(100, fees.wechatMethod.code)
         await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
         fees.resultStatus = 0
         model.checkResult()
@@ -472,10 +462,8 @@ class FeeViewModelTest {
     @Test fun launchFailureOffersNewPaymentWithoutRestoringOldWechatReturnObserver() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
         model.onForeground(); model.onResumed(true)
-        model.chooseMethod(fees.wechatMethod)
+        model.createWithMethod(100, fees.wechatMethod.code)
         await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
         model.wechatLaunched()
         model.launchFailed()
@@ -523,10 +511,8 @@ class FeeViewModelTest {
     private fun rejectWechat() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
         fees.launchFailure = FeePaymentRejected(FeeRejectionReason.Other, "微信准备失败")
-        model.chooseMethod(fees.wechatMethod)
+        model.createWithMethod(100, fees.wechatMethod.code)
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
         fees.launchFailure = null
     }
@@ -540,9 +526,7 @@ class FeeViewModelTest {
     private fun openPassword() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        model.create(100)
-        await { model.state.value.stage == FeeStage.Methods }
-        model.chooseMethod(fees.accountMethod)
+        model.createWithMethod(100, fees.accountMethod.code)
         await { model.state.value.stage == FeeStage.Password }
     }
     private fun await(condition: () -> Boolean) {
@@ -586,8 +570,7 @@ class FeeViewModelTest {
         var failure: Exception? = null
         var resultStatus: Int? = 1
         var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
-        override suspend fun feeConfiguration(token: String, project: FeeProject) = FeeConfiguration(project, "测试缴费",
-            RechargeConfiguration(project.id, "", "", 0, listOf(100), 1, 10000, true, false))
+        override suspend fun feeConfiguration(token: String, project: FeeProject) = FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false))
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
             FeeQuery(thirdParty = if (detail) "{\"userId\":\"test-user\"}" else null)
         override suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?) = Unit
@@ -598,8 +581,7 @@ class FeeViewModelTest {
             createdProjects += config.project
             if (ignoreCreateCancellation) withContext(NonCancellable) { createGate.await() } else createGate.await()
             createFailure?.let { throw it }
-            return FeeOrder(PendingRecharge(username, query.thirdParty, config.project.id, amountCents, 0,
-                if (number == 1) "FAKE-ORDER" else "FAKE-ORDER-$number"), methods)
+            return FeeOrder(PendingRecharge(username, query.thirdParty, config.project.id, amountCents, if (number == 1) "FAKE-ORDER" else "FAKE-ORDER-$number"), methods)
         }
         override suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation {
             preparedOrders += order.orderId!!
@@ -622,7 +604,7 @@ class FeeViewModelTest {
         override suspend fun feeResult(token: String, order: PendingRecharge): RechargeResult {
             resultQueries++
             resultGate.await()
-            return RechargeResult(resultStatus == 1, order.amountCents, null, resultStatus)
+            return RechargeResult(resultStatus == 1, resultStatus)
         }
     }
     @Test fun lost60050KeepsBackendReasonAndDoesNotSuggestRechargingOrQuery() {
