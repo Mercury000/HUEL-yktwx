@@ -295,11 +295,13 @@ class HallPreviewTest {
         capture("21-family-combined")
     }
 
-    @Test fun paymentMethodsStayBesideAmountAndReuseRecipientSelectionStyle() {
+    @Test fun unavailablePaymentMethodsReuseResultChoicesAndContinueTheExistingOrder() {
         val config = FeeConfiguration(FeeProject.Zhengdong, RechargeConfiguration(FeeProject.Zhengdong.id, "", listOf(1000, 5000, 10000), 1, 200000, true, false),
             roomBindingEnabled = true)
         val pending = PendingRecharge("preview-user", "{}", FeeProject.Zhengdong.id, 1000, "PREVIEW-ORDER")
         var selectedMethod: FeeMethod? = null
+        var cancellations = 0
+        var retries = 0
         var state by mutableStateOf(FeeUiState(config = config, preview = true, stage = FeeStage.Methods,
             query = FeeQuery(thirdParty = "{}", display = listOf("剩余电量" to "86.4 度")),
             order = FeeOrder(pending, listOf(
@@ -312,31 +314,42 @@ class HallPreviewTest {
                     HallFeeDialog(state = state, visible = true, project = FeeProject.Zhengdong,
                         fixedTarget = null, onDismiss = {}, onSelect = { _, _ -> }, onRetry = {},
                         onCreate = { _, _ -> }, onMethod = { selectedMethod = it }, onPayAccount = { _, _ -> },
-                        onCancelPayment = {}, onFinish = {}, onContinuePayment = {},
+                        onCancelPayment = { cancellations++ }, onFinish = {}, onContinuePayment = { retries++ },
                         onRoomAction = {}, onConfirmRoomAction = {}, onDismissRoomDialog = {},
                         onConsumeRoomNotice = {})
                 } }
             }
         }
-        compose.onNodeWithText("充值金额").assertIsDisplayed()
-        compose.onNodeWithText("支付方式").assertIsDisplayed()
-        compose.onNodeWithText("一卡通").assertIsDisplayed()
-        compose.onNodeWithText("微信").assertIsDisplayed()
+        compose.onNodeWithText("充值金额").assertDoesNotExist()
+        compose.onNodeWithText("修改金额").assertDoesNotExist()
+        compose.onNodeWithText("确定支付").assertDoesNotExist()
+        compose.onNodeWithText("可选择以下方式重新支付").assertIsDisplayed()
+        compose.onNodeWithText("一卡通支付").assertIsDisplayed().assertIsNotSelected()
+        compose.onNodeWithText("微信支付").assertIsDisplayed().assertIsNotSelected()
+        compose.onNodeWithText("继续支付").assertIsNotEnabled()
         capture("22-payment-method")
         val available = state.order!!.methods.last()
         compose.runOnIdle { state = FeeUiState(config = config, preview = true, stage = FeeStage.Methods,
             error = "所选支付方式不可用，请重新选择", order = FeeOrder(pending, listOf(available))) }
         compose.onNodeWithText("所选支付方式不可用，请重新选择").assertIsDisplayed()
-        compose.onNodeWithText("微信").assertIsDisplayed()
+        compose.onNodeWithText("一卡通支付").assertDoesNotExist()
+        compose.onNodeWithText("微信支付").assertIsDisplayed().assertIsNotSelected()
         assertNull(selectedMethod)
-        compose.onNodeWithText("确定支付").assertIsEnabled().performClick()
+        compose.onNodeWithText("继续支付").assertIsNotEnabled()
+        compose.onNodeWithText("微信支付").performClick().assertIsSelected()
+        compose.onNodeWithText("继续支付").assertIsEnabled().performClick()
         assertSame(available, selectedMethod)
+        assertEquals(0, retries)
+        compose.onNodeWithText("取消支付").performClick()
+        assertEquals(1, cancellations)
         val second = FeeMethod("preview-wechat-second", "TSM", "另一渠道", false, 0)
         compose.runOnIdle { state = FeeUiState(config = config, preview = true, stage = FeeStage.Methods,
             order = FeeOrder(pending, listOf(available, second))) }
-        compose.onNodeWithText("另一渠道").performClick()
-        compose.onNodeWithText("确定支付").performClick()
+        compose.onNodeWithText("继续支付").assertIsNotEnabled()
+        compose.onNodeWithText("另一渠道支付").performClick().assertIsSelected()
+        compose.onNodeWithText("继续支付").performClick()
         assertSame(second, selectedMethod)
+        assertEquals(0, retries)
     }
 
     @Test fun cardPasswordUsesCenteredDialogAndClearsSubmittedPassword() {
