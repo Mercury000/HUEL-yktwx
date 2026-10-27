@@ -51,6 +51,7 @@ class PaymentResultUiTest {
         fontScale: Float = 1f,
         onContinue: (FeeMethod) -> Unit = {},
         onFinish: () -> Unit = {},
+        onCheck: (() -> Unit)? = null,
     ) {
         compose.setContent {
             val density = LocalDensity.current
@@ -60,7 +61,7 @@ class PaymentResultUiTest {
                         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                             .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                             PaymentResultContent(phase, loading, 1000, detail, onFinish, subject,
-                                retryMethods = retryMethods, onContinuePayment = onContinue)
+                                retryMethods = retryMethods, onContinuePayment = onContinue, onCheck = onCheck)
                         }
                     }
                 }
@@ -96,8 +97,16 @@ class PaymentResultUiTest {
 
     @Test fun missingFailureMessageHasReadableFallbackInsteadOfAmount() {
         content(detail = "")
-        compose.onNodeWithText("未能完成支付，请稍后重试").assertExists()
+        compose.onNodeWithText("若扣款成功，请稍后在账单查看").assertExists()
         compose.onNodeWithText("¥ 10.00").assertDoesNotExist()
+    }
+
+    @Test fun timedOutResultKeepsOfficialMessageAndDoesNotOfferAnotherPayment() {
+        content(phase = RechargePhase.TimedOut, detail = "订单超时原因", retryMethods = methods)
+        compose.onNodeWithText("支付超时").assertExists()
+        compose.onNodeWithText("订单超时原因").assertExists()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNodeWithText("完成").assertExists()
     }
 
     @Test fun paidResultStillShowsAmountAndCompletionNotFailureReason() {
@@ -108,11 +117,15 @@ class PaymentResultUiTest {
         compose.onNodeWithText("继续支付").assertDoesNotExist()
     }
 
-    @Test fun unknownResultNeverOffersRetryEvenWhenMethodsWereProvided() {
-        content(phase = RechargePhase.Unknown, detail = "确认前请勿重复缴费", retryMethods = methods)
-        compose.onNodeWithText("结果待确认").assertExists()
+    @Test fun queryErrorRetriesOnlyTheQueryEvenWhenMethodsWereProvided() {
+        var checks = 0
+        content(phase = RechargePhase.Checking, detail = "网络连接失败", retryMethods = methods,
+            onCheck = { checks++ }, onContinue = { fail("A query error cannot submit payment") })
+        compose.onNodeWithText("支付结果").assertExists()
         compose.onNodeWithText("¥ 10.00").assertExists()
-        compose.onNodeWithText("确认前请勿重复缴费").assertExists()
+        compose.onNodeWithText("网络连接失败").assertExists()
+        compose.onNodeWithText("重试").performClick()
+        compose.runOnIdle { assertEquals(1, checks) }
         compose.onNodeWithText("继续支付").assertDoesNotExist()
         compose.onNodeWithText("一卡通支付").assertDoesNotExist()
         compose.onNodeWithText("完成").assertExists()

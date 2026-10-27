@@ -46,6 +46,16 @@ synjones-auth: bearer <access_token>
 synAccessSource: h5
 ```
 
+## 消费结果通知与实验性反馈（2026-10-27）
+
+官网源码 `/plat/js/chunk-ae0e72c0.efd771bf.js` 的付款码组件使用 WebSocket；`/plat/js/paycode.ed9a2242.js` 的结果组件读取 `consumeData`，不通过余额差计算交易金额。
+
+- 地址由后端 `frontInfo.data.getFrontConfig.websocket` 加 `mobile_service_platform/qrcode_ykt/payCode` 组成。本次只读配置为 `wss://yktwx2.huel.edu.cn/websocket/`，因此完整地址为 `wss://yktwx2.huel.edu.cn/websocket/mobile_service_platform/qrcode_ykt/payCode`；接入时必须读取配置。
+- 连接建立及付款码变化时发送 `{"appCode":"mobile_service_platform","module":"qrcode_ykt","userId":"<当前付款码>"}`。不要记录实际付款码。
+- 收到消息后仅在外层 `code===200` 时读取 `data.content`，存为 `consumeData` 并打开成功结果；金额来自 `consumeData.tranamt / 100`，交易信息来自 `payName`、`orderId`、`jndatetimeStr`。非 200 消息不触发成功反馈。
+- 用户反馈该 WebSocket 目前无法连接、疑似配置问题。本轮只核对源码和配置，未独立确认故障原因、未接入或测试真实消费通知；不能把此项写成已可用。
+- 当前原生翻转检测后根据同账户余额减少显示“支付成功”、展示差额并刷新付款码，按用户明确要求作为实验性功能保留。这是余额变化推测，与官网交易通知机制不同；它不参与充值／缴费订单状态判断。后续若官网通知恢复可用，应以真实交易结果替代推测。
+
 ## 账单
 
 账单请求同样使用 `synjones-auth: bearer <access_token>`，不携带网页 Cookie，不跟随重定向。列表、统计和排行均只查询当前账户；客户端支持单日、自然月、自然年和自定义时间段，统一以 `timeFrom=<yyyy-MM-dd>&timeTo=<yyyy-MM-dd>` 传给列表、汇总、分类和排行接口。

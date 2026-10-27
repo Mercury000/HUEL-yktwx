@@ -9,7 +9,7 @@ import javax.net.ssl.HttpsURLConnection
 class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : FeeService {
     private val http = PaymentHttp(openConnection)
     private suspend fun get(path: String, token: String, params: Map<String, String>) =
-        http.json(http.request(path, token, params, chargeClient = true))
+        http.json(http.request(path, token, params, chargeClient = true), feePayment = true)
     private suspend fun post(path: String, token: String, fields: Map<String, String>, sign: Boolean = false) =
         http.json(http.request(path, token, form = if (sign) RechargeProtocol.signed(fields) else fields, chargeClient = true), feePayment = true)
 
@@ -17,12 +17,13 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         val response = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to project.id))
         val item = response.getJSONObject("feeitem")
         if (item.rechargeText("feeitemid") != project.id) throw YktException("缴费项目不匹配")
-        val min = item.rechargeText("retain_money").ifBlank { "0.01" }.let { RechargeMoney.cents(it) ?: throw YktException("缴费限额异常") }
-        // Match the old frontend's local ceiling, not the recharge-specific 500 yuan cap.
-        val max = item.rechargeText("maxmoney").ifBlank { "9999" }.let { RechargeMoney.cents(it) ?: throw YktException("缴费限额异常") }
+        val min = item.rechargeLimit("retain_money")
+        val max = item.rechargeLimit("maxmoney")
         val flag = item.rechargeText("flag").getOrNull(7)
-        val options = item.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }.distinct().filter { it in min..max }
-        if (min > max || (flag == '1' && options.isEmpty())) throw YktException("没有可用的缴费金额")
+        val options = item.rechargeText("layout").split(',').mapNotNull { RechargeMoney.cents(it.trim()) }
+            .distinct().filter { (min == null || it >= min) && (max == null || it <= max) }
+        if (min != null && max != null && min > max || (flag == '1' && options.isEmpty()))
+            throw YktException("没有可用的缴费金额")
         val rules = RechargeConfiguration(project.id, "", options, min, max, flag != '1', flag == '2')
         val enabled = !project.network && item.optInt("bindStatus") == 1 &&
             item.optJSONObject("feeitemImplBean")?.optInt("bindinfo") == 1
@@ -82,7 +83,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             "third_party" to target,
         ), sign = true).getJSONObject("data")
         val id = data.rechargeText("orderid")
-        if (!RechargeProtocol.validId(id)) throw YktException("订单创建结果未确认，请在官网核实")
+        if (!RechargeProtocol.validId(id)) throw YktException("订单创建响应异常")
         val pending = PendingRecharge(username, target, config.project.id, amountCents, id)
         val info = orderInfo(token, pending)
         val methods = info.optJSONArray("payList") ?: throw YktException("没有可用的支付方式")
@@ -97,13 +98,13 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
     }
 
     private suspend fun orderInfo(token: String, order: PendingRecharge): JSONObject {
-        val payload = get("/charge/pay/getpayinfo", token, mapOf("orderid" to (order.orderId ?: throw YktException("订单未确认"))))
+        val payload = get("/charge/pay/getpayinfo", token, mapOf("orderid" to (order.orderId ?: throw YktException("订单号缺失"))))
         val o = payload.getJSONObject("order")
         verifyOrder(o, order, strict = true, verifyPayId = false)
         return payload
     }
     private fun payFields(order: PendingRecharge, method: FeeMethod) = mapOf(
-        "orderid" to (order.orderId ?: throw YktException("订单未确认")), "paytype" to method.code, "paytypeid" to method.id, "paystep" to "2",
+        "orderid" to (order.orderId ?: throw YktException("订单号缺失")), "paytype" to method.code, "paytypeid" to method.id, "paystep" to "2",
     )
     private suspend fun verifyMethod(token: String, order: PendingRecharge, method: FeeMethod) {
         val info = orderInfo(token, order)
@@ -147,7 +148,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         val uuid = keyboard.keys().next()
         val digits = keyboard.rechargeText(uuid)
         if (!uuid.matches(Regex("[A-Za-z0-9_-]{1,128}")) || digits.length != 10 || digits.toSet().size != 10 || digits.any { it !in '0'..'9' }) throw YktException("支付键盘异常")
-        return FeeAccountPreparation(order.orderId ?: throw YktException("订单未确认"), method.id, accounts, uuid, digits)
+        return FeeAccountPreparation(order.orderId ?: throw YktException("订单号缺失"), method.id, accounts, uuid, digits)
     }
 
     override suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String) {
@@ -166,7 +167,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         // Displayed balance may be stale; let the backend choose rejection priority (e.g. lost card).
         // Only this request may debit the account; never retry it automatically.
         val payload = post("/blade-pay/pay", token, payFields(order, method) + mapOf("ccctype" to type, "isWX" to "0") + passwordFields, sign = true)
-        if (payload.opt("data") != order.orderId) throw YktException("付款结果未确认，请查询订单")
+        if (payload.opt("data") != order.orderId) throw YktException("支付响应异常")
     }
 
     override suspend fun launchFeeWechat(token: String, order: PendingRecharge, method: FeeMethod): WechatRechargeLaunch {
@@ -180,15 +181,15 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
 
     override suspend fun feeResult(token: String, order: PendingRecharge): RechargeResult {
         val payload = get("/charge/order/personal_data", token, buildMap {
-            put("orderid", order.orderId ?: throw YktException("订单未确认")); order.payId?.let { put("payid", it) }
+            put("orderid", order.orderId ?: throw YktException("订单号缺失")); order.payId?.let { put("payid", it) }
         })
-        val list = payload.optJSONArray("orderList") ?: throw YktException("订单结果未确认")
-        if (list.length() == 0) return RechargeResult(false, null)
+        val list = payload.optJSONArray("orderList") ?: throw YktException("订单查询响应异常")
+        if (list.length() == 0) return RechargeResult(false, 0)
         if (list.length() != 1) throw YktException("订单结果异常")
         val o = list.getJSONObject(0)
         val status = o.rechargeText("status").toIntOrNull() ?: -1
         verifyOrder(o, order, strict = status == 1, verifyPayId = true)
-        if (status != 1) return RechargeResult(false, status)
+        if (status != 1) return RechargeResult(false, status, (o.opt("msg") as? String)?.takeIf { it.isNotEmpty() })
         if (RechargeMoney.responseCents(o.opt("actulamt")) != order.amountCents) throw YktException("实付金额不匹配")
         return RechargeResult(true, status)
     }
@@ -203,6 +204,6 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             (fees != null && (0 until fees.length()).any { fees.getJSONObject(it).rechargeText("feeitemid") == order.feeItemId })
         val payId = o.rechargeText("payid")
         val payMatches = !verifyPayId || order.payId == null || (!strict && payId.isBlank()) || payId == order.payId
-        if (!targetMatches || !amountMatches || !feeMatches || !payMatches) throw YktException("缴费目标或金额不匹配，请在官网核实")
+        if (!targetMatches || !amountMatches || !feeMatches || !payMatches) throw YktException("缴费目标或金额不匹配")
     }
 }

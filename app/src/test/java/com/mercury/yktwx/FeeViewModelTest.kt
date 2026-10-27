@@ -103,7 +103,7 @@ class FeeViewModelTest {
         fees.failure = FeeOrderExpired()
         model.payAccount("demo-type", "654321")
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
-        assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
+        assertEquals(RechargePhase.TimedOut, model.state.value.resultPhase)
         assertEquals("订单已过期，请重新发起缴费", model.state.value.error)
         assertCannotContinue()
         assertEquals(1, fees.creations)
@@ -203,11 +203,11 @@ class FeeViewModelTest {
         assertEquals(1, fees.creations)
     }
 
-    @Test fun expiryShowsFailureAndFinishRetainsTarget() {
+    @Test fun expiryShowsTimeoutAndFinishRetainsTarget() {
         openPassword()
         fees.failure = FeeOrderExpired()
         model.payAccount("demo-type", "123456")
-        await { model.state.value.resultPhase == RechargePhase.Failed }
+        await { model.state.value.resultPhase == RechargePhase.TimedOut }
         assertEquals("订单已过期，请重新发起缴费", model.state.value.error)
         assertCannotContinue()
         model.cancelPayment()
@@ -216,17 +216,28 @@ class FeeViewModelTest {
         assertNull(model.state.value.order)
     }
 
-    @Test fun lostResponseOnlyQueriesAndPendingNeverBecomesFailure() {
+    @Test fun paymentRequestFailureShowsMessageWithoutStartingResultQueries() {
         openPassword()
-        model.onForeground(); model.onResumed(true)
         fees.failure = NetworkFailure()
-        fees.resultStatus = 0
         model.payAccount("demo-type", "123456")
-        await { !model.state.value.loading && model.state.value.resultPhase == RechargePhase.Unknown }
+        await { !model.state.value.loading && model.state.value.stage == FeeStage.Query }
+        assertEquals(NetworkFailure().message, model.state.value.error)
+        assertEquals(1, fees.payments)
+        assertEquals(0, fees.resultQueries)
+        assertNull(model.state.value.order)
+        assertNull(model.state.value.preparation)
+        assertCannotContinue()
+    }
+
+    @Test fun accountSubmissionUsesOfficialUnpaidStatusAndMessage() {
+        openPassword()
+        fees.resultStatus = 0
+        fees.resultMessage = "后端订单提示"
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading && model.state.value.resultPhase == RechargePhase.Failed }
+        assertEquals("后端订单提示", model.state.value.error)
         assertEquals(1, fees.payments)
         assertEquals(3, fees.resultQueries)
-        assertTrue(model.state.value.error.orEmpty().contains("确认前请勿重复缴费"))
-        assertNull(model.state.value.preparation)
         assertCannotContinue()
     }
 
@@ -262,7 +273,6 @@ class FeeViewModelTest {
     @Test fun accountQueryContinuesAcrossDialogFocusChanges() {
         openPassword()
         model.onForeground(); model.onResumed(true)
-        fees.failure = NetworkFailure()
         fees.resultGate = CompletableDeferred()
         model.payAccount("demo-type", "123456")
         await { fees.resultQueries == 1 }
@@ -284,18 +294,17 @@ class FeeViewModelTest {
         await { !shortModel.state.value.loading && shortModel.state.value.query != null }
         shortModel.createWithMethod(100, fees.accountMethod.code)
         await { shortModel.state.value.stage == FeeStage.Password }
-        fees.failure = NetworkFailure()
         fees.resultGate = CompletableDeferred()
         // No foreground event is required for an account query.
         shortModel.payAccount("demo-type", "123456")
         await { fees.resultQueries == 1 }
         shadowOf(Looper.getMainLooper()).idleFor(200, TimeUnit.MILLISECONDS)
-        await { shortModel.state.value.resultPhase == RechargePhase.Unknown }
+        await { shortModel.state.value.resultPhase == RechargePhase.Checking && !shortModel.state.value.loading }
         assertFalse(shortModel.state.value.loading)
         assertTrue(shortModel.state.value.error.orEmpty().contains("查询超时"))
         fees.resultGate.complete(Unit)
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(RechargePhase.Unknown, shortModel.state.value.resultPhase)
+        assertEquals(RechargePhase.Checking, shortModel.state.value.resultPhase)
         assertEquals(1, fees.payments)
     }
 
@@ -374,7 +383,8 @@ class FeeViewModelTest {
         rejectAccount()
         fees.createFailure = NetworkFailure()
         model.continuePayment(fees.wechatMethod)
-        await { model.state.value.resultPhase == RechargePhase.Unknown && !model.state.value.loading }
+        await { model.state.value.stage == FeeStage.Query && !model.state.value.loading }
+        assertEquals(NetworkFailure().message, model.state.value.error)
         assertCannotContinue()
         assertEquals(2, fees.creations)
         assertEquals(0, fees.launches)
@@ -480,11 +490,16 @@ class FeeViewModelTest {
     @Test fun initialOrderRejectionShowsMessageWithoutReusingMissingChannels() {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
-        fees.createFailure = FeePaymentRejected(FeeRejectionReason.Other, "服务端下单拒绝")
+        val message = "金额大于每笔交易允许的最大金额300元"
+        fees.createFailure = FeePaymentErrors.rejection(org.json.JSONObject(
+            "{\"code\":500,\"success\":false,\"data\":null,\"msg\":\"$message\"}"))
         model.createWithMethod(100, "ACCOUNTTSM")
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
         assertEquals(RechargePhase.Failed, model.state.value.resultPhase)
-        assertEquals("服务端下单拒绝", model.state.value.error)
+        assertEquals(message, model.state.value.error)
+        assertEquals(1, fees.creations)
+        assertEquals(0, fees.payments)
+        assertEquals(0, fees.resultQueries)
         assertCannotContinue()
     }
 
@@ -613,6 +628,7 @@ class FeeViewModelTest {
         var resultGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var failure: Exception? = null
         var resultStatus: Int? = 1
+        var resultMessage: String? = null
         var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
         override suspend fun feeConfiguration(token: String, project: FeeProject) = FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false))
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
@@ -649,7 +665,7 @@ class FeeViewModelTest {
         override suspend fun feeResult(token: String, order: PendingRecharge): RechargeResult {
             resultQueries++
             resultGate.await()
-            return RechargeResult(resultStatus == 1, resultStatus)
+            return RechargeResult(resultStatus == 1, resultStatus, resultMessage)
         }
     }
     @Test fun lost60050KeepsBackendReasonAndDoesNotSuggestRechargingOrQuery() {

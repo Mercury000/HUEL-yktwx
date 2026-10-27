@@ -44,22 +44,32 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
             }
             val status = connection.responseCode
             val bytes = (if (status in 200..299) connection.inputStream else connection.errorStream)?.use { it.readNBytes(1_048_577) } ?: byteArrayOf()
-            if (bytes.size > 1_048_576) throw YktException("服务响应异常，请在官网核实订单")
+            if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
             Response(status, String(bytes, Charsets.UTF_8), connection.getHeaderField("Location"))
         } catch (e: YktException) { throw e }
         catch (_: java.io.IOException) { throw NetworkFailure() }
         finally { connection.disconnect() }
     }
-    fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false): JSONObject {
+    fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false,
+        rechargePayment: Boolean = false): JSONObject {
+        if (feePayment) PaymentErrors.redirectMessage(response)?.let {
+            throw FeePaymentRejected(FeeRejectionReason.Other, it)
+        }
         val body = runCatching { JSONObject(response.body) }.getOrNull()
         if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) {
             val msg = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
-            throw AuthenticationRequired(if (preserveAuthenticationMessage) msg ?: "登录已失效，请重新登录" else "登录已失效，请重新登录")
+            throw AuthenticationRequired(if (preserveAuthenticationMessage || feePayment || rechargePayment)
+                msg ?: "登录已失效，请重新登录" else "登录已失效，请重新登录")
         }
         if (feePayment && response.status == 200 && body != null) {
             FeePaymentErrors.rejection(body)?.let { throw it }
         }
-        if (response.status !in 200..299 || body?.optInt("code") != 200 || body.opt("success") == false) {
+        val accepted = body != null && when {
+            feePayment -> response.status == 200 && PaymentErrors.feeSucceeded(body)
+            rechargePayment -> response.status == 200 && PaymentErrors.rechargeSucceeded(body)
+            else -> response.status in 200..299 && body.optInt("code") == 200 && body.opt("success") != false
+        }
+        if (!accepted) {
             // Show the official business message without deciding payment outcome from its text.
             val hint = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
             throw YktException(hint ?: if (body == null) "服务器响应异常" else "Error")
@@ -69,7 +79,7 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
     suspend fun wechatLaunch(html: String, pending: PendingRecharge, feePayment: Boolean = false): WechatRechargeLaunch {
         val action = RechargeProtocol.paymentFormAction(html, pending, feePayment)
         val response = exchange(action, null, emptyMap(), bridge = true)
-        if (response.status != 200) throw YktException("微信支付跳转未确认，请查询已有订单")
+        if (response.status != 200) throw YktException("微信支付跳转失败")
         return RechargeProtocol.wechatUri(response.body, RechargeProtocol.query(action).getValue("prepay_id"))
     }
     private fun encode(params: Map<String, String>) = params.entries.joinToString("&") {

@@ -31,11 +31,14 @@ fun RechargeDialog(
     onDismiss: () -> Unit,
     onSubmit: (Long) -> Unit,
     onFinish: () -> Unit,
+    onCheck: (() -> Unit)? = null,
 ) {
     val isResult = state.pending != null
     val loadingConfig = state.loading && !isResult && state.config == null
     val show = state.visible || loadingConfig
     val session = rememberOverlaySession(show)
+    var amount by remember(session, state.config) { mutableStateOf("") }
+    var recipientSelected by remember(session, state.config) { mutableStateOf(true) }
     val targetPage = rememberWhileShown(show, if (isResult) RechargeSheetPage.Result else RechargeSheetPage.Amount)
     val title = rememberWhileShown(show,
         if (isResult) null else if (state.config?.recipient != null) "代人充值" else "卡片充值")
@@ -62,14 +65,13 @@ fun RechargeDialog(
                     state.phase, state.loading, state.pending?.amountCents ?: 0, state.error,
                     if (state.pending?.recipient != null) "代充值" else "充值"))
                 PaymentResultContent(result.phase, result.loading, result.amountCents, result.error,
-                    { if (enabled && isResult) onFinish() }, subject = result.subject, enabled = enabled && isResult)
+                    { if (enabled && isResult) onFinish() }, subject = result.subject, enabled = enabled && isResult,
+                    onCheck = onCheck)
             } else {
                 val config = rememberWhileShown(show && !isResult, state.config)
                 val loading = rememberWhileShown(show && !isResult, state.loading)
                 val preview = rememberWhileShown(show && !isResult, state.preview)
                 val error = rememberWhileShown(show && !isResult, state.error)
-                var amount by remember(config) { mutableStateOf("") }
-                var recipientSelected by remember(config) { mutableStateOf(true) }
                 if (config != null) {
                     if (preview) Text("界面预览 · 不发起支付", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
                     config.recipient?.let { recipient ->

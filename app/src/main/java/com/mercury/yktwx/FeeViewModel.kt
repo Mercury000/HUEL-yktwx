@@ -80,7 +80,7 @@ class FeeViewModel internal constructor(
     private var accountPaymentSubmitted = false
     private var fixedHallTarget = false
     private val paymentReturn = PaymentReturnObserver(viewModelScope, { task },
-        { !accountPaymentSubmitted && mutable.value.stage == FeeStage.Result &&
+        { !accountPaymentSubmitted && mutable.value.loading && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
     fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null) {
@@ -467,8 +467,7 @@ class FeeViewModel internal constructor(
                 return@launchTask
             }
             catch (e: Exception) {
-                if (generation == attempt) result(RechargePhase.Unknown,
-                    "订单结果未确认，请在官网核实，确认前请勿重复缴费")
+                if (generation == attempt) requestError(message(e))
                 return@launchTask
             }
             if (generation != attempt) return@launchTask
@@ -514,7 +513,7 @@ class FeeViewModel internal constructor(
             catch (e: FeePaymentRejected) {
                 if (generation == attempt) result(RechargePhase.Failed, e.message)
             }
-            catch (e: Exception) { if(generation==attempt) result(RechargePhase.Unknown, "订单结果未确认，请在官网核实，确认前请勿重复缴费") }
+            catch (e: Exception) { if(generation==attempt) requestError(message(e)) }
         }
     }
     fun chooseMethod(method: FeeMethod) {
@@ -536,22 +535,21 @@ class FeeViewModel internal constructor(
                 val launch = repository.launchFeeWechat(pending, method)
                 if (generation != attempt) return
                 mutable.value = copy(mutable.value, loading = false, resultPhase = RechargePhase.AwaitingPayment)
-                if (paymentReturn.canLaunch) launches.send(launch) else result(RechargePhase.Unknown, "支付尚未完成")
+                if (paymentReturn.canLaunch) launches.send(launch) else requestError("未能打开微信")
             } else {
                 val preparation = repository.prepareFeeAccount(pending, method)
                 if (generation == attempt) mutable.value = copy(mutable.value, loading = false,
                     stage = FeeStage.Password, preparation = preparation)
             }
         } catch (e: CancellationException) { throw e }
-        catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.Failed, e.message) }
+        catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.TimedOut, e.message) }
         catch (e: FeeOrderAlreadyPaid) { if (generation == attempt) { accountPaymentSubmitted = true; startCheck() } }
         catch (e: FeePaymentRejected) {
             if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
         }
         catch (e: Exception) {
             if (generation == attempt) {
-                if (method.wechat) result(RechargePhase.Unknown, unknownDetail(message(e)))
-                else result(RechargePhase.Failed, message(e), retryable = true)
+                requestError(message(e))
             }
         }
     }
@@ -570,7 +568,7 @@ class FeeViewModel internal constructor(
                 repository.payFeeAccount(pending, method, preparation, type, password)
                 if (generation == attempt) { accountPaymentSubmitted = true; startCheck() }
             } catch (e: CancellationException) { throw e }
-            catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.Failed, e.message) }
+            catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.TimedOut, e.message) }
             catch (e: FeeOrderAlreadyPaid) {
                 if (generation == attempt) { accountPaymentSubmitted = true; startCheck() }
             }
@@ -586,12 +584,8 @@ class FeeViewModel internal constructor(
                     } else result(RechargePhase.Failed, e.message, retryable = true)
                 }
             }
-            catch (e: AuthenticationRequired) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
-            catch (e: InvalidCredentials) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
-            catch (e: CaptchaRequired) { if (generation == attempt) result(RechargePhase.Unknown, unknownDetail(message(e))) }
-            catch (_: Exception) {
-                // A lost response may still mean a successful debit. Only query, never replay.
-                if (generation == attempt) { accountPaymentSubmitted = true; startCheck() }
+            catch (e: Exception) {
+                if (generation == attempt) requestError(message(e))
             }
         }
     }
@@ -606,8 +600,8 @@ class FeeViewModel internal constructor(
     }
     fun checkResult() {
         val pending=mutable.value.order?.pending ?: return
-        if(task?.isActive==true)return
-        if(mutable.value.resultPhase!=RechargePhase.Checking)completedChecks=0
+        if(pending.orderId == null || task?.isActive==true)return
+        if(mutable.value.resultPhase!=RechargePhase.Checking || !mutable.value.loading)completedChecks=0
         paymentReturn.consume()
         val generation=attempt
         mutable.value=copy(mutable.value,loading=true,error=null,stage=FeeStage.Result,resultPhase=RechargePhase.Checking,preparation=null)
@@ -622,18 +616,15 @@ class FeeViewModel internal constructor(
                     completedChecks++
                     if(response.paid){result(RechargePhase.Paid);return@launchTask}
                     if (completedChecks == 3) when {
-                        response.serverStatus == 2 -> result(RechargePhase.Failed, "订单已过期，请重新发起缴费")
-                        response.serverStatus == 0 && !accountPaymentSubmitted -> result(RechargePhase.Failed)
-                        else -> result(RechargePhase.Unknown, unknownDetail())
+                        response.serverStatus == 2 -> result(RechargePhase.TimedOut, response.message)
+                        response.serverStatus == 0 -> result(RechargePhase.Failed, response.message)
+                        else -> queryError(response.message ?: "订单状态异常")
                     }
                 }catch(e:CancellationException){throw e}
                 catch(e:Exception){
                     if(generation!=attempt)return@launchTask
-                    if (repository.username() != pending.username || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) {
-                        result(RechargePhase.Unknown,unknownDetail(message(e)));return@launchTask
-                    }
-                    completedChecks++
-                    if(completedChecks==3)result(RechargePhase.Unknown,unknownDetail(message(e)))
+                    queryError(message(e))
+                    return@launchTask
                 }
             }
         }
@@ -649,10 +640,10 @@ class FeeViewModel internal constructor(
         if (checkDeadline?.isActive == true) return
         checkDeadline = viewModelScope.launch {
             delay(checkTimeoutMillis)
-            if (generation == attempt && mutable.value.resultPhase == RechargePhase.Checking) {
+            if (generation == attempt && mutable.value.loading && mutable.value.resultPhase == RechargePhase.Checking) {
                 // This independent UI deadline also covers a suspended query, shared lock or lost focus.
                 val query = task
-                result(RechargePhase.Unknown, unknownDetail("查询超时"))
+                queryError("查询超时")
                 query?.cancel()
             }
         }
@@ -682,8 +673,21 @@ class FeeViewModel internal constructor(
             order = if (retry != null) null else s.order,
             method = if (retry != null) null else s.method, paymentRetry = retry)
     }
-    private fun unknownDetail(reason: String? = null) = listOfNotNull(reason,
-        "请稍后在账单中核实，确认前请勿重复缴费").joinToString("。")
+    private fun requestError(message: String) {
+        checkDeadline?.cancel()
+        checkDeadline = null
+        paymentReturn.reset()
+        mutable.value = copy(mutable.value, loading = false, error = message,
+            stage = FeeStage.Query, resultPhase = RechargePhase.Amount,
+            order = null, method = null, preparation = null, paymentRetry = null)
+    }
+    private fun queryError(message: String) {
+        checkDeadline?.cancel()
+        checkDeadline = null
+        paymentReturn.reset()
+        mutable.value = copy(mutable.value, loading = false, error = message,
+            stage = FeeStage.Result, resultPhase = RechargePhase.Checking, preparation = null)
+    }
     private fun message(e:Exception)=if(e is YktException)e.message ?: "服务暂不可用" else "服务数据异常，请稍后重试"
     private fun previewQuery(project: FeeProject, detail: Boolean, level: Int,
         selections: Map<String, String> = mutable.value.selections): FeeQuery {

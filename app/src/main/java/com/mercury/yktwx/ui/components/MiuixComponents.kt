@@ -45,8 +45,12 @@ internal fun InlineError(
     actionLabel: String? = null,
     onAction: () -> Unit = {},
 ) {
+    val visible = !message.isNullOrBlank()
+    // AnimatedVisibility keeps composing while exiting. Retain the entire displayed row,
+    // so clearing an error cannot replace its text/action or change its measured height.
+    val display = rememberWhileShown(visible, message to actionLabel)
     AnimatedVisibility(
-        visible = !message.isNullOrBlank(),
+        visible = visible,
         modifier = modifier,
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically(),
@@ -54,7 +58,7 @@ internal fun InlineError(
         Row(
             Modifier.fillMaxWidth()
                 .background(MiuixTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp))
-                .padding(start = 12.dp, end = if (actionLabel == null) 12.dp else 4.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 12.dp, end = if (display.second == null) 12.dp else 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -63,10 +67,10 @@ internal fun InlineError(
                 modifier = Modifier.size(18.dp), tint = MiuixTheme.colorScheme.error,
             )
             Text(
-                message.orEmpty(), modifier = Modifier.weight(1f),
+                display.first.orEmpty(), modifier = Modifier.weight(1f),
                 fontSize = 13.sp, lineHeight = 18.sp, color = MiuixTheme.colorScheme.onErrorContainer,
             )
-            if (actionLabel != null) TextButton(actionLabel, onClick = onAction)
+            display.second?.let { label -> TextButton(label, onClick = { if (visible) onAction() }, enabled = visible) }
         }
     }
 }

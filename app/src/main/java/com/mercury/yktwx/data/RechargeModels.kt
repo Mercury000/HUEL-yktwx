@@ -22,16 +22,18 @@ class RechargeConfiguration(
     val feeItemId: String,
     val targetId: String,
     val amountsCents: List<Long>,
-    val minimumCents: Long,
-    val maximumCents: Long,
+    // Null means the configuration did not disclose a bound, not that the backend has none.
+    val minimumCents: Long?,
+    val maximumCents: Long?,
     val allowCustom: Boolean,
     val integerOnly: Boolean,
     val recipient: RechargeRecipient? = null,
 ) {
     fun amountError(amountCents: Long?): String? = when {
-        amountCents == null || amountCents <= 0 -> "请输入有效金额，最多两位小数"
-        amountCents < minimumCents -> "最低充值 ¥ " + RechargeMoney.label(minimumCents)
-        amountCents > maximumCents -> "单次最高 ¥ " + RechargeMoney.label(maximumCents)
+        amountCents == null || amountCents <= 0 ->
+            if (integerOnly) "请输入有效的整数金额" else "请输入有效金额，最多两位小数"
+        minimumCents != null && amountCents < minimumCents -> "最低充值 ¥ " + RechargeMoney.label(minimumCents)
+        maximumCents != null && amountCents > maximumCents -> "单次最高 ¥ " + RechargeMoney.label(maximumCents)
         integerOnly && amountCents % 100 != 0L -> "仅支持整数金额"
         !allowCustom && amountCents !in amountsCents -> "请选择配置的充值金额"
         else -> null
@@ -39,7 +41,7 @@ class RechargeConfiguration(
     override fun toString() = "RechargeConfiguration([redacted])"
 }
 
-/** The current in-memory attempt; absent orderId means its creation outcome is unknown. */
+/** The current in-memory attempt; orderId is populated after the creation response. */
 class PendingRecharge(
     val username: String,
     val targetId: String,
@@ -61,7 +63,7 @@ class RechargeOrder(val orderId: String, val payId: String?) {
 class WechatRechargeLaunch(val uri: String) {
     override fun toString() = "WechatRechargeLaunch([redacted])"
 }
-class RechargeResult(val paid: Boolean, val serverStatus: Int? = null)
+class RechargeResult(val paid: Boolean, val serverStatus: Int? = null, val message: String? = null)
 
 interface RechargeService {
     suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration
@@ -71,3 +73,11 @@ interface RechargeService {
 }
 
 internal fun JSONObject.rechargeText(key: String): String = optString(key).takeUnless { it == "null" }.orEmpty()
+
+/** Missing/zero backend bounds do not justify inventing a client-side payment limit. */
+internal fun JSONObject.rechargeLimit(key: String): Long? {
+    val raw = rechargeText(key).trim()
+    if (raw.isEmpty()) return null
+    val cents = RechargeMoney.responseCents(raw)
+    return cents.takeIf { it > 0 }
+}

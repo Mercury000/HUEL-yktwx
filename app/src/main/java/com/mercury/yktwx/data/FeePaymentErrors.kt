@@ -17,21 +17,14 @@ internal class FeeOrderAlreadyPaid : YktException("订单已完成，正在确�
 internal class FeePaymentNotStarted(message: String) : YktException(message)
 
 internal object FeePaymentErrors {
-    // 60050 covers multiple rejections (including lost cards), not just balance.
-    // Do not infer rejection from unknown codes or contradictory success data.
     fun rejection(body: JSONObject): FeePaymentRejected? {
-        val code = body.opt("code")
-        if (code !in setOf(400, 60005, 60050) || (!body.isNull("state") && body.opt("state") != code) ||
-            (!body.isNull("success") && body.opt("success") != false) ||
-            (!body.isNull("data") && body.opt("data") != "")) return null
-        if (code == 60005 || code == 60050) {
-            if (body.opt("success") != false) return null
-            return if (code == 60005) FeePaymentRejected(FeeRejectionReason.Password, body.opt("msg") as? String)
-                else FeePaymentRejected(FeeRejectionReason.Rejected, body.opt("msg") as? String)
+        if (PaymentErrors.feeSucceeded(body)) return null
+        val reason = when (body.optInt("code")) {
+            60005 -> FeeRejectionReason.Password
+            60050 -> FeeRejectionReason.Rejected
+            else -> FeeRejectionReason.Other
         }
-        // code=400 is a generic rejection, not a password/balance/expiry classification.
-        // The message is display-only; do not infer balance/password/expiry from its text.
-        return FeePaymentRejected(FeeRejectionReason.Other, body.opt("msg") as? String)
+        return FeePaymentRejected(reason, body.opt("msg") as? String)
     }
 }
 

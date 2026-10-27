@@ -37,7 +37,7 @@ object RechargeProtocol {
         val order = q["orderid"].orEmpty()
         require(validId(order) && q["paytype"] == "CAMPUSCARD")
         RechargeOrder(order, q["paytypeid"]?.also { require(it.matches(Regex("[0-9]{1,12}"))) })
-    }.getOrElse { throw YktException("充值下单响应异常，订单状态需在官网核实，请勿重复充值") }
+    }.getOrElse { throw YktException("充值下单响应异常") }
     fun validId(value: String) = value.matches(Regex("[A-Za-z0-9_-]{1,128}"))
     private fun htmlDecode(value: String) = value.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
     private fun attributes(tag: String): Map<String, String> {
@@ -68,7 +68,7 @@ object RechargeProtocol {
         val bq = query(back)
         require(bq.keys == setOf("name", "orderid", "payid") && bq["name"] == (if (feePayment) "payResult" else "result") && bq["orderid"] == pending.orderId && bq["payid"] == pending.payId)
         uri
-    }.getOrElse { throw YktException("暂不支持该微信支付响应，请在官网核实已有订单，勿重复充值") }
+    }.getOrElse { throw YktException("暂不支持该微信支付响应") }
     fun wechatUri(html: String, expectedPrepayId: String? = null): WechatRechargeLaunch = runCatching {
         require(html.length <= 262_144)
         val uris = Regex("weixin://wap/pay\\?[^\\s\"'<>]+", RegexOption.IGNORE_CASE).findAll(html).map { it.value }.distinct().toList()
@@ -83,5 +83,5 @@ object RechargeProtocol {
         require(q.keys == setOf("prepayid", "package", "noncestr", "sign") && q.values.all { it.isNotBlank() })
         require(expectedPrepayId == null || q["prepayid"] == expectedPrepayId)
         WechatRechargeLaunch(raw)
-    }.getOrElse { throw YktException("未取得受支持的微信跳转，请在官网核实订单，勿重复充值") }
+    }.getOrElse { throw YktException("未取得受支持的微信跳转") }
 }
