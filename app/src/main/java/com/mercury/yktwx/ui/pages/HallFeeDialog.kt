@@ -43,6 +43,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     onProject: (FeeProject) -> Unit = {}, onMeterKind: (DormMeterKind) -> Unit = {},
     bindingProjects: Set<FeeProject> = emptySet(),
 ) {
+    val session = rememberOverlaySession(visible)
     var amount by remember(state.config, visible) { mutableStateOf("") }
     var amountStep by remember(visible, project, fixedTarget, saveOnly) {
         mutableStateOf(!saveOnly && (fixedTarget != null || project?.network == true))
@@ -87,18 +88,18 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         amountStep || project?.network == true -> HallFeePage.Amount
         else -> HallFeePage.Target
     }
-    var page by remember { mutableStateOf(requestedPage ?: HallFeePage.Amount) }
+    var page by remember(session) { mutableStateOf(requestedPage ?: HallFeePage.Amount) }
     if (visible && requestedPage != null) page = requestedPage
-    val title = when {
+    val title = rememberWhileShown(visible, when {
         saveOnly -> "新增绑定"
         page == HallFeePage.Result -> null
         else -> paymentTitle
-    }
+    })
     OverlayBottomSheet(show = visible && state.stage != FeeStage.Password,
-        startAction = { SheetTitle(title) }, onDismissRequest = {
+        startAction = { key(session) { SheetTitle(title) } }, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
     }, renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
+        key(session) { SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
         val active = interactive && visible && state.stage != FeeStage.Password
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -147,8 +148,9 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
                         else if (config != null) PaymentAmountForm(config.amountRules, amount, { amount = it },
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
-                            { methodCode = codes[it] }, !active || state.loading || state.selecting || state.roomBusy,
-                            active && ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
+                            { methodCode = codes[it] }, state.loading || state.selecting || state.roomBusy,
+                            active && ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry,
+                            enabled = active)
                         else InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
                 }
                 HallFeePage.Result -> {
@@ -175,19 +177,24 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                 }
             }
         }
-        }
+        } }
     }
     FeePasswordDialog(show = visible && state.stage == FeeStage.Password,
         amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
         onDismiss = onCancelPayment, onPay = onPayAccount)
     val dialog = state.roomDialog
-    OverlayDialog(show = visible && dialog != null, title = if (dialog?.previous != null) "替换已绑定房间" else "绑定房间",
-        summary = dialog?.let { if (it.previous != null) "将「${it.previous.dialogLabel}」替换为「${it.target.dialogLabel}」" else it.target.dialogLabel },
+    val confirmingRoom = visible && dialog != null
+    val replacing = rememberWhileShown(confirmingRoom, dialog?.previous != null)
+    val roomSummary = rememberWhileShown(confirmingRoom,
+        dialog?.let { if (it.previous != null) "将「${it.previous.dialogLabel}」替换为「${it.target.dialogLabel}」" else it.target.dialogLabel })
+    OverlayDialog(show = confirmingRoom, title = if (replacing) "替换已绑定房间" else "绑定房间",
+        summary = roomSummary,
         onDismissRequest = { bindingPending = false; onDismissRoomDialog() }, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { bindingPending = false; onDismissRoomDialog() }, modifier = Modifier.weight(1f)) { Text("取消") }
-            Button(onClick = onConfirmRoomAction, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) {
-                Text(if (dialog?.previous != null) "替换" else "绑定")
+            Button(onClick = { bindingPending = false; onDismissRoomDialog() }, enabled = confirmingRoom, modifier = Modifier.weight(1f)) { Text("取消") }
+            Button(onClick = onConfirmRoomAction, enabled = confirmingRoom && !state.roomBusy,
+                modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) {
+                Text(if (replacing) "替换" else "绑定")
             }
         }
     }

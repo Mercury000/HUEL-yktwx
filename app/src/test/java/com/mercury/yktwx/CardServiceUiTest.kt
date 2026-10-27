@@ -176,6 +176,20 @@ class CardServiceUiTest {
         screenshot("campus-card-recipient-dialog")
         compose.onNodeWithText("充值 ¥ 10.00").performClick()
         assertEquals(1000L, submitted)
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { current.value = CardServiceUiState() }
+        compose.mainClock.advanceTimeBy(48)
+        compose.onNodeWithText("代人充值").assertExists()
+        compose.onNodeWithText("充值 ¥ 10.00").assertExists().assertIsNotEnabled()
+        compose.onNodeWithText("正在发起…").assertDoesNotExist()
+        compose.onNodeWithText("验证码").assertDoesNotExist()
+        compose.onNodeWithText("挂失 / 解挂").assertDoesNotExist()
+        compose.runOnIdle { current.value = CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge, preview = true) }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithText("验证码").assertExists()
+        compose.onNodeWithText("充值金额").assertDoesNotExist()
+        compose.onNodeWithText("示例同学").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
     }
     @Test fun recipientSelectionChangesGreyToPrimaryWithMatchingTextContrast() {
         val recipient = RechargeRecipient("demo-card", "demo-target", "示例同学", "202600000002", "统一账户")
@@ -338,9 +352,11 @@ class CardServiceUiTest {
     @Test fun rechargeSheetIncludesRecipientBeforeReusingAmountAndWechatButton() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
         val config = RechargeConfiguration("demo", recipient.targetId, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
+        val current = mutableStateOf(RechargeUiState(visible = true, config = config, preview = true))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { Scaffold { RechargeDialog(RechargeUiState(visible = true, config = config, preview = true), {}, {}, {}) } }
+                AppTheme { Scaffold { RechargeDialog(current.value, { current.value = RechargeUiState() }, {},
+                    { current.value = RechargeUiState() }) } }
             }
         }
         compose.onNodeWithText("代人充值").assertExists()
@@ -350,6 +366,24 @@ class CardServiceUiTest {
         compose.onNodeWithText("¥ 10").performClick()
         compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
         screenshot("campus-card-others-recharge-dialog")
+        compose.runOnIdle { current.value = RechargeUiState(visible = true, config = config,
+            pending = PendingRecharge("preview", recipient.targetId, "demo", 1000, recipient = recipient),
+            phase = RechargePhase.Failed, error = "充值未完成") }
+        compose.onNodeWithText("代充值失败").assertIsDisplayed()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("完成").performClick()
+        compose.mainClock.advanceTimeBy(48)
+        compose.onNodeWithText("代充值失败").assertExists()
+        compose.onNodeWithText("充值未完成").assertExists()
+        compose.onNodeWithText("请在微信中完成支付").assertDoesNotExist()
+        compose.onNodeWithText("充值金额").assertDoesNotExist()
+        compose.onNodeWithText("卡片充值").assertDoesNotExist()
+        compose.runOnIdle { current.value = RechargeUiState(loading = true) }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithText("卡片充值").assertExists()
+        compose.onNodeWithContentDescription("正在读取充值信息").assertExists()
+        compose.onNodeWithText("代充值失败").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
     }
     @Test fun loadingCardRechargeUsesTheSharedAmountSkeleton() {
         compose.setContent {
