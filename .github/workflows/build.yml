@@ -44,7 +44,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          # Automatic releases need tags and history for version detection/notes.
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '1' }}
 
       - name: Read version and detect version update
         id: version
@@ -126,13 +127,17 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          # Also save dependency/task caches for manual builds on trusted branches.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Grant execute permission
         run: chmod +x gradlew
 
       - name: Build debug APK
         if: (github.event_name == 'workflow_dispatch' && inputs.build_type == 'debug') || (github.event_name != 'workflow_dispatch' && steps.version.outputs.changed != 'true')
-        run: ./gradlew :app:assembleDebug
+        # Fresh runners invoke Gradle once; keep configuration caching local.
+        run: ./gradlew :app:assembleDebug --no-configuration-cache --console=plain
 
       - name: Upload debug APK
         if: (github.event_name == 'workflow_dispatch' && inputs.build_type == 'debug') || (github.event_name != 'workflow_dispatch' && steps.version.outputs.changed != 'true')
@@ -141,10 +146,11 @@ jobs:
           name: CaiXiaoTong-${{ steps.version.outputs.version_name }}-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          compression-level: 1
 
       - name: Build release APK
         if: (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') || (github.event_name == 'push' && steps.version.outputs.changed == 'true')
-        run: ./gradlew :app:assembleRelease
+        run: ./gradlew :app:assembleRelease --no-configuration-cache --console=plain
 
       - name: Sign release APK
         if: (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') || (github.event_name == 'push' && steps.version.outputs.changed == 'true')
