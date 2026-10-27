@@ -11,14 +11,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.key
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -57,6 +57,8 @@ fun HallPage(
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     var targets by remember { mutableStateOf(false) }
+    var targetTab by remember { mutableIntStateOf(0) }
+    var targetAdding by remember { mutableStateOf(false) }
     LaunchedEffect(isActive) { if (!isActive) targets = false }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
@@ -82,7 +84,13 @@ fun HallPage(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    item { UtilityCard(dorm, feeOpening, onRefreshDorm, { targets = true }, onOpenDormFee) }
+                    item {
+                        UtilityCard(dorm, feeOpening, onRefreshDorm,
+                            onSwitch = { targetTab = 0; targetAdding = false; targets = true },
+                            onAdd = { targetTab = 0; targetAdding = true; targets = true },
+                            onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
+                            onPay = onOpenDormFee)
+                    }
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }
                     item {
                         Card(Modifier.fillMaxWidth().testTag("hall-others-card"), cornerRadius = 24.dp) {
@@ -100,38 +108,82 @@ fun HallPage(
         onSelectRoom(it); targets = false
     }, onProject = {
         targets = false; onOpenFee(it)
-    }, onRemove = onRemoveRoom, onAdd = { targets = false; onAddRoom(it) })
+    }, onRemove = onRemoveRoom, onAdd = { targets = false; onAddRoom(it) },
+        initialTab = targetTab, initialAdding = targetAdding)
 }
 
 @Composable
 private fun UtilityCard(state: DormUiState, opening: FeeProject?, onRefresh: () -> Unit,
-    onSwitch: () -> Unit, onPay: (FeeProject, FeeRoomBinding) -> Unit) {
-    Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
+    onSwitch: () -> Unit, onAdd: () -> Unit, onTemporaryPay: () -> Unit, onPay: (FeeProject, FeeRoomBinding) -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("hall-utility-card"), cornerRadius = 24.dp) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(AppIcons.Electricity, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.primary)
                 Text("水电费", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                DashboardLink("切换", onClick = onSwitch, enabled = opening == null && !state.managing)
+                if (state.rooms.isNotEmpty() || !state.loaded) {
+                    DashboardLink("切换", onClick = onSwitch, enabled = opening == null && !state.managing)
+                }
             }
             if (state.error != null) InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.rooms.isEmpty() && !state.loaded) {
                     UtilityPlaceholder()
                 } else if (state.rooms.isEmpty()) {
-                    Box(Modifier.fillMaxWidth()) {
-                        // Measure the same body as the loading state without leaving fake controls visible.
-                        Box(Modifier.alpha(0f).clearAndSetSemantics {}) { UtilityPlaceholder() }
-                        Column(Modifier.fillMaxWidth().align(Alignment.Center), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("尚未添加房间", fontSize = 15.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            CompactButton("选择房间", onClick = onSwitch, enabled = opening == null, modifier = Modifier.fillMaxWidth())
-                        }
-                    }
+                    UnboundRoomContent(enabled = opening == null && !state.managing && !state.loading,
+                        onAdd = onAdd, onTemporaryPay = onTemporaryPay)
                 } else state.selectedRoom?.let { room ->
                     key(room.project, room.binding.selections) { DormRoomContent(room, opening, { onSwitch() }, onPay) }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun UnboundRoomContent(enabled: Boolean, onAdd: () -> Unit, onTemporaryPay: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("我的房间", Modifier.weight(1f), fontSize = 15.sp, lineHeight = 22.sp,
+            fontWeight = FontWeight.SemiBold)
+        HallBadge("未绑定")
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        UnboundUtilityPanel(temporary = false, enabled = enabled, onClick = onAdd, modifier = Modifier.weight(1f))
+        UnboundUtilityPanel(temporary = true, enabled = enabled, onClick = onTemporaryPay, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val ink = if (temporary) DashboardPalette.airInk else DashboardPalette.lightingInk
+    val accent = if (temporary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
+    val panel = if (temporary) DashboardPalette.airPanel else DashboardPalette.lightingPanel
+    val button = if (temporary) DashboardPalette.airButton else DashboardPalette.lightingButton
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(if (temporary) AppIcons.Bill else AppIcons.Hall, null, Modifier.size(17.dp), tint = accent)
+            Text(if (temporary) "临时缴费" else "房间管理", fontSize = 13.sp, lineHeight = 18.sp, color = ink)
+        }
+        Text(if (temporary) "无需绑定" else "常用房间", fontSize = 10.sp, lineHeight = 14.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        UtilityValueRow {
+            Text(if (temporary) "按次缴费" else "尚未添加", fontSize = 22.sp, lineHeight = 38.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = ink)
+        }
+        Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp), color = button, contentColor = accent) {
+            Text(if (temporary) "去缴费" else "添加房间",
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), fontSize = 13.sp, lineHeight = 18.sp,
+                fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun UtilityValueRow(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.height(with(LocalDensity.current) { 38.sp.toDp() }),
+        verticalAlignment = Alignment.Bottom, content = content)
 }
 
 @Composable
@@ -147,7 +199,9 @@ private fun UtilityPlaceholder() {
                         DashboardPlaceholder(13.sp, Modifier.weight(1f), lineHeight = 18.sp)
                     }
                     DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
-                    DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0")
+                    UtilityValueRow {
+                        DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0")
+                    }
                     Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
                     }
@@ -188,7 +242,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, onChoose: (Fee
                 Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
                     fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Row(verticalAlignment = Alignment.Bottom) {
+                UtilityValueRow {
                     Text(primary?.value ?: "—", fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
                         modifier = Modifier.weight(1f, fill = false), overflow = TextOverflow.Ellipsis,
                         fontWeight = FontWeight.SemiBold, color = ink)

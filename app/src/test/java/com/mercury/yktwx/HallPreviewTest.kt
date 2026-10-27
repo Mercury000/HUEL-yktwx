@@ -14,6 +14,7 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.ui.pages.HallFeeDialog
 import com.mercury.yktwx.ui.pages.HallPage
+import com.mercury.yktwx.ui.pages.HallRoomSheet
 import com.mercury.yktwx.ui.pages.hallLabel
 import org.junit.Assert.*
 import org.junit.Rule
@@ -32,8 +33,8 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class HallPreviewTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    private fun capture(name: String) {
-        compose.mainClock.advanceTimeBy(1500)
+    private fun capture(name: String, settleMillis: Long = 1500) {
+        if (settleMillis > 0) compose.mainClock.advanceTimeBy(settleMillis)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }
         compose.waitForIdle()
         val output = File("../tools/hall-implementation-preview/$name.png").absoluteFile
@@ -48,6 +49,59 @@ class HallPreviewTest {
     private fun back() {
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
+    }
+    @Test fun bindingTransitionResizesGraduallyAndKeepsTitleUntilDismissed() {
+        val state = HallViewModel(compose.activity.application).previewState(multiple = true)
+        var visible by mutableStateOf(true)
+        var initialTab by mutableIntStateOf(0)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold {
+                    HallRoomSheet(state, visible, onDismiss = { visible = false },
+                        onSelect = {}, onRemove = {}, onProject = {}, onAdd = {}, initialTab = initialTab)
+                } }
+            }
+        }
+        compose.waitForIdle()
+        fun contentHeight() = compose.onNodeWithTag("hall-room-content").fetchSemanticsNode().boundsInRoot.height
+        val startHeight = contentHeight()
+        capture("28-room-transition-before")
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("新增绑定").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        val heights = mutableListOf(contentHeight())
+        repeat(6) { index ->
+            compose.mainClock.advanceTimeBy(48)
+            compose.waitForIdle()
+            heights += contentHeight()
+            if (index == 2) capture("29-room-transition-middle", settleMillis = 0)
+        }
+        compose.mainClock.advanceTimeBy(400)
+        compose.waitForIdle()
+        val endHeight = contentHeight()
+        assertTrue("The two pages must exercise a height change", kotlin.math.abs(startHeight - endHeight) > 1f)
+        val range = minOf(startHeight, endHeight)..maxOf(startHeight, endHeight)
+        assertTrue("Sheet height must pass through intermediate sizes: $startHeight -> $heights -> $endHeight", heights.any { it > range.start + 1f && it < range.endInclusive - 1f })
+        assertTrue("Sheet height must not overshoot", heights.all { it >= range.start - 1f && it <= range.endInclusive + 1f })
+        compose.onNodeWithText("新增绑定").assertIsDisplayed()
+        compose.onNodeWithText("切换房间 / 临时缴费").assertDoesNotExist()
+        compose.onNodeWithText("返回房间管理").assertDoesNotExist()
+        capture("30-room-transition-after", settleMillis = 0)
+        compose.runOnIdle { visible = false }
+        compose.mainClock.advanceTimeBy(48)
+        compose.waitForIdle()
+        compose.onNodeWithText("新增绑定").assertExists()
+        compose.onNodeWithText("切换房间 / 临时缴费").assertDoesNotExist()
+        // A new opening during dismissal must start at its requested page without an old title.
+        compose.runOnIdle { initialTab = 1; visible = true }
+        // Allow the root popup host to receive the new content and lay it out.
+        compose.mainClock.advanceTimeBy(32)
+        compose.waitForIdle()
+        compose.onNodeWithText("新增绑定").assertDoesNotExist()
+        compose.onNodeWithText("切换房间 / 临时缴费").assertExists()
+        compose.onNodeWithText("商业街水电费").assertExists()
+        compose.mainClock.autoAdvance = true
     }
     @Test fun threeCardsAndTemporaryCrossProjectPaymentRemainInHall() {
         val app = compose.activity.application
@@ -116,6 +170,7 @@ class HallPreviewTest {
         compose.onNodeWithText("切换").performClick()
         capture("10-manage-rooms")
         compose.onNodeWithText("新增绑定").performClick()
+        compose.onNodeWithText("返回房间管理").assertDoesNotExist()
         compose.onNodeWithText("商业街水电费").assertDoesNotExist()
         compose.onNodeWithText("家属区水电费").assertIsDisplayed()
         capture("19-bind-projects")
@@ -148,11 +203,15 @@ class HallPreviewTest {
         var dark by mutableStateOf(false)
         var paidProject: FeeProject? = null
         var paidTarget: FeeRoomBinding? = null
+        var addedProject: FeeProject? = null
+        var temporaryProject: FeeProject? = null
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
                     Scaffold {
-                        HallPage(settings, 0.dp, dorm = state, isActive = true, onOpenDormFee = { project, target ->
+                        HallPage(settings, 0.dp, dorm = state, isActive = true,
+                            onOpenFee = { temporaryProject = it }, onAddRoom = { addedProject = it },
+                            onOpenDormFee = { project, target ->
                             paidProject = project; paidTarget = target
                         }, onSelectRoom = { index ->
                             state = DormUiState(multiple.rooms, loaded = true, selectedIndex = index, network = multiple.network)
@@ -171,8 +230,34 @@ class HallPreviewTest {
         compose.onNodeWithText(multiple.rooms[0].hallLabel).assertDoesNotExist()
         compose.onAllNodesWithText("水电费").assertCountEquals(1)
         capture("13-switched-wenbei")
-        compose.runOnIdle { state = DormUiState(loaded = true, network = multiple.network) }
+        val boundHeight = compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.height
+        compose.runOnIdle { state = DormUiState(loaded = true, network = multiple.network,
+            bindingProjects = multiple.bindingProjects) }
+        compose.onNodeWithText("切换").assertDoesNotExist()
         capture("14-empty-hall")
+        val unboundHeight = compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.height
+        assertEquals("Binding state must preserve utility card height", boundHeight, unboundHeight, 0f)
+        compose.runOnIdle { dark = true }
+        capture("24-empty-hall-dark")
+        assertEquals(boundHeight, compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.height, 0f)
+        compose.runOnIdle { dark = false }
+        compose.onNodeWithText("添加房间").performClick()
+        compose.onNodeWithText("暂无绑定房间").assertDoesNotExist()
+        compose.onNodeWithText("返回房间管理").assertDoesNotExist()
+        compose.onNodeWithText("商业街水电费").assertDoesNotExist()
+        capture("27-empty-bind-projects")
+        compose.onNodeWithText("郑东宿舍电费").performClick()
+        assertEquals(FeeProject.Zhengdong, addedProject)
+        compose.onNodeWithText("去缴费").performClick()
+        compose.onNodeWithText("商业街水电费").assertIsDisplayed()
+        capture("25-empty-temporary-projects")
+        compose.onNodeWithText("商业街水电费").performClick()
+        assertEquals(FeeProject.Commercial, temporaryProject)
+        // Reopening binding after temporary payment must restore binding-only projects.
+        compose.onNodeWithText("添加房间").performClick()
+        compose.onNodeWithText("郑东宿舍电费").assertIsDisplayed()
+        compose.onNodeWithText("商业街水电费").assertDoesNotExist()
+        back()
         val binding = FeeRoomBinding.from(listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("room", 2, "房间")),
             mapOf("building" to "sample-family", "room" to "sample-water"), mapOf("building" to "示例A栋", "room" to "房间A"))!!
         val water = DormRoom(FeeProject.FamilyWater, binding, listOf(DormMeter(DormMeterKind.Other, binding,
@@ -183,6 +268,7 @@ class HallPreviewTest {
         compose.onNodeWithTag("utility-single-recharge").assertIsDisplayed()
         compose.onNodeWithText("度").assertDoesNotExist()
         capture("15-water-hall")
+        assertEquals(boundHeight, compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.height, 0f)
         compose.runOnIdle { dark = true }
         capture("16-water-dark")
         val electricBinding = FeeRoomBinding.from(listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("room", 2, "房间")),

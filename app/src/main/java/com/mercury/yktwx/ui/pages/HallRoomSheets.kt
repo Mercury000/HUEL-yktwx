@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -34,53 +35,80 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) 
             selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface))
 }
 
+private enum class RoomSheetPage { Rooms, Temporary, Add }
+
+private class RoomSheetSession(val initialPage: RoomSheetPage) {
+    var page by mutableStateOf(initialPage)
+}
+
 @Composable
 internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
     onDismiss: () -> Unit, onSelect: (Int) -> Unit,
-    onRemove: (DormRoom) -> Unit, onProject: (FeeProject) -> Unit, onAdd: (FeeProject) -> Unit) {
-    var tab by remember(visible) { mutableIntStateOf(0) }
-    var adding by remember(visible) { mutableStateOf(false) }
+    onRemove: (DormRoom) -> Unit, onProject: (FeeProject) -> Unit, onAdd: (FeeProject) -> Unit,
+    initialTab: Int = 0, initialAdding: Boolean = false) {
+    val initialPage = when {
+        initialAdding -> RoomSheetPage.Add
+        initialTab == 1 -> RoomSheetPage.Temporary
+        else -> RoomSheetPage.Rooms
+    }
+    var wasVisible by remember { mutableStateOf(false) }
+    var session by remember { mutableStateOf(RoomSheetSession(initialPage)) }
+    // Initialize before the first visible frame; retain the page throughout dismissal.
+    if (visible && (!wasVisible || initialPage != session.initialPage)) session = RoomSheetSession(initialPage)
+    wasVisible = visible
     var removal by remember(visible) { mutableStateOf<DormRoom?>(null) }
     val busy = state.managing || state.loading
-    OverlayBottomSheet(show = visible, title = "切换房间 / 临时缴费", onDismissRequest = onDismiss,
+    OverlayBottomSheet(show = visible, onDismissRequest = onDismiss,
+        startAction = {
+            key(session) { SheetTitle(if (session.page == RoomSheetPage.Add) "新增绑定" else "切换房间 / 临时缴费") }
+        },
         renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            HallNeutralTabs(listOf("房间管理", "临时缴费"), tab) { tab = it; adding = false }
-            if (tab == 0 && !adding) {
-                InlineError(state.error)
-                if (state.rooms.isEmpty()) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
-                    fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                state.rooms.forEachIndexed { index, room ->
-                    val selected = index == state.selectedIndex
-                    PaymentSelectionCard(selected = selected, onClick = { onSelect(index) },
-                        enabled = !busy) { contentColor ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(room.hallLabel, Modifier.weight(1f), fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold, color = contentColor)
-                            DashboardLink("解绑", { removal = room }, enabled = !busy, arrow = false,
-                                color = contentColor.copy(alpha = .82f))
+        key(session) { SheetPageContent(
+            targetPage = session.page,
+            modifier = Modifier.fillMaxWidth().testTag("hall-room-content").bottomSheetSafeArea(),
+        ) { page, interactive ->
+            val adding = page == RoomSheetPage.Add
+            val enabled = visible && !busy && interactive
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (!adding) HallNeutralTabs(listOf("房间管理", "临时缴费"),
+                    if (page == RoomSheetPage.Temporary) 1 else 0) {
+                    if (enabled) session.page = if (it == 1) RoomSheetPage.Temporary else RoomSheetPage.Rooms
+                }
+                if (page == RoomSheetPage.Rooms) {
+                    InlineError(state.error)
+                    if (state.rooms.isEmpty()) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
+                        fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    state.rooms.forEachIndexed { index, room ->
+                        val selected = index == state.selectedIndex
+                        PaymentSelectionCard(selected = selected, onClick = { onSelect(index) },
+                            enabled = enabled) { contentColor ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(room.hallLabel, Modifier.weight(1f), fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold, color = contentColor)
+                                DashboardLink("解绑", { removal = room }, enabled = enabled, arrow = false,
+                                    color = contentColor.copy(alpha = .82f))
+                            }
+                        }
+                    }
+                    Button(onClick = { session.page = RoomSheetPage.Add }, enabled = enabled && state.bindingProjects.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("新增绑定") }
+                } else {
+                    val projects = if (adding) state.bindingProjects else FeeProject.entries.filterNot { it.network }.toSet()
+                    val rows = listOf(FeeProject.Zhengdong, FeeProject.Wenbei, FeeProject.FamilyElectric, FeeProject.Commercial)
+                        .filter { it in projects || it == FeeProject.FamilyElectric && FeeProject.FamilyWater in projects }
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.defaultColors(color = DashboardPalette.field)) {
+                        rows.forEachIndexed { index, project ->
+                            DashboardPreference(project.hallTitle, onClick = {
+                                val target = if (project == FeeProject.FamilyElectric && project !in projects) FeeProject.FamilyWater else project
+                                if (adding) onAdd(target) else onProject(target)
+                            }, enabled = enabled)
+                            if (index < rows.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp))
                         }
                     }
                 }
-                Button(onClick = { adding = true }, enabled = !busy && state.bindingProjects.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("新增绑定") }
-            } else {
-                if (adding) DashboardLink("返回房间管理", { adding = false }, arrow = false)
-                val projects = if (adding) state.bindingProjects else FeeProject.entries.filterNot { it.network }.toSet()
-                val rows = listOf(FeeProject.Zhengdong, FeeProject.Wenbei, FeeProject.FamilyElectric, FeeProject.Commercial)
-                    .filter { it in projects || it == FeeProject.FamilyElectric && FeeProject.FamilyWater in projects }
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.defaultColors(color = DashboardPalette.field)) {
-                    rows.forEachIndexed { index, project ->
-                        DashboardPreference(project.hallTitle, onClick = {
-                            val target = if (project == FeeProject.FamilyElectric && project !in projects) FeeProject.FamilyWater else project
-                            if (adding) onAdd(target) else onProject(target)
-                        }, enabled = !busy)
-                        if (index < rows.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp))
-                    }
-                }
             }
-        }
+        } }
     }
     OverlayDialog(show = visible && removal != null, title = "解绑房间", summary = removal?.hallLabel,
         onDismissRequest = { removal = null }, renderInRootScaffold = true) {

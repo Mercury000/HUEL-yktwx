@@ -100,7 +100,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
 
 /** Measure with the same controls as the form so font scale and library defaults also match. */
 @Composable
-private fun PaymentControlPlaceholder(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun PaymentControlPlaceholder(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().drawWithContent {}.clearAndSetSemantics {}) { content() }
         ContentPlaceholder(Modifier.matchParentSize(), cornerRadius = 16.dp)

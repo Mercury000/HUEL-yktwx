@@ -70,7 +70,7 @@ class DashboardLoadingTest {
             compose.runOnIdle { scale = fontScale; dark = fontScale > 1f; state = DormUiState() }
             val network = bounds("hall-network-card")
             val others = bounds("hall-others-card")
-            compose.onNodeWithText("尚未添加房间").assertDoesNotExist()
+            compose.onNodeWithText("尚未添加").assertDoesNotExist()
             if (fontScale == 1f) capture("hall-initial")
             compose.runOnIdle { state = DormUiState(loading = true) }
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
@@ -85,7 +85,7 @@ class DashboardLoadingTest {
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
             compose.runOnIdle { state = DormUiState(loaded = true) }
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
-            compose.onNodeWithText("尚未添加房间").assertExists()
+            compose.onNodeWithText("尚未添加").assertExists()
         }
     }
 

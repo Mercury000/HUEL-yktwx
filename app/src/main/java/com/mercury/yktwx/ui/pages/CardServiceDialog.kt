@@ -23,10 +23,14 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
+import com.mercury.yktwx.ui.components.SheetPageContent
+import com.mercury.yktwx.ui.components.sheetContentSize
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private enum class RecipientSheetPage { Query, Amount }
 
 @Composable
 fun CardServiceDialog(
@@ -54,17 +58,20 @@ fun CardServiceDialog(
     val confirming = state.recipients.isNotEmpty()
     OverlayBottomSheet(show = state.visible, title = "代人充值", onDismissRequest = onDismiss,
         renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+        SheetPageContent(if (confirming) RecipientSheetPage.Amount else RecipientSheetPage.Query,
+            Modifier.bottomSheetSafeArea()) { page, interactive ->
+        val enabled = interactive && state.visible && !state.loading
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (confirming) {
+            if (page == RecipientSheetPage.Amount) {
                 state.recipients.forEach { recipient ->
                     RecipientSelectionCard(recipient, state.selectedRecipient === recipient,
-                        { onSelectRecipient(recipient) }, !state.loading)
+                        { onSelectRecipient(recipient) }, enabled)
                 }
                 val config = state.rechargeConfig
                 if (config != null) {
-                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, state.loading,
-                        !state.preview && config.recipient === state.selectedRecipient, state.error, onContinueRecharge)
+                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, !enabled,
+                        enabled && !state.preview && config.recipient === state.selectedRecipient, state.error, onContinueRecharge)
                 } else {
                     if (state.loading) PaymentAmountPlaceholder()
                     InlineError(state.error, actionLabel = "重试", onAction = onRetryRecharge)
@@ -73,32 +80,33 @@ fun CardServiceDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     RecipientQueryType.entries.forEach { type ->
                         Button(onClick = { if (queryType != type) { queryType = type; identifier = ""; captchaCode = ""; onRecipientEdited() } },
-                            enabled = !state.loading, modifier = Modifier.weight(1f),
+                            enabled = enabled, modifier = Modifier.weight(1f),
                             colors = if (queryType == type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(type.label) }
                     }
                 }
                 TextField(value = identifier, onValueChange = {
                     identifier = it.filter { c -> c in '0'..'9' || (queryType == RecipientQueryType.Identity && c in "Xx") }.take(32)
                     onRecipientEdited()
-                }, label = queryType.label, singleLine = true, enabled = !state.loading,
+                }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
                     modifier = Modifier.fillMaxWidth())
                 val bitmap = remember(state.captcha) { state.captcha?.image?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.width(112.dp).height(56.dp).clickable(enabled = !state.loading, role = Role.Button,
+                    Box(Modifier.width(112.dp).height(56.dp).clickable(enabled = enabled, role = Role.Button,
                         onClickLabel = "更换验证码", onClick = { captchaCode = ""; onRefreshCaptcha() }), contentAlignment = Alignment.Center) {
                         if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
                         else if (state.loading) CircularProgressIndicator(Modifier.size(24.dp))
                         else Text(if (state.preview) "预览" else "点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
-                        enabled = !state.loading, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
+                        enabled = enabled, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
                 InlineError(state.error)
                 Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
-                    enabled = !state.loading && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
+                    enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "查询中…" else "查询") }
             }
+        }
         }
     }
 }
@@ -117,7 +125,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
         title = if (card != null || display.action == CampusCardAction.Unlost) "确认" + display.operation.label else "挂失 / 解挂",
         summary = if (card != null && !display.loading && !display.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxWidth().imePadding().sheetContentSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (initialLoading) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(28.dp))
             }
