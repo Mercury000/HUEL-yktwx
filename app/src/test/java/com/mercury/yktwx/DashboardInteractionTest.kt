@@ -190,6 +190,46 @@ class DashboardInteractionTest {
         compose.onNodeWithText("登录已失效，请重新登录。").assertIsDisplayed()
     }
 
+    @Test fun billOverlaysCloseWithPageAndReopenWithAppliedFilters() {
+        var active by mutableStateOf(true)
+        var applied = 0
+        var dates = 0
+        content {
+            BillPage(BillUiState(loaded = true, amountFromCents = 1000), settings,
+                {}, {}, {}, {}, { dates++ }, { _, from, _ -> assertEquals(1000L, from); applied++ }, {},
+                onOpenStats = {}, onOpenDetail = {}, isActive = active, showBack = false)
+        }
+        compose.onNodeWithContentDescription("筛选账单").performClick()
+        compose.onNodeWithText("最低").assertTextContains("10").performTextReplacement("20")
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { active = false }
+        repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithText("应用").assertIsNotEnabled()
+        compose.runOnIdle { active = true }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("交易类型").assertDoesNotExist()
+        compose.onNodeWithContentDescription("筛选账单").performClick()
+        compose.onNodeWithText("最低").assertTextContains("10")
+        compose.onNodeWithText("应用").performClick()
+        assertEquals(1, applied)
+
+        compose.onNodeWithContentDescription("选择日期").performClick()
+        compose.onNodeWithText("选择日期").assertIsDisplayed()
+        compose.onNodeWithText("日期范围").performClick()
+        compose.onNodeWithText("自定义时间段").performClick()
+        compose.onNodeWithText("开始").assertExists()
+        compose.runOnIdle { active = false }
+        compose.onNodeWithText("选择日期").assertDoesNotExist()
+        compose.runOnIdle { active = true }
+        compose.onNodeWithText("选择日期").assertDoesNotExist()
+        assertEquals(0, dates)
+        compose.onNodeWithContentDescription("选择日期").performClick()
+        compose.onNodeWithText("按月").assertExists()
+        compose.onNodeWithText("开始").assertDoesNotExist()
+        compose.onNodeWithText("确定").performClick()
+        assertEquals(1, dates)
+    }
+
     @Test fun billsScrollDuringBackgroundReadAndPullDetailsAndStats() {
         val model = BillViewModel(compose.activity.application).apply { initialize(true) }
         val state = mutableStateOf(model.state.value.copy(loading = true))

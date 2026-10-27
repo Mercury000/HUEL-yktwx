@@ -62,7 +62,7 @@ fun RechargeDialog(
                     state.phase, state.loading, state.pending?.amountCents ?: 0, state.error,
                     if (state.pending?.recipient != null) "代充值" else "充值"))
                 PaymentResultContent(result.phase, result.loading, result.amountCents, result.error,
-                    { if (enabled && isResult) onFinish() }, subject = result.subject)
+                    { if (enabled && isResult) onFinish() }, subject = result.subject, enabled = enabled && isResult)
             } else {
                 val config = rememberWhileShown(show && !isResult, state.config)
                 val loading = rememberWhileShown(show && !isResult, state.loading)

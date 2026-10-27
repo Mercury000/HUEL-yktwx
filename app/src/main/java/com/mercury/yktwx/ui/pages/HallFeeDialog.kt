@@ -32,6 +32,28 @@ private data class HallFeeResultDisplay(
     val detail: String?, val methods: List<FeeMethod>,
 )
 
+/** Presentation only: do not retain query payloads, orders or payment preparations. */
+private class HallFeeFormDisplay(state: FeeUiState, project: FeeProject?, fixedTarget: FeeRoomBinding?) {
+    val config = state.config
+    val project = state.switchingProject ?: config?.project ?: project
+    val loading = state.loading
+    val selecting = state.selecting
+    val roomBusy = state.roomBusy
+    val error = state.error
+    val levels = state.levels
+    val hiddenLevels = state.hiddenLevels
+    val options = state.options
+    val selections = state.selections
+    val currentRoom = state.currentRoom
+    val summaryRoom = currentRoom ?: fixedTarget
+    val roomBinding = state.roomBinding
+    val roomBindingKnown = state.roomBindingKnown
+    val roomAction = state.roomAction
+    val switchingMeterKind = state.switchingMeterKind
+    val queryPending = state.query == null && (loading || selecting)
+    val queryDisplay = state.query?.display.orEmpty()
+}
+
 /** One root-hosted sheet for target selection, amount, server payment channels and results. */
 @Composable
 internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProject?, fixedTarget: FeeRoomBinding?,
@@ -44,14 +66,16 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     bindingProjects: Set<FeeProject> = emptySet(),
 ) {
     val session = rememberOverlaySession(visible)
-    var amount by remember(state.config, visible) { mutableStateOf("") }
-    var amountStep by remember(visible, project, fixedTarget, saveOnly) {
+    val form = rememberWhileShown(visible && state.stage == FeeStage.Query,
+        remember(state, project, fixedTarget) { HallFeeFormDisplay(state, project, fixedTarget) })
+    var amount by remember(session, form.config) { mutableStateOf("") }
+    var amountStep by remember(session, project, fixedTarget, saveOnly) {
         mutableStateOf(!saveOnly && (fixedTarget != null || project?.network == true))
     }
-    var saveCommon by remember(visible, project, state.selections) { mutableStateOf(false) }
-    var bindingPending by remember(visible, project) { mutableStateOf(false) }
-    var targetSelected by remember(visible, project, state.selections) { mutableStateOf(true) }
-    var methodCode by remember(visible, project) { mutableStateOf("ACCOUNTTSM") }
+    var saveCommon by remember(session, form.project, form.selections) { mutableStateOf(false) }
+    var bindingPending by remember(session, form.project) { mutableStateOf(false) }
+    var targetSelected by remember(session, form.project, form.selections) { mutableStateOf(true) }
+    var methodCode by remember(session, form.project) { mutableStateOf("ACCOUNTTSM") }
     LaunchedEffect(state.roomNotice) {
         if (bindingPending && state.roomNotice != null) {
             bindingPending = false; saveCommon = false
@@ -63,8 +87,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         if (bindingPending && !state.roomBusy && state.error != null) bindingPending = false
     }
     val cents = RechargeMoney.cents(amount)
-    val config = state.config
-    val displayProject = state.switchingProject ?: config?.project ?: project
+    val config = form.config
+    val displayProject = form.project
     val ready = !state.loading && !state.selecting && state.query?.canPay == true &&
         state.query.thirdParty != null && state.query.tip == null &&
         state.switchingProject == null && state.switchingMeterKind == null &&
@@ -106,13 +130,13 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
             when (shownPage) {
                 HallFeePage.Target -> {
                     if (config == null) {
-                        if (state.loading) HallFeeTargetPlaceholder()
-                        InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
+                        if (form.loading) HallFeeTargetPlaceholder()
+                        InlineError(form.error, actionLabel = "重试", onAction = { if (active && !state.loading) onRetry() })
                     } else {
                         val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
                             state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
-                        HallFeeTargetOptions(state, onSelect, onMeterKind, targetEnabled)
-                        if (state.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                        HallFeeTargetOptions(form, onSelect, onMeterKind, targetEnabled)
+                        if (form.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
                             val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
                                 .filter { !saveOnly || it in bindingProjects }
                             if (projects.size > 1) FeeMeterTypeSelector("缴费类型",
@@ -121,37 +145,37 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                 if (projects[index] != displayProject) onProject(projects[index])
                             }
                         }
-                        InlineError(state.error, actionLabel = "重试", onAction = onRetry)
-                        if (!saveOnly && config.roomBindingEnabled && state.roomBindingKnown && state.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
+                        InlineError(form.error, actionLabel = "重试", onAction = { if (targetEnabled) onRetry() })
+                        if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
-                                onClick = { saveCommon = !saveCommon }, enabled = active && ready && !state.roomBusy)
-                            Text(if (state.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
+                                onClick = { saveCommon = !saveCommon }, enabled = targetEnabled && ready)
+                            Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                         }
                         Button(onClick = {
-                            if (active && ready) {
+                            if (targetEnabled && ready) {
                                 if ((saveOnly || saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
                                     bindingPending = true; onRoomAction()
                                 } else if (saveOnly) onDismiss() else amountStep = true
                             }
-                        }, enabled = active && ready && state.currentRoom != null && !state.roomBusy &&
+                        }, enabled = targetEnabled && ready && state.currentRoom != null &&
                             (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
+                            colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (form.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
                         if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
                 HallFeePage.Amount -> {
-                        HallFeeSummary(state, Modifier.testTag("hall-payment-target"), targetSelected,
+                        HallFeeSummary(form, Modifier.testTag("hall-payment-target"), targetSelected,
                             { targetSelected = !targetSelected }, active && !state.loading && !state.selecting,
-                            project, fixedTarget)
-                        val codes = if (project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
-                        if (state.loading && (config == null || state.query == null)) PaymentAmountPlaceholder(config = config?.amountRules,
+                        )
+                        val codes = if (form.project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
+                        if (form.loading && (config == null || form.queryPending)) PaymentAmountPlaceholder(config = config?.amountRules,
                             methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
                         else if (config != null) PaymentAmountForm(config.amountRules, amount, { amount = it },
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
-                            { methodCode = codes[it] }, state.loading || state.selecting || state.roomBusy,
-                            active && ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry,
+                            { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
+                            active && ready && targetSelected && !state.preview, form.error, { onCreate(it, methodCode) }, onRetry,
                             enabled = active)
-                        else InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
+                        else InlineError(form.error, actionLabel = "重试", onAction = { if (active && !state.loading) onRetry() })
                 }
                 HallFeePage.Result -> {
                     // Unavailable methods reuse the same choices without creating another order.
@@ -171,7 +195,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     display?.let { result ->
                         PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
                             { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
-                            subject = "充值", retryMethods = result.methods,
+                            subject = "充值", retryMethods = result.methods, enabled = resultActive,
                             onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
                     }
                 }
@@ -214,21 +238,20 @@ private fun HallFeeTargetPlaceholder() {
 }
 
 @Composable
-private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, selected: Boolean = true,
-    onSelect: () -> Unit = {}, enabled: Boolean = false,
-    project: FeeProject? = state.config?.project, fixedTarget: FeeRoomBinding? = null) {
-    val pending = state.query == null && (state.loading || state.selecting)
-    val room = state.currentRoom ?: fixedTarget
+private fun HallFeeSummary(state: HallFeeFormDisplay, modifier: Modifier = Modifier, selected: Boolean = true,
+    onSelect: () -> Unit = {}, enabled: Boolean = false) {
+    val pending = state.queryPending
+    val room = state.summaryRoom
     PaymentSelectionCard(selected = selected, onClick = onSelect, modifier = modifier, enabled = enabled) { contentColor ->
             val placeholderColor = contentColor.copy(alpha = .2f)
-            if (project?.network == true) {
+            if (state.project?.network == true) {
                 if (pending) repeat(2) {
                     Row(Modifier.fillMaxWidth()) {
                         DashboardPlaceholder(13.sp, Modifier.weight(1f), fraction = .45f, color = placeholderColor)
                         DashboardPlaceholder(14.sp, Modifier.width(112.dp), fraction = 1f, color = placeholderColor)
                     }
                 }
-                state.query?.display?.filter { "套餐" in it.first || "状态" in it.first }?.forEach { (name, value) ->
+                state.queryDisplay.filter { "套餐" in it.first || "状态" in it.first }.forEach { (name, value) ->
                     Row(Modifier.fillMaxWidth()) {
                         Text(name, Modifier.weight(1f), fontSize = 13.sp, color = contentColor.copy(alpha = .75f))
                         Text(value, fontSize = 14.sp, color = contentColor)
@@ -245,7 +268,7 @@ private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, sel
                     if (room == null) DashboardPlaceholder(17.sp, Modifier.fillMaxWidth(), color = placeholderColor)
                     DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), fraction = .65f, color = placeholderColor)
                 }
-                state.query?.display.orEmpty().forEach { (label, value) ->
+                state.queryDisplay.forEach { (label, value) ->
                     Text(if (value.startsWith(label)) value else "$label  $value", fontSize = 13.sp,
                         color = contentColor.copy(alpha = .8f))
                 }
@@ -257,8 +280,14 @@ private fun HallFeeSummary(state: FeeUiState, modifier: Modifier = Modifier, sel
 @Composable
 internal fun HallFeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOption) -> Unit,
     onMeterKind: (DormMeterKind) -> Unit, enabled: Boolean) {
+    HallFeeTargetOptions(remember(state) { HallFeeFormDisplay(state, null, null) }, onSelect, onMeterKind, enabled)
+}
+
+@Composable
+private fun HallFeeTargetOptions(state: HallFeeFormDisplay, onSelect: (FeeLevel, FeeOption) -> Unit,
+    onMeterKind: (DormMeterKind) -> Unit, enabled: Boolean) {
     val levels = state.levels.filterNot { it.key in state.hiddenLevels }
-    val project = state.switchingProject ?: state.config?.project
+    val project = state.project
     val meterChoices = if (project in setOf(FeeProject.Zhengdong, FeeProject.Wenbei))
         dormMeterChoices(levels, state.options) else null
 

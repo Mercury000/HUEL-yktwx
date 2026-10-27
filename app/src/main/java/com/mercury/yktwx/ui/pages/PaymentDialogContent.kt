@@ -191,6 +191,7 @@ internal fun PaymentResultContent(
     subject: String = "充值",
     retryMethods: List<FeeMethod> = emptyList(),
     onContinuePayment: (FeeMethod) -> Unit = {},
+    enabled: Boolean = true,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase == RechargePhase.Failed && !busy
@@ -247,7 +248,7 @@ internal fun PaymentResultContent(
             Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 methods.forEach { method ->
                     val selected = selectedMethod?.let { it.id == method.id && it.code == method.code } == true
-                    PaymentSelectionCard(selected = selected,
+                    PaymentSelectionCard(selected = selected, enabled = enabled,
                         onClick = { selectedMethod = if (selected) null else method }) { contentColor ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(method.name + "支付", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
@@ -259,13 +260,13 @@ internal fun PaymentResultContent(
             }
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onFinish, modifier = Modifier.weight(1f)) { Text("取消支付") }
-                Button(onClick = { selectedMethod?.let(onContinuePayment) }, enabled = selectedMethod != null,
+                Button(onClick = onFinish, enabled = enabled, modifier = Modifier.weight(1f)) { Text("取消支付") }
+                Button(onClick = { selectedMethod?.let(onContinuePayment) }, enabled = enabled && selectedMethod != null,
                     modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text("继续支付") }
             }
         } else if (!busy) {
             Spacer(Modifier.height(28.dp))
-            Button(onClick = onFinish, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
+            Button(onClick = onFinish, enabled = enabled, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
         }
     }
 }

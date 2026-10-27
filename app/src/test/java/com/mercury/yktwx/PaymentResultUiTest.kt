@@ -249,8 +249,15 @@ class PaymentResultUiTest {
         screenshot("fee-payment-failure-sheet")
         compose.onNodeWithText("继续支付").performClick()
         assertSame(wechat, submitted)
+        compose.mainClock.autoAdvance = false
         compose.onNodeWithText("取消支付").performClick()
-        compose.onNodeWithText("缴费失败").assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithText("充值失败").assertExists()
+        compose.onNodeWithText("微信支付").assertIsNotEnabled()
+        compose.onNodeWithText("取消支付").assertIsNotEnabled()
+        compose.onNodeWithText("继续支付").assertIsNotEnabled()
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("充值失败").assertDoesNotExist()
         compose.onNodeWithText("继续支付").assertDoesNotExist()
         assertEquals(1, cancellations)
         assertSame(state.query, current.value.query)
