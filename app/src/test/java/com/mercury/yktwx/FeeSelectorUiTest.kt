@@ -145,6 +145,65 @@ class FeeSelectorUiTest {
         compose.runOnIdle { dark = true }
         capture("family-target-dark")
     }
+    @Test fun bindingAndTemporaryLoadingNeverShowThePaymentForm() {
+        var saveOnly by mutableStateOf(true)
+        var current by mutableStateOf(FeeUiState(loading = true))
+        var bindingRequests = 0
+        var paymentRequests = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold {
+                    HallFeeDialog(current, true, FeeProject.FamilyElectric, null, saveOnly = saveOnly,
+                        onDismiss = {}, onSelect = { _, _ -> }, onRetry = {},
+                        onCreate = { _, _ -> paymentRequests++ }, onMethod = {}, onPayAccount = { _, _ -> },
+                        onCancelPayment = {}, onFinish = {}, onContinuePayment = {},
+                        onRoomAction = { bindingRequests++ }, onConfirmRoomAction = {},
+                        onDismissRoomDialog = {}, onConsumeRoomNotice = {})
+                } }
+            }
+        }
+        fun assertSelecting() {
+            compose.onNodeWithText("充值金额").assertDoesNotExist()
+            compose.onNodeWithText("支付方式").assertDoesNotExist()
+            compose.onNodeWithContentDescription("正在读取充值信息").assertDoesNotExist()
+        }
+        compose.onNodeWithText("新增绑定").assertIsDisplayed()
+        compose.onNodeWithContentDescription("正在读取房间选项").assertIsDisplayed()
+        assertSelecting()
+        capture("binding-loading")
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
+        var fieldLeft: Float? = null
+        repeat(24) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            assertSelecting()
+            // The root popup receives state on a subsequent frame. From its first rendered
+            // field onward, content must replace the skeleton immediately and stay in place.
+            compose.onAllNodesWithText("楼栋").fetchSemanticsNodes().singleOrNull()?.let { field ->
+                compose.onNodeWithContentDescription("正在读取房间选项").assertDoesNotExist()
+                val left = field.boundsInRoot.left
+                fieldLeft?.let { assertEquals("Loading completion must update fields in place", it, left, 0f) }
+                fieldLeft = left
+            }
+        }
+        assertNotNull("Loaded fields must appear", fieldLeft)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("楼栋").assertIsDisplayed()
+        compose.onNodeWithText("绑定房间").assertIsEnabled().performClick()
+        assertEquals(1, bindingRequests)
+        assertEquals(0, paymentRequests)
+        capture("binding-ready")
+        compose.runOnIdle { saveOnly = false; current = FeeUiState(loading = true) }
+        compose.onNodeWithContentDescription("正在读取房间选项").assertIsDisplayed()
+        assertSelecting()
+        compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
+        assertSelecting()
+        compose.onNodeWithText("下一步").performClick()
+        compose.onNodeWithText("充值金额").assertIsDisplayed()
+        compose.onNodeWithText("支付方式").assertIsDisplayed()
+        assertEquals(0, paymentRequests)
+    }
     @Test fun paymentSheetKeepsTargetAndFormHeightWhileDetailsLoad() {
         fun ready(project: FeeProject): FeeUiState {
             val original = state(project)

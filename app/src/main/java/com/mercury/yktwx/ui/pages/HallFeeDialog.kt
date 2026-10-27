@@ -7,6 +7,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
@@ -22,6 +24,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+private enum class HallFeePage { Target, Amount, Methods, Result }
+
 /** One root-hosted sheet for target selection, amount, server payment channels and results. */
 @Composable
 internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProject?, fixedTarget: FeeRoomBinding?,
@@ -34,7 +38,9 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     bindingProjects: Set<FeeProject> = emptySet(),
 ) {
     var amount by remember(state.config, visible) { mutableStateOf("") }
-    var amountStep by remember(visible, project, fixedTarget) { mutableStateOf(fixedTarget != null || project?.network == true) }
+    var amountStep by remember(visible, project, fixedTarget, saveOnly) {
+        mutableStateOf(!saveOnly && (fixedTarget != null || project?.network == true))
+    }
     var saveCommon by remember(visible, project, state.selections) { mutableStateOf(false) }
     var bindingPending by remember(visible, project) { mutableStateOf(false) }
     var targetSelected by remember(visible, project, state.selections) { mutableStateOf(true) }
@@ -69,27 +75,36 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         }
     }
     val paymentTitle = if (project?.network == true) "校园网充值" else meterName?.plus("充值") ?: project?.hallTitle ?: "水电缴费"
-    val title = when (state.stage) {
-        FeeStage.Password -> "一卡通支付"
-        FeeStage.Result -> null
+    val requestedPage = when {
+        saveOnly -> HallFeePage.Target
+        state.stage == FeeStage.Password -> null
+        state.stage == FeeStage.Result -> HallFeePage.Result
+        state.stage == FeeStage.Methods -> HallFeePage.Methods
+        amountStep || project?.network == true -> HallFeePage.Amount
+        else -> HallFeePage.Target
+    }
+    var page by remember { mutableStateOf(requestedPage ?: HallFeePage.Amount) }
+    if (visible && requestedPage != null) page = requestedPage
+    val title = when {
+        saveOnly -> "新增绑定"
+        page == HallFeePage.Result -> null
         else -> paymentTitle
     }
-    OverlayBottomSheet(show = visible && state.stage != FeeStage.Password, title = title, onDismissRequest = {
+    OverlayBottomSheet(show = visible && state.stage != FeeStage.Password,
+        startAction = { SheetTitle(title) }, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
     }, renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        Column(Modifier.fillMaxWidth().testTag("hall-payment-content").bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(top = 8.dp),
+        SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
+        val active = interactive && visible && state.stage != FeeStage.Password
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            when (state.stage) {
-                FeeStage.Query -> {
+            when (shownPage) {
+                HallFeePage.Target -> {
                     if (config == null) {
-                        if (state.loading) {
-                            if (amountStep) HallFeeSummary(state, Modifier.testTag("hall-payment-target"),
-                                project = project, fixedTarget = fixedTarget)
-                            PaymentAmountPlaceholder(methods = if (project?.network == true) listOf("一卡通") else listOf("一卡通", "微信"))
-                        }
-                        InlineError(state.error, actionLabel = "重试", onAction = onRetry)
-                    } else if (!amountStep && project?.network != true) {
-                        val targetEnabled = !state.loading && !state.selecting && !state.roomBusy &&
+                        if (state.loading) HallFeeTargetPlaceholder()
+                        InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
+                    } else {
+                        val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
                             state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
                         HallFeeTargetOptions(state, onSelect, onMeterKind, targetEnabled)
                         if (state.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
@@ -104,33 +119,35 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         InlineError(state.error, actionLabel = "重试", onAction = onRetry)
                         if (!saveOnly && config.roomBindingEnabled && state.roomBindingKnown && state.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
-                                onClick = { saveCommon = !saveCommon }, enabled = ready && !state.roomBusy)
+                                onClick = { saveCommon = !saveCommon }, enabled = active && ready && !state.roomBusy)
                             Text(if (state.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                         }
                         Button(onClick = {
-                            if (ready) {
+                            if (active && ready) {
                                 if ((saveOnly || saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
                                     bindingPending = true; onRoomAction()
                                 } else if (saveOnly) onDismiss() else amountStep = true
                             }
-                        }, enabled = ready && state.currentRoom != null && !state.roomBusy &&
+                        }, enabled = active && ready && state.currentRoom != null && !state.roomBusy &&
                             (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
                         if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    } else {
-                        HallFeeSummary(state, Modifier.testTag("hall-payment-target"), targetSelected,
-                            { targetSelected = !targetSelected }, !state.loading && !state.selecting,
-                            project, fixedTarget)
-                        val codes = if (project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
-                        if (state.loading && state.query == null) PaymentAmountPlaceholder(config = config.amountRules,
-                            methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
-                        else PaymentAmountForm(config.amountRules, amount, { amount = it },
-                            codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
-                            { methodCode = codes[it] }, state.loading || state.selecting || state.roomBusy,
-                            ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
                     }
                 }
-                FeeStage.Methods -> {
+                HallFeePage.Amount -> {
+                        HallFeeSummary(state, Modifier.testTag("hall-payment-target"), targetSelected,
+                            { targetSelected = !targetSelected }, active && !state.loading && !state.selecting,
+                            project, fixedTarget)
+                        val codes = if (project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
+                        if (state.loading && (config == null || state.query == null)) PaymentAmountPlaceholder(config = config?.amountRules,
+                            methods = codes.map { if (it == "TSM") "微信" else "一卡通" })
+                        else if (config != null) PaymentAmountForm(config.amountRules, amount, { amount = it },
+                            codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
+                            { methodCode = codes[it] }, !active || state.loading || state.selecting || state.roomBusy,
+                            active && ready && targetSelected && !state.preview, state.error, { onCreate(it, methodCode) }, onRetry)
+                        else InlineError(state.error, actionLabel = "重试", onAction = { if (active) onRetry() })
+                }
+                HallFeePage.Methods -> {
                     HallFeeSummary(state)
                     Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text("¥ " + RechargeMoney.yuan(orderAmount), fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
@@ -141,18 +158,18 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         ?: methods.indexOfFirst { it.code == methodCode }.takeIf { it >= 0 }
                         ?: if (methods.isEmpty()) -1 else 0
                     HallNeutralTabs(methods.map { it.name }, selectedIndex.coerceAtLeast(0)) {
-                        if (!state.loading) { methodCode = methods[it].code; methodId = methods[it].id }
+                        if (active && !state.loading) { methodCode = methods[it].code; methodId = methods[it].id }
                     }
                     Button(onClick = { methods.getOrNull(selectedIndex)?.let(onMethod) },
-                        enabled = !state.loading && selectedIndex >= 0, modifier = Modifier.fillMaxWidth(),
+                        enabled = active && !state.loading && selectedIndex >= 0, modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (state.loading) "正在准备支付…" else "确定支付") }
-                    DashboardLink("修改金额", onCancelPayment, arrow = false, enabled = !state.loading)
+                    DashboardLink("修改金额", onCancelPayment, arrow = false, enabled = active && !state.loading)
                 }
-                FeeStage.Password -> Unit
-                FeeStage.Result -> PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
-                    onFinish, subject = "充值", retryMethods = if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
-                    onContinuePayment = onContinuePayment)
+                HallFeePage.Result -> PaymentResultContent(state.resultPhase, state.loading, orderAmount, state.error,
+                    { if (active) onFinish() }, subject = "充值", retryMethods = if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
+                    onContinuePayment = { if (active) onContinuePayment(it) })
             }
+        }
         }
     }
     FeePasswordDialog(show = visible && state.stage == FeeStage.Password,
@@ -167,6 +184,19 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
             Button(onClick = onConfirmRoomAction, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) {
                 Text(if (dialog?.previous != null) "替换" else "绑定")
             }
+        }
+    }
+}
+
+@Composable
+private fun HallFeeTargetPlaceholder() {
+    Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取房间选项" },
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(3) {
+            PaymentControlPlaceholder { FeeLocationDropdown("", emptyList(), 0, false) {} }
+        }
+        PaymentControlPlaceholder {
+            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("选择房间") }
         }
     }
 }
