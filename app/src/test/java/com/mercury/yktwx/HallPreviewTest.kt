@@ -91,9 +91,14 @@ class HallPreviewTest {
             compose.onAllNodesWithText(item).onLast().performClick()
             compose.waitForIdle()
         }
-        choose("楼栋", "示例B栋空调")
+        choose("楼栋", "示例B栋")
         choose("楼层", "示例楼层")
-        choose("房间", "示例B栋-房间B空调")
+        choose("房间", "示例B栋-房间B")
+        assertEquals("demo-building-B-Lighting", fee.state.value.selections["building"])
+        assertEquals("demo-floor-Lighting", fee.state.value.selections["floor"])
+        assertEquals("demo-B-Lighting", fee.state.value.selections["room"])
+        compose.onNode(hasText("空调") and hasClickAction()).performClick()
+        compose.waitUntil(5_000) { fee.state.value.selections["room"] == "demo-B-AirConditioning" }
         assertEquals("demo-building-B-AirConditioning", fee.state.value.selections["building"])
         assertEquals("demo-floor-AirConditioning", fee.state.value.selections["floor"])
         assertEquals("demo-B-AirConditioning", fee.state.value.selections["room"])

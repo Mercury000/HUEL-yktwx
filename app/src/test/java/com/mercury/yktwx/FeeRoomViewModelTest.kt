@@ -29,6 +29,8 @@ class FeeRoomViewModelTest {
 
     @After fun cleanup() {
         fees.writeGate.complete(Unit)
+        fees.familySwitchGate.complete(Unit)
+        fees.wenbeiSwitchGate.complete(Unit)
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -110,7 +112,12 @@ class FeeRoomViewModelTest {
         await { model.state.value.query != null }
         val source = model.state.value.currentRoom!!
         assertEquals("family-448-room", source.selections["room"])
+        fees.familySwitchGate = CompletableDeferred()
         model.selectFamilyProject(FeeProject.FamilyWater)
+        assertTrue(source.sameTarget(model.state.value.currentRoom))
+        assertEquals(FeeProject.FamilyWater, model.state.value.switchingProject)
+        assertEquals(FeeProject.FamilyElectric, model.state.value.config!!.project)
+        fees.familySwitchGate.complete(Unit)
         await { !model.state.value.loading && model.state.value.query != null }
         val water = model.state.value
         assertEquals(FeeProject.FamilyWater, water.config!!.project)
@@ -125,34 +132,76 @@ class FeeRoomViewModelTest {
         await { !model.state.value.loading && model.state.value.query != null }
         assertTrue(source.sameTarget(model.state.value.currentRoom))
     }
-    @Test fun missingOrAmbiguousFamilyMeterRequiresReselectionAndCannotSubmit() {
+    @Test fun missingOrAmbiguousFamilyMeterKeepsTheConfirmedSourceTarget() {
         fees.familyOptions = true
         model.open(FeeProject.FamilyElectric, vault.username, false)
         await { !model.state.value.loading && model.state.value.config != null }
         model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
         await { model.state.value.query != null }
+        val source = model.state.value.currentRoom!!
+        val sourceQuery = model.state.value.query
         fees.familyWaterMissing = true
         model.selectFamilyProject(FeeProject.FamilyWater)
         await { !model.state.value.loading }
-        assertNull(model.state.value.currentRoom)
-        assertNull(model.state.value.query)
+        assertTrue(source.sameTarget(model.state.value.currentRoom))
+        assertSame(sourceQuery, model.state.value.query)
+        assertEquals(FeeProject.FamilyElectric, model.state.value.config!!.project)
         assertNotNull(model.state.value.error)
-        model.createWithMethod(100, "ACCOUNTTSM")
         assertEquals(0, fees.creations)
         fees.familyWaterMissing = false
         model.open(FeeProject.FamilyElectric, vault.username, false)
         await { !model.state.value.loading && model.state.value.config != null }
         model.select(model.state.value.levels.last(), model.state.value.options.getValue(2).first())
         await { model.state.value.query != null }
+        val duplicateSource = model.state.value.currentRoom!!
+        val duplicateQuery = model.state.value.query
         fees.familyWaterDuplicate = true
         model.selectFamilyProject(FeeProject.FamilyWater)
         await { !model.state.value.loading }
-        assertNull(model.state.value.currentRoom)
-        assertNull(model.state.value.query)
+        assertTrue(duplicateSource.sameTarget(model.state.value.currentRoom))
+        assertSame(duplicateQuery, model.state.value.query)
+        assertEquals(FeeProject.FamilyElectric, model.state.value.config!!.project)
         assertNotNull(model.state.value.error)
-        model.createWithMethod(100, "ACCOUNTTSM")
         assertEquals(0, fees.creations)
         assertEquals(0, fees.writes)
+    }
+
+    @Test fun wenbeiMeterSwitchKeepsThePhysicalRoomAndResolvesTheOtherBranch() {
+        fees.wenbeiBranches = true
+        model.open(FeeProject.Wenbei, vault.username, false)
+        await { !model.state.value.loading && model.state.value.options[2]?.isNotEmpty() == true }
+        model.select(model.state.value.levels.first { it.key == "building" },
+            model.state.value.options.getValue(2).first { it.name.endsWith("照明") })
+        await { !model.state.value.selecting && model.state.value.options[3]?.isNotEmpty() == true }
+        model.select(model.state.value.levels.first { it.key == "floor" }, model.state.value.options.getValue(3).single())
+        await { !model.state.value.selecting && model.state.value.options[4]?.isNotEmpty() == true }
+        model.select(model.state.value.levels.first { it.key == "room" },
+            model.state.value.options.getValue(4).first { "201" in it.name })
+        await { model.state.value.query != null }
+        val lighting = model.state.value.currentRoom!!
+
+        fees.wenbeiSwitchGate = CompletableDeferred()
+        model.selectDormMeterKind(DormMeterKind.AirConditioning)
+        assertTrue(lighting.sameTarget(model.state.value.currentRoom))
+        assertEquals(DormMeterKind.AirConditioning, model.state.value.switchingMeterKind)
+        fees.wenbeiSwitchGate.complete(Unit)
+        await { !model.state.value.selecting && model.state.value.query != null }
+
+        val air = model.state.value.currentRoom!!
+        assertEquals("air-building", air.selections["building"])
+        assertEquals("air-floor", air.selections["floor"])
+        assertEquals("air-room-201", air.selections["room"])
+        assertEquals("55-201空调", air.names["room"])
+        assertEquals("201", Regex("\\d+").findAll(physicalLabel(lighting.dialogLabel)).last().value)
+        assertEquals("201", Regex("\\d+").findAll(physicalLabel(air.dialogLabel)).last().value)
+
+        model.selectDormMeterKind(DormMeterKind.Lighting)
+        await { !model.state.value.selecting && model.state.value.query != null }
+        assertEquals("light-building", model.state.value.selections["building"])
+        assertEquals("light-floor", model.state.value.selections["floor"])
+        assertEquals("light-room-201", model.state.value.selections["room"])
+        assertEquals(0, fees.writes)
+        assertEquals(0, fees.creations)
     }
     @Test fun fixedFamilyCardTargetRejectsTypeChange() {
         fees.familyOptions = true
@@ -383,6 +432,9 @@ class FeeRoomViewModelTest {
         var familyOptions = false
         var familyWaterMissing = false
         var familyWaterDuplicate = false
+        var wenbeiBranches = false
+        var familySwitchGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var wenbeiSwitchGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var creations = 0
         var createdProject: FeeProject? = null
         var createdTarget: String? = null
@@ -401,7 +453,25 @@ class FeeRoomViewModelTest {
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
             queryLevels += level
             if (detail && detailFails) throw NetworkFailure()
+            if (wenbeiBranches && project == FeeProject.Wenbei) {
+                val branchLevels = listOf(FeeLevel("campus", 1, "校区"), FeeLevel("building", 2, "楼栋"),
+                    FeeLevel("floor", 3, "楼层"), FeeLevel("room", 4, "房间"))
+                val air = selections["building"] == "air-building"
+                if (air && level == 2 && !detail) wenbeiSwitchGate.await()
+                val options = when (level) {
+                    0 -> listOf(FeeOption("wb", "文北"))
+                    1 -> listOf(FeeOption("light-building", "5号楼照明"), FeeOption("air-building", "5号楼空调"))
+                    2 -> listOf(FeeOption(if (air) "air-floor" else "light-floor", "二层"))
+                    else -> listOf(
+                        FeeOption(if (air) "air-room-201" else "light-room-201", if (air) "55-201空调" else "5-201照明"),
+                        FeeOption(if (air) "air-room-202" else "light-room-202", if (air) "55-202空调" else "5-202照明"),
+                    )
+                }
+                return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString(),
+                    display = listOf("剩余电量" to "100 度")) else FeeQuery(levels = branchLevels, options = options)
+            }
             if (familyOptions && project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                if (project == FeeProject.FamilyWater && level == 0 && !detail) familySwitchGate.await()
                 val suffix = if (project == FeeProject.FamilyWater) "水表" else "电表"
                 val options = if (level == 0) listOf(FeeOption("family-${project.id}-campus", "示例家属区")) else
                     if (project == FeeProject.FamilyWater && familyWaterMissing) emptyList() else

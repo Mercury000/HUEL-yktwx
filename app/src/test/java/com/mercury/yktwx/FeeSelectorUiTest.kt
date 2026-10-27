@@ -109,8 +109,7 @@ class FeeSelectorUiTest {
         capture("student-target")
         compose.onNodeWithText("下一步").performClick()
         compose.onNodeWithTag("fee-meter-type").assertDoesNotExist()
-        compose.onNodeWithText("返回选房").performClick()
-        compose.onNodeWithTag("fee-meter-type").assertIsDisplayed()
+        compose.onNodeWithText("返回选房").assertDoesNotExist()
         compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
         assertBelowRoom()
         compose.onNode(hasText("水费") and hasClickAction()).performClick()
