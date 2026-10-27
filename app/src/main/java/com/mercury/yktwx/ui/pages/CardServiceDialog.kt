@@ -13,8 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -25,8 +23,6 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.FieldError
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
-import com.mercury.yktwx.ui.components.ContentPlaceholder
-import com.mercury.yktwx.ui.components.DashboardPlaceholder
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -109,7 +105,7 @@ fun CardServiceDialog(
 
 @Composable
 private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit) {
-    val show = state.visible || (state.loading && state.selectedCard == null)
+    val show = state.visible
     var presented by remember { mutableStateOf(state) }
     if (show) SideEffect { presented = state }
     val display = if (show) state else presented
@@ -118,11 +114,13 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
     val card = display.selectedCard
     val initialLoading = display.loading && card == null
     OverlayDialog(show = show,
-        title = if (initialLoading) "读取校园卡" else if (card != null || display.action == CampusCardAction.Unlost) "确认" + display.operation.label else "挂失 / 解挂",
+        title = if (card != null || display.action == CampusCardAction.Unlost) "确认" + display.operation.label else "挂失 / 解挂",
         summary = if (card != null && !display.loading && !display.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (initialLoading) CardSelectionPlaceholder()
+            if (initialLoading) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(28.dp))
+            }
             if (display.cards.size > 1) display.cards.forEach { candidate ->
                 Button(onClick = { onSelectCard(candidate) }, enabled = !display.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
@@ -147,23 +145,6 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
                     enabled = card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
                     modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "处理中…" else "确定") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CardSelectionPlaceholder() {
-    Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取校园卡" },
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        repeat(2) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                ContentPlaceholder(Modifier.size(40.dp), cornerRadius = 12.dp)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 20.sp)
-                    DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), fraction = .72f, lineHeight = 16.sp)
-                }
             }
         }
     }

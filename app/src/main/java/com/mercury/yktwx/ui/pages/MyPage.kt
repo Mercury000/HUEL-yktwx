@@ -48,6 +48,7 @@ internal fun MyPage(
     onRecharge: () -> Unit, rechargeLoading: Boolean,
     onCardAction: (CampusCardAction) -> Unit, cardBusy: Boolean,
     onSettings: () -> Unit, onAbout: () -> Unit,
+    cardLoading: Boolean = false,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     val identityPending = !state.loaded && state.profile == null && state.homeIdentity == null && state.profileError == null
@@ -165,7 +166,11 @@ internal fun MyPage(
                         item {
                             Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
                                 Text("校园卡管理", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                DashboardPreference(title = "挂失 / 解挂", startAction = { ProfileServiceIcon(MiuixIcons.BankCards) },
+                                DashboardPreference(title = "挂失 / 解挂", startAction = {
+                                    if (cardLoading) Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(Modifier.size(19.dp).semantics { contentDescription = "正在读取校园卡" })
+                                    } else ProfileServiceIcon(MiuixIcons.BankCards)
+                                },
                                     enabled = !cardBusy, onClick = { onCardAction(CampusCardAction.ManageState) })
                                 HorizontalDivider(Modifier.padding(start = 62.dp), color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                 DashboardPreference(title = "修改查询密码", startAction = { ProfileServiceIcon(MiuixIcons.Lock) },
