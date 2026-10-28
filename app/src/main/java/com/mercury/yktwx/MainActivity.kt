@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 
@@ -26,13 +27,13 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val preview = BuildConfig.DEBUG && intent.getBooleanExtra("ui_preview", false)
+        val preview = UiPreview.enabled && UiPreview.requested(intent)
         val settings = ThemeSettings(this)
         // Payments and password screens must not leak through screenshots or task previews.
         if (!preview && settings.preventScreenshots.value) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-        viewModel.initialize(preview, previewLost = preview && intent.getBooleanExtra("ui_preview_lost", false))
+        viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))
         billViewModel.initialize(preview)
         setContent {
             val secure = !preview && settings.preventScreenshots.value

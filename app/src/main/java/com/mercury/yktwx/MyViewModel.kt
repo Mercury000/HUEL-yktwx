@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -33,14 +35,13 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private var task: Job? = null
     private var refreshedAt = 0L
     fun accountChanged(username: String, uiPreview: Boolean = false) {
-        if (owner == username && preview == uiPreview) return
+        val enabledPreview = UiPreview.enabled && uiPreview
+        if (owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; refreshedAt = 0L
-        owner = username; preview = uiPreview
+        owner = username; preview = enabledPreview
         mutable.value = MyUiState()
-        if (preview && username.isNotBlank()) {
-            mutable.value = MyUiState(PersonalProfile("示例同学", "202600000001", "示例部门", "示例专业", null),
-                summary = BillSummary(20000, 20540), counts = BillCounts(2, 6),
-                homeIdentity = HomeCardIdentity("示例同学", "202600000001", "示例书院", "示例专业"), loaded = true)
+        if (UiPreview.enabled && preview && username.isNotBlank()) {
+            mutable.value = PreviewData.myState()
             refreshedAt = System.currentTimeMillis()
         }
     }

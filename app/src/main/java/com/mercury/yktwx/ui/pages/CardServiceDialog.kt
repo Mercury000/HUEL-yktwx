@@ -18,6 +18,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.preview.PreviewNotes
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.trackInputFocus
@@ -116,7 +118,8 @@ private fun RecipientRechargeSheet(
                         onClickLabel = "更换验证码", onClick = { captchaCode = ""; onRefreshCaptcha() }), contentAlignment = Alignment.Center) {
                         if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
                         else if (display.loading) CircularProgressIndicator(Modifier.size(24.dp))
-                        else Text(if (display.preview) "预览" else "点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        else if (UiPreview.enabled && display.preview) PreviewNotes.Captcha()
+                        else Text("点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
                         enabled = enabled, modifier = Modifier.trackInputFocus().weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))

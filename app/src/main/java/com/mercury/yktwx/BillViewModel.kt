@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -11,10 +13,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.YearMonth
-import java.time.format.DateTimeFormatter
 
 data class BillStatsState(
     val period: BillDateFilter = BillDateFilter.currentMonth(),
@@ -76,9 +74,9 @@ class BillViewModel internal constructor(
     fun initialize(uiPreview: Boolean = false) {
         if (initialized) return
         initialized = true
-        preview = BuildConfig.DEBUG && uiPreview
-        if (preview) {
-            mutable.value = previewState()
+        preview = UiPreview.enabled && uiPreview
+        if (UiPreview.enabled && preview) {
+            mutable.value = PreviewData.billState()
             lastLoadedAt = System.currentTimeMillis()
             lastStatsLoadedAt = lastLoadedAt
             return
@@ -100,7 +98,7 @@ class BillViewModel internal constructor(
         accountOwner = username
         lastLoadedAt = 0L
         lastStatsLoadedAt = 0L
-        mutable.value = if (preview && username != null) previewState()
+        mutable.value = if (UiPreview.enabled && preview && username != null) PreviewData.billState()
             else BillUiState(needsLogin = username == null)
     }
 
@@ -122,8 +120,8 @@ class BillViewModel internal constructor(
     fun refresh() {
         if (mutable.value.statsVisible) { refreshStats(); return }
         if (mutable.value.loading || mutable.value.refreshing) return
-        if (preview) {
-            mutable.value = previewState(mutable.value.dateFilter, mutable.value.stats.type)
+        if (UiPreview.enabled && preview) {
+            mutable.value = PreviewData.billState(mutable.value.dateFilter, mutable.value.stats.type)
             lastLoadedAt = System.currentTimeMillis()
             lastStatsLoadedAt = lastLoadedAt
             return
@@ -141,8 +139,8 @@ class BillViewModel internal constructor(
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
             stats = BillStatsState(period = filter, type = current.stats.type),
         )
-        if (preview) {
-            mutable.value = previewState(filter, mutable.value.stats.type).copy(statsVisible = current.statsVisible,
+        if (UiPreview.enabled && preview) {
+            mutable.value = PreviewData.billState(filter, mutable.value.stats.type).copy(statsVisible = current.statsVisible,
                 typeId = current.typeId, amountFromCents = current.amountFromCents, amountToCents = current.amountToCents, info = current.info)
             lastLoadedAt = System.currentTimeMillis()
         } else if (!mutable.value.needsLogin) {
@@ -175,7 +173,7 @@ class BillViewModel internal constructor(
 
     fun loadMore() {
         val current = mutable.value
-        if (preview || current.loading || current.refreshing || current.loadingMore) return
+        if (UiPreview.enabled && preview || current.loading || current.refreshing || current.loadingMore) return
         if (current.currentPage <= 0 || current.currentPage >= current.pages) return
         val next = current.currentPage + 1
         val dateFilter = current.dateFilter
@@ -237,7 +235,7 @@ class BillViewModel internal constructor(
         cancelListJobs(); statsJob?.cancel()
         val current = mutable.value
         val period = BillDateFilter.currentMonth()
-        mutable.value = if (preview) previewState(period) else BillUiState(needsLogin = current.needsLogin, types = current.types, dateFilter = period)
+        mutable.value = if (UiPreview.enabled && preview) PreviewData.billState(period) else BillUiState(needsLogin = current.needsLogin, types = current.types, dateFilter = period)
         if (!preview && !current.needsLogin) load()
     }
 
@@ -350,9 +348,9 @@ class BillViewModel internal constructor(
     }
 
     private fun loadStats() {
-        if (preview) {
+        if (UiPreview.enabled && preview) {
             mutable.value = mutable.value.copy(
-                stats = previewStats(mutable.value.stats.period, mutable.value.stats.type),
+                stats = PreviewData.billStats(mutable.value.stats.period, mutable.value.stats.type),
             )
             lastStatsLoadedAt = System.currentTimeMillis()
             return
@@ -400,95 +398,8 @@ class BillViewModel internal constructor(
         loadJob?.cancel(); loadMoreJob?.cancel()
     }
 
-    private fun previewState(
-        period: BillDateFilter = BillDateFilter.currentMonth(),
-        statsType: Int = 2,
-    ): BillUiState {
-        val records = previewRecords(period)
-        return BillUiState(
-            preview = true, needsLogin = false, dateFilter = period, items = records,
-            summary = BillSummary(20000, 20540),
-            counts = BillCounts(records.count { it.income }, records.count { !it.income }),
-            currentPage = 1, pages = 1,
-            types = listOf(
-                BillType("1", "消费"), BillType("2", "充值"),
-                BillType("3", "退款"), BillType("4", "二维码支付"),
-            ),
-            loaded = true, stats = previewStats(period, statsType),
-        )
-    }
-
-    private fun previewStats(period: BillDateFilter, type: Int): BillStatsState {
-        val records = previewRecords(period)
-        val daily = when (period.mode) {
-            BillDateMode.Month -> YearMonth.from(period.start).days().map { day ->
-                val amount = when {
-                    type == 2 && day.dayOfMonth % 5 == 0 -> 1800L
-                    type == 2 && day.dayOfMonth % 3 == 0 -> 640L
-                    type == 1 && day.dayOfMonth == 1 -> 20000L
-                    else -> 0L
-                }
-                BillDailyPoint(day, amount)
-            }
-            BillDateMode.Year -> (1..12).map { monthValue ->
-                val month = YearMonth.of(period.start.year, monthValue)
-                val amount = when {
-                    type == 2 && monthValue % 3 == 0 -> 8400L
-                    type == 1 -> 12000L
-                    else -> 0L
-                }
-                BillDailyPoint(month.atDay(1), amount)
-            }
-            BillDateMode.Day, BillDateMode.Range -> emptyList()
-        }
-        val categories = if (type == 2) listOf(
-            BillCategory("二维码支付", 15000),
-            BillCategory("消费", 4000),
-            BillCategory("退款", 1540),
-        ) else listOf(
-            BillCategory("充值", 18000),
-            BillCategory("退款", 2000),
-        )
-        val ranking = records.filter { (it.typeFrom == "1") == (type == 1) }.sortedByDescending { it.amountCents }.take(5)
-        return BillStatsState(
-            period = period, type = type, daily = daily, categories = categories, ranking = ranking, loaded = true,
-        )
-    }
-
-    private fun previewRecords(period: BillDateFilter): List<BillRecord> {
-        val today = LocalDate.now()
-        val anchor = minOf(today, period.end).coerceAtLeast(period.start)
-        fun date(offset: Long): LocalDate = anchor.minusDays(offset).coerceIn(period.start, period.end)
-        fun time(day: LocalDate, hour: Int, minute: Int): String =
-            LocalDateTime.of(day, java.time.LocalTime.of(hour, minute)).format(PREVIEW_TIME)
-        fun record(
-            id: String, resume: String, turnover: String, icon: String, typeId: String, typeFrom: String,
-            amount: Long, day: LocalDate, hour: Int, minute: Int, payName: String, merchant: String, remark: String,
-        ) = BillRecord(
-            orderId = id, resume = resume, payName = payName, turnoverType = turnover, icon = icon,
-            typeId = typeId, typeFrom = typeFrom, amountCents = amount, balanceCents = 8236,
-            feeCents = 0, effectTime = time(day, hour, minute), bookTime = time(day, hour, minute + 1),
-            fromAccount = "校园卡", position = "POS-01", remark = remark, merchant = merchant,
-            serialNumber = "20260001", labelName = "",
-        )
-        val d0 = date(0); val d1 = date(1); val d2 = date(2); val d3 = date(3); val d4 = date(4); val d5 = date(5)
-        return listOf(
-            record("DEMO-01", "第一餐厅一楼-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 800, d0, 12, 5, "扫码支付", "第一餐厅一楼", "[reserve=DEMO]"),
-            record("DEMO-02", "第二餐厅二楼-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 800, d0, 11, 42, "扫码支付", "第二餐厅二楼", "[reserve=DEMO]"),
-            record("DEMO-03", "校园超市-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 1200, d1, 18, 20, "扫码支付", "校园超市", "[reserve=DEMO]"),
-            record("DEMO-04", "第一餐厅一楼-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 1400, d1, 12, 3, "扫码支付", "第一餐厅一楼", "[reserve=DEMO]"),
-            record("DEMO-05", "浴室热水-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 940, d2, 21, 16, "扫码支付", "公共浴室", "[reserve=DEMO]"),
-            record("DEMO-06", "校园卡充值", "充值", "recharge", "2", "1", 20000, d3, 9, 0, "校园卡充值", "一卡通中心", "充值"),
-            record("DEMO-07", "第三餐厅一楼-扫码支付", "二维码支付", "qrCode-payment", "4", "2", 500, d4, 17, 35, "扫码支付", "第三餐厅一楼", "[reserve=DEMO]"),
-            record("DEMO-08", "退款", "退款", "refund", "3", "1", 300, d5, 10, 10, "扫码支付", "校园超市", "退款"),
-        )
-    }
-
-    private fun YearMonth.days(): List<LocalDate> = (1..lengthOfMonth()).map { atDay(it) }
-
     private companion object {
         const val PAGE_SIZE = 8
         const val CACHE_MS = 2 * 60 * 1000L
-        val PREVIEW_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     }
 }

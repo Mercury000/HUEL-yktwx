@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -58,7 +60,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         if (task?.isActive == true) return
         dismiss()
         owner = username
-        mutable.value = CardServiceUiState(visible = action == CampusCardAction.OthersRecharge, action = action, preview = preview)
+        mutable.value = CardServiceUiState(visible = action == CampusCardAction.OthersRecharge, action = action, preview = UiPreview.enabled && preview)
         if (action == CampusCardAction.OthersRecharge) refreshCaptcha() else refreshCards()
     }
     fun openUnlost(username: String, account: String, preview: Boolean) {
@@ -66,7 +68,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         dismiss()
         owner = username
         paymentAccount = account
-        mutable.value = CardServiceUiState(visible = true, action = CampusCardAction.Unlost, preview = preview)
+        mutable.value = CardServiceUiState(visible = true, action = CampusCardAction.Unlost, preview = UiPreview.enabled && preview)
         refreshCards()
     }
     private fun refreshCards() {
@@ -78,8 +80,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         mutable.value = mutable.value.copy(loading = true, error = null, completed = false, selectedCard = null)
         task = viewModelScope.launch {
             try {
-                val config = if (preview) CardServiceConfiguration(listOf(
-                    CampusCard(targetAccount ?: "demo-card", "校园卡", "202600000001", targetAccount != null, false, 0)), false, true)
+                val config = if (UiPreview.enabled && preview) PreviewData.cardConfiguration(targetAccount)
                 else repository.cardConfiguration(username)
                 if (attempt != current) return@launch
                 val cards = if (targetAccount == null) config.cards else listOf(
@@ -167,7 +168,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         mutable.value = mutable.value.copy(loading = true, captcha = null, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null, error = null)
         task = viewModelScope.launch {
             try {
-                val captcha = if (preview) null else repository.recipientCaptcha(username)
+                val captcha = if (UiPreview.enabled && preview) null else repository.recipientCaptcha(username)
                 if (attempt == current) mutable.value = mutable.value.copy(loading = false, captcha = captcha)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (attempt == current) mutable.value = mutable.value.copy(loading = false, error = safeError(e)) }
@@ -184,7 +185,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         mutable.value = s.copy(loading = true, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null, error = null)
         launchTask {
             try {
-                val recipients = if (s.preview) listOf(RechargeRecipient("demo-recipient", "demo-target", "示例同学", "202600000002", "统一账户"))
+                val recipients = if (UiPreview.enabled && s.preview) PreviewData.recipients()
                     else repository.rechargeRecipients(username, type, value, s.captcha!!, code)
                 if (attempt != current) return@launchTask
                 val first = recipients.firstOrNull() ?: throw YktException("未查询到可充值账户")
@@ -225,7 +226,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     }
     private suspend fun loadRecipientConfig(recipient: RechargeRecipient, username: String, current: Long) {
         try {
-            val config = if (mutable.value.preview) RechargeConfiguration("demo", recipient.targetId, listOf(1000, 5000, 10000), 1, 50000, true, false, recipient)
+            val config = if (UiPreview.enabled && mutable.value.preview) PreviewData.recipientConfiguration(recipient)
                 else repository.recipientRechargeConfiguration(username, recipient)
             if (current != attempt) return
             if (config.recipient !== recipient || config.targetId != recipient.targetId) throw YktException("充值账户配置不匹配，请重新查询")

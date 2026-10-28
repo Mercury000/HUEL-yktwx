@@ -12,6 +12,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
@@ -54,7 +55,7 @@ class DashboardLoadingTest {
 
     @Test fun hallKeepsCardPositionsBeforeDuringAndAfterReadingRooms() {
         val settings = settings()
-        val ready = HallViewModel(compose.activity.application).previewState()
+        val ready = PreviewData.hallState()
         var state by mutableStateOf(DormUiState())
         var scale by mutableFloatStateOf(1f)
         var dark by mutableStateOf(false)

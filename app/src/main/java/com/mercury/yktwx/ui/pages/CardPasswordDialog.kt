@@ -13,6 +13,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.preview.PreviewNotes
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.CardPasswordUiState
 import com.mercury.yktwx.data.CampusCard
 import com.mercury.yktwx.ui.components.trackInputFocus
@@ -72,7 +74,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
             InlineError(error)
-            if (display.preview) Text("预览模式不会修改密码", fontSize = 13.sp)
+            if (UiPreview.enabled && display.preview) PreviewNotes.CardPassword()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = ::dismiss, enabled = state.visible && !display.submitting, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = ::submit, enabled = valid, modifier = Modifier.weight(1f),

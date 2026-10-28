@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.AccountRepository
 import kotlinx.coroutines.CancellationException
@@ -33,11 +35,12 @@ class HallViewModel internal constructor(
     private fun displayKey() = java.security.MessageDigest.getInstance("SHA-256").digest(owner.toByteArray())
         .joinToString("") { "%02x".format(it) }
     fun accountChanged(username: String, uiPreview: Boolean = false) {
-        if (owner == username && preview == uiPreview) return
+        val enabledPreview = UiPreview.enabled && uiPreview
+        if (owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; refreshedAt = 0L
         refreshPending = false; managementError = null
-        owner = username; preview = uiPreview
-        mutable.value = if (preview && username.isNotBlank()) previewState() else DormUiState()
+        owner = username; preview = enabledPreview
+        mutable.value = if (UiPreview.enabled && preview && username.isNotBlank()) PreviewData.hallState() else DormUiState()
     }
     fun onActivate() { if (!mutable.value.loaded || System.currentTimeMillis() - refreshedAt > 60_000) refresh() }
     fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) refreshPending = true }
@@ -167,23 +170,5 @@ class HallViewModel internal constructor(
         val s = mutable.value
         mutable.value = DormUiState(rooms, loading, s.loaded, error, s.needsLogin,
             selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, s.networkError, managing, s.bindingProjects)
-    }
-    internal fun previewState(multiple: Boolean = false): DormUiState {
-        val levels = listOf(FeeLevel("campus", 1, "校区"), FeeLevel("building", 2, "楼栋"), FeeLevel("floor", 3, "楼层"), FeeLevel("room", 4, "电表"))
-        fun demo(project: FeeProject, letter: String, light: String, air: String): DormRoom {
-            fun binding(kind: DormMeterKind) = FeeRoomBinding.from(levels,
-                mapOf("campus" to "demo-campus", "building" to if (project == FeeProject.Wenbei) "demo-building-$letter-${kind.name}" else "demo-building-$letter",
-                    "floor" to if (project == FeeProject.Wenbei) "demo-floor-${kind.name}" else "demo-floor", "room" to "demo-$letter-${kind.name}"),
-                mapOf("campus" to project.label.removeSuffix("电费"), "building" to "示例${letter}栋" + if (project == FeeProject.Wenbei) kind.label else "",
-                    "floor" to "示例楼层", "room" to "示例${letter}栋-房间${letter}${kind.label}"))!!
-            return DormRoom(project, binding(DormMeterKind.Lighting), listOf(
-                DormMeter(DormMeterKind.Lighting, binding(DormMeterKind.Lighting), FeeQuery(thirdParty = "{}", display = listOf("剩余电量" to "$light 度"))),
-                DormMeter(DormMeterKind.AirConditioning, binding(DormMeterKind.AirConditioning), FeeQuery(thirdParty = "{}", display = listOf("剩余电量" to "$air 度"))),
-            ), System.currentTimeMillis())
-        }
-        val rooms = listOf(demo(FeeProject.Zhengdong, "A", "86.4", "32.8")) +
-            if (multiple) listOf(demo(FeeProject.Wenbei, "B", "58.2", "21.6")) else emptyList()
-        return DormUiState(rooms, loaded = true, network = FeeQuery(thirdParty = "{}", display = listOf("用户套餐" to "学生宽带套餐", "用户状态" to "正常")),
-            bindingProjects = setOf(FeeProject.Zhengdong, FeeProject.Wenbei, FeeProject.FamilyElectric, FeeProject.FamilyWater))
     }
 }

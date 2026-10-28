@@ -8,6 +8,8 @@
 
 在根目录执行 `./gradlew :app:assembleDebug` 或 `:app:assembleRelease`，Windows 使用 `.\gradlew.bat`。APK 输出至 `app/build/outputs/apk/`；正式签名由 Actions 完成。
 
+`assemblePreview` 使用独立 `.preview` 包名。调试和预览从 `app/src/uiPreview/` 读取样本，release 使用 `app/src/production/` 禁用预览实现。
+
 ## 测试
 
 按改动范围选择直接相关的测试，例如：

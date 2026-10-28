@@ -10,6 +10,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
+import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.ui.pages.HallFeeDialog
@@ -51,7 +52,7 @@ class HallPreviewTest {
         compose.waitForIdle()
     }
     @Test fun bindingTransitionResizesGraduallyAndKeepsTitleUntilDismissed() {
-        val state = HallViewModel(compose.activity.application).previewState(multiple = true)
+        val state = PreviewData.hallState(multiple = true)
         var visible by mutableStateOf(true)
         var initialTab by mutableIntStateOf(0)
         compose.setContent {
@@ -195,10 +196,8 @@ class HallPreviewTest {
         capture("11-hall-dark")
     }
     @Test fun emptyMultipleAndWaterStatesKeepOneUtilityCard() {
-        val app = compose.activity.application
         val settings = settings()
-        val model = HallViewModel(app)
-        val multiple = model.previewState(multiple = true)
+        val multiple = PreviewData.hallState(multiple = true)
         var state by mutableStateOf(multiple)
         var dark by mutableStateOf(false)
         var paidProject: FeeProject? = null

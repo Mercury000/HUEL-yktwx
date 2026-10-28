@@ -37,6 +37,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.preview.PreviewNotes
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.BillUiState
 import com.mercury.yktwx.data.BillDateFilter
 import com.mercury.yktwx.data.BillRecord
@@ -291,7 +293,7 @@ fun BillPage(
                                     item(key = "footer") { BillFooter(state, onLoadMore) }
                                 }
                             }
-                            if (state.preview) item(key = "preview") { BillPreviewNote() }
+                            if (UiPreview.enabled && state.preview) item(key = "preview") { PreviewNotes.Bill() }
                             }
                         }
                     }

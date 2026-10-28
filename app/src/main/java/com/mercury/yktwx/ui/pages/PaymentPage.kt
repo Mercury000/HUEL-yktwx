@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
+import com.mercury.yktwx.preview.PreviewNotes
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.ui.components.*
@@ -163,8 +165,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                 }
                             }
                         }
-                        if (state.preview) item { Text(if (state.problem != null) "界面预览 · 非真实账户" else "界面预览 · 测试码不可用于支付",
-                            fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+                        if (UiPreview.enabled && state.preview) item { PreviewNotes.Payment(state.problem != null) }
                     }
                 }
             }

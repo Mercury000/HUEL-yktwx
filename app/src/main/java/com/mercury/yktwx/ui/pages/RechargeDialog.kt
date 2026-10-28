@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.preview.PreviewNotes
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.RechargeUiState
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
@@ -70,10 +72,10 @@ fun RechargeDialog(
             } else {
                 val config = rememberWhileShown(show && !isResult, state.config)
                 val loading = rememberWhileShown(show && !isResult, state.loading)
-                val preview = rememberWhileShown(show && !isResult, state.preview)
+                val preview = rememberWhileShown(show && !isResult, UiPreview.enabled && state.preview)
                 val error = rememberWhileShown(show && !isResult, state.error)
                 if (config != null) {
-                    if (preview) Text("界面预览 · 不发起支付", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
+                    if (UiPreview.enabled && preview) PreviewNotes.Recharge()
                     config.recipient?.let { recipient ->
                         RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, enabled && !loading)
                     }
