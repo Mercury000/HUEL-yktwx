@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardPasswordUiState
 import com.mercury.yktwx.data.CampusCard
+import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
@@ -59,17 +60,17 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 label = "原查询密码", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth())
+                modifier = Modifier.trackInputFocus().fillMaxWidth())
             TextField(value = newPassword, onValueChange = { newPassword = it.filter { c -> c in '0'..'9' }.take(6) },
                 label = "新查询密码（6 位数字）", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth())
+                modifier = Modifier.trackInputFocus().fillMaxWidth())
             TextField(value = confirmation, onValueChange = { confirmation = it.filter { c -> c in '0'..'9' }.take(6) },
                 label = "确认新查询密码", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.fillMaxWidth())
+                keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
             InlineError(error)
             if (display.preview) Text("预览模式不会修改密码", fontSize = 13.sp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
@@ -57,7 +58,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
                 label = "六位支付密码", singleLine = true, useLabelAsPlaceholder = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.fillMaxWidth())
+                keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
             InlineError(display.error)
             Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }

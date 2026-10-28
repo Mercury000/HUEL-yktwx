@@ -210,7 +210,7 @@ fun BillPage(
                                 TextField(
                                     value = query,
                                     onValueChange = { query = it },
-                                    modifier = Modifier.fillMaxWidth().testTag("bill-search")
+                                    modifier = Modifier.trackInputFocus().fillMaxWidth().testTag("bill-search")
                                         .onGloballyPositioned { searchBounds = it.boundsInWindow() }
                                         .semantics { contentDescription = "搜索商户或摘要" },
                                     insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
@@ -447,13 +447,13 @@ private fun BillFilterSheet(
             ) {
                 TextField(
                     value = min, onValueChange = { min = it.amountInput() },
-                    modifier = Modifier.weight(1f), label = "最低", singleLine = true, enabled = show,
+                    modifier = Modifier.trackInputFocus().weight(1f), label = "最低", singleLine = true, enabled = show,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                 )
                 Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 TextField(
                     value = max, onValueChange = { max = it.amountInput() },
-                    modifier = Modifier.weight(1f), label = "最高", singleLine = true, enabled = show,
+                    modifier = Modifier.trackInputFocus().weight(1f), label = "最高", singleLine = true, enabled = show,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 )
             }
