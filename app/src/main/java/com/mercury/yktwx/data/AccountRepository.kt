@@ -6,6 +6,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -16,16 +17,31 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     private var accountGeneration = 0L
     private var sessionRevision = 0L
     private var unverifiedSessionRevision: Long? = null
+    private class AccountSnapshot(val credentials: Credentials?, val session: Session?)
+    @Volatile private var cachedAccount: AccountSnapshot? = null
     private class SessionLease(val username: String, val session: Session, val generation: Long,
         val revision: Long, val freshlyLoggedIn: Boolean)
-    fun hasCredentials() = vault.credentials() != null
-    fun username() = vault.credentials()?.username.orEmpty()
+    suspend fun hasCredentials() = mutex.withLock { account().credentials != null }
+    suspend fun username() = mutex.withLock { account().credentials?.username.orEmpty() }
+    /** UI guards fail closed before restoration and never touch disk or Android Keystore. */
+    fun ownsAccount(username: String) = username.isNotBlank() && cachedAccount?.credentials?.username == username
+    /** All snapshot initialization and mutations are serialized by the session mutex. */
+    private suspend fun account(): AccountSnapshot = cachedAccount ?: onVaultThread {
+        val credentials = credentials()
+        AccountSnapshot(credentials, if (credentials != null) session() else null)
+    }.also { cachedAccount = it }
     suspend fun login(username: String, password: String): PaymentBatch = mutex.withLock {
         val credentials = Credentials(username.trim(), password)
         val session = service.login(credentials)
-        accountGeneration++
-        onVaultThread { saveCredentials(credentials); saveSession(session) }
-        sessionRevision++; unverifiedSessionRevision = sessionRevision
+        currentCoroutineContext().ensureActive()
+        // Persistence and the in-memory identity must agree even if the caller is cancelled.
+        withContext(NonCancellable) {
+            onVaultThread { saveAccount(credentials, session) }
+            cachedAccount = AccountSnapshot(credentials, session)
+            accountGeneration++
+            sessionRevision++; unverifiedSessionRevision = sessionRevision
+        }
+        currentCoroutineContext().ensureActive()
         // Don't re-login if the newly issued token is rejected; present a login error instead.
         try { service.payment(session.accessToken).also { unverifiedSessionRevision = null } }
         catch (e: AuthenticationRequired) { clearCredentials(); throw e }
@@ -46,17 +62,17 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         // Consumed captcha queries and mutations cannot be replayed or overlap account changes.
         if (!retryAuthentication) return mutex.withLock {
             val lease = acquireSession(expectedUsername)
-            try { block(lease.session.accessToken).also { unverifiedSessionRevision = null } }
+            try { withContext(Dispatchers.Default) { block(lease.session.accessToken) }.also { unverifiedSessionRevision = null } }
             catch (e: AuthenticationRequired) { clearSession(); throw e }
         }
         var lease = mutex.withLock { acquireSession(expectedUsername) }
         val result = try {
-            block(lease.session.accessToken)
+            withContext(Dispatchers.Default) { block(lease.session.accessToken) }
         } catch (e: AuthenticationRequired) {
             lease = mutex.withLock {
                 currentCoroutineContext().ensureActive()
                 requireOwner(lease)
-                val current = onVaultThread { session() }
+                val current = cachedAccount?.session
                 // A late failure must reuse, rather than clear, a newer authenticated session.
                 if (sessionRevision != lease.revision || current?.accessToken != lease.session.accessToken) {
                     acquireSession(lease.username)
@@ -66,13 +82,13 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
                     acquireSession(lease.username)
                 }
             }
-            try { block(lease.session.accessToken) }
+            try { withContext(Dispatchers.Default) { block(lease.session.accessToken) } }
             catch (retry: AuthenticationRequired) {
                 mutex.withLock {
                     currentCoroutineContext().ensureActive()
                     requireOwner(lease)
                     if (sessionRevision == lease.revision &&
-                        onVaultThread { session() }?.accessToken == lease.session.accessToken) clearCredentials()
+                        cachedAccount?.session?.accessToken == lease.session.accessToken) clearCredentials()
                 }
                 throw retry
             }
@@ -87,31 +103,37 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     /** Caller holds the mutex only while validating identity and obtaining/renewing a token. */
     private suspend fun acquireSession(expectedUsername: String?): SessionLease {
         currentCoroutineContext().ensureActive()
-        val credentials = onVaultThread { credentials() } ?: throw AuthenticationRequired()
+        val snapshot = account()
+        val credentials = snapshot.credentials ?: throw AuthenticationRequired()
         if (expectedUsername != null && credentials.username != expectedUsername) throw YktException("充值账户已切换，请重新打开充值")
-        var session = onVaultThread { session() }
+        var session = snapshot.session
         if (session == null || !session.isFresh()) {
             session = try { service.login(credentials) }
             catch (e: InvalidCredentials) { currentCoroutineContext().ensureActive(); clearCredentials(); throw e }
             catch (e: CaptchaRequired) { currentCoroutineContext().ensureActive(); clearCredentials(); throw e }
             currentCoroutineContext().ensureActive()
-            onVaultThread { saveSession(session) }
-            sessionRevision++; unverifiedSessionRevision = sessionRevision
+            withContext(NonCancellable) {
+                onVaultThread { saveSession(session) }
+                cachedAccount = AccountSnapshot(credentials, session)
+                sessionRevision++; unverifiedSessionRevision = sessionRevision
+            }
         }
         return SessionLease(credentials.username, session, accountGeneration, sessionRevision,
             unverifiedSessionRevision == sessionRevision)
     }
-    private suspend fun requireOwner(lease: SessionLease) {
-        val credentials = onVaultThread { credentials() } ?: throw AuthenticationRequired()
+    private fun requireOwner(lease: SessionLease) {
+        val credentials = cachedAccount?.credentials ?: throw AuthenticationRequired()
         if (accountGeneration != lease.generation || credentials.username != lease.username)
             throw YktException("账户已切换，请重新打开页面")
     }
-    private suspend fun clearSession() {
-        onVaultThread { clearSession() }
+    private suspend fun clearSession() = withContext(NonCancellable) {
+        cachedAccount = AccountSnapshot(cachedAccount?.credentials, null)
         sessionRevision++; unverifiedSessionRevision = null
+        onVaultThread { clearSession() }
     }
-    private suspend fun clearCredentials() {
+    private suspend fun clearCredentials() = withContext(NonCancellable) {
         accountGeneration++; sessionRevision++; unverifiedSessionRevision = null
+        cachedAccount = AccountSnapshot(null, null)
         onVaultThread { clear() }
     }
     /** Android Keystore operations are synchronous Binder calls; never run them on a UI caller. */

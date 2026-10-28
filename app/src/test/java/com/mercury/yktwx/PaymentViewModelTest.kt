@@ -90,6 +90,61 @@ class PaymentViewModelTest {
         assertNull(model.state.value.code)
         assertEquals(0, logins)
     }
+    @Test fun hiddenPaymentPageStopsTicksAndRequestsUntilItBecomesVisible() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        val first = model.state.value.code
+        val balance = model.state.value.account
+        model.setPageVisible(false)
+        val hidden = model.state.value
+        assertNull(hidden.code)
+        assertEquals(0L, hidden.secondsLeft)
+        assertSame(balance, hidden.account)
+        model.refresh()
+        shadowOf(Looper.getMainLooper()).idleFor(120, TimeUnit.SECONDS)
+        assertEquals(hidden, model.state.value)
+        assertEquals(1, payments)
+        model.onBackground(); model.onForeground()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, payments)
+        model.setPageVisible(true)
+        await { model.state.value.code != null }
+        assertEquals(2, payments)
+        assertNotEquals(first, model.state.value.code)
+    }
+    @Test fun leavingDuringRefreshDiscardsTheLateCodeAndClearsBusyState() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        paymentGate = CompletableDeferred()
+        model.onForeground()
+        await { payments == 1 }
+        model.setPageVisible(false)
+        assertFalse(model.state.value.busy)
+        paymentGate.complete(Unit)
+        await { responses == 1 }
+        assertNull(model.state.value.code)
+        assertFalse(model.state.value.busy)
+        model.setPageVisible(true)
+        await { model.state.value.code != null }
+        assertEquals(2, payments)
+    }
+    @Test fun explicitRefreshOnMyPageUpdatesAccountWithoutStartingCodeTicker() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.setPageVisible(false)
+        model.onForeground()
+        model.refresh(manual = true)
+        await { payments == 1 && !model.state.value.busy }
+        assertNotNull(model.state.value.account)
+        assertNull(model.state.value.code)
+        shadowOf(Looper.getMainLooper()).idleFor(120, TimeUnit.SECONDS)
+        assertEquals(1, payments)
+    }
 
     @Test fun acceptedLoginDoesNotBecomeFailureJustBecauseBarcodeWasRefused() {
         vault.clear()

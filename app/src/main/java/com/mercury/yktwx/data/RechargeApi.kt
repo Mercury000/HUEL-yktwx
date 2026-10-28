@@ -9,7 +9,7 @@ class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it
     private val http = PaymentHttp(openConnection)
     private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null) =
         http.request(path, token, params, form)
-    private fun json(response: PaymentHttp.Response) = http.json(response, rechargePayment = true)
+    private suspend fun json(response: PaymentHttp.Response) = http.json(response, rechargePayment = true)
     override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
         val data = json(request("/berserker-app/frontInfo", token)).getJSONObject("data")
         val front = JSONObject(data.getString("getFrontConfig"))

@@ -15,6 +15,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import java.time.LocalDate
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -32,6 +33,7 @@ class BillViewModelTest {
     @After fun cleanup() {
         vault.credentialsGate?.countDown()
         service.requestGate.complete(Unit)
+        service.auxiliaryGate.complete(Unit)
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -114,18 +116,61 @@ class BillViewModelTest {
     @Test fun changingMonthCancelsPendingRefresh() {
         model.initialize()
         await { vault.reads > 0 }
-        vault.credentialsGate = CountDownLatch(1)
+        val originalMonth = model.state.value.dateFilter.timeFrom
         model.refresh()
         assertTrue(model.state.value.refreshing)
+        await { service.requests == 1 }
         val nextMonth = java.time.YearMonth.from(model.state.value.dateFilter.start).minusMonths(1)
         model.selectDate(BillDateFilter.month(nextMonth))
         assertFalse(model.state.value.refreshing)
         assertTrue(model.state.value.loading)
-        vault.credentialsGate!!.countDown()
+        await { service.requests == 2 }
         service.requestGate.complete(Unit)
         await { model.state.value.loaded }
         assertEquals(nextMonth, java.time.YearMonth.from(model.state.value.dateFilter.start))
-        assertEquals(listOf(nextMonth.atDay(1).toString()), service.requestMonths)
+        assertEquals(listOf(originalMonth, nextMonth.atDay(1).toString()), service.requestMonths)
+    }
+    @Test fun firstPageSummaryCountsAndTypesStartTogether() {
+        service.auxiliaryGate = CompletableDeferred()
+        model.refresh()
+        await { service.queries.containsAll(listOf("page", "summary", "income", "expenses", "types")) }
+        assertTrue(model.state.value.refreshing)
+        service.requestGate.complete(Unit)
+        service.auxiliaryGate.complete(Unit)
+        await { model.state.value.loaded }
+        assertEquals(BillCounts(0, 0), model.state.value.counts)
+        assertEquals(listOf(BillType("4", "二维码支付")), model.state.value.types)
+    }
+    @Test fun statsTrendCategoriesAndRankingStartTogether() {
+        loadExistingBills()
+        service.queries.clear()
+        service.auxiliaryGate = CompletableDeferred()
+        model.openStats()
+        await { service.queries.containsAll(listOf("trend", "categories", "ranking")) }
+        assertTrue(model.state.value.stats.loading)
+        service.auxiliaryGate.complete(Unit)
+        await { model.state.value.stats.loaded }
+    }
+    @Test fun optionalMetricFailuresKeepTheBillListUsable() {
+        service.items = listOf(record)
+        service.queryFailures = mapOf("summary" to NetworkFailure(), "income" to NetworkFailure(), "types" to NetworkFailure())
+        service.requestGate.complete(Unit)
+        model.refresh()
+        await { !model.state.value.refreshing }
+        assertTrue(model.state.value.loaded)
+        assertEquals(listOf(record), model.state.value.items)
+        assertNull(model.state.value.summary)
+        assertNull(model.state.value.counts)
+        assertTrue(model.state.value.types.isEmpty())
+        assertNull(model.state.value.error)
+    }
+    @Test fun authenticationFailureInAMetricCancelsTheWholeLoad() {
+        service.queryFailures = mapOf("summary" to AuthenticationRequired())
+        // The page remains suspended while the summary fails both its token and its renewal.
+        model.refresh()
+        await { !model.state.value.refreshing }
+        assertTrue(model.state.value.needsLogin)
+        assertFalse(model.state.value.loaded)
     }
 
     @Test fun selectingCustomRangeUsesExactFromAndToDates() {
@@ -220,6 +265,14 @@ class BillViewModelTest {
         override suspend fun paymentAccount(token: String) = PaymentAccount("0", "0", "0", "Demo", 0)
         @Volatile var requests = 0
         var requestGate = CompletableDeferred<Unit>()
+        var auxiliaryGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        val queries = Collections.synchronizedSet(mutableSetOf<String>())
+        var queryFailures: Map<String, YktException> = emptyMap()
+        private suspend fun query(name: String) {
+            queries += name
+            auxiliaryGate.await()
+            queryFailures[name]?.let { throw it }
+        }
         var failure: YktException? = null
         var items = emptyList<BillRecord>()
         val requestMonths = mutableListOf<String>()
@@ -228,6 +281,7 @@ class BillViewModelTest {
             token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
             typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?,
         ): BillPageData {
+            queries += "page"
             requestMonths += timeFrom
             requestRanges += timeFrom to timeTo
             requests++
@@ -235,16 +289,32 @@ class BillViewModelTest {
             failure?.let { throw it }
             return BillPageData(items, current, if (items.isEmpty()) 0 else 1)
         }
-        override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
-        override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int =
-            if (type == 1) items.count { it.income } else items.count { !it.income }
-        override suspend fun billTypes(token: String) = listOf(BillType("4", "二维码支付"))
-        override suspend fun login(credentials: Credentials): Session = error("Unexpected login")
+        override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+            query("summary")
+            return BillSummary(0, 0)
+        }
+        override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+            query(if (type == 1) "income" else "expenses")
+            return if (type == 1) items.count { it.income } else items.count { !it.income }
+        }
+        override suspend fun billTypes(token: String): List<BillType> {
+            query("types")
+            return listOf(BillType("4", "二维码支付"))
+        }
+        override suspend fun login(credentials: Credentials): Session = Session("renewed", Long.MAX_VALUE)
         override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")
-        override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> = emptyList()
-        override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> =
-            emptyList()
-        override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = emptyList()
+        override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+            query("categories")
+            return emptyList()
+        }
+        override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+            query("trend")
+            return emptyList()
+        }
+        override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+            query("ranking")
+            return emptyList()
+        }
     }
 
     private companion object {

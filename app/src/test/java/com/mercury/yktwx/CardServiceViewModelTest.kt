@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -28,7 +30,7 @@ import java.util.concurrent.TimeUnit
 class CardServiceViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeCards()
-    private val repository = AccountRepository(YktApi { error("Unexpected network request") }, vault, cardService = service)
+    private val repository = AccountRepository(FakeAccountService(), vault, cardService = service)
     private val model = CardServiceViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
     private val store = ViewModelStore().apply { put("card", model) }
     @After fun cleanup() {
@@ -158,10 +160,15 @@ class CardServiceViewModelTest {
         service.writeGate = CompletableDeferred()
         model.changeCard("")
         await { service.writes == 1 }
-        vault.username = "new-owner"
-        model.accountChanged(vault.username)
-        service.writeGate.complete(Unit)
-        await { service.writeResponses == 1 }
+        runBlocking {
+            val switch = async(Dispatchers.Default) { repository.login("new-owner", "fake-password") }
+            // The old write keeps the account lock until it finishes. Invalidate its UI first.
+            model.accountChanged("new-owner")
+            service.writeGate.complete(Unit)
+            await { switch.isCompleted && service.writeResponses == 1 }
+            switch.await()
+        }
+        assertEquals("new-owner", vault.username)
         assertFalse(model.state.value.visible)
         assertNull(model.state.value.selectedCard)
         assertNoResult()
@@ -286,7 +293,7 @@ class CardServiceViewModelTest {
         model.continueRecharge(50001)
         assertNotNull(model.state.value.error)
         assertNoRechargeRequest()
-        vault.username = "new-owner"
+        runBlocking { repository.login("new-owner", "fake-password") }
         model.continueRecharge(1000)
         assertNoRechargeRequest()
         model.accountChanged(vault.username)

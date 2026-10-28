@@ -50,8 +50,8 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
         catch (_: java.io.IOException) { throw NetworkFailure() }
         finally { connection.disconnect() }
     }
-    fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false,
-        rechargePayment: Boolean = false): JSONObject {
+    suspend fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false,
+        rechargePayment: Boolean = false): JSONObject = withContext(Dispatchers.Default) {
         if (feePayment) PaymentErrors.redirectMessage(response)?.let {
             throw FeePaymentRejected(FeeRejectionReason.Other, it)
         }
@@ -74,13 +74,13 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
             val hint = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
             throw YktException(hint ?: if (body == null) "服务器响应异常" else "Error")
         }
-        return body
+        body
     }
-    suspend fun wechatLaunch(html: String, pending: PendingRecharge, feePayment: Boolean = false): WechatRechargeLaunch {
+    suspend fun wechatLaunch(html: String, pending: PendingRecharge, feePayment: Boolean = false): WechatRechargeLaunch = withContext(Dispatchers.Default) {
         val action = RechargeProtocol.paymentFormAction(html, pending, feePayment)
         val response = exchange(action, null, emptyMap(), bridge = true)
         if (response.status != 200) throw YktException("微信支付跳转失败")
-        return RechargeProtocol.wechatUri(response.body, RechargeProtocol.query(action).getValue("prepay_id"))
+        RechargeProtocol.wechatUri(response.body, RechargeProtocol.query(action).getValue("prepay_id"))
     }
     private fun encode(params: Map<String, String>) = params.entries.joinToString("&") {
         URLEncoder.encode(it.key, Charsets.UTF_8) + "=" + URLEncoder.encode(it.value, Charsets.UTF_8)

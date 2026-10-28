@@ -11,6 +11,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class AccountRepositoryTest {
     private class MemoryVault : Vault {
@@ -32,7 +36,8 @@ class AccountRepositoryTest {
             return PaymentAccount("0", "0", "0", "Demo", 1234)
         }
         var logins = 0
-        var payments = 0
+        val paymentCalls = AtomicInteger()
+        val payments get() = paymentCalls.get()
         var loginFailure: YktException? = null
         var paymentFailures = mutableListOf<YktException>()
         override suspend fun login(credentials: Credentials): Session {
@@ -41,7 +46,7 @@ class AccountRepositoryTest {
             return Session("new", Long.MAX_VALUE)
         }
         override suspend fun payment(token: String): PaymentBatch {
-            payments++
+            paymentCalls.incrementAndGet()
             if (paymentFailures.isNotEmpty()) throw paymentFailures.removeAt(0)
             return PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("0", "0", "0", "Demo", 0))
         }
@@ -86,6 +91,36 @@ class AccountRepositoryTest {
 
         assertTrue(accessThreads.isNotEmpty())
         assertTrue(accessThreads.all { it !== caller })
+    }
+    @Test fun identityQueriesRestoreOnceAndUiGuardsOnlyReadTheSnapshot() = runBlocking {
+        val caller = Thread.currentThread()
+        val delegate = MemoryVault()
+        val reads = mutableListOf<Thread>()
+        val vault = object : Vault by delegate {
+            override fun credentials() = delegate.credentials().also { reads += Thread.currentThread() }
+            override fun session() = delegate.session().also { reads += Thread.currentThread() }
+        }
+        val repo = AccountRepository(FakeService(), vault)
+        assertFalse(repo.ownsAccount("123"))
+        assertTrue(reads.isEmpty())
+        assertTrue(repo.hasCredentials())
+        assertEquals("123", repo.username())
+        repeat(3) { repo.refresh(); assertTrue(repo.ownsAccount("123")); assertEquals("123", repo.username()) }
+        assertEquals(2, reads.size)
+        assertTrue(reads.all { it !== caller })
+        repo.login("456", "new-password")
+        assertFalse(repo.ownsAccount("123")); assertTrue(repo.ownsAccount("456"))
+        assertEquals("456", repo.username())
+        repo.logout()
+        assertFalse(repo.ownsAccount("456")); assertFalse(repo.hasCredentials())
+        assertEquals("", repo.username())
+        assertEquals(2, reads.size)
+    }
+    @Test fun businessProcessingNeverRunsOnTheCallingThread() = runBlocking {
+        val caller = Thread.currentThread()
+        val repo = AccountRepository(FakeService(), MemoryVault())
+        assertNotSame(caller, repo.withSession { Thread.currentThread() })
+        assertNotSame(caller, repo.withSession(retryAuthentication = false) { Thread.currentThread() })
     }
     @Test fun expiredTokenLogsInOnce() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = Session("expired", 0)
@@ -135,7 +170,7 @@ class AccountRepositoryTest {
         val release = CompletableDeferred<Unit>()
         val s = object : FakeService() {
             override suspend fun payment(token: String): PaymentBatch {
-                payments++
+                paymentCalls.incrementAndGet()
                 if (payments == 2) entered.complete(Unit)
                 release.await()
                 return PaymentBatch(emptyList(), 60, PaymentAccount("0", "0", "0", "Demo", 0))
@@ -151,13 +186,13 @@ class AccountRepositoryTest {
     @Test fun simultaneousOldTokenFailuresShareOneRenewal() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        var oldRequests = 0
+        val oldRequests = AtomicInteger()
         val s = object : FakeService() {
             override suspend fun payment(token: String): PaymentBatch {
-                payments++
+                paymentCalls.incrementAndGet()
                 if (token == "old") {
-                    oldRequests++
-                    if (oldRequests == 2) entered.complete(Unit)
+                    oldRequests.incrementAndGet()
+                    if (oldRequests.get() == 2) entered.complete(Unit)
                     release.await()
                     throw AuthenticationRequired()
                 }
@@ -198,18 +233,18 @@ class AccountRepositoryTest {
         val release = CompletableDeferred<Unit>()
         val renewedEntered = CompletableDeferred<Unit>()
         val renewedRelease = CompletableDeferred<Unit>()
-        var oldRequests = 0
-        var newRequests = 0
+        val oldRequests = AtomicInteger()
+        val newRequests = AtomicInteger()
         val s = object : FakeService() {
             override suspend fun payment(token: String): PaymentBatch {
-                payments++
+                paymentCalls.incrementAndGet()
                 if (token == "old") {
-                    oldRequests++
-                    if (oldRequests == 2) entered.complete(Unit)
+                    oldRequests.incrementAndGet()
+                    if (oldRequests.get() == 2) entered.complete(Unit)
                     release.await()
                 } else {
-                    newRequests++
-                    if (newRequests == 2) renewedEntered.complete(Unit)
+                    newRequests.incrementAndGet()
+                    if (newRequests.get() == 2) renewedEntered.complete(Unit)
                     renewedRelease.await()
                 }
                 throw AuthenticationRequired()
@@ -340,7 +375,7 @@ class AccountRepositoryTest {
     @Test fun billCountQueriesRunTogetherAndPreserveTheirDirections() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        val directions = mutableSetOf<Int>()
+        val directions = Collections.synchronizedSet(mutableSetOf<Int>())
         val s = object : FakeService() {
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
                 directions += type
@@ -359,6 +394,39 @@ class AccountRepositoryTest {
         val s = FakeService(); val v = MemoryVault(); v.clear()
         AccountRepository(s, v).login(" 123 ", "fake-password")
         assertEquals("123", v.credentials()?.username); assertEquals("new", v.session()?.accessToken)
+    }
+    @Test fun canceledLoginDuringPersistenceKeepsTheStoredAndCachedAccountConsistentWithoutFetchingCodes() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        val stored = MemoryVault()
+        val vault = object : Vault by stored {
+            override fun saveAccount(credentials: Credentials, session: Session) {
+                entered.complete(Unit)
+                check(release.await(5, TimeUnit.SECONDS)) { "Persistence gate timed out" }
+                stored.saveAccount(credentials, session)
+            }
+        }
+        val service = FakeService()
+        val repository = AccountRepository(service, vault)
+        assertEquals("123", repository.username())
+        val login = launch { repository.login("456", "changed-password") }
+        try {
+            withTimeout(1000) { entered.await() }
+            login.cancel()
+        } finally {
+            release.countDown()
+        }
+        login.join()
+        assertTrue(login.isCancelled)
+        assertEquals("456", stored.credentials()?.username)
+        assertEquals("changed-password", stored.credentials()?.password)
+        assertEquals("new", stored.session()?.accessToken)
+        assertEquals("456", repository.username())
+        assertTrue(repository.ownsAccount("456"))
+        assertFalse(repository.ownsAccount("123"))
+        assertEquals(0, service.payments)
+        assertEquals(1234L, repository.paymentAccount("456").balanceCents)
+        assertEquals(1, service.logins)
     }
     @Test fun noCredentialsNeverMakesNetworkRequest() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.clear()

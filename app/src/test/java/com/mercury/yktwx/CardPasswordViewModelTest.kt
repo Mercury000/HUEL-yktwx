@@ -158,7 +158,7 @@ class CardPasswordViewModelTest {
     }
     @Test fun selectedAccountMismatchNeverWritesOrClearsNewAccountCredentials() {
         open()
-        vault.value = Credentials("new-user", "new-fake-password")
+        runBlocking { repository.login("new-user", "new-fake-password") }
         submit(); await { !model.state.value.loading }
         assertEquals(0, writes); assertEquals("new-user", vault.credentials()!!.username); noSuccess()
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -23,7 +24,7 @@ class FeeRoomViewModelTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val fees = FakeFees()
     private val vault = MemoryVault()
-    private val repository = AccountRepository(YktApi(), vault, feeService = fees)
+    private val repository = AccountRepository(FakeAccountService(), vault, feeService = fees)
     private val model = FeeViewModel(app, repository, 0L)
     private val store = ViewModelStore().apply { put("rooms", model) }
 
@@ -429,7 +430,8 @@ class FeeRoomViewModelTest {
         assertNull(model.state.value.roomDialog)
     }
     @Test fun wrongAccountCannotWriteRoom() {
-        open(); selectRoom(); model.requestRoomAction(); vault.username = "switched-user"
+        open(); selectRoom(); model.requestRoomAction()
+        runBlocking { repository.login("switched-user", "fake-password") }
         model.confirmRoomAction()
         await { !model.state.value.roomBusy }
         assertEquals(0, fees.writes)
@@ -440,7 +442,7 @@ class FeeRoomViewModelTest {
         var username = "room-test-user"
         override fun credentials() = Credentials(username, "fake-password")
         override fun session() = Session("fake-token", Long.MAX_VALUE)
-        override fun saveCredentials(value: Credentials) = Unit
+        override fun saveCredentials(value: Credentials) { username = value.username }
         override fun saveSession(value: Session) = Unit
         override fun clearSession() = Unit
         override fun clear() = Unit

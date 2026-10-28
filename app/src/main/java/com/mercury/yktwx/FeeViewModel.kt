@@ -464,7 +464,7 @@ class FeeViewModel internal constructor(
         val config = s.config ?: return
         val query = s.query ?: return
         if (!s.canContinuePayment || task?.isActive == true || s.roomBusy || s.roomDialog != null ||
-            repository.username() != owner || retry.methods.none { it.id == method.id && it.code == method.code }) return
+            !repository.ownsAccount(owner) || retry.methods.none { it.id == method.id && it.code == method.code }) return
         if (config.amountRules.amountError(retry.amountCents) != null) return
         endPaymentAttempt()
         val generation = attempt
@@ -662,7 +662,7 @@ class FeeViewModel internal constructor(
             }
         }
     }
-    fun canLaunchWechat()=paymentReturn.canLaunch && repository.username()==owner && mutable.value.resultPhase==RechargePhase.AwaitingPayment
+    fun canLaunchWechat()=paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.resultPhase==RechargePhase.AwaitingPayment
     fun wechatLaunched()=paymentReturn.launched()
     fun launchFailed(){paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
     fun accountChanged(username:String){if(owner.isNotEmpty() && username!=owner)dismiss()}
