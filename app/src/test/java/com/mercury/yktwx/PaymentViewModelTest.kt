@@ -27,6 +27,7 @@ class PaymentViewModelTest {
     private var codeAvailable = false
     private var payments = 0
     private var logins = 0
+    private var loginFailure: Exception? = null
     private var problem = PaymentCodeProblem.Unavailable
     private var paymentGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var responses = 0
@@ -37,6 +38,7 @@ class PaymentViewModelTest {
     private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
         override suspend fun login(credentials: Credentials): Session {
             logins++
+            loginFailure?.let { throw it }
             return Session("fake-token", Long.MAX_VALUE)
         }
         override suspend fun paymentAccount(token: String): PaymentAccount {
@@ -62,6 +64,20 @@ class PaymentViewModelTest {
     private val store = ViewModelStore().apply { put("payment", model) }
 
     @After fun cleanup() { accountGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+
+    @Test fun rejectedLoginCannotEnterMainUsingPreviousCredentials() {
+        loginFailure = InvalidCredentials()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.login("456", "wrong-password")
+        await { !model.state.value.busy && model.state.value.error != null }
+        assertTrue(model.state.value.needsLogin)
+        assertEquals("456", model.state.value.username)
+        assertEquals(loginFailure!!.message, model.state.value.error)
+        assertNull(model.state.value.account)
+        assertEquals(1, logins); assertEquals(0, payments)
+        assertEquals("123", vault.credentials()!!.username)
+    }
 
     @Test fun firstEntryShowsBalanceEvenWhenBarcodeIsUnavailable() {
         model.initialize()
