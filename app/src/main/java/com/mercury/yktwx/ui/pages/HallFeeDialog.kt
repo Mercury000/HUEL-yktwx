@@ -131,7 +131,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
             when (shownPage) {
                 HallFeePage.Target -> {
                     if (config == null) {
-                        if (form.loading) HallFeeTargetPlaceholder()
+                        if (form.loading) HallFeeTargetPlaceholder(
+                            showRoomBinding = !saveOnly && displayProject in bindingProjects)
                         InlineError(form.error, actionLabel = "重试", onAction = { if (active && !state.loading) onRetry() })
                     } else {
                         val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
@@ -226,11 +227,19 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
 }
 
 @Composable
-private fun HallFeeTargetPlaceholder() {
+private fun HallFeeTargetPlaceholder(showRoomBinding: Boolean) {
     Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取房间选项" },
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        repeat(3) {
-            PaymentControlPlaceholder { FeeLocationDropdownPlaceholder() }
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            repeat(3) {
+                PaymentControlPlaceholder { FeeLocationDropdownPlaceholder() }
+            }
+        }
+        if (showRoomBinding) PaymentControlPlaceholder {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(state = ToggleableState.Off, onClick = {}, enabled = false)
+                Text("绑定此房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
+            }
         }
         PaymentControlPlaceholder {
             Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("选择房间") }

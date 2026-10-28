@@ -94,7 +94,7 @@ class FeeSelectorUiTest {
                 AppTheme { Scaffold {
                     Column {
                         Column(Modifier.fillMaxWidth().testTag("location-field")) {
-                            FeeLocationDropdown("", emptyList(), 0, false) {}
+                            FeeLocationDropdown("楼栋", emptyList(), 0, false) {}
                         }
                         Column(Modifier.fillMaxWidth().testTag("location-placeholder")) {
                             FeeLocationDropdownPlaceholder()
@@ -272,7 +272,8 @@ class FeeSelectorUiTest {
                         onCreate = { _, _ -> paymentRequests++ }, onMethod = {}, onPayAccount = { _, _ -> },
                         onCancelPayment = {}, onFinish = {}, onContinuePayment = {},
                         onRoomAction = { bindingRequests++ }, onConfirmRoomAction = {},
-                        onDismissRoomDialog = {}, onConsumeRoomNotice = {})
+                        onDismissRoomDialog = {}, onConsumeRoomNotice = {},
+                        bindingProjects = setOf(FeeProject.FamilyElectric))
                 } }
             }
         }
@@ -323,6 +324,13 @@ class FeeSelectorUiTest {
         compose.runOnIdle { saveOnly = false; current = FeeUiState(loading = true) }
         compose.onNodeWithContentDescription("正在读取房间选项").assertIsDisplayed()
         assertSelecting()
+        compose.mainClock.advanceTimeBy(1500)
+        val loadingHeight = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().let { it.bottom - it.top }
+        compose.runOnIdle { current = state(FeeProject.FamilyElectric, complete = false) }
+        compose.mainClock.advanceTimeBy(1500)
+        val initialFormHeight = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().let { it.bottom - it.top }
+        assertEquals("Temporary payment skeleton must reserve the room binding row",
+            loadingHeight.value, initialFormHeight.value, 1f)
         compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
         assertSelecting()
         compose.onNodeWithText("下一步").performClick()
