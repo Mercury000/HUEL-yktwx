@@ -145,6 +145,103 @@ class PaymentViewModelTest {
         shadowOf(Looper.getMainLooper()).idleFor(120, TimeUnit.SECONDS)
         assertEquals(1, payments)
     }
+    @Test fun rechargeOverlayKeepsValidCodeStableAndClosingItResumesWithoutAnotherRequest() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        val displayed = model.state.value
+        model.setPageVisible(false, preserveDisplay = true)
+        shadowOf(Looper.getMainLooper()).idleFor(5, TimeUnit.SECONDS)
+        assertEquals(displayed, model.state.value)
+        assertEquals(1, payments)
+        model.setPageVisible(true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(displayed.code, model.state.value.code)
+        assertEquals(55L, model.state.value.secondsLeft)
+        assertEquals(1, payments)
+    }
+    @Test fun expiredOverlayCodeIsRemovedWithoutRequestingAnotherUntilTheOverlayCloses() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        val original = model.state.value.code
+        model.setPageVisible(false, preserveDisplay = true)
+        shadowOf(Looper.getMainLooper()).idleFor(65, TimeUnit.SECONDS)
+        assertNull(model.state.value.code)
+        assertEquals(0L, model.state.value.secondsLeft)
+        assertEquals("付款码已过期，关闭弹窗后刷新", model.state.value.error)
+        assertEquals(1, payments)
+        model.setPageVisible(true)
+        await { model.state.value.code != null }
+        assertNotEquals(original, model.state.value.code)
+        assertEquals(2, payments)
+    }
+    @Test fun paymentResultDuringOverlayForcesFreshAccountAndCodesOnReturn() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        val original = model.state.value.code
+        model.setPageVisible(false, preserveDisplay = true)
+        account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 7496)
+        model.refresh()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(original, model.state.value.code)
+        assertEquals(1, payments)
+        model.setPageVisible(true)
+        await { payments == 2 && !model.state.value.busy }
+        assertNotEquals(original, model.state.value.code)
+        assertEquals(7496L, model.state.value.account!!.balanceCents)
+    }
+    @Test fun switchingTabsWhileAnOverlayIsOpenDiscardsItsRetainedCode() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        model.setPageVisible(false, preserveDisplay = true)
+        model.setPageVisible(false)
+        assertNull(model.state.value.code)
+        shadowOf(Looper.getMainLooper()).idleFor(65, TimeUnit.SECONDS)
+        assertEquals(1, payments)
+        assertNull(model.state.value.error)
+    }
+    @Test fun goingToBackgroundWhileAnOverlayIsOpenClearsCodeAndDoesNotRefreshUnderTheOverlay() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null }
+        model.setPageVisible(false, preserveDisplay = true)
+        model.onBackground()
+        assertNull(model.state.value.code)
+        model.onForeground()
+        shadowOf(Looper.getMainLooper()).idleFor(65, TimeUnit.SECONDS)
+        assertEquals(1, payments)
+        model.setPageVisible(true)
+        await { payments == 2 && model.state.value.code != null }
+    }
+    @Test fun coveringAnInFlightRefreshKeepsTheBackdropAndRejectsItsLateCode() {
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        paymentGate = CompletableDeferred()
+        model.onForeground()
+        await { payments == 1 }
+        val loading = model.state.value
+        model.setPageVisible(false, preserveDisplay = true)
+        assertEquals(loading, model.state.value)
+        paymentGate.complete(Unit)
+        await { responses == 1 }
+        assertEquals(loading, model.state.value)
+        model.setPageVisible(true)
+        await { payments == 2 && model.state.value.code != null }
+    }
 
     @Test fun acceptedLoginDoesNotBecomeFailureJustBecauseBarcodeWasRefused() {
         vault.clear()

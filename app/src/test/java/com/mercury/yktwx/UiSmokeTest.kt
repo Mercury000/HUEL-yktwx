@@ -42,7 +42,7 @@ class UiSmokeTest {
         context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
         settings = ThemeSettings(context)
     }
-    private fun content(preview: Boolean = true) {
+    private fun content(preview: Boolean = true): PaymentViewModel {
         val model = PaymentViewModel(compose.activity.application)
         val bills = BillViewModel(compose.activity.application)
         model.initialize(preview)
@@ -53,6 +53,7 @@ class UiSmokeTest {
             }
         }
         compose.waitForIdle()
+        return model
     }
     @Test fun firstLaunchShowsLoginAndSystemPasswordField() {
         content(false)
@@ -79,6 +80,18 @@ class UiSmokeTest {
         compose.onNodeWithContentDescription("刷新付款码").assertDoesNotExist()
         compose.onNodeWithContentDescription("付款条形码").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertExists()
+    }
+    @Test fun ownRechargeOverlayDoesNotReplaceTheBackgroundCodeWithAnUnavailableMessage() {
+        val model = content()
+        val displayed = model.state.value
+        compose.onNode(hasText("充值") and !hasTestTag("network-recharge")).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("充值金额").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(displayed, model.state.value)
+        compose.onNodeWithText("付款码暂不可用，请下拉刷新").assertDoesNotExist()
+        compose.activity.onBackPressedDispatcher.onBackPressed()
+        compose.waitForIdle()
+        assertEquals(displayed.code, model.state.value.code)
+        compose.onNodeWithText("充值金额").assertDoesNotExist()
     }
     @Test fun billPageRendersPreview() {
         val record = BillRecord(

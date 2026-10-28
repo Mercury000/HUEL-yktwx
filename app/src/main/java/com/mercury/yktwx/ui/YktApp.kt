@@ -261,10 +261,13 @@ private fun MainContent(
         if (isActive && (billState.needsLogin || myState.needsLogin || dormState.needsLogin)) viewModel.refresh(manual = true)
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
-    val paymentPageVisible = isActive && pagerState.currentPage == 0 && layers.isEmpty() &&
-        !dormPaymentVisible && !rechargeState.visible && !cardState.visible && !passwordState.visible
-    DisposableEffect(viewModel, paymentPageVisible) {
-        viewModel.setPageVisible(paymentPageVisible)
+    val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
+    val paymentPageCovered = paymentPageSelected &&
+        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible)
+    LaunchedEffect(viewModel, paymentPageSelected, paymentPageCovered) {
+        viewModel.setPageVisible(paymentPageSelected && !paymentPageCovered, preserveDisplay = paymentPageCovered)
+    }
+    DisposableEffect(viewModel) {
         onDispose { viewModel.setPageVisible(false) }
     }
     val feeActive = isActive && dormPaymentVisible
