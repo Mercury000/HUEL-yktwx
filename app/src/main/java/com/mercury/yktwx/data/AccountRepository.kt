@@ -53,8 +53,10 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun personalProfile(username: String): PersonalProfile = withSession(expectedUsername = username) { profileService.profile(it) }
     suspend fun homeIdentity(username: String, sno: String): HomeCardIdentity? = withSession(expectedUsername = username) { profileService.homeIdentity(it, sno) }
     suspend fun profileAvatar(path: String): ByteArray? = profileService.avatar(path)
-    suspend fun dormRoom(username: String, config: FeeConfiguration): DormRoom? = withSession(expectedUsername = username) {
-        DormMeterDiscovery(feeService).discover(it, config)
+    suspend fun dormRoom(username: String, config: FeeConfiguration,
+        otherConfiguration: (suspend () -> FeeConfiguration?)? = null,
+        onUpdate: suspend (DormRoom) -> Unit = {}): DormRoom? = withSession(expectedUsername = username) {
+        DormRoomLoader(feeService).load(it, config, otherConfiguration, onUpdate)
     }
     internal suspend fun <T> withSession(retryAuthentication: Boolean = true, expectedUsername: String? = null,
         block: suspend (String) -> T): T {

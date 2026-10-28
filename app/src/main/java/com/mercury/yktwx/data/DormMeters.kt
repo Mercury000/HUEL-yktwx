@@ -1,6 +1,9 @@
 package com.mercury.yktwx.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 enum class DormMeterKind(val label: String) { Lighting("照明"), AirConditioning("空调"), Other("电表") }
 internal data class DormMeterReading(val label: String, val value: String, val unit: String)
@@ -64,9 +67,11 @@ class DormMeter(val kind: DormMeterKind, val room: FeeRoomBinding, val query: Fe
 
     override fun toString() = "DormMeter([redacted])"
 }
+data class DormMeterSlot(val kind: DormMeterKind, val project: FeeProject)
 class DormRoom(
     val project: FeeProject, val binding: FeeRoomBinding, val meters: List<DormMeter>,
     val updatedAtMillis: Long, val notice: String? = null, val sources: List<DormRoom> = emptyList(),
+    val pendingMeters: List<DormMeterSlot> = emptyList(),
 ) {
     internal val currentBinding get() = meters.firstOrNull {
         (it.project ?: project) == project && it.room.sameTarget(binding)
@@ -96,7 +101,9 @@ internal fun mergeFamilyRooms(rooms: List<DormRoom>): List<DormRoom> {
         }
         result += DormRoom(household.first().project, household.first().binding,
             meters,
-            household.minOf { it.updatedAtMillis }, null, household)
+            household.minOf { it.updatedAtMillis }, null, household,
+            household.flatMap { it.pendingMeters }.distinctBy { it.project }
+                .filterNot { pending -> meters.any { it.project == pending.project } }.sortedBy { it.project.ordinal })
     }
     return result
 }
@@ -145,7 +152,7 @@ internal class DormMeterDiscovery(private val service: FeeService) {
             catch (_: Exception) { null }
             if (sibling != null) targets += sibling
         }
-        val meters = targets.sortedBy { it.first.ordinal }.map { (kind, room) ->
+        val meters = coroutineScope { targets.sortedBy { it.first.ordinal }.map { (kind, room) -> async {
             try {
                 val query = service.feeQuery(token, config.project, last.number, room.selections, true)
                 DormMeter(kind, room, query, query.tip, config.project)
@@ -154,7 +161,7 @@ internal class DormMeterDiscovery(private val service: FeeService) {
             catch (e: InvalidCredentials) { throw e }
             catch (e: CaptchaRequired) { throw e }
             catch (e: Exception) { DormMeter(kind, room, null, (e as? YktException)?.message ?: "读取电量失败", config.project) }
-        }.toMutableList()
+        } }.awaitAll() }.toMutableList()
         if (config.project == FeeProject.FamilyWater || config.project == FeeProject.FamilyElectric) {
             val otherProject = if (config.project == FeeProject.FamilyWater) FeeProject.FamilyElectric else FeeProject.FamilyWater
             try {

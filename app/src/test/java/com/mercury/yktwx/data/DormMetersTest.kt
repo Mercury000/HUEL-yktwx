@@ -81,7 +81,10 @@ class DormMetersTest {
         for (failure in listOf(AuthenticationRequired(), CancellationException("fake cancellation"))) {
             val fees = FakeFees().apply { this.failure = failure }
             try { DormMeterDiscovery(fees).discover("fake-token", config(binding(ac))); fail("Expected propagation") }
-            catch (e: Exception) { assertSame(failure, e) }
+            catch (e: Exception) {
+                assertEquals(failure.javaClass, e.javaClass)
+                assertTrue(generateSequence<Throwable>(e) { it.cause }.any { it === failure })
+            }
         }
     }
     @Test fun onlyObservedElectricityUnitsAreNormalized() {

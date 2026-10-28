@@ -75,6 +75,16 @@ class DashboardLoadingTest {
             if (fontScale == 1f) capture("hall-initial")
             compose.runOnIdle { state = DormUiState(loading = true) }
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            compose.runOnIdle { state = DormUiState(loading = true, network = ready.network, networkLoaded = true) }
+            stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            val partialRoom = ready.rooms.single()
+            compose.runOnIdle { state = DormUiState(listOf(DormRoom(partialRoom.project, partialRoom.binding,
+                partialRoom.meters.takeLast(1), 0,
+                pendingMeters = listOf(DormMeterSlot(partialRoom.meters.first().kind, partialRoom.project)))),
+                loading = true, network = ready.network, networkLoaded = true) }
+            stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            compose.onNodeWithText("尚未添加").assertDoesNotExist()
+            if (fontScale == 1f) capture("hall-bound-only")
             compose.runOnIdle { state = ready }
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
             capture(if (fontScale == 1f) "hall-loaded" else "hall-loaded-large-dark")
