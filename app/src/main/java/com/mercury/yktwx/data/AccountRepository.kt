@@ -46,7 +46,7 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         try { service.payment(session.accessToken).also { unverifiedSessionRevision = null } }
         catch (e: AuthenticationRequired) { clearCredentials(); throw e }
     }
-    suspend fun refresh(): PaymentBatch = withSession { service.payment(it) }
+    suspend fun refresh(onAccount: suspend (PaymentAccount) -> Unit = {}): PaymentBatch = withSession { service.payment(it, onAccount) }
     suspend fun paymentAccount(username: String): PaymentAccount = withSession(expectedUsername = username) {
         service.paymentAccount(it)
     }

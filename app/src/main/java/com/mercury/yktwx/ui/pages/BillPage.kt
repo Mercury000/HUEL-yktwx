@@ -206,7 +206,11 @@ fun BillPage(
                             if (state.statsVisible) {
                                 billStatsContent(state.stats, onStatsTypeChange, onRefreshStats, onOpenDetail)
                             } else {
-                            item(key = "summary") { BillSummaryCard(state) }
+                            item(key = "summary") {
+                                BillSummaryCard(state)
+                                state.summaryError?.let { InlineError(it, actionLabel = "重试", onAction = onRefresh) }
+                                state.countsError?.let { InlineError(it, actionLabel = "重试", onAction = onRefresh) }
+                            }
                             item(key = "search") {
                                 Box(Modifier.fillMaxWidth()) {
                                 TextField(
@@ -255,7 +259,7 @@ fun BillPage(
                             when {
                                 // Precomposed tabs and the credential check precede loading=true.
                                 // An unread list is not a confirmed empty result.
-                                state.items.isEmpty() && (state.loading || !state.loaded && state.error == null) ->
+                                state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
                                     item(key = "loading") { BillLoadingCard() }
                                 state.error != null && state.items.isEmpty() -> item(key = "error") {
                                     BillErrorCard(state.error, onAction = onRefresh)
@@ -271,7 +275,7 @@ fun BillPage(
                                                 Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
                                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                                 // Only complete, unfiltered ranges can support full daily subtotals.
-                                                if (state.loaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
+                                                if (state.listLoaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
                                                     val expense = group.records.filter { !it.income }.sumOf { it.amountCents }
                                                     val income = group.records.filter { it.income }.sumOf { it.amountCents }
                                                     if (expense > 0) Text("支出 ¥ ${money(expense)}", fontSize = 10.sp,
@@ -320,25 +324,27 @@ private fun BillSummaryCard(state: BillUiState) {
     val label = billDateScopeLabel(state.dateFilter)
     val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
     val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
-    val pending = !state.loaded && state.error == null && state.summary == null
+    val pending = !state.summaryLoaded && state.error == null && state.summaryError == null && state.summary == null
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(expensesLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text(expensesLabel, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
                 if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
                     lineHeight = 34.sp, sample = "¥ 0.00") else Text(
                     state.summary?.let { "¥ ${money(it.expensesCents)}" } ?: "—",
-                    fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
                 )
             }
             Column(Modifier.weight(1f)) {
-                Text(incomeLabel, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text(incomeLabel, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
                 if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
                     lineHeight = 34.sp, sample = "¥ 0.00") else Text(
                     state.summary?.let { "¥ ${money(it.incomeCents)}" } ?: "—",
-                    fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
                     color = MiuixTheme.colorScheme.primary,
                 )
             }

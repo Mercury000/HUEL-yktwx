@@ -57,7 +57,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
     if (visible && (!wasVisible || initialPage != session.initialPage)) session = RoomSheetSession(initialPage)
     wasVisible = visible
     var removal by remember(visible) { mutableStateOf<DormRoom?>(null) }
-    val busy = state.managing || state.loading
+    val busy = state.managing
     OverlayBottomSheet(show = visible, onDismissRequest = onDismiss,
         startAction = {
             key(session) { SheetTitle(if (session.page == RoomSheetPage.Add) "新增绑定" else "切换房间 / 临时缴费") }
@@ -88,12 +88,12 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(room.hallLabel, Modifier.weight(1f), fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold, color = contentColor)
-                                DashboardLink("解绑", { removal = room }, enabled = enabled, arrow = false,
+                                DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
                                     color = contentColor.copy(alpha = .82f))
                             }
                         }
                     }
-                    Button(onClick = { session.page = RoomSheetPage.Add }, enabled = enabled && state.bindingProjects.isNotEmpty(),
+                    Button(onClick = { session.page = RoomSheetPage.Add }, enabled = enabled && !state.loading && state.bindingProjects.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("新增绑定") }
                 } else {
                     val projects = if (adding) state.bindingProjects else FeeProject.entries.filterNot { it.network }.toSet()
@@ -104,7 +104,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                             DashboardPreference(project.hallTitle, onClick = {
                                 val target = if (project == FeeProject.FamilyElectric && project !in projects) FeeProject.FamilyWater else project
                                 if (adding) onAdd(target) else onProject(target)
-                            }, enabled = enabled)
+                            }, enabled = enabled && (!adding || !state.loading))
                             if (index < rows.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp))
                         }
                     }
@@ -118,7 +118,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
         onDismissRequest = { removal = null }, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { removal = null }, enabled = removing, modifier = Modifier.weight(1f)) { Text("取消") }
-            Button(onClick = { removal?.let(onRemove); removal = null }, enabled = removing, modifier = Modifier.weight(1f),
+            Button(onClick = { removal?.let(onRemove); removal = null }, enabled = removing && !state.loading && !state.managing, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("解绑") }
         }
     }

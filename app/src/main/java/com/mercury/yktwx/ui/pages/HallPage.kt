@@ -247,7 +247,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                     }
                     val readings = meter.readings
                     val primary = readings.firstOrNull()
-                    Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
+                    Text((primary?.label ?: if (water) "剩余水量" else "剩余电量") + if (meter.updating) " · 更新中" else "",
                         fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     UtilityValueRow {

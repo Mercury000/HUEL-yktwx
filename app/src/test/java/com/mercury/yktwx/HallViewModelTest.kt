@@ -55,6 +55,7 @@ class HallViewModelTest {
         fees.networkGate?.complete(Unit)
         fees.projectGate?.complete(Unit)
         fees.detailGate?.complete(Unit)
+        fees.pickerGate?.complete(Unit)
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -102,6 +103,37 @@ class HallViewModelTest {
         assertTrue(model.state.value.rooms.isEmpty())
         assertFalse(model.state.value.loaded)
         assertFalse(model.state.value.loading)
+    }
+    @Test fun refreshingKeepsSiblingReadingUntilItsNewReadCompletes() {
+        fees.paired = true
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A照明")
+        open()
+        assertEquals(2, model.state.value.selectedRoom!!.meters.size)
+        val oldAir = model.state.value.selectedRoom!!.meters.single { it.kind == DormMeterKind.AirConditioning }
+        fees.pickerGate = CompletableDeferred()
+        model.refresh()
+        await { model.state.value.selectedRoom!!.meters.any { it.updating } }
+        val pending = model.state.value.selectedRoom!!.meters.single { it.kind == DormMeterKind.AirConditioning }
+        assertSame(oldAir.query, pending.query)
+        assertTrue(pending.updating)
+        assertTrue(model.state.value.loading)
+        fees.pickerGate!!.complete(Unit)
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.selectedRoom!!.meters.none { it.updating })
+        assertEquals(2, model.state.value.selectedRoom!!.meters.size)
+    }
+    @Test fun switchingRoomsDuringSlowNetworkSurvivesTheFinalPublication() {
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
+        fees.saved[FeeProject.Wenbei] = fees.room(FeeProject.Wenbei, "B")
+        fees.networkGate = CompletableDeferred()
+        model.accountChanged("fake-owner"); model.refresh()
+        await { model.state.value.roomsLoaded }
+        assertTrue(model.state.value.loading)
+        model.selectRoom(1)
+        assertEquals(FeeProject.Wenbei, model.state.value.selectedRoom!!.project)
+        fees.networkGate!!.complete(Unit)
+        await { !model.state.value.loading }
+        assertEquals(FeeProject.Wenbei, model.state.value.selectedRoom!!.project)
     }
 
     @Test fun fasterWenbeiReadCannotChooseTheRoomBeforeZhengdongBindingIsKnown() {
@@ -305,6 +337,8 @@ class HallViewModelTest {
         var failWrite: FeeProject? = null
         var networkGate: CompletableDeferred<Unit>? = null
         var networkEntered = false
+        var paired = false
+        var pickerGate: CompletableDeferred<Unit>? = null
         var projectGate: CompletableDeferred<Unit>? = null
         var blockedProjectEntered = false
         var detailGate: CompletableDeferred<Unit>? = null
@@ -335,8 +369,10 @@ class HallViewModelTest {
                 return FeeQuery(thirdParty = "{}", display = listOf(
                     if (project == FeeProject.FamilyWater) "剩余水量(吨)" to "28.60" else "剩余电量(度)" to "86.4"))
             }
+            if (paired && project == FeeProject.Zhengdong) pickerGate?.await()
             val names = if (project == FeeProject.FamilyElectric) listOf("A电表", "B电表")
-                else if (project == FeeProject.FamilyWater) listOf("A水表", "B水表") else listOf("A", "B")
+                else if (project == FeeProject.FamilyWater) listOf("A水表", "B水表")
+                else if (paired && project == FeeProject.Zhengdong) listOf("A照明", "A空调") else listOf("A", "B")
             return FeeQuery(levels, if (level == 0) listOf(FeeOption("fake-campus", "示例校区"))
                 else names.map { FeeOption("${project.id}-$it", it) })
         }

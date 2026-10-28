@@ -64,7 +64,7 @@ class CardPasswordViewModelTest {
     }
     private val ykt = object : YktService by YktApi({ error("Unexpected network") }) {
         override suspend fun login(credentials: Credentials): Session { logins++; return Session("new-fake-token", Long.MAX_VALUE) }
-        override suspend fun payment(token: String) = PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 100))
+        override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit) = PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 100))
     }
     private val repository = AccountRepository(ykt, vault, cardService = service)
     private val app = ApplicationProvider.getApplicationContext<Application>()

@@ -5,6 +5,9 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -28,70 +31,83 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
             modifier = Modifier.fillMaxWidth(),
         )
     }
-    when {
-        stats.loading && !stats.loaded -> billStatsLoading(stats.period.trendSupported)
-        stats.error != null && !stats.loaded -> item(key = "error") {
-            BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
+    if (stats.error != null) {
+        if (!stats.loaded) {
+            item(key = "error") {
+                BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
+            }
+            return
         }
-        stats.error != null -> item(key = "inline-error") {
+        item(key = "inline-error") {
             InlineError(stats.error, actionLabel = "重试", onAction = onRetry)
         }
-        else -> {
-            item(key = "overview") { StatsOverview(stats) }
-            if (stats.period.trendSupported) {
-                item(key = "trend") {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(20.dp)) {
-                            DailyBillChart(stats.daily, stats.period.mode)
-                        }
+    }
+    item(key = "overview") { StatsOverview(stats) }
+    if (stats.period.trendSupported) item(key = "trend") {
+        Card(Modifier.fillMaxWidth().testTag("bill-stats-trend")) {
+            Column(Modifier.padding(20.dp)) {
+                StableChartContent({ DailyBillChartPlaceholder() }) {
+                    when {
+                        stats.dailyLoaded -> DailyBillChart(stats.daily, stats.period.mode)
+                        stats.dailyError != null -> StatsBlockError("趋势图读取失败", stats.dailyError, onRetry)
+                        else -> DailyBillChartPlaceholder()
                     }
                 }
+                if (stats.dailyLoaded && stats.dailyError != null) InlineError(stats.dailyError, actionLabel = "重试", onAction = onRetry)
             }
-            item(key = "category") {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp)) {
-                        CategoryDonutChart(stats.categories, stats.type)
+        }
+    }
+    item(key = "category") {
+        Card(Modifier.fillMaxWidth().testTag("bill-stats-category")) {
+            Column(Modifier.padding(20.dp)) {
+                StableChartContent({ CategoryDonutChartPlaceholder() }) {
+                    when {
+                        stats.categoriesLoaded -> CategoryDonutChart(stats.categories, stats.type)
+                        stats.categoriesError != null -> StatsBlockError("分类统计读取失败", stats.categoriesError, onRetry)
+                        else -> CategoryDonutChartPlaceholder()
                     }
                 }
+                if (stats.categoriesLoaded && stats.categoriesError != null) InlineError(stats.categoriesError, actionLabel = "重试", onAction = onRetry)
             }
-            if (stats.ranking.isNotEmpty()) {
-                item(key = "ranking") { StatsRanking(stats.ranking, onOpenDetail) }
-            }
+        }
+    }
+    if (!stats.rankingLoaded && stats.rankingError == null) item(key = "ranking") {
+        BillLoadingCard("正在加载单笔排行")
+    } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) item(key = "ranking") {
+        Column {
+            if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
+            stats.rankingError?.let { InlineError(it, actionLabel = "重试", onAction = onRetry) }
         }
     }
 }
 
-private fun LazyListScope.billStatsLoading(trendSupported: Boolean) {
-    item(key = "loading-overview") {
-        Card(Modifier.fillMaxWidth().semantics { contentDescription = "正在加载统计" }) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), fraction = .38f, lineHeight = 18.sp)
-                DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
-                DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .68f, lineHeight = 18.sp)
-            }
-        }
+/** Measure a content-shaped placeholder without placing it; small/empty results keep the same slot. */
+@Composable
+private fun StableChartContent(placeholder: @Composable () -> Unit, content: @Composable () -> Unit) {
+    Layout(content = {
+        Box(Modifier.clearAndSetSemantics {}) { placeholder() }
+        Box { content() }
+    }) { measurables, constraints ->
+        val reserved = measurables[0].measure(constraints.copy(minHeight = 0))
+        val actual = measurables[1].measure(constraints.copy(minHeight = maxOf(constraints.minHeight, reserved.height)))
+        layout(actual.width, actual.height) { actual.placeRelative(0, 0) }
     }
-    if (trendSupported) item(key = "loading-trend") {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp)) {
-                DailyBillChartPlaceholder()
-            }
-        }
-    }
-    item(key = "loading-category") {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp)) {
-                CategoryDonutChartPlaceholder()
-            }
-        }
+}
+
+@Composable
+private fun StatsBlockError(title: String, error: String, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        InlineError(error, actionLabel = "重试", onAction = onRetry)
     }
 }
 
 @Composable
 private fun StatsOverview(stats: BillStatsState) {
-    val categoriesTotal = stats.categories.sumOf { it.amountCents }
-    val dailyTotal = stats.daily.sumOf { it.amountCents }
-    val total = if (categoriesTotal > 0) categoriesTotal else dailyTotal
+    // Categories cover every supported date range. Never switch the total between partial sources.
+    val total = stats.categories.takeIf { stats.categoriesLoaded }?.sumOf { it.amountCents }
+    val amountPending = !stats.categoriesLoaded && stats.categoriesError == null
+    val detailPending = stats.period.trendSupported && !stats.dailyLoaded && stats.dailyError == null
     val typeLabel = if (stats.type == 2) "支出" else "收入"
     val activeDays = stats.daily.count { it.amountCents > 0 }
     val periodLabel = billDateScopeLabel(stats.period)
@@ -100,23 +116,29 @@ private fun StatsOverview(stats: BillStatsState) {
         BillDateMode.Month, BillDateMode.Year -> "${periodLabel}${typeLabel}合计"
     }
     val detail = when (stats.period.mode) {
-        BillDateMode.Month -> "${fullDate(stats.period.start)} 至 ${stats.period.end.dayOfMonth}日 · $activeDays 天有记录"
-        BillDateMode.Year -> if (activeDays > 0) "共 $activeDays 个月有记录" else "暂无记录"
+        BillDateMode.Month -> "${fullDate(stats.period.start)} 至 ${stats.period.end.dayOfMonth}日" +
+            if (stats.dailyLoaded) " · $activeDays 天有记录" else ""
+        BillDateMode.Year -> if (stats.dailyLoaded) if (activeDays > 0) "共 $activeDays 个月有记录" else "暂无记录"
+            else "${fullDate(stats.period.start)} 至 ${fullDate(stats.period.end)}"
         BillDateMode.Day -> fullDate(stats.period.start)
         BillDateMode.Range -> "${fullDate(stats.period.start)} 至 ${fullDate(stats.period.end)}"
     }
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().testTag("bill-stats-overview").then(
+        if (amountPending) Modifier.semantics { contentDescription = "正在加载统计" } else Modifier)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(heading, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            Text(
-                "¥ ${money(total)}",
-                fontSize = 30.sp,
+            Text(heading, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            if (amountPending) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
+            else Text(
+                total?.let { "¥ ${money(it)}" } ?: "—",
+                fontSize = 30.sp, lineHeight = 38.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold,
                 color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
             )
-            Text(
+            if (detailPending) DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .68f, lineHeight = 18.sp)
+            else Text(
                 detail,
-                fontSize = 12.sp,
+                fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }

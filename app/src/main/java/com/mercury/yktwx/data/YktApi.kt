@@ -11,7 +11,7 @@ import javax.net.ssl.HttpsURLConnection
 
 interface YktService {
     suspend fun login(credentials: Credentials): Session
-    suspend fun payment(token: String): PaymentBatch
+    suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit = {}): PaymentBatch
     suspend fun paymentAccount(token: String): PaymentAccount
     suspend fun bills(
         token: String,
@@ -108,8 +108,9 @@ class YktApi(
     }
     override suspend fun paymentAccount(token: String): PaymentAccount = paymentAccountInfo(token).first
 
-    override suspend fun payment(token: String): PaymentBatch {
+    override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
         val (account, selected) = paymentAccountInfo(token)
+        onAccount(account)
         // An issued barcode can still be rejected at payment time. Verify the matching card
         // before requesting any codes; preserve balance and recharge independently.
         val card = try { CardServiceApi(openConnection).paymentCard(token, account.account) }

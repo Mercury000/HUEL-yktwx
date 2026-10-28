@@ -34,6 +34,7 @@ class BillViewModelTest {
         vault.credentialsGate?.countDown()
         service.requestGate.complete(Unit)
         service.auxiliaryGate.complete(Unit)
+        service.queryGates.values.forEach { it.complete(Unit) }
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -151,6 +152,91 @@ class BillViewModelTest {
         service.auxiliaryGate.complete(Unit)
         await { model.state.value.stats.loaded }
     }
+    @Test fun firstPageAndPaginationRemainUsableWhileOptionalMetricsAreSlow() {
+        service.items = listOf(record)
+        service.pages = 2
+        service.nextItems = listOf(record.copy(orderId = "TEST-02"))
+        service.auxiliaryGate = CompletableDeferred()
+        service.requestGate.complete(Unit)
+        model.refresh()
+        await { model.state.value.listLoaded }
+        assertEquals(listOf(record), model.state.value.items)
+        assertTrue(model.state.value.refreshing)
+        assertFalse(model.state.value.summaryLoaded)
+        model.loadMore()
+        await { model.state.value.currentPage == 2 }
+        assertEquals(listOf("TEST-01", "TEST-02"), model.state.value.items.map { it.orderId })
+        service.auxiliaryGate.complete(Unit)
+        await { !model.state.value.refreshing }
+        assertEquals(2, model.state.value.currentPage)
+        assertEquals(2, model.state.value.items.size)
+    }
+    @Test fun slowFirstPageDoesNotBlockSummaryCountsOrTypes() {
+        model.refresh()
+        await { model.state.value.summaryLoaded && model.state.value.countsLoaded && model.state.value.types.isNotEmpty() }
+        assertTrue(model.state.value.listLoading)
+        assertFalse(model.state.value.listLoaded)
+        assertTrue(model.state.value.items.isEmpty())
+        service.requestGate.complete(Unit)
+        await { !model.state.value.refreshing }
+        assertTrue(model.state.value.listLoaded)
+    }
+    @Test fun oneFailedStatisticDoesNotCancelOtherChartsAndRetryKeepsThemVisible() {
+        loadExistingBills()
+        service.categories = listOf(BillCategory("餐饮", 800))
+        service.ranking = listOf(record)
+        service.queryGates["trend"] = CompletableDeferred()
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        model.openStats()
+        await { model.state.value.stats.categoriesLoaded && model.state.value.stats.rankingLoaded }
+        assertTrue(model.state.value.stats.loading)
+        assertFalse(model.state.value.stats.dailyLoaded)
+        assertEquals(service.categories, model.state.value.stats.categories)
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        assertNotNull(model.state.value.stats.dailyError)
+        assertNull(model.state.value.stats.categoriesError)
+        assertEquals(service.ranking, model.state.value.stats.ranking)
+        service.queryFailures = emptyMap()
+        service.queryGates["trend"] = CompletableDeferred()
+        model.refreshStats()
+        assertEquals(service.categories, model.state.value.stats.categories)
+        assertEquals(service.ranking, model.state.value.stats.ranking)
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        assertTrue(model.state.value.stats.dailyLoaded)
+        assertNull(model.state.value.stats.dailyError)
+    }
+    @Test fun changingTheStatsTypeClearsPartialResultsAndIgnoresCancelledRequests() {
+        loadExistingBills()
+        service.categories = listOf(BillCategory("旧分类", 800))
+        service.queryGates["trend"] = CompletableDeferred()
+        model.openStats()
+        await { model.state.value.stats.categoriesLoaded }
+        service.categories = listOf(BillCategory("新分类", 1200))
+        model.selectStatsType(1)
+        assertFalse(model.state.value.stats.categoriesLoaded)
+        assertTrue(model.state.value.stats.categories.isEmpty())
+        await { model.state.value.stats.categoriesLoaded }
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        assertEquals(1, model.state.value.stats.type)
+        assertEquals(service.categories, model.state.value.stats.categories)
+    }
+    @Test fun failedPageStillAllowsIndependentSummaryToComplete() {
+        service.failure = NetworkFailure()
+        service.queryGates["summary"] = CompletableDeferred()
+        service.requestGate.complete(Unit)
+        model.refresh()
+        await { model.state.value.error != null }
+        assertTrue(model.state.value.listLoaded)
+        assertFalse(model.state.value.summaryLoaded)
+        assertTrue(model.state.value.refreshing)
+        service.queryGates.getValue("summary").complete(Unit)
+        await { !model.state.value.refreshing }
+        assertNotNull(model.state.value.summary)
+        assertNotNull(model.state.value.error)
+    }
     @Test fun optionalMetricFailuresKeepTheBillListUsable() {
         service.items = listOf(record)
         service.queryFailures = mapOf("summary" to NetworkFailure(), "income" to NetworkFailure(), "types" to NetworkFailure())
@@ -171,6 +257,44 @@ class BillViewModelTest {
         await { !model.state.value.refreshing }
         assertTrue(model.state.value.needsLogin)
         assertFalse(model.state.value.loaded)
+    }
+    @Test fun metricAuthenticationFailureClearsThePublishedPageAndCancelsPagination() {
+        service.items = listOf(record)
+        service.pages = 2
+        service.queryGates["summary"] = CompletableDeferred()
+        service.queryFailures = mapOf("summary" to AuthenticationRequired())
+        service.requestGate.complete(Unit)
+        model.refresh()
+        await { model.state.value.listLoaded }
+        assertEquals(listOf(record), model.state.value.items)
+        service.requestGate = CompletableDeferred()
+        model.loadMore()
+        await { service.requests == 2 }
+        service.queryGates.getValue("summary").complete(Unit)
+        await { model.state.value.needsLogin }
+        assertTrue(model.state.value.items.isEmpty())
+        assertNull(model.state.value.summary)
+        assertNull(model.state.value.counts)
+        assertFalse(model.state.value.loadingMore)
+        assertFalse(model.state.value.listLoaded)
+        service.requestGate.complete(Unit)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(model.state.value.items.isEmpty())
+    }
+    @Test fun statisticAuthenticationFailureClearsPreviouslyPublishedCharts() {
+        loadExistingBills()
+        service.categories = listOf(BillCategory("餐饮", 800))
+        service.queryGates["trend"] = CompletableDeferred()
+        service.queryFailures = mapOf("trend" to AuthenticationRequired())
+        model.openStats()
+        await { model.state.value.stats.categoriesLoaded }
+        assertEquals(service.categories, model.state.value.stats.categories)
+        service.queryGates.getValue("trend").complete(Unit)
+        await { model.state.value.needsLogin }
+        assertTrue(model.state.value.items.isEmpty())
+        assertTrue(model.state.value.stats.categories.isEmpty())
+        assertFalse(model.state.value.stats.loading)
+        assertFalse(model.state.value.stats.categoriesLoaded)
     }
 
     @Test fun selectingCustomRangeUsesExactFromAndToDates() {
@@ -268,13 +392,19 @@ class BillViewModelTest {
         var auxiliaryGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         val queries = Collections.synchronizedSet(mutableSetOf<String>())
         var queryFailures: Map<String, YktException> = emptyMap()
+        val queryGates = mutableMapOf<String, CompletableDeferred<Unit>>()
         private suspend fun query(name: String) {
             queries += name
             auxiliaryGate.await()
+            queryGates[name]?.await()
             queryFailures[name]?.let { throw it }
         }
         var failure: YktException? = null
         var items = emptyList<BillRecord>()
+        var nextItems = emptyList<BillRecord>()
+        var pages = 1
+        var categories = emptyList<BillCategory>()
+        var ranking = emptyList<BillRecord>()
         val requestMonths = mutableListOf<String>()
         val requestRanges = mutableListOf<Pair<String, String>>()
         override suspend fun bills(
@@ -287,7 +417,7 @@ class BillViewModelTest {
             requests++
             requestGate.await()
             failure?.let { throw it }
-            return BillPageData(items, current, if (items.isEmpty()) 0 else 1)
+            return BillPageData(if (current == 1) items else nextItems, current, if (items.isEmpty()) 0 else pages)
         }
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
             query("summary")
@@ -302,10 +432,10 @@ class BillViewModelTest {
             return listOf(BillType("4", "二维码支付"))
         }
         override suspend fun login(credentials: Credentials): Session = Session("renewed", Long.MAX_VALUE)
-        override suspend fun payment(token: String): PaymentBatch = error("Unexpected payment")
+        override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch = error("Unexpected payment")
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
             query("categories")
-            return emptyList()
+            return categories
         }
         override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
             query("trend")
@@ -313,7 +443,7 @@ class BillViewModelTest {
         }
         override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
             query("ranking")
-            return emptyList()
+            return ranking
         }
     }
 

@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
@@ -18,6 +21,7 @@ import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.pages.HallPage
 import com.mercury.yktwx.ui.pages.MyPage
+import com.mercury.yktwx.ui.pages.billStatsContent
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -127,6 +131,13 @@ class DashboardLoadingTest {
             if (fontScale == 1f) capture("mine-initial")
             compose.runOnIdle { state = MyUiState(loading = true) }
             stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
+            compose.runOnIdle { state = MyUiState(ready.profile, loading = true, profileLoaded = true) }
+            compose.onNodeWithText("示例同学").assertExists()
+            stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
+            compose.runOnIdle { state = state.copy(summary = ready.summary, summaryLoaded = true)
+                payment = PaymentUiState(busy = true, account = PaymentAccount("demo", "demo", "1", "统一账户", 18650)) }
+            stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
+            if (fontScale == 1f) capture("mine-partial")
             compose.runOnIdle { state = ready
                 payment = PaymentUiState(account = PaymentAccount("demo", "demo", "1", "统一账户", 18650)) }
             stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
@@ -138,6 +149,44 @@ class DashboardLoadingTest {
             compose.onNodeWithText("+ 充值").assertIsNotEnabled()
             compose.runOnIdle { state = MyUiState(loaded = true) }
             stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
+        }
+    }
+
+    @Test fun statisticsKeepTheirSlotsAndDoNotUseTheTrendAsAnUnfinishedTotal() {
+        val period = BillDateFilter.month(java.time.YearMonth.of(2026, 10))
+        var state by mutableStateOf(BillStatsState(period = period, loading = true))
+        var scale by mutableFloatStateOf(1f)
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalDensity provides Density(density, scale)) {
+                AppTheme(if (scale > 1f) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        billStatsContent(state, {}, {}, {})
+                    }
+                }
+            }
+        }
+        for (fontScale in listOf(1f, 1.5f)) {
+            compose.runOnIdle { scale = fontScale; state = BillStatsState(period = period, loading = true) }
+            val overview = bounds("bill-stats-overview")
+            val category = bounds("bill-stats-category")
+            compose.onNodeWithContentDescription("正在加载统计").assertExists()
+            compose.onNodeWithText("暂无分类数据").assertDoesNotExist()
+            compose.runOnIdle { state = state.copy(daily = listOf(BillDailyPoint(period.start, 900)), dailyLoaded = true) }
+            compose.onNodeWithContentDescription("正在加载统计").assertExists()
+            compose.onNodeWithText("¥ 9.00").assertDoesNotExist()
+            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            if (fontScale == 1f) capture("stats-trend-only")
+            compose.runOnIdle { state = state.copy(categories = listOf(BillCategory("餐饮", 700),
+                BillCategory("超市", 200), BillCategory("其他", 100)), categoriesLoaded = true) }
+            compose.onNodeWithContentDescription("正在加载统计").assertDoesNotExist()
+            compose.onAllNodesWithText("¥ 10.00").assertCountEquals(2)
+            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            compose.runOnIdle { state = state.copy(daily = emptyList(), categories = emptyList(), rankingLoaded = true,
+                loading = false, loaded = true) }
+            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            compose.onAllNodesWithText("¥ 0.00").assertCountEquals(2)
+            capture(if (fontScale == 1f) "stats-empty" else "stats-empty-large-dark")
         }
     }
 }
