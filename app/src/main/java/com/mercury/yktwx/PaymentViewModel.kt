@@ -175,9 +175,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 notifications.send("登录成功")
                 mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, error = e.message, problem = e.problem)
             } catch (e: YktException) {
-                val stored = withContext(Dispatchers.IO) { repository.hasCredentials() }
                 if (version != requestVersion) return@launch
-                mutable.value = PaymentUiState(needsLogin = !stored, username = username,
+                // Old credentials are not proof that this submitted login succeeded.
+                mutable.value = PaymentUiState(needsLogin = true, username = username,
                     error = e.message ?: "登录失败，请重试")
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
