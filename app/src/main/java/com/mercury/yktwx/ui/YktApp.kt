@@ -265,11 +265,14 @@ private fun MainContent(
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
         (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible)
-    LaunchedEffect(viewModel, paymentPageSelected, paymentPageCovered) {
+    val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
+        pagerState.currentPage == 3 && layers.isEmpty())
+    LaunchedEffect(viewModel, paymentPageSelected, paymentPageCovered, accountPageSelected) {
         viewModel.setPageVisible(paymentPageSelected && !paymentPageCovered, preserveDisplay = paymentPageCovered)
+        viewModel.setAccountPageVisible(accountPageSelected)
     }
     DisposableEffect(viewModel) {
-        onDispose { viewModel.setPageVisible(false) }
+        onDispose { viewModel.setPageVisible(false); viewModel.setAccountPageVisible(false) }
     }
     val feeActive = isActive && dormPaymentVisible
     DisposableEffect(feeActive) {
@@ -465,7 +468,7 @@ private fun MainContent(
                                     state = myState, payment = state, settings = settings, bottomPadding = bottom,
                                     isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
                                     onActivate = myModel::onActivate,
-                                    onRefresh = { myModel.refresh(); viewModel.refresh(manual = true) },
+                                    onRefresh = { myModel.refresh(); viewModel.refreshAccount(manual = true) },
                                     onProfile = { open(Screen.Profile) }, onAccount = { open(Screen.Account) },
                                     onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
                                     onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
@@ -491,7 +494,7 @@ private fun MainContent(
                         onFinish = {
                             val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
                             rechargeModel.finish()
-                            if (paid) { viewModel.refresh(); myModel.refresh(); billViewModel.refresh() }
+                            if (paid) { viewModel.refresh(); viewModel.refreshAccount(manual = true); myModel.refresh(); billViewModel.refresh() }
                         },
                     )
                     HallFeeDialog(
@@ -513,7 +516,7 @@ private fun MainContent(
                         onFinish = {
                             val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
                             dormPaymentVisible = false; feeOpening = null; feeModel.dismiss()
-                            if (paid) { viewModel.refresh(); billViewModel.refresh(); myModel.refresh(); dormModel.invalidate(); dormModel.refresh() }
+                            if (paid) { viewModel.refresh(); viewModel.refreshAccount(manual = true); billViewModel.refresh(); myModel.refresh(); dormModel.invalidate(); dormModel.refresh() }
                         },
                     )
                 }
@@ -529,7 +532,8 @@ private fun MainContent(
                 when (screen) {
                     Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh)
                     Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
-                        rechargeLoading = rechargeState.loading && !rechargeState.visible)
+                        rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                        onRefresh = { viewModel.refreshAccount(manual = true) })
                     Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
                         onOpenReferences = { open(Screen.References) }, onBack = ::close)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }

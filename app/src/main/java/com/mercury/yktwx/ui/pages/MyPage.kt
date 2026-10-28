@@ -48,10 +48,12 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
+    val balancePending = payment.busy || payment.accountLoading
+    val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
     val initialError = rememberInitialReadError(state.profile != null || state.homeIdentity != null ||
         state.summary != null || state.counts != null || payment.account != null,
-        state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError,
-        state.loaded && !state.loading)
+        state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError ?: payment.accountError,
+        state.loaded && !state.loading && !balancePending)
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -60,7 +62,7 @@ internal fun MyPage(
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                DashboardPullToRefresh(loading = state.loading, onRefresh = onRefresh,
+                DashboardPullToRefresh(loading = state.loading || payment.accountLoading, onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scroll) {
                 InitialReadTransition(initialError) { displayedError ->
@@ -111,48 +113,57 @@ internal fun MyPage(
                         if (identityError != null) item { ReadNotice(identityError,
                             cached = state.profile != null || state.homeIdentity != null) }
                         item {
-                            val primary = MiuixTheme.colorScheme.primary
-                            val foreground = MiuixTheme.colorScheme.onPrimary
-                            Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp, colors = CardDefaults.defaultColors(color = primary)) {
-                                Column(Modifier.fillMaxWidth().drawBehind {
-                                    drawRect(Brush.linearGradient(listOf(primary, androidx.compose.ui.graphics.lerp(primary, Color.White, .12f))))
-                                    drawCircle(foreground.copy(alpha = .045f), radius = size.width * .46f,
-                                        center = Offset(size.width * .96f, size.height * .32f), style = Stroke(size.width * .08f))
-                                }.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("校园卡余额", fontSize = 12.sp, color = foreground.copy(alpha = .8f))
-                                        Spacer(Modifier.weight(1f))
-                                        val restricted = !payment.busy && payment.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen)
-                                        val statusBackground = if (restricted) Color(0xFFFFE0AE) else foreground.copy(alpha = .14f)
-                                        val statusForeground = if (restricted) Color(0xFF804900) else foreground
-                                        Row(Modifier.clip(CircleShape).background(statusBackground).padding(horizontal = 9.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Box(Modifier.size(4.dp).background(statusForeground, CircleShape))
-                                            Text(cardStatus(payment.problem, payment.account != null, payment.busy), fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
-                                                fontWeight = if (restricted) FontWeight.SemiBold else FontWeight.Normal, color = statusForeground)
+                            if (balanceError != null) {
+                                Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp) {
+                                    Text("校园卡余额", Modifier.padding(start = 20.dp, top = 16.dp), fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                    ReadUnavailable(balanceError)
+                                }
+                            } else Column {
+                                val primary = MiuixTheme.colorScheme.primary
+                                val foreground = MiuixTheme.colorScheme.onPrimary
+                                Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp, colors = CardDefaults.defaultColors(color = primary)) {
+                                    Column(Modifier.fillMaxWidth().drawBehind {
+                                        drawRect(Brush.linearGradient(listOf(primary, androidx.compose.ui.graphics.lerp(primary, Color.White, .12f))))
+                                        drawCircle(foreground.copy(alpha = .045f), radius = size.width * .46f,
+                                            center = Offset(size.width * .96f, size.height * .32f), style = Stroke(size.width * .08f))
+                                    }.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("校园卡余额", fontSize = 12.sp, color = foreground.copy(alpha = .8f))
+                                            Spacer(Modifier.weight(1f))
+                                            val restricted = !balancePending && payment.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen)
+                                            val statusBackground = if (restricted) Color(0xFFFFE0AE) else foreground.copy(alpha = .14f)
+                                            val statusForeground = if (restricted) Color(0xFF804900) else foreground
+                                            Row(Modifier.clip(CircleShape).background(statusBackground).padding(horizontal = 9.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Box(Modifier.size(4.dp).background(statusForeground, CircleShape))
+                                                Text(cardStatus(payment.problem, payment.account != null, balancePending), fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
+                                                    fontWeight = if (restricted) FontWeight.SemiBold else FontWeight.Normal, color = statusForeground)
+                                            }
                                         }
-                                    }
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        if (payment.busy && payment.account == null) {
-                                            DashboardPlaceholder(36.sp, Modifier.weight(1f), fraction = .58f,
-                                                lineHeight = 44.sp, sample = "¥ 0.00", color = foreground.copy(alpha = .18f))
-                                        } else Text(payment.account?.let { "¥ ${money(it.balanceCents)}" } ?: "¥ —", Modifier.weight(1f),
-                                                fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                fontWeight = FontWeight.SemiBold, color = foreground)
-                                        CompactButton("+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
-                                            color = foreground, textColor = primary)
-                                    }
-                                    HorizontalDivider(color = MiuixTheme.colorScheme.onPrimary.copy(alpha = .16f))
-                                    Surface(onClick = onAccount, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
-                                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
-                                            Text(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), fontSize = 11.sp,
-                                                maxLines = 1, overflow = TextOverflow.Ellipsis, color = foreground.copy(alpha = .8f))
-                                            Text("账户详情", fontSize = 11.sp, color = foreground)
-                                            Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = foreground)
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            if (balancePending && payment.account == null) {
+                                                DashboardPlaceholder(36.sp, Modifier.weight(1f), fraction = .58f,
+                                                    lineHeight = 44.sp, sample = "¥ 0.00", color = foreground.copy(alpha = .18f))
+                                            } else Text(payment.account?.let { "¥ ${money(it.balanceCents)}" } ?: "¥ —", Modifier.weight(1f),
+                                                    fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                    fontWeight = FontWeight.SemiBold, color = foreground)
+                                            CompactButton("+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
+                                                color = foreground, textColor = primary)
+                                        }
+                                        HorizontalDivider(color = MiuixTheme.colorScheme.onPrimary.copy(alpha = .16f))
+                                        Surface(onClick = onAccount, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
+                                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
+                                                Text(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), fontSize = 11.sp,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis, color = foreground.copy(alpha = .8f))
+                                                Text("账户详情", fontSize = 11.sp, color = foreground)
+                                                Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = foreground)
+                                            }
                                         }
                                     }
                                 }
+                                ReadNotice(payment.accountError, cached = payment.account != null)
                             }
                         }
                         item {
@@ -259,16 +270,19 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
 
 @Composable
 internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings, onBack: () -> Unit, onRecharge: () -> Unit,
-    rechargeLoading: Boolean = false) {
-    ProfileDetailScaffold("账户详情", settings, onBack) {
+    rechargeLoading: Boolean = false, onRefresh: (() -> Unit)? = null) {
+    val balancePending = payment.busy || payment.accountLoading
+    val initialError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
+    ProfileDetailScaffold("账户详情", settings, onBack, payment.accountLoading, onRefresh, initialError) {
         item {
             Card(Modifier.fillMaxWidth()) {
-                val pending = payment.busy && payment.account == null
+                val pending = payment.account == null && (balancePending || initialError != null)
                 ProfileField("账户", payment.account?.name, pending)
                 ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" }, pending)
-                ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, payment.busy))
+                ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, balancePending))
             }
         }
+        if (payment.accountError != null && payment.account != null) item { ReadNotice(payment.accountError, cached = true) }
         item { TextButton("充值", onClick = onRecharge, enabled = !rechargeLoading,
             modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary()) }
     }

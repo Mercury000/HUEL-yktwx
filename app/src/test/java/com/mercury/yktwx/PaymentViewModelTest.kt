@@ -69,6 +69,172 @@ class PaymentViewModelTest {
 
     @After fun cleanup() { accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
+    @Test fun switchingBeforePaymentBalanceReturnsLoadsMissingBalanceWithoutFetchingAnotherCode() {
+        accountPublishGate = CompletableDeferred()
+        codeAvailable = true
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { payments == 1 }
+        model.setPageVisible(false)
+        assertNull(model.state.value.account)
+        accountGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { accountQueries == 1 }
+        assertTrue(model.state.value.accountLoading)
+        model.refreshAccount(); model.refreshAccount(manual = true)
+        assertEquals(1, accountQueries)
+        accountGate.complete(Unit)
+        await { model.state.value.account != null && !model.state.value.accountLoading }
+        assertEquals(6496L, model.state.value.account!!.balanceCents)
+        assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertEquals(1, payments)
+        accountPublishGate.complete(Unit)
+        await { responses == 1 }
+        assertNull(model.state.value.code)
+        assertEquals(0L, model.state.value.secondsLeft)
+    }
+
+    @Test fun cachedBalanceAvoidsAutomaticReadsAndManualAccountRefreshOnlyReadsBalance() {
+        readyForTurn()
+        model.setPageVisible(false)
+        model.setAccountPageVisible(true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, accountQueries)
+        account = account.with(balanceCents = 1234)
+        model.refreshAccount(manual = true)
+        await { accountResponses == 1 && !model.state.value.accountLoading }
+        assertEquals(1234L, model.state.value.account!!.balanceCents)
+        assertNull(model.state.value.problem)
+        assertEquals(1, payments)
+        assertNull(model.state.value.code)
+    }
+
+    @Test fun differentBalanceAccountDoesNotInheritThePreviousCardStatus() {
+        readyForTurn()
+        model.setPageVisible(false)
+        model.setAccountPageVisible(true)
+        account = account.with(account = "other-account", balanceCents = 1234)
+        model.refreshAccount(manual = true)
+        await { model.state.value.account!!.account == "other-account" && !model.state.value.accountLoading }
+        assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertEquals(1, payments)
+    }
+
+    @Test fun failedBalanceIsRetriedOnAccountReentryInsteadOfBeingTreatedAsCache() {
+        model.setPageVisible(false)
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        accountFailure = NetworkFailure()
+        model.setAccountPageVisible(true)
+        await { model.state.value.accountError != null && !model.state.value.accountLoading }
+        assertNull(model.state.value.account)
+        assertFalse(model.state.value.needsLogin)
+        model.setAccountPageVisible(false)
+        accountFailure = null
+        model.setAccountPageVisible(true)
+        await { model.state.value.account != null && !model.state.value.accountLoading }
+        assertNull(model.state.value.accountError)
+        assertEquals(2, accountQueries)
+        assertEquals(0, payments)
+    }
+
+    @Test fun failedManualBalanceRefreshPreservesValuesAndRetriesOnForeground() {
+        readyForTurn()
+        model.setPageVisible(false)
+        model.setAccountPageVisible(true)
+        accountFailure = NetworkFailure()
+        model.refreshAccount(manual = true)
+        await { model.state.value.accountError != null }
+        assertEquals(6496L, model.state.value.account!!.balanceCents)
+        accountFailure = null
+        account = account.with(balanceCents = 5496)
+        model.onBackground(); model.onForeground()
+        await { model.state.value.account!!.balanceCents == 5496L && !model.state.value.accountLoading }
+        assertNull(model.state.value.accountError)
+        assertEquals(2, accountQueries)
+        assertEquals(1, payments)
+    }
+
+    @Test fun lateAccountResponseCannotOverwriteNewerPaymentBalance() {
+        model.setPageVisible(false)
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        accountGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { accountQueries == 1 }
+        account = account.with(balanceCents = 5496)
+        codeAvailable = true
+        model.setPageVisible(true)
+        model.setAccountPageVisible(false)
+        await { model.state.value.code != null }
+        accountGate.complete(Unit)
+        await { accountResponses == 1 }
+        assertEquals(5496L, model.state.value.account!!.balanceCents)
+        assertNotNull(model.state.value.code)
+        assertFalse(model.state.value.accountLoading)
+    }
+
+    @Test fun lateAccountResponseAfterLogoutAndNewLoginCannotRestoreThePreviousOwner() {
+        model.setPageVisible(false)
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        accountGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { accountQueries == 1 }
+        model.logout()
+        await { model.state.value.needsLogin && !model.state.value.busy }
+        assertNull(model.state.value.account)
+        account = account.with(account = "new-account", balanceCents = 9876)
+        codeAvailable = true
+        model.login("456", "new-password")
+        await { !model.state.value.needsLogin && !model.state.value.busy }
+        accountGate.complete(Unit)
+        await { accountResponses == 1 }
+        assertEquals("456", model.state.value.username)
+        assertEquals("new-account", model.state.value.account!!.account)
+        assertEquals(9876L, model.state.value.account!!.balanceCents)
+        assertNull(model.state.value.code)
+    }
+
+    @Test fun cancelledAccountReadOnBackgroundIsFetchedAgainOnForeground() {
+        model.setPageVisible(false)
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        accountGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { accountQueries == 1 }
+        model.onBackground()
+        assertFalse(model.state.value.accountLoading)
+        accountGate.complete(Unit)
+        await { accountResponses == 1 }
+        assertNull(model.state.value.account)
+        model.onForeground()
+        await { model.state.value.account != null && !model.state.value.accountLoading }
+        assertEquals(2, accountQueries)
+        assertEquals(0, payments)
+    }
+
+    @Test fun expiredAccountSessionClearsCachedBalanceAndRoutesToLogin() {
+        readyForTurn()
+        model.setPageVisible(false)
+        model.setAccountPageVisible(true)
+        accountFailure = AuthenticationRequired()
+        model.refreshAccount(manual = true)
+        await { model.state.value.needsLogin && !model.state.value.accountLoading }
+        assertNull(model.state.value.account)
+        assertNull(model.state.value.code)
+        assertNull(model.state.value.problem)
+        assertEquals("登录已失效，请重新登录", model.state.value.error)
+        assertEquals(1, payments)
+    }
+
     @Test fun firstBalanceIsVisibleWhileCardVerificationAndBarcodeRemainPending() {
         codeAvailable = true
         paymentGate = CompletableDeferred()

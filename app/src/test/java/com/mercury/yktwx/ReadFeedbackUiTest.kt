@@ -246,6 +246,59 @@ class ReadFeedbackUiTest {
         compose.onNodeWithTag("read-notice").assertDoesNotExist()
     }
 
+    @Test fun myBalanceReadUsesSkeletonThenOneRegionFailureAndRetainsItUntilBalanceReturns() {
+        val settings = ThemeSettings(compose.activity.application)
+        var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountLoading = true))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme {
+                    MyPage(PreviewData.myState(), payment, settings, 0.dp, false, {}, {},
+                        {}, {}, {}, {}, false, {}, false, false, {}, {})
+                }
+            }
+        }
+        compose.onNodeWithText("¥ —").assertDoesNotExist()
+        compose.runOnIdle { payment = payment.copy(accountLoading = false, accountError = networkError) }
+        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
+        compose.onNodeWithTag("my-summary-card").assertExists()
+        capture("my-balance-first-failure")
+        compose.runOnIdle { payment = payment.copy(accountLoading = true, accountError = null) }
+        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        val account = PreviewData.paymentState(false).account!!
+        compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account, accountError = networkError) }
+        compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
+        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
+        compose.onNodeWithText("¥ ${money(account.balanceCents)}").assertIsDisplayed()
+        capture("my-balance-cache-failure")
+    }
+
+    @Test fun accountDetailFirstFailureReallyPullsToRefreshAndRetainsTheFailureWhileReading() {
+        val settings = ThemeSettings(compose.activity.application)
+        var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountError = networkError))
+        var refreshes = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme {
+                    AccountDetailPage(payment, settings, {}, {}, onRefresh = {
+                        refreshes++; payment = payment.copy(accountLoading = true, accountError = null)
+                    })
+                }
+            }
+        }
+        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
+        compose.onNodeWithText("未提供").assertDoesNotExist()
+        compose.onNode(verticalList).performTouchInput {
+            swipe(start = center.copy(y = height * .15f), end = center.copy(y = height * .8f), durationMillis = 600)
+        }
+        compose.waitForIdle()
+        assertTrue(refreshes > 0)
+        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        val account = PreviewData.paymentState(false).account!!
+        compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account) }
+        compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
+        compose.onNodeWithText("¥ ${money(account.balanceCents)}").assertIsDisplayed()
+    }
+
     @Test fun billFailedRetryDoesNotMistakeCompletedFailedListForAvailableContent() {
         val settings = ThemeSettings(compose.activity.application)
         var state by mutableStateOf(BillUiState(loaded = true, error = networkError,
