@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
-class MyUiState(
+data class MyUiState(
     val profile: PersonalProfile? = null, val avatar: ByteArray? = null,
     val summary: BillSummary? = null, val counts: BillCounts? = null,
     val month: YearMonth = YearMonth.now(), val loading: Boolean = false,
@@ -23,6 +23,12 @@ class MyUiState(
     val homeIdentity: HomeCardIdentity? = null,
     val homeIdentityError: String? = null,
     val loaded: Boolean = false,
+    val profileLoaded: Boolean = loaded,
+    val summaryLoaded: Boolean = loaded,
+    val countsLoaded: Boolean = loaded,
+    val homeIdentityLoaded: Boolean = loaded,
+    val countsError: String? = null,
+    val avatarError: String? = null,
 ) { override fun toString() = "MyUiState([redacted])" }
 
 class MyViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
@@ -52,58 +58,74 @@ class MyViewModel internal constructor(app: Application, private val repository:
         val username = owner
         val month = YearMonth.now()
         val current = mutable.value
-        mutable.value = MyUiState(current.profile, current.avatar,
-            current.summary.takeIf { current.month == month }, current.counts.takeIf { current.month == month }, month, true,
-            profileError = current.profileError, summaryError = current.summaryError.takeIf { current.month == month },
-            homeIdentity = current.homeIdentity, homeIdentityError = current.homeIdentityError, loaded = current.loaded)
+        val sameMonth = current.month == month
+        mutable.value = current.copy(
+            month = month, loading = true, needsLogin = false,
+            summary = current.summary.takeIf { sameMonth }, counts = current.counts.takeIf { sameMonth },
+            summaryError = current.summaryError.takeIf { sameMonth }, countsError = current.countsError.takeIf { sameMonth },
+            summaryLoaded = sameMonth && current.summaryLoaded, countsLoaded = sameMonth && current.countsLoaded)
         task = viewModelScope.launch {
-            var profile = current.profile
-            var avatar = current.avatar
-            var profileError: String? = null
-            var summary: BillSummary? = current.summary.takeIf { current.month == month }
-            var counts: BillCounts? = current.counts.takeIf { current.month == month }
-            var summaryError: String? = null
-            var needsLogin = false
-            var homeIdentity = current.homeIdentity
-            var homeIdentityError: String? = null
+            // Each branch updates the latest state on Main, so a late avatar cannot undo a summary.
+            fun publish(change: (MyUiState) -> MyUiState) {
+                if (attempt == generation) mutable.value = change(mutable.value)
+            }
             coroutineScope {
                 launch identity@{
                     val fresh = try { repository.personalProfile(username) }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
-                        profileError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e)
+                        publish { it.copy(profileError = message(e), profileLoaded = true, homeIdentityLoaded = true,
+                            needsLogin = it.needsLogin || isAuthenticationFailure(e)) }
                         return@identity
                     }
                     if (attempt != generation) return@identity
-                    profile = fresh
-                    avatar = null
+                    publish { it.copy(profile = fresh, profileError = null, profileLoaded = true,
+                        // Never associate an older student's card identity with a new profile.
+                        homeIdentity = it.homeIdentity.takeIf { old -> old?.sno == fresh.sno },
+                        homeIdentityLoaded = it.homeIdentityLoaded && current.profile?.sno == fresh.sno,
+                        avatar = it.avatar.takeIf { current.profile?.avatarPath == fresh.avatarPath }) }
                     coroutineScope {
                         launch {
-                            try { avatar = fresh.avatarPath?.let { repository.profileAvatar(it) } }
+                            try {
+                                val avatar = fresh.avatarPath?.let { repository.profileAvatar(it) }
+                                publish { it.copy(avatar = avatar, avatarError = null) }
+                            }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { profileError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                            catch (e: Exception) { publish { it.copy(avatarError = message(e),
+                                needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
                         }
                         launch {
-                            try { homeIdentity = repository.homeIdentity(username, fresh.sno) }
+                            try {
+                                val identity = repository.homeIdentity(username, fresh.sno)
+                                publish { it.copy(homeIdentity = identity, homeIdentityError = null, homeIdentityLoaded = true) }
+                            }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { homeIdentityError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                            catch (e: Exception) { publish { it.copy(homeIdentityError = message(e), homeIdentityLoaded = true,
+                                needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
                         }
                     }
                 }
                 launch {
-                    try { summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username) }
+                    try {
+                        val summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
+                        publish { it.copy(summary = summary, summaryError = null, summaryLoaded = true) }
+                    }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                    catch (e: Exception) { publish { it.copy(summaryError = message(e), summaryLoaded = true,
+                        needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
                 }
                 launch {
-                    try { counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username) }
+                    try {
+                        val counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
+                        publish { it.copy(counts = counts, countsError = null, countsLoaded = true) }
+                    }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { summaryError = message(e); needsLogin = needsLogin || isAuthenticationFailure(e) }
+                    catch (e: Exception) { publish { it.copy(countsError = message(e), countsLoaded = true,
+                        needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
                 }
             }
             if (attempt != generation) return@launch
-            mutable.value = MyUiState(profile, avatar, summary, counts, month, false, profileError, summaryError,
-                needsLogin = needsLogin, homeIdentity = homeIdentity, homeIdentityError = homeIdentityError, loaded = true)
+            publish { it.copy(loading = false, loaded = true) }
             refreshedAt = System.currentTimeMillis()
         }
     }

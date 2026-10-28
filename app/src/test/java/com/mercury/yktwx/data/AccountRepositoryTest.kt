@@ -45,7 +45,7 @@ class AccountRepositoryTest {
             loginFailure?.let { throw it }
             return Session("new", Long.MAX_VALUE)
         }
-        override suspend fun payment(token: String): PaymentBatch {
+        override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
             paymentCalls.incrementAndGet()
             if (paymentFailures.isNotEmpty()) throw paymentFailures.removeAt(0)
             return PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("0", "0", "0", "Demo", 0))
@@ -169,7 +169,7 @@ class AccountRepositoryTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val s = object : FakeService() {
-            override suspend fun payment(token: String): PaymentBatch {
+            override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 paymentCalls.incrementAndGet()
                 if (payments == 2) entered.complete(Unit)
                 release.await()
@@ -188,7 +188,7 @@ class AccountRepositoryTest {
         val release = CompletableDeferred<Unit>()
         val oldRequests = AtomicInteger()
         val s = object : FakeService() {
-            override suspend fun payment(token: String): PaymentBatch {
+            override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 paymentCalls.incrementAndGet()
                 if (token == "old") {
                     oldRequests.incrementAndGet()
@@ -236,7 +236,7 @@ class AccountRepositoryTest {
         val oldRequests = AtomicInteger()
         val newRequests = AtomicInteger()
         val s = object : FakeService() {
-            override suspend fun payment(token: String): PaymentBatch {
+            override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 paymentCalls.incrementAndGet()
                 if (token == "old") {
                     oldRequests.incrementAndGet()

@@ -101,7 +101,7 @@ internal fun CompactButton(text: String, onClick: () -> Unit, modifier: Modifier
 internal fun DashboardLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     enabled: Boolean = true, leading: ImageVector? = null, arrow: Boolean = true,
     color: Color = MiuixTheme.colorScheme.primary, trailingArrowAtEnd: Boolean = false) {
-    Surface(onClick = { if (enabled) onClick() }, modifier = modifier, color = Color.Transparent) {
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier, color = Color.Transparent) {
         Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (leading != null) Icon(leading, null, Modifier.size(16.dp), tint = color)

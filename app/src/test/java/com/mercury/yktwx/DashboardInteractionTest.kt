@@ -230,9 +230,11 @@ class DashboardInteractionTest {
         assertEquals(1, activations)
         compose.runOnIdle { state = state.copy(loading = true) }
         assertInitialSkeleton()
-        compose.runOnIdle { state = state.copy(loading = false, loaded = true, summary = BillSummary(0, 0)) }
+        // The confirmed list can be empty while unrelated metrics are still loading.
+        compose.runOnIdle { state = state.copy(listLoaded = true, summaryLoaded = true, summary = BillSummary(0, 0)) }
         compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
         compose.onNodeWithText("当前时间段还没有账单").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(loading = false, loaded = true) }
 
         // Errors and expired credentials must replace placeholders, not leave a perpetual load.
         compose.runOnIdle { state = BillUiState(error = "账单加载失败，请稍后重试") }

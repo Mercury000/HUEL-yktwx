@@ -244,7 +244,15 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val account = mutable.value.account
         mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account)
         request = viewModelScope.launch {
-            try { show(withContext(Dispatchers.IO) { repository.refresh() }, username, version) }
+            try {
+                val batch = withContext(Dispatchers.IO) { repository.refresh { fresh ->
+                    withContext(Dispatchers.Main.immediate) {
+                        if (version == requestVersion && repository.ownsAccount(username) && !mutable.value.needsLogin)
+                            mutable.value = mutable.value.copy(account = fresh)
+                    }
+                } }
+                show(batch, username, version)
+            }
             catch (e: CancellationException) { throw e }
             catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
@@ -256,11 +264,11 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 mutable.value = PaymentUiState(
                     needsLogin = requireLogin,
                     error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
-                    username = username, account = account.takeUnless { requireLogin },
+                    username = username, account = mutable.value.account.takeUnless { requireLogin },
                 )
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
-                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = account)
+                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account)
             }
         }
     }

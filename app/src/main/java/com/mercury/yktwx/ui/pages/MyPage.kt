@@ -48,8 +48,11 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
-    val identityPending = !state.loaded && state.profile == null && state.homeIdentity == null && state.profileError == null
-    val summaryPending = !state.loaded && state.summary == null && state.summaryError == null
+    val identityPending = !state.profileLoaded && state.profile == null && state.homeIdentity == null && state.profileError == null
+    val studyPending = identityPending || !state.homeIdentityLoaded && state.homeIdentity == null &&
+        state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
+    val summaryPending = !state.summaryLoaded && state.summary == null && state.summaryError == null
+    val countsPending = !state.countsLoaded && state.counts == null && state.countsError == null
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -82,7 +85,7 @@ internal fun MyPage(
                                         }
                                         val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
                                             ?: state.profile?.professionName.orEmpty()
-                                        if (identityPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
+                                        if (studyPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
                                         else Text(study.ifBlank { "资料" }, modifier = if (study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier,
                                             fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                             color = if (study.isBlank()) Color.Transparent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -93,6 +96,7 @@ internal fun MyPage(
                         }
                         if (state.profileError != null) item { InlineError(state.profileError, actionLabel = "重试", onAction = onRefresh) }
                         if (state.homeIdentityError != null) item { InlineError(state.homeIdentityError, actionLabel = "重试", onAction = onRefresh) }
+                        if (state.avatarError != null) item { InlineError(state.avatarError, actionLabel = "重试", onAction = onRefresh) }
                         item {
                             val primary = MiuixTheme.colorScheme.primary
                             val foreground = MiuixTheme.colorScheme.onPrimary
@@ -152,11 +156,13 @@ internal fun MyPage(
                                     }
                                     HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易", Modifier.weight(1f),
-                                            fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        if (countsPending) DashboardPlaceholder(11.sp, Modifier.weight(1f), lineHeight = 16.sp)
+                                        else Text(state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易", Modifier.weight(1f),
+                                            fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
                                     if (state.summaryError != null) InlineError(state.summaryError, actionLabel = "重试", onAction = onRefresh)
+                                    if (state.countsError != null) InlineError(state.countsError, actionLabel = "重试", onAction = onRefresh)
                                 }
                             }
                         }
@@ -216,6 +222,7 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
 
 @Composable
 internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit) {
+    val pending = !state.profileLoaded && state.profile == null && state.profileError == null
     ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh) {
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -223,13 +230,14 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
                     Text("头像", Modifier.weight(1f), fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     ProfileAvatar(state.avatar, 48.dp)
                 }
-                ProfileField("学工号", state.profile?.sno)
-                ProfileField("姓名", state.profile?.name)
-                ProfileField("手机号", state.profile?.mobile)
+                ProfileField("学工号", state.profile?.sno, pending)
+                ProfileField("姓名", state.profile?.name, pending)
+                ProfileField("手机号", state.profile?.mobile, pending)
                 state.profile?.departmentName?.takeIf { it.isNotBlank() }?.let { ProfileField("部门", it) }
             }
         }
         if (state.profileError != null) item { InlineError(state.profileError, actionLabel = "重试", onAction = onRefresh) }
+        if (state.avatarError != null) item { InlineError(state.avatarError, actionLabel = "重试", onAction = onRefresh) }
     }
 }
 

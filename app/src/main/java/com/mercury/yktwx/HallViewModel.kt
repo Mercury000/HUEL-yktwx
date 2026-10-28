@@ -211,7 +211,12 @@ class HallViewModel internal constructor(
                                     otherConfiguration = { configurations.getValue(other).await().getOrNull() },
                                     onUpdate = { partial -> withContext(Dispatchers.Main.immediate) {
                                         if (attempt == generation && repository.ownsAccount(username)) {
-                                            rooms[project] = partial
+                                            val old = rooms[project]?.takeIf { it.binding.sameTarget(partial.binding) }
+                                            val retained = old?.meters.orEmpty().filter { meter ->
+                                                partial.pendingMeters.any { it.kind == meter.kind && it.project == (meter.project ?: project) }
+                                            }.map { DormMeter(it.kind, it.room, it.query, it.error, it.project ?: project, updating = true) }
+                                            rooms[project] = DormRoom(partial.project, partial.binding, partial.meters + retained,
+                                                partial.updatedAtMillis, partial.notice, pendingMeters = partial.pendingMeters)
                                             publish()
                                         }
                                     } })

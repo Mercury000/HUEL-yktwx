@@ -90,6 +90,22 @@ class HallPreviewTest {
         assertEquals(1, removals)
         assertEquals(1, selections)
     }
+    @Test fun loadedRoomsCanBeSelectedWhileRefreshStillBlocksUnbinding() {
+        val ready = PreviewData.hallState(multiple = true)
+        var selected = -1
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold {
+                    HallRoomSheet(DormUiState(ready.rooms, loading = true, loaded = true), true,
+                        onDismiss = {}, onSelect = { selected = it }, onRemove = {}, onProject = {}, onAdd = {})
+                } }
+            }
+        }
+        compose.onNodeWithTag("hall-room-1").assertIsEnabled().performClick()
+        assertEquals(1, selected)
+        compose.onAllNodesWithText("解绑").onFirst().assertIsNotEnabled()
+        compose.onNodeWithText("新增绑定").assertIsNotEnabled()
+    }
     @Test fun bindingTransitionResizesGraduallyAndKeepsTitleUntilDismissed() {
         val state = PreviewData.hallState(multiple = true)
         var visible by mutableStateOf(true)

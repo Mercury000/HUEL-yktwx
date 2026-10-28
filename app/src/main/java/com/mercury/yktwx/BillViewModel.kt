@@ -9,8 +9,9 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -25,6 +26,12 @@ data class BillStatsState(
     val categories: List<BillCategory> = emptyList(),
     val ranking: List<BillRecord> = emptyList(),
     val loaded: Boolean = false,
+    val dailyLoaded: Boolean = loaded,
+    val categoriesLoaded: Boolean = loaded,
+    val rankingLoaded: Boolean = loaded,
+    val dailyError: String? = null,
+    val categoriesError: String? = null,
+    val rankingError: String? = null,
 )
 
 data class BillUiState(
@@ -50,6 +57,12 @@ data class BillUiState(
     val detail: BillRecord? = null,
     val statsVisible: Boolean = false,
     val stats: BillStatsState = BillStatsState(),
+    val listLoaded: Boolean = loaded,
+    val summaryLoaded: Boolean = loaded,
+    val countsLoaded: Boolean = loaded,
+    val listLoading: Boolean = false,
+    val summaryError: String? = null,
+    val countsError: String? = null,
 ) {
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
@@ -111,7 +124,7 @@ class BillViewModel internal constructor(
             val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
             val current = mutable.value
             if (!exists) {
-                mutable.value = current.copy(needsLogin = true, loaded = false)
+                clearAuthenticatedData()
                 return@launch
             }
             mutable.value = current.copy(needsLogin = false)
@@ -139,6 +152,8 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             dateFilter = filter, items = emptyList(), summary = null, counts = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            listLoaded = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
+            summaryError = null, countsError = null,
             stats = BillStatsState(period = filter, type = current.stats.type),
         )
         if (UiPreview.enabled && preview) {
@@ -158,6 +173,7 @@ class BillViewModel internal constructor(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
             items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            listLoaded = false, summaryLoaded = false, listLoading = false, summaryError = null,
         )
         if (!preview && !mutable.value.needsLogin) load()
     }
@@ -169,13 +185,14 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(
             info = value, items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            listLoaded = false, summaryLoaded = false, listLoading = false, summaryError = null,
         )
         if (!preview && !mutable.value.needsLogin) load()
     }
 
     fun loadMore() {
         val current = mutable.value
-        if (UiPreview.enabled && preview || current.loading || current.refreshing || current.loadingMore) return
+        if (UiPreview.enabled && preview || current.listLoading || !current.listLoaded || current.loadingMore || current.needsLogin) return
         if (current.currentPage <= 0 || current.currentPage >= current.pages) return
         val next = current.currentPage + 1
         val dateFilter = current.dateFilter
@@ -210,9 +227,9 @@ class BillViewModel internal constructor(
                 throw e
             } catch (e: YktException) {
                 val auth = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
-                    needsLogin = auth, loadingMore = false,
-                    loadMoreError = if (auth) null else e.message ?: "加载更多失败，请重试",
+                    loadingMore = false, loadMoreError = e.message ?: "加载更多失败，请重试",
                 )
             } catch (_: Exception) {
                 mutable.value = mutable.value.copy(loadingMore = false, loadMoreError = "加载更多失败，请重试")
@@ -245,9 +262,7 @@ class BillViewModel internal constructor(
         if (type !in 1..2) return
         if (type == mutable.value.stats.type) return
         statsJob?.cancel()
-        mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(
-            type = type, loading = false, error = null, daily = emptyList(), categories = emptyList(), ranking = emptyList(), loaded = false,
-        ))
+        mutable.value = mutable.value.copy(stats = BillStatsState(period = mutable.value.stats.period, type = type))
         loadStats()
     }
 
@@ -264,6 +279,7 @@ class BillViewModel internal constructor(
         val current = mutable.value
         if (current.needsLogin && !manualRefresh) return
         loadJob?.cancel()
+        loadMoreJob?.cancel()
         val dateFilter = current.dateFilter
         val typeId = current.typeId
         val amountFrom = current.amountFromCents
@@ -276,67 +292,71 @@ class BillViewModel internal constructor(
             refreshing = manualRefresh || hasItems,
             error = null,
             loadMoreError = null,
+            listLoading = true, loadingMore = false,
         )
         loadJob = viewModelScope.launch {
+            fun publish(change: (BillUiState) -> BillUiState) {
+                val latest = mutable.value
+                if (latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
+                    latest.amountToCents == amountTo && latest.info == info) mutable.value = change(latest)
+            }
             try {
                 if (manualRefresh) {
                     val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
                     if (!exists) {
-                        mutable.value = mutable.value.copy(
-                            needsLogin = true, loaded = false, loading = false, refreshing = false,
-                        )
+                        clearAuthenticatedData()
                         return@launch
                     }
                     mutable.value = mutable.value.copy(needsLogin = false)
                 }
                 coroutineScope {
-                    val pageRequest = async {
-                        repository.bills(
-                            1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
-                            typeId, amountFrom, amountTo, info.ifBlank { null },
-                        )
-                    }
-                    val summaryRequest = async {
-                        optionalData(null) {
-                            repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo)
+                    launch {
+                        try {
+                            val page = repository.bills(1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
+                                typeId, amountFrom, amountTo, info.ifBlank { null })
+                            currentCoroutineContext().ensureActive()
+                            publish { it.copy(items = page.items, currentPage = page.current, pages = page.pages,
+                                listLoading = false, listLoaded = true, error = null) }
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) {
+                            currentCoroutineContext().ensureActive()
+                            if (isAuthenticationFailure(e)) throw e
+                            publish { it.copy(listLoading = false, listLoaded = true,
+                                error = (e as? YktException)?.message ?: "账单加载失败，请稍后重试") }
                         }
                     }
-                    val countsRequest = async {
-                        optionalData(null) {
-                            repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo)
+                    launch {
+                        val result = optionalData { repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo) }
+                        publish { it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
+                            summaryError = result.exceptionOrNull()?.let(::message)) }
+                    }
+                    launch {
+                        val result = optionalData { repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo) }
+                        publish { it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
+                            countsError = result.exceptionOrNull()?.let(::message)) }
+                    }
+                    launch {
+                        if (current.types.isEmpty()) {
+                            val result = optionalData { repository.billTypes() }
+                            publish { it.copy(types = result.getOrNull().orEmpty()) }
                         }
                     }
-                    val typesRequest = async {
-                        if (current.types.isEmpty()) optionalData(emptyList()) { repository.billTypes() }
-                        else current.types
-                    }
-                    val page = pageRequest.await()
-                    val summary = summaryRequest.await()
-                    val counts = countsRequest.await()
-                    val types = typesRequest.await()
-                    val latest = mutable.value
-                    if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
-                        latest.amountToCents != amountTo || latest.info != info
-                    ) return@coroutineScope
-                    mutable.value = latest.copy(
-                        needsLogin = false, items = page.items, summary = summary, counts = counts,
-                        currentPage = page.current, pages = page.pages, types = types,
-                        loading = false, refreshing = false, error = null, loaded = true,
-                    )
-                    lastLoadedAt = System.currentTimeMillis()
                 }
+                currentCoroutineContext().ensureActive()
+                publish { it.copy(loading = false, refreshing = false, loaded = true) }
+                lastLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
-                val auth = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                val auth = isAuthenticationFailure(e)
+                if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
-                    needsLogin = auth, loading = false, refreshing = false,
-                    error = if (auth) null else e.message ?: "账单加载失败，请稍后重试",
-                    loaded = !auth,
+                    needsLogin = false, loading = false, refreshing = false, listLoading = false,
+                    error = e.message ?: "账单加载失败，请稍后重试", loaded = true, listLoaded = true,
                 )
             } catch (_: Exception) {
                 mutable.value = mutable.value.copy(
-                    loading = false, refreshing = false, error = "服务数据异常，请稍后刷新",
+                    loading = false, refreshing = false, listLoading = false, error = "服务数据异常，请稍后刷新",
                 )
             }
         }
@@ -355,35 +375,41 @@ class BillViewModel internal constructor(
         val stats = mutable.value.stats
         mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null))
         statsJob = viewModelScope.launch {
+            fun publish(change: (BillStatsState) -> BillStatsState) {
+                val latest = mutable.value
+                if (latest.stats.period == stats.period && latest.stats.type == stats.type)
+                    mutable.value = latest.copy(stats = change(latest.stats))
+            }
             try {
                 coroutineScope {
-                    val dailyRequest = async {
-                        if (stats.period.trendSupported) repository.billTrend(stats.type, stats.period)
-                        else emptyList()
+                    launch {
+                        val result = optionalData {
+                            if (stats.period.trendSupported) repository.billTrend(stats.type, stats.period) else emptyList()
+                        }
+                        publish { it.copy(daily = result.getOrNull() ?: it.daily,
+                            dailyLoaded = it.dailyLoaded || result.isSuccess, dailyError = result.exceptionOrNull()?.let(::message)) }
                     }
-                    val categoriesRequest = async {
-                        repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo)
+                    launch {
+                        val result = optionalData { repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo) }
+                        publish { it.copy(categories = result.getOrNull() ?: it.categories,
+                            categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesError = result.exceptionOrNull()?.let(::message)) }
                     }
-                    val rankingRequest = async {
-                        repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5)
+                    launch {
+                        val result = optionalData { repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5) }
+                        publish { it.copy(ranking = result.getOrNull() ?: it.ranking,
+                            rankingLoaded = it.rankingLoaded || result.isSuccess, rankingError = result.exceptionOrNull()?.let(::message)) }
                     }
-                    val daily = dailyRequest.await()
-                    val categories = categoriesRequest.await()
-                    val ranking = rankingRequest.await()
-                    val latest = mutable.value
-                    if (latest.stats.period != stats.period || latest.stats.type != stats.type) return@coroutineScope
-                    mutable.value = latest.copy(stats = latest.stats.copy(
-                        loading = false, error = null, daily = daily, categories = categories, ranking = ranking, loaded = true,
-                    ))
-                    lastStatsLoadedAt = System.currentTimeMillis()
                 }
+                currentCoroutineContext().ensureActive()
+                publish { it.copy(loading = false, loaded = true) }
+                lastStatsLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
-                val auth = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                val auth = isAuthenticationFailure(e)
+                if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
-                    needsLogin = auth,
-                    stats = mutable.value.stats.copy(loading = false, error = if (auth) null else e.message ?: "统计数据加载失败"),
+                    stats = mutable.value.stats.copy(loading = false, error = e.message ?: "统计数据加载失败"),
                 )
             } catch (_: Exception) {
                 mutable.value = mutable.value.copy(
@@ -394,13 +420,30 @@ class BillViewModel internal constructor(
     }
 
     /** Missing optional metrics keep the list usable; an invalid identity cancels the whole load. */
-    private suspend fun <T> optionalData(fallback: T, block: suspend () -> T): T = try {
-        block()
+    private suspend fun <T> optionalData(block: suspend () -> T): Result<T> = try {
+        val value = block()
+        currentCoroutineContext().ensureActive()
+        Result.success(value)
     } catch (e: CancellationException) {
         throw e
-    } catch (e: YktException) {
-        if (e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) throw e
-        fallback
+    } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
+        if (isAuthenticationFailure(e)) throw e
+        Result.failure(e)
+    }
+
+    private fun isAuthenticationFailure(e: Exception) = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+    private fun message(e: Throwable) = (e as? YktException)?.message ?: "读取失败，请稍后重试"
+
+    private fun clearAuthenticatedData() {
+        // A metric can fail authentication after the list has already started another page.
+        cancelListJobs(); statsJob?.cancel()
+        lastLoadedAt = 0L; lastStatsLoadedAt = 0L
+        val current = mutable.value
+        mutable.value = BillUiState(needsLogin = true, dateFilter = current.dateFilter,
+            typeId = current.typeId, amountFromCents = current.amountFromCents, amountToCents = current.amountToCents,
+            info = current.info, statsVisible = current.statsVisible,
+            stats = BillStatsState(period = current.stats.period, type = current.stats.type))
     }
 
     private fun cancelListJobs() {

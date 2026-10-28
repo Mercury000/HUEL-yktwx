@@ -92,7 +92,7 @@ class PersonalDataViewModelTest {
         assertNotNull(model.state.value.summaryError)
         assertNull(model.state.value.profileError)
     }
-    @Test fun firstReadPublishesIdentityAndMonthTogetherAfterBothComplete() {
+    @Test fun firstReadPublishesIdentityBeforeTheSlowMonthlySummary() {
         var summaryEntered = false
         val profiles = object : ProfileService {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "示例专业", null)
@@ -107,10 +107,12 @@ class PersonalDataViewModelTest {
         val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
-        await { summaryEntered }
+        await { summaryEntered && model.state.value.profileLoaded && model.state.value.countsLoaded }
         assertTrue(model.state.value.loading)
         assertFalse(model.state.value.loaded)
-        assertNull(model.state.value.profile)
+        assertEquals("示例姓名", model.state.value.profile?.name)
+        assertFalse(model.state.value.summaryLoaded)
+        assertEquals(3, model.state.value.counts!!.income + model.state.value.counts!!.expenses)
         assertNull(model.state.value.summary)
         gate.complete(Unit)
         await { !model.state.value.loading }
@@ -120,7 +122,7 @@ class PersonalDataViewModelTest {
         assertEquals(3, model.state.value.counts!!.income + model.state.value.counts!!.expenses)
     }
 
-    @Test fun refreshingKeepsDisplayedIdentityAndErrorUntilNewReadCompletes() {
+    @Test fun refreshingReplacesTheMonthlyErrorWithoutWaitingForTheProfile() {
         var refreshing = false
         var profileEntered = false
         val profiles = object : ProfileService {
@@ -144,10 +146,11 @@ class PersonalDataViewModelTest {
         val previous = model.state.value
         assertNotNull(previous.summaryError)
         refreshing = true; model.refresh()
-        await { profileEntered }
+        await { profileEntered && model.state.value.summary != null }
         assertTrue(model.state.value.loaded)
         assertSame(previous.profile, model.state.value.profile)
-        assertEquals(previous.summaryError, model.state.value.summaryError)
+        assertNull(model.state.value.summaryError)
+        assertTrue(model.state.value.loading)
         gate.complete(Unit)
         await { !model.state.value.loading }
         assertNull(model.state.value.summaryError)
@@ -207,6 +210,11 @@ class PersonalDataViewModelTest {
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { avatarEntered && identityEntered }
+        assertEquals("示例姓名", model.state.value.profile?.name)
+        assertTrue(model.state.value.profileLoaded)
+        assertFalse(model.state.value.homeIdentityLoaded)
+        assertNull(model.state.value.avatar)
+        assertTrue(model.state.value.loading)
         gate.complete(Unit)
         await { !model.state.value.loading }
         assertArrayEquals(byteArrayOf(1), model.state.value.avatar)
@@ -238,7 +246,8 @@ class PersonalDataViewModelTest {
         await { !model.state.value.loading }
         assertEquals(100L, model.state.value.summary?.incomeCents)
         assertNull(model.state.value.counts)
-        assertNotNull(model.state.value.summaryError)
+        assertNotNull(model.state.value.countsError)
+        assertNull(model.state.value.summaryError)
         assertEquals("示例姓名", model.state.value.profile?.name)
     }
 

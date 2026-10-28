@@ -75,6 +75,19 @@ class YktApiLoginTest {
         assertEquals(1, fake.calls.size)
         assertTrue(fake.calls.single().url.path.endsWith("/codebarPayinfo"))
     }
+    @Test fun paymentPublishesTheVerifiedBalanceBeforeCardPreflightWithoutAnotherAccountQuery() = runBlocking {
+        val fake = ScriptedApi()
+        var published: PaymentAccount? = null
+        val batch = fake.api.payment("fake-token") { account ->
+            assertEquals(1, fake.calls.size)
+            assertTrue(fake.calls.single().url.path.endsWith("/codebarPayinfo"))
+            assertEquals(1234L, account.balanceCents)
+            published = account
+        }
+        assertSame(batch.account, published)
+        assertEquals(3, fake.calls.size)
+        assertEquals(1, fake.calls.count { it.url.path.endsWith("/codebarPayinfo") })
+    }
     @Test fun malformedBalancesCannotBecomeZeroOrTruncatedAmounts() = runBlocking {
         for (balance in listOf(null, JSONObject.NULL, "", "oops", -1, 12.5, "9223372036854775808")) {
             val fake = ScriptedApi(balance = balance)

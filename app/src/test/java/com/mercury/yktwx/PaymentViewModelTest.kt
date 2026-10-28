@@ -35,6 +35,8 @@ class PaymentViewModelTest {
     private var accountFailure: Exception? = null
     private var accountGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var accountResponses = 0
+    private var accountPublishGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private var paymentFailure: Exception? = null
     private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
         override suspend fun login(credentials: Credentials): Session {
             logins++
@@ -49,13 +51,15 @@ class PaymentViewModelTest {
             accountFailure?.let { throw it }
             return result
         }
-        override suspend fun payment(token: String): PaymentBatch {
+        override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
             payments++
             val allowed = codeAvailable
             val currentProblem = problem
             val currentAccount = account
+            withContext(NonCancellable) { accountPublishGate.await(); onAccount(currentAccount) }
             withContext(NonCancellable) { paymentGate.await() }
             responses++
+            paymentFailure?.let { throw it }
             if (!allowed) throw PaymentCodeUnavailable(currentAccount, "持卡人已挂失！", currentProblem)
             return PaymentBatch(listOf(payments.toString().padStart(20, '0')), 60, account)
         }
@@ -63,7 +67,48 @@ class PaymentViewModelTest {
     private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
     private val store = ViewModelStore().apply { put("payment", model) }
 
-    @After fun cleanup() { accountGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+    @After fun cleanup() { accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+
+    @Test fun firstBalanceIsVisibleWhileCardVerificationAndBarcodeRemainPending() {
+        codeAvailable = true
+        paymentGate = CompletableDeferred()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.account != null }
+        assertTrue(model.state.value.busy)
+        assertNull(model.state.value.code)
+        assertEquals(6496L, model.state.value.account!!.balanceCents)
+        paymentGate.complete(Unit)
+        await { !model.state.value.busy }
+        assertNotNull(model.state.value.code)
+    }
+    @Test fun authenticationFailureAfterPublishingBalanceClearsThePartialAccount() {
+        paymentGate = CompletableDeferred()
+        paymentFailure = AuthenticationRequired()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.account != null }
+        assertTrue(model.state.value.busy)
+        paymentGate.complete(Unit)
+        await { model.state.value.needsLogin && !model.state.value.busy }
+        assertNull(model.state.value.account)
+        assertNull(model.state.value.code)
+    }
+    @Test fun lateBalanceCallbackAfterLogoutCannotRestoreTheOldAccount() {
+        accountPublishGate = CompletableDeferred()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { payments == 1 }
+        model.logout()
+        await { model.state.value.needsLogin && !model.state.value.busy }
+        accountPublishGate.complete(Unit)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(model.state.value.account)
+        assertNull(model.state.value.code)
+    }
 
     @Test fun rejectedLoginCannotEnterMainUsingPreviousCredentials() {
         loginFailure = InvalidCredentials()
