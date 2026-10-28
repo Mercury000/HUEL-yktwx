@@ -20,6 +20,7 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.BillDateSelector
 import com.mercury.yktwx.ui.components.BillListMinimumDate
 import com.mercury.yktwx.ui.pages.BillPage
+import com.mercury.yktwx.ui.pages.HallPage
 import com.mercury.yktwx.ui.pages.MyPage
 import com.mercury.yktwx.ui.pages.PersonalProfilePage
 import org.junit.Assert.*
@@ -152,6 +153,60 @@ class DashboardInteractionTest {
         compose.runOnIdle { passwordLoading = false; rechargeLoading = true }
         manage.assertIsEnabled()
         password.assertIsEnabled()
+    }
+
+    @Test fun hallOnlyDisablesTheServiceEntryThatIsLoading() {
+        val hall = com.mercury.yktwx.preview.PreviewData.hallState()
+        val room = hall.rooms.single()
+        val lighting = room.meters.first { it.kind == DormMeterKind.Lighting }
+        var feeOpening by mutableStateOf<FeeProject?>(null)
+        var feeOpeningTarget by mutableStateOf<FeeRoomBinding?>(null)
+        var othersRechargeLoading by mutableStateOf(false)
+        val feeActions = mutableListOf<FeeProject>()
+        val cardActions = mutableListOf<CampusCardAction>()
+        content {
+            HallPage(settings, 0.dp, dorm = hall, feeOpening = feeOpening,
+                feeOpeningTarget = feeOpeningTarget, othersRechargeLoading = othersRechargeLoading,
+                onOpenFee = { feeActions += it }, onOpenCardService = { cardActions += it })
+        }
+        val lightingAction = hasText("照明充值") and hasClickAction()
+        val airAction = hasText("空调充值") and hasClickAction()
+        val networkAction = hasTestTag("network-recharge")
+        val othersAction = hasText("代人充值") and hasClickAction()
+
+        compose.onNode(lightingAction).assertIsEnabled()
+        compose.onNode(airAction).assertIsEnabled()
+        compose.onNode(networkAction).assertIsEnabled()
+        compose.onNode(othersAction).assertIsEnabled()
+
+        compose.runOnIdle {
+            feeOpening = room.project
+            feeOpeningTarget = lighting.room
+        }
+        compose.onNodeWithText("照明充值").assertIsNotEnabled()
+        compose.onNode(airAction).assertIsEnabled().performClick()
+        compose.onNode(networkAction).assertIsEnabled().performClick()
+        compose.onNode(othersAction).assertIsEnabled().performClick()
+        assertEquals(listOf(room.project, FeeProject.Network), feeActions)
+        assertEquals(listOf(CampusCardAction.OthersRecharge), cardActions)
+
+        compose.runOnIdle {
+            feeOpening = FeeProject.Network
+            feeOpeningTarget = null
+        }
+        compose.onNode(lightingAction).assertIsEnabled()
+        compose.onNode(airAction).assertIsEnabled()
+        compose.onNode(networkAction).assertIsNotEnabled()
+        compose.onNode(othersAction).assertIsEnabled()
+
+        compose.runOnIdle {
+            feeOpening = null
+            othersRechargeLoading = true
+        }
+        compose.onNode(lightingAction).assertIsEnabled()
+        compose.onNode(airAction).assertIsEnabled()
+        compose.onNode(networkAction).assertIsEnabled()
+        compose.onNode(othersAction).assertDoesNotExist()
     }
 
     @Test fun billsShowSkeletonBeforeActivationAndOnlyShowEmptyAfterLoadingCompletes() {
