@@ -70,6 +70,23 @@ class AccountRepositoryTest {
         val s = FakeService(); AccountRepository(s, MemoryVault()).refresh()
         assertEquals(0, s.logins); assertEquals(1, s.payments)
     }
+    @Test fun sessionVaultReadsNeverBlockTheCallingThread() = runBlocking {
+        val caller = Thread.currentThread()
+        val accessThreads = mutableListOf<Thread>()
+        val vault = object : Vault {
+            override fun credentials() = Credentials("123", "fake-password").also { accessThreads += Thread.currentThread() }
+            override fun session() = Session("old", Long.MAX_VALUE).also { accessThreads += Thread.currentThread() }
+            override fun saveCredentials(value: Credentials) = Unit
+            override fun saveSession(value: Session) = Unit
+            override fun clearSession() = Unit
+            override fun clear() = Unit
+        }
+
+        AccountRepository(FakeService(), vault).refresh()
+
+        assertTrue(accessThreads.isNotEmpty())
+        assertTrue(accessThreads.all { it !== caller })
+    }
     @Test fun expiredTokenLogsInOnce() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = Session("expired", 0)
         AccountRepository(s, v).refresh(); assertEquals(1, s.logins); assertEquals("new", v.session()?.accessToken)
