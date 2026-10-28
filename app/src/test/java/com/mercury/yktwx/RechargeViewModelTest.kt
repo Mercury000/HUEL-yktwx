@@ -28,7 +28,7 @@ class RechargeViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeRechargeService()
     // Any unexpected authentication/payment request fails locally, never reaches the network.
-    private val repository = AccountRepository(YktApi { error("Unexpected network request") }, vault, service)
+    private val repository = AccountRepository(FakeAccountService(), vault, service)
     private val model = RechargeViewModel(ApplicationProvider.getApplicationContext<Application>(), repository, 0L)
     private val store = ViewModelStore().apply { put("recharge", model) }
 
@@ -179,7 +179,7 @@ class RechargeViewModelTest {
         service.resultGate = CompletableDeferred()
         model.checkResult()
         await { service.resultQueries == 1 }
-        vault.username = "other-user"
+        runBlocking { repository.login("other-user", "fake-password") }
         model.accountChanged(vault.username)
         assertFalse(model.state.value.visible)
         assertNull(model.state.value.pending)
@@ -204,7 +204,7 @@ class RechargeViewModelTest {
         service.resultGate = CompletableDeferred()
         model.checkResult()
         await { service.resultQueries == 1 }
-        vault.username = "other-user"
+        runBlocking { repository.login("other-user", "fake-password") }
         // Even before the UI delivers accountChanged, the old owner's result must be rejected.
         service.resultGate.complete(Unit)
         await { !model.state.value.loading }
@@ -221,6 +221,7 @@ class RechargeViewModelTest {
     }
 
     @Test fun othersRechargeUsesSameCreationLaunchAndResultFlowWithRecipientMetadata() {
+        runBlocking { repository.username() }
         val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户")
         val config = RechargeConfiguration("401", recipient.targetId, listOf(1000), 1, 50000, true, false, recipient)
         model.onForeground()

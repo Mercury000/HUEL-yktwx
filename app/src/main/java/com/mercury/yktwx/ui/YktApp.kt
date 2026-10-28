@@ -258,9 +258,15 @@ private fun MainContent(
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
     LaunchedEffect(isActive, billState.needsLogin, myState.needsLogin, dormState.needsLogin) {
-        if (isActive && (billState.needsLogin || myState.needsLogin || dormState.needsLogin)) viewModel.refresh()
+        if (isActive && (billState.needsLogin || myState.needsLogin || dormState.needsLogin)) viewModel.refresh(manual = true)
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
+    val paymentPageVisible = isActive && pagerState.currentPage == 0 && layers.isEmpty() &&
+        !dormPaymentVisible && !rechargeState.visible && !cardState.visible && !passwordState.visible
+    DisposableEffect(viewModel, paymentPageVisible) {
+        viewModel.setPageVisible(paymentPageVisible)
+        onDispose { viewModel.setPageVisible(false) }
+    }
     val feeActive = isActive && dormPaymentVisible
     DisposableEffect(feeActive) {
         onDispose { if (feeActive) feeModel.dismiss() }

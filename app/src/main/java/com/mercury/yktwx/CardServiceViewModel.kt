@@ -244,7 +244,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         if (!s.visible || s.preview || s.loading || task?.isActive == true ||
             s.action != CampusCardAction.OthersRecharge || config.recipient !== recipient) return
         config.amountError(amountCents)?.let { mutable.value = s.copy(error = it); return }
-        if (repository.username() != owner) { mutable.value = s.copy(error = "账户已切换，请重新查询"); return }
+        if (!repository.ownsAccount(owner)) { mutable.value = s.copy(error = "账户已切换，请重新查询"); return }
         mutable.value = s.copy(loading = true, error = null)
         ready.trySend(RecipientRechargeRequest(owner, config, amountCents, s.preview, attempt))
     }
@@ -254,7 +254,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         job.start()
     }
     fun accepts(request: RecipientRechargeRequest) = request.attempt == attempt && request.username == owner &&
-        repository.username() == owner && mutable.value.visible && mutable.value.loading &&
+        repository.ownsAccount(owner) && mutable.value.visible && mutable.value.loading &&
         mutable.value.rechargeConfig === request.config && mutable.value.selectedRecipient === request.config.recipient
     fun accountChanged(username: String) { if (owner.isNotEmpty() && owner != username) dismiss() }
     fun dismiss() {

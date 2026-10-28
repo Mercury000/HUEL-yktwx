@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.junit.After
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit
 class FeeViewModelTest {
     private val fees = FakeFees()
     private val vault = MemoryVault()
-    private val repository = AccountRepository(YktApi(), vault, feeService = fees)
+    private val repository = AccountRepository(FakeAccountService(), vault, feeService = fees)
     private val model = FeeViewModel(ApplicationProvider.getApplicationContext<Application>(), repository, 0L)
     private val store = ViewModelStore().apply { put("fees", model) }
 
@@ -411,7 +412,7 @@ class FeeViewModelTest {
         rejectAccount()
         model.continuePayment(FeeMethod("999", "TSM", "未知", false, 0))
         assertEquals(1, fees.creations)
-        vault.username = "different-user"
+        runBlocking { repository.login("different-user", "fake-password") }
         model.continuePayment(fees.wechatMethod)
         assertEquals(1, fees.creations)
         model.accountChanged("different-user")
@@ -600,7 +601,7 @@ class FeeViewModelTest {
         var username = "test-user"
         override fun credentials() = Credentials(username, "fake-password")
         override fun session() = Session("fake-token", Long.MAX_VALUE)
-        override fun saveCredentials(value: Credentials) = Unit
+        override fun saveCredentials(value: Credentials) { username = value.username }
         override fun saveSession(value: Session) = Unit
         override fun clearSession() = Unit
         override fun clear() = Unit

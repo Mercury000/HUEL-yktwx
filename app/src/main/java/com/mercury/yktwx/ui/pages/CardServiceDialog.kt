@@ -1,6 +1,5 @@
 package com.mercury.yktwx.ui.pages
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,7 +9,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -29,6 +27,7 @@ import com.mercury.yktwx.ui.components.SheetPageContent
 import com.mercury.yktwx.ui.components.sheetContentSize
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.rememberWhileShown
+import com.mercury.yktwx.ui.components.rememberSampledImage
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -110,13 +109,11 @@ private fun RecipientRechargeSheet(
                 }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
                     modifier = Modifier.trackInputFocus().fillMaxWidth())
-                val bitmap = rememberWhileShown(show, remember(state.captcha) {
-                    state.captcha?.image?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-                })
+                val bitmap = rememberWhileShown(show, rememberSampledImage(state.captcha?.image, 112.dp, 56.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.width(112.dp).height(56.dp).clickable(enabled = enabled, role = Role.Button,
                         onClickLabel = "更换验证码", onClick = { captchaCode = ""; onRefreshCaptcha() }), contentAlignment = Alignment.Center) {
-                        if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
+                        if (bitmap != null) Image(bitmap, contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
                         else if (display.loading) CircularProgressIndicator(Modifier.size(24.dp))
                         else if (UiPreview.enabled && display.preview) PreviewNotes.Captcha()
                         else Text("点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

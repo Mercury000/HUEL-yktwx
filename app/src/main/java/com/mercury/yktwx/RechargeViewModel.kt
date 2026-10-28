@@ -83,7 +83,7 @@ class RechargeViewModel internal constructor(
         if (state.preview || state.loading || state.pending != null || task?.isActive == true) return
         val config = state.config ?: return
         config.amountError(amountCents)?.let { update(error = it); return }
-        if (repository.username() != owner) { update(error = "账户已切换，请重新打开充值"); return }
+        if (!repository.ownsAccount(owner)) { update(error = "账户已切换，请重新打开充值"); return }
         val current = attempt
         val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, recipient = config.recipient)
         update(loading = true, pending = pending, phase = RechargePhase.Creating, error = null)
@@ -118,7 +118,7 @@ class RechargeViewModel internal constructor(
         }
     }
 
-    fun canLaunchWechat(): Boolean = paymentReturn.canLaunch && owner.isNotEmpty() && repository.username() == owner && mutable.value.phase == RechargePhase.AwaitingPayment
+    fun canLaunchWechat(): Boolean = paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.phase == RechargePhase.AwaitingPayment
     fun wechatLaunched() = paymentReturn.launched()
     fun launchFailed() {
         paymentReturn.consume()
@@ -168,7 +168,7 @@ class RechargeViewModel internal constructor(
     }
 
     private fun requireOwner(pending: PendingRecharge) {
-        if (pending.username != owner || repository.username() != pending.username) throw YktException("账户已切换")
+        if (pending.username != owner || !repository.ownsAccount(pending.username)) throw YktException("账户已切换")
     }
     private fun showResult(phase: RechargePhase, error: String? = null) = update(visible = true, loading = false, phase = phase, error = error)
     private fun requestError(message: String) {

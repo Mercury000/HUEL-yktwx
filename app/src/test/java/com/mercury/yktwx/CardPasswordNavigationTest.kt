@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -14,6 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
@@ -69,16 +71,25 @@ class CardPasswordNavigationTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
         }
-        compose.waitUntil(5000) { !payment.state.value.restoringLogin }
+        compose.waitUntil(5000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            !payment.state.value.restoringLogin
+        }
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
         compose.onNodeWithText("修改查询密码").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitUntil(5000) { password.state.value.visible }
+        compose.waitUntil(5000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            password.state.value.visible
+        }
         compose.onNode(hasText("原查询密码") and hasSetTextAction()).performTextInput("123456")
         compose.onNode(hasText("新查询密码（6 位数字）") and hasSetTextAction()).performTextInput("654321")
         compose.onNode(hasText("确认新查询密码") and hasSetTextAction()).performTextInput("654321")
         compose.onNodeWithText("确认修改").performScrollTo().performClick()
         compose.onNodeWithText("确认修改").assertDoesNotExist()
-        compose.waitUntil(5000) { payment.state.value.needsLogin && !payment.state.value.busy }
+        compose.waitUntil(5000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            payment.state.value.needsLogin && !payment.state.value.busy
+        }
         compose.waitForIdle()
         compose.onNodeWithText("登录校园一卡通").assertIsDisplayed()
         compose.onNodeWithText("修改查询密码").assertDoesNotExist()

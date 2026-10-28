@@ -270,7 +270,7 @@ class RechargeApiTest {
         }
     }
 
-    @Test fun officialRechargeSuccessPredicateUsesCodeOnly() {
+    @Test fun officialRechargeSuccessPredicateUsesCodeOnly() = runBlocking {
         val http = PaymentHttp { error("No network allowed") }
         assertNotNull(http.json(PaymentHttp.Response(200,
             """{"code":200,"success":false}""", null), rechargePayment = true))

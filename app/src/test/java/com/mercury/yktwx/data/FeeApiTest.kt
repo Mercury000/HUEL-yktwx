@@ -228,7 +228,7 @@ class FeeApiTest {
         }
     }
 
-    @Test fun officialCashierUsesCodeAndStateWithoutAnErrorAllowlist() {
+    @Test fun officialCashierUsesCodeAndStateWithoutAnErrorAllowlist() = runBlocking {
         val http = PaymentHttp { error("No requests allowed") }
         for (body in listOf(
             """{"code":500,"msg":"金额超出交易限额"}""",
@@ -237,7 +237,7 @@ class FeeApiTest {
             """{"code":60005,"msg":"任意语言的提示"}""",
         )) {
             val rejected = assertThrows(FeePaymentRejected::class.java) {
-                http.json(PaymentHttp.Response(200, body, null), feePayment = true)
+                runBlocking { http.json(PaymentHttp.Response(200, body, null), feePayment = true) }
             }
             assertEquals(JSONObject(body).getString("msg"), rejected.message)
         }
@@ -250,12 +250,12 @@ class FeeApiTest {
         }
         for ((status, body) in listOf(503 to """{"code":400,"msg":"服务不可用"}""", 200 to "not-json")) {
             val error = assertThrows(YktException::class.java) {
-                http.json(PaymentHttp.Response(status, body, null), feePayment = true)
+                runBlocking { http.json(PaymentHttp.Response(status, body, null), feePayment = true) }
             }
             assertFalse(error is FeePaymentRejected)
         }
         val auth = assertThrows(AuthenticationRequired::class.java) {
-            http.json(PaymentHttp.Response(200, """{"code":401,"msg":"后端登录提示"}""", null), feePayment = true)
+            runBlocking { http.json(PaymentHttp.Response(200, """{"code":401,"msg":"后端登录提示"}""", null), feePayment = true) }
         }
         assertEquals("后端登录提示", auth.message)
     }

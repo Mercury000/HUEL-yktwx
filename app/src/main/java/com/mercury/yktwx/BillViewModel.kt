@@ -9,6 +9,8 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -287,49 +289,42 @@ class BillViewModel internal constructor(
                     }
                     mutable.value = mutable.value.copy(needsLogin = false)
                 }
-                val page = withContext(Dispatchers.IO) {
-                    repository.bills(
-                        1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
-                        typeId, amountFrom, amountTo, info.ifBlank { null },
+                coroutineScope {
+                    val pageRequest = async {
+                        repository.bills(
+                            1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
+                            typeId, amountFrom, amountTo, info.ifBlank { null },
+                        )
+                    }
+                    val summaryRequest = async {
+                        optionalData(null) {
+                            repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo)
+                        }
+                    }
+                    val countsRequest = async {
+                        optionalData(null) {
+                            repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo)
+                        }
+                    }
+                    val typesRequest = async {
+                        if (current.types.isEmpty()) optionalData(emptyList()) { repository.billTypes() }
+                        else current.types
+                    }
+                    val page = pageRequest.await()
+                    val summary = summaryRequest.await()
+                    val counts = countsRequest.await()
+                    val types = typesRequest.await()
+                    val latest = mutable.value
+                    if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
+                        latest.amountToCents != amountTo || latest.info != info
+                    ) return@coroutineScope
+                    mutable.value = latest.copy(
+                        needsLogin = false, items = page.items, summary = summary, counts = counts,
+                        currentPage = page.current, pages = page.pages, types = types,
+                        loading = false, refreshing = false, error = null, loaded = true,
                     )
+                    lastLoadedAt = System.currentTimeMillis()
                 }
-                val summary = try {
-                    withContext(Dispatchers.IO) {
-                        repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: YktException) {
-                    null
-                }
-                val counts = try {
-                    withContext(Dispatchers.IO) {
-                        repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: YktException) {
-                    null
-                }
-                val types = if (current.types.isEmpty()) {
-                    try {
-                        withContext(Dispatchers.IO) { repository.billTypes() }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: YktException) {
-                        emptyList()
-                    }
-                } else current.types
-                val latest = mutable.value
-                if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
-                    latest.amountToCents != amountTo || latest.info != info
-                ) return@launch
-                mutable.value = latest.copy(
-                    needsLogin = false, items = page.items, summary = summary, counts = counts,
-                    currentPage = page.current, pages = page.pages, types = types,
-                    loading = false, refreshing = false, error = null, loaded = true,
-                )
-                lastLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
@@ -361,23 +356,27 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null))
         statsJob = viewModelScope.launch {
             try {
-                val daily = if (stats.period.trendSupported) {
-                    withContext(Dispatchers.IO) { repository.billTrend(stats.type, stats.period) }
-                } else {
-                    emptyList()
+                coroutineScope {
+                    val dailyRequest = async {
+                        if (stats.period.trendSupported) repository.billTrend(stats.type, stats.period)
+                        else emptyList()
+                    }
+                    val categoriesRequest = async {
+                        repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo)
+                    }
+                    val rankingRequest = async {
+                        repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5)
+                    }
+                    val daily = dailyRequest.await()
+                    val categories = categoriesRequest.await()
+                    val ranking = rankingRequest.await()
+                    val latest = mutable.value
+                    if (latest.stats.period != stats.period || latest.stats.type != stats.type) return@coroutineScope
+                    mutable.value = latest.copy(stats = latest.stats.copy(
+                        loading = false, error = null, daily = daily, categories = categories, ranking = ranking, loaded = true,
+                    ))
+                    lastStatsLoadedAt = System.currentTimeMillis()
                 }
-                val categories = withContext(Dispatchers.IO) {
-                    repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo)
-                }
-                val ranking = withContext(Dispatchers.IO) {
-                    repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5)
-                }
-                val latest = mutable.value
-                if (latest.stats.period != stats.period || latest.stats.type != stats.type) return@launch
-                mutable.value = latest.copy(stats = latest.stats.copy(
-                    loading = false, error = null, daily = daily, categories = categories, ranking = ranking, loaded = true,
-                ))
-                lastStatsLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
@@ -392,6 +391,16 @@ class BillViewModel internal constructor(
                 )
             }
         }
+    }
+
+    /** Missing optional metrics keep the list usable; an invalid identity cancels the whole load. */
+    private suspend fun <T> optionalData(fallback: T, block: suspend () -> T): T = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: YktException) {
+        if (e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) throw e
+        fallback
     }
 
     private fun cancelListJobs() {

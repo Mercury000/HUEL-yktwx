@@ -1,6 +1,5 @@
 package com.mercury.yktwx.ui.pages
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,7 +15,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -209,7 +207,7 @@ internal fun cardStatus(problem: PaymentCodeProblem?, hasAccount: Boolean, busy:
 
 @Composable
 internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
-    val bitmap = remember(bytes) { bytes?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() } }
+    val bitmap = rememberSampledImage(bytes, size, size, crop = true)
     Box(Modifier.size(size).clip(RoundedCornerShape(size * .28f)).background(MiuixTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap, "校园系统头像", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = MiuixTheme.colorScheme.primary)

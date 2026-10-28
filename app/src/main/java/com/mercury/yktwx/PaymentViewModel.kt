@@ -44,10 +44,12 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     val messages = notifications.receiveAsFlow()
     private var initialized = false
     private var foreground = false
+    private var pageVisible = true
     private var ticker: Job? = null
     private var request: Job? = null
     private var logoutJob: Job? = null
     private var preview = false
+    private var previewLost = false
     private var requestVersion = 0L
     private val mutableSuccess = MutableStateFlow<Long?>(null)
     val paymentSuccess = mutableSuccess.asStateFlow()
@@ -118,6 +120,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (initialized) return
         initialized = true
         preview = UiPreview.enabled && uiPreview
+        this.previewLost = previewLost
         if (UiPreview.enabled && preview) {
             mutable.value = PreviewData.paymentState(previewLost)
             return
@@ -127,7 +130,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 val username = withContext(Dispatchers.IO) { repository.username() }
                 val exists = username.isNotBlank()
                 mutable.value = PaymentUiState(needsLogin = !exists, username = username)
-                if (exists && foreground) refresh()
+                if (exists && foreground && pageVisible) refresh()
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
                 mutable.value = PaymentUiState(error = "无法读取本机登录信息，请重新登录")
@@ -136,13 +139,26 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun onForeground() {
         foreground = true
-        if (initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
+        if (UiPreview.enabled && preview && pageVisible) mutable.value = PreviewData.paymentState(previewLost)
+        else if (pageVisible && initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
+    }
+    /** Pager preloading does not keep payment codes or their refresh loop alive. */
+    fun setPageVisible(visible: Boolean) {
+        if (pageVisible == visible) return
+        pageVisible = visible
+        if (!visible) pausePaymentDisplay()
+        else if (UiPreview.enabled && preview) mutable.value = PreviewData.paymentState(previewLost)
+        else if (foreground && initialized) refresh()
     }
     fun onBackground() {
+        foreground = false
+        pausePaymentDisplay()
+    }
+    private fun pausePaymentDisplay() {
         setPaymentMotionActive(false)
         mutableSuccess.value = null
         requestVersion++
-        foreground = false; ticker?.cancel(); request?.cancel()
+        ticker?.cancel(); request?.cancel()
         val old = mutable.value
         mutable.value = PaymentUiState(
             old.needsLogin, logoutJob?.isActive == true, old.error, old.username,
@@ -182,7 +198,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         }
     }
     fun refresh(manual: Boolean = false) {
-        if (preview || mutable.value.restoringLogin || mutable.value.busy || mutable.value.needsLogin) return
+        if ((!manual && !pageVisible) || preview || mutable.value.restoringLogin || mutable.value.busy || mutable.value.needsLogin) return
         ticker?.cancel()
         val version = ++requestVersion
         val username = mutable.value.username
@@ -222,7 +238,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     private fun show(batch: PaymentBatch, username: String, version: Long) {
         if (version != requestVersion) return
-        if (!foreground) {
+        if (!foreground || !pageVisible) {
             mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)
             return
         }
@@ -231,7 +247,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         ticker?.cancel()
         ticker = viewModelScope.launch {
             val started = SystemClock.elapsedRealtime()
-            while (foreground && version == requestVersion) {
+            while (foreground && pageVisible && version == requestVersion) {
                 val elapsed = (SystemClock.elapsedRealtime() - started) / 1000
                 if (elapsed >= interval) {
                     refresh(); return@launch
