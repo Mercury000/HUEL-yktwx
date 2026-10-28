@@ -82,7 +82,7 @@ adb install -r .\app\build\outputs\apk\debug\app-debug.apk
 
 首次启动在手机上输入本人学号 / 工号及密码。常规模式启用 `FLAG_SECURE`，限制截图及任务预览。
 
-可调试构建可用虚构码检查 UI；此模式不使用真实账户、不请求付款码：
+`debug` / `preview` 构建可用虚构码检查 UI；此模式不使用真实账户、不请求付款码：
 
 ```powershell
 adb install -r .\app\build\outputs\apk\preview\app-preview.apk
@@ -90,6 +90,8 @@ adb shell am start -n com.mercury.yktwx.preview/com.mercury.yktwx.MainActivity -
 ```
 
 预览模式关闭截图限制，**不可用于真实付款**。同签名、同包名可覆盖更新；独立 preview 包不与常规包共享账户数据。
+
+预览假数据、提示文案和启动参数仅位于 `app/src/uiPreview/kotlin/`，由 `debug` / `preview` 的 Kotlin source set 编译。`release` / `personal` 使用 `app/src/production/kotlin/` 的禁用实现；共用代码中的预览分支由 `UiPreview.enabled` 编译期常量关闭，正式包不包含预览数据和文案，传入 `ui_preview` / `ui_preview_lost` 也不会开启预览。
 
 ## Python 客户端
 
@@ -119,6 +121,9 @@ python -m unittest discover -s . -p "test_*.py" -v
 
 # 全部 JVM 测试，包括 Robolectric native graphics UI 冒烟测试
 .\gradlew.bat :app:testDebugUnitTest
+
+# 正式构建的预览隔离回归（虚构账户，不请求网络）
+.\gradlew.bat :app:testReleaseUnitTest --tests "com.mercury.yktwx.UiPreviewIsolationTest"
 ```
 
 测试优先覆盖金额精度与限额、鉴权、订单响应匹配和支付状态流程。充值流程测试验证重复点击不重复下单、微信回跳不等于支付成功、查单异常不冒报结果，以及取消或切换账户后旧响应不能更新新状态；不依赖弹窗文案和布局。
@@ -150,6 +155,8 @@ app/
     ui/                   # miuix 主题、Tab、页面和分层导航
     MainActivity.kt
     PaymentViewModel.kt
+  src/uiPreview/kotlin/   # 仅 debug / preview 编译的预览数据与文案
+  src/production/kotlin/  # release / personal 的预览禁用实现
   src/main/res/           # 应用资源、双语文案、备份规则
   src/test/               # 数据层回归测试与 UI 冒烟测试
 docs/api.md               # 内部接口协议说明

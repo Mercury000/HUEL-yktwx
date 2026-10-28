@@ -38,11 +38,27 @@ android {
             matchingFallbacks += "release"
         }
     }
+    sourceSets {
+        // Only these builds compile UI fixtures, preview notes and intent extras.
+        listOf("debug", "preview").forEach { getByName(it).kotlin.directories.add("src/uiPreview/kotlin") }
+        listOf("release", "personal").forEach { getByName(it).kotlin.directories.add("src/production/kotlin") }
+    }
 }
 androidComponents {
+    beforeVariants(selector().all()) { variant ->
+        // Exercise both source-set implementations; AGP only enables debug tests by default.
+        variant.hostTests.values.filter { it.type == com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE }
+            .forEach { it.enable = true }
+    }
     onVariants(selector().all()) { variant ->
         // Compress distributable APKs; keep local debug/preview packaging fast.
         variant.packaging.dex.useLegacyPackaging.set(!variant.debuggable)
+    }
+}
+tasks.withType<Test>().configureEach {
+    // Existing UI tests require debug fixtures and its test activity manifest.
+    if (name in setOf("testPreviewUnitTest", "testReleaseUnitTest", "testPersonalUnitTest")) {
+        filter { includeTestsMatching("com.mercury.yktwx.UiPreviewIsolationTest") }
     }
 }
 java { toolchain { languageVersion = JavaLanguageVersion.of(22) } }

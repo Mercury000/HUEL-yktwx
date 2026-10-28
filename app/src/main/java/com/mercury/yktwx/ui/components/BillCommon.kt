@@ -598,13 +598,3 @@ internal fun BillLoadingCard(message: String = "正在加载账单") {
         }
     }
 }
-
-@Composable
-internal fun BillPreviewNote() {
-    Text(
-        "账单预览 · 以下交易为演示数据",
-        modifier = Modifier.padding(horizontal = 4.dp),
-        fontSize = 13.sp,
-        color = MiuixTheme.colorScheme.primary,
-    )
-}

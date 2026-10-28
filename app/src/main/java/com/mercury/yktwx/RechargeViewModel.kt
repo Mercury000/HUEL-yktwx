@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -53,17 +55,15 @@ class RechargeViewModel internal constructor(
         endAttempt()
         owner = username
         val current = attempt
-        mutable.value = RechargeUiState(loading = true, preview = preview)
+        mutable.value = RechargeUiState(loading = true, preview = UiPreview.enabled && preview)
         task = viewModelScope.launch {
             try {
-                val config = if (preview) RechargeConfiguration(
-                    "demo", "demo", listOf(1000, 5000, 10000), 1, 50000, true, false,
-                ) else repository.rechargeConfiguration(preferredCard)
-                if (attempt == current) mutable.value = RechargeUiState(visible = true, config = config, preview = preview)
+                val config = if (UiPreview.enabled && preview) PreviewData.rechargeConfiguration() else repository.rechargeConfiguration(preferredCard)
+                if (attempt == current) mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (attempt == current) {
-                    mutable.value = RechargeUiState(preview = preview)
+                    mutable.value = RechargeUiState(preview = UiPreview.enabled && preview)
                     // Toasts are only for failures before a dialog can be opened.
                     notifications.send(safeError(e, "读取充值信息失败，请稍后重试"))
                 }
@@ -75,7 +75,7 @@ class RechargeViewModel internal constructor(
         if (config.recipient == null) return
         endAttempt()
         owner = username
-        mutable.value = RechargeUiState(visible = true, config = config, preview = preview)
+        mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
     }
 
     fun submit(amountCents: Long) {

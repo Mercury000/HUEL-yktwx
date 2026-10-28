@@ -4,6 +4,8 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -115,16 +117,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false) {
         if (initialized) return
         initialized = true
-        preview = BuildConfig.DEBUG && uiPreview
-        if (preview) {
-            val account = PaymentAccount("demo", "000", "1", "统一账户", 18650)
-            if (previewLost) {
-                mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", account = account,
-                    preview = true, problem = PaymentCodeProblem.Lost)
-            } else {
-                val batch = PaymentBatch(List(10) { "00000000000000000000" }, 60, account)
-                mutable.value = PaymentUiState(needsLogin = false, username = "界面预览", account = batch.account, code = batch.codes[0], secondsLeft = 60, preview = true)
-            }
+        preview = UiPreview.enabled && uiPreview
+        if (UiPreview.enabled && preview) {
+            mutable.value = PreviewData.paymentState(previewLost)
             return
         }
         viewModelScope.launch {

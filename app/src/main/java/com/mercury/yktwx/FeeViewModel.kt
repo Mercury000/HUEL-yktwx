@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.AccountRepository
 import kotlinx.coroutines.CancellationException
@@ -87,36 +89,35 @@ class FeeViewModel internal constructor(
         dismiss()
         fixedHallTarget = requestedRoom != null
         owner = username
-        mutable.value = FeeUiState(loading = true, preview = preview)
+        mutable.value = FeeUiState(loading = true, preview = UiPreview.enabled && preview)
         val generation = attempt
         launchTask {
             try {
-                val config = if (preview) FeeConfiguration(project, RechargeConfiguration(project.id, "", if (project.network) listOf(1500,3000,4500) else listOf(1000,5000,10000), 1, 200000, true, false),
-                    roomBindingEnabled = !project.network && project != FeeProject.Commercial)
+                val config = if (UiPreview.enabled && preview) PreviewData.feeConfiguration(project)
                     else repository.feeConfiguration(username, project)
                 if (attempt != generation) return@launchTask
-                val initial = if (preview) previewQuery(project, false, 0)
+                val initial = if (UiPreview.enabled && preview) PreviewData.feeQuery(project, false, 0, emptyMap())
                     else repository.feeQuery(username, project, 0, emptyMap(), false)
                 if (attempt != generation) return@launchTask
                 if (initial.tip != null) throw YktException(initial.tip)
                 if (project.network || initial.levels.isEmpty()) {
-                    val detail = if (preview) previewQuery(project, true, 0)
+                    val detail = if (UiPreview.enabled && preview) PreviewData.feeQuery(project, true, 0, emptyMap())
                         else repository.feeQuery(username, project, 0, emptyMap(), true)
                     if (attempt == generation) {
                         if (detail.tip != null) throw YktException(detail.tip)
-                        mutable.value = FeeUiState(config, query = detail, preview = preview)
+                        mutable.value = FeeUiState(config, query = detail, preview = UiPreview.enabled && preview)
                     }
                 } else {
                     val first = initial.levels.first()
                     val entrance = FeeUiState(config, levels = initial.levels,
-                        options = mapOf(first.number to initial.options), preview = preview)
+                        options = mapOf(first.number to initial.options), preview = UiPreview.enabled && preview)
                     if (initial.options.isEmpty()) throw YktException("没有可用的校区")
                     val target = requestedRoom
-                    if (preview && requestedRoom != null) {
+                    if (UiPreview.enabled && preview && requestedRoom != null) {
                         mutable.value = FeeUiState(config, levels = initial.levels,
                             selections = requestedRoom.selections, names = requestedRoom.names,
                             options = initial.levels.associate { it.number to listOf(FeeOption(requestedRoom.selections.getValue(it.key), requestedRoom.names.getValue(it.key))) },
-                            query = previewQuery(project, true, initial.levels.last().number), preview = true)
+                            query = PreviewData.feeQuery(project, true, initial.levels.last().number, requestedRoom.selections), preview = true)
                     } else if (target != null) {
                         restoreRoom(entrance, target, generation)
                     } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
@@ -128,7 +129,7 @@ class FeeViewModel internal constructor(
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (attempt == generation) mutable.value = FeeUiState(error = message(e), preview = preview)
+                if (attempt == generation) mutable.value = FeeUiState(error = message(e), preview = UiPreview.enabled && preview)
             }
         }
     }
@@ -146,9 +147,7 @@ class FeeViewModel internal constructor(
         mutable.value = copy(state, loading = true, error = null, query = null, switchingProject = project)
         launchTask {
             try {
-                val config = if (state.preview) FeeConfiguration(project,
-                    RechargeConfiguration(project.id, "", listOf(1000, 5000, 10000), 1, 200000, true, false),
-                    roomBindingEnabled = true)
+                val config = if (UiPreview.enabled && state.preview) PreviewData.feeConfiguration(project)
                     else repository.feeConfiguration(owner, project)
                 if (generation != attempt) return@launchTask
                 val initial = feeQueryFor(project, 0, emptyMap(), false, state.preview)
@@ -266,7 +265,7 @@ class FeeViewModel internal constructor(
         continueLoading: Boolean = false): FeeUiState? {
         val config = state.config ?: return null
         val next = state.levels.firstOrNull { it.number > level.number }
-        val query = if (state.preview) previewQuery(config.project, next == null, level.number)
+        val query = if (UiPreview.enabled && state.preview) PreviewData.feeQuery(config.project, next == null, level.number, mutable.value.selections)
             else repository.feeQuery(owner, config.project, level.number, state.selections, next == null)
         if (generation != attempt) return null
         return copy(state, loading = continueLoading, selecting = false, error = query.tip,
@@ -383,8 +382,8 @@ class FeeViewModel internal constructor(
     }
 
     private suspend fun feeQueryFor(project: FeeProject, level: Int, selections: Map<String, String>,
-        detail: Boolean, preview: Boolean): FeeQuery = if (preview) {
-        previewQuery(project, detail, level, selections)
+        detail: Boolean, preview: Boolean): FeeQuery = if (UiPreview.enabled && preview) {
+        PreviewData.feeQuery(project, detail, level, selections)
     } else {
         repository.feeQuery(owner, project, level, selections, detail)
     }
@@ -420,7 +419,7 @@ class FeeViewModel internal constructor(
             if (generation != attempt) return@launchTask
             // Even a lost write response must be reconciled by a read, never by replaying the write.
             try {
-                val fresh = if (state.preview) target else repository.feeConfiguration(owner, config.project).let {
+                val fresh = if (UiPreview.enabled && state.preview) target else repository.feeConfiguration(owner, config.project).let {
                     if (!it.roomBindingEnabled || it.invalidRoomBinding) throw YktException("房间绑定状态无法确认")
                     it.roomBinding
                 }
@@ -704,42 +703,6 @@ class FeeViewModel internal constructor(
             stage = FeeStage.Result, resultPhase = RechargePhase.Checking, preparation = null)
     }
     private fun message(e:Exception)=if(e is YktException)e.message ?: "服务暂不可用" else "服务数据异常，请稍后重试"
-    private fun previewQuery(project: FeeProject, detail: Boolean, level: Int,
-        selections: Map<String, String> = mutable.value.selections): FeeQuery {
-        if (detail) {
-            val roomId = selections["room"].orEmpty()
-            val display = when {
-                project.network -> listOf("用户套餐" to "学生宽带套餐", "用户状态" to "正常")
-                project == FeeProject.FamilyWater -> listOf("剩余水量(吨)" to "28.60")
-                project == FeeProject.Commercial -> listOf("剩余水电量" to "156.80")
-                else -> listOf("剩余电量" to (if (roomId.endsWith("AirConditioning")) "32.8 度" else "86.4 度"))
-            }
-            return FeeQuery(thirdParty = "{}", display = display)
-        }
-        val levels = if (project.network) emptyList() else listOf(FeeLevel("campus", 1, "校区"),
-            FeeLevel("building", 2, "楼栋"), FeeLevel("floor", 3, "楼层"), FeeLevel("room", 4, "房间"))
-        val buildingId = selections["building"].orEmpty()
-        val letter = buildingId.removePrefix("demo-building-").substringBefore('-').ifEmpty { "A" }
-        val wenbeiKind = if (buildingId.endsWith("AirConditioning")) DormMeterKind.AirConditioning else DormMeterKind.Lighting
-        val options = when (level) {
-            0 -> listOf(FeeOption("demo-campus", if (project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater))
-                "家属区" else project.label.removeSuffix("电费")))
-            1 -> if (project == FeeProject.Wenbei) listOf("A", "B", "C").flatMap { letter ->
-                listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning).map { kind ->
-                    FeeOption("demo-building-$letter-${kind.name}", "示例${letter}栋${kind.label}")
-                }
-            } else listOf("A", "B", "C").map { FeeOption("demo-building-$it", "示例${it}栋") }
-            2 -> listOf(FeeOption(if (project == FeeProject.Wenbei) "demo-floor-${wenbeiKind.name}" else "demo-floor", "示例楼层"))
-            else -> if (project == FeeProject.Wenbei) listOf("A", "B").map { room ->
-                FeeOption("demo-$room-${wenbeiKind.name}", "示例${letter}栋-房间${room}${wenbeiKind.label}")
-            } else if (project == FeeProject.Zhengdong)
-                listOf("A", "B").flatMap { room -> listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning).map { kind ->
-                    FeeOption("demo-$room-${kind.name}", "示例${letter}栋-房间${room}${kind.label}")
-                } }
-                else listOf(FeeOption("demo-$letter-Other", "房间$letter"))
-        }
-        return FeeQuery(levels = levels, options = options)
-    }
     private fun copy(
         s: FeeUiState,
         config: FeeConfiguration? = s.config,

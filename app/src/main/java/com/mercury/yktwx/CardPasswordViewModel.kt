@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.preview.PreviewData
+import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -42,11 +44,10 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
         reset()
         owner = username
         val current = attempt
-        mutable.value = CardPasswordUiState(loading = true, preview = preview)
+        mutable.value = CardPasswordUiState(loading = true, preview = UiPreview.enabled && preview)
         task = viewModelScope.launch {
             try {
-                val config = if (preview) CardPasswordConfiguration(listOf(
-                    CampusCard("demo-card", "校园卡", "202600000001", false, false, 0)))
+                val config = if (UiPreview.enabled && preview) PreviewData.passwordConfiguration()
                     else repository.passwordConfiguration(username)
                 if (current != attempt) return@launch
                 mutable.value = mutable.value.copy(visible = true, loading = false, cards = config.cards,
