@@ -30,6 +30,7 @@ import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
 import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.data.RechargeRecipient
+import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import com.mercury.yktwx.ui.components.ContentPlaceholder
@@ -89,7 +90,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
             if (config?.allowCustom != false) PaymentControlPlaceholder {
                 TextField(value = "", onValueChange = {}, label = paymentAmountLabel(config),
                     useLabelAsPlaceholder = true, singleLine = true, enabled = false,
-                    modifier = Modifier.fillMaxWidth())
+                    modifier = Modifier.trackInputFocus().fillMaxWidth())
             }
         }
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
@@ -161,7 +162,7 @@ internal fun PaymentAmountInput(
                     }
                 },
                 label = paymentAmountLabel(config), useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.trackInputFocus().fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = if (config.integerOnly) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     focusManager.clearFocus()

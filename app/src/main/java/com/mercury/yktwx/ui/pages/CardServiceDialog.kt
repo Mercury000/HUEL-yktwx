@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetPageContent
@@ -106,7 +107,7 @@ private fun RecipientRechargeSheet(
                     onRecipientEdited()
                 }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
-                    modifier = Modifier.fillMaxWidth())
+                    modifier = Modifier.trackInputFocus().fillMaxWidth())
                 val bitmap = rememberWhileShown(show, remember(state.captcha) {
                     state.captcha?.image?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
                 })
@@ -118,7 +119,7 @@ private fun RecipientRechargeSheet(
                         else Text(if (display.preview) "预览" else "点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
-                        enabled = enabled, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
+                        enabled = enabled, modifier = Modifier.trackInputFocus().weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
                 InlineError(display.error)
                 Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
@@ -156,7 +157,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 TextField(value = password,
                     onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
                     enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.trackInputFocus().fillMaxWidth())
             } else {
                 if (!display.loading && card == null && display.error == null) Text(
                     if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
