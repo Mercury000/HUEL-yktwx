@@ -230,7 +230,7 @@ private fun HallFeeTargetPlaceholder() {
     Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取房间选项" },
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         repeat(3) {
-            PaymentControlPlaceholder { FeeLocationDropdown("", emptyList(), 0, false) {} }
+            PaymentControlPlaceholder { FeeLocationDropdownPlaceholder() }
         }
         PaymentControlPlaceholder {
             Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("选择房间") }
@@ -287,17 +287,23 @@ internal fun HallFeeTargetOptions(state: FeeUiState, onSelect: (FeeLevel, FeeOpt
 @Composable
 private fun HallFeeTargetOptions(state: HallFeeFormDisplay, onSelect: (FeeLevel, FeeOption) -> Unit,
     onMeterKind: (DormMeterKind) -> Unit, enabled: Boolean) {
-    val levels = state.levels.filterNot { it.key in state.hiddenLevels }
+    val levels = remember(state.levels, state.hiddenLevels) {
+        state.levels.filterNot { it.key in state.hiddenLevels }
+    }
     val project = state.project
-    val meterChoices = if (project in setOf(FeeProject.Zhengdong, FeeProject.Wenbei))
-        dormMeterChoices(levels, state.options) else null
+    val meterChoices = remember(project, levels, state.options) {
+        if (project == FeeProject.Zhengdong || project == FeeProject.Wenbei)
+            dormMeterChoices(levels, state.options) else null
+    }
 
     @Composable fun field(level: FeeLevel) {
         val available = state.options[level.number].orEmpty()
         val selected = available.indexOfFirst { it.id == state.selections[level.key] } + 1
-        val labels = if (project == FeeProject.Wenbei && meterChoices != null &&
-            level.number > meterChoices.level.number) available.map { physicalLabel(it.name) }
+        val labels = remember(project, level, meterChoices, available) {
+            if (project == FeeProject.Wenbei && meterChoices != null &&
+                level.number > meterChoices.level.number) available.map { physicalLabel(it.name) }
             else available.map { it.name }
+        }
         FeeLocationDropdown(level.name, labels, selected, enabled) { index ->
             available.getOrNull(index)?.let { onSelect(level, it) }
         }
@@ -307,8 +313,9 @@ private fun HallFeeTargetOptions(state: HallFeeFormDisplay, onSelect: (FeeLevel,
         levels.forEach { level ->
             if (meterChoices?.level == level) {
                 val choices = meterChoices.choices
+                val labels = remember(choices) { choices.map { it.label } }
                 val selectedChoice = meterChoices.selectedChoice(state.selections[level.key])
-                FeeLocationDropdown(level.name, choices.map { it.label },
+                FeeLocationDropdown(level.name, labels,
                     selectedChoice?.let { choices.indexOf(it) + 1 } ?: 0, enabled) { index ->
                     choices.getOrNull(index)?.let { choice ->
                         val preferred = choice.option(DormMeterKind.Lighting) ?: choice.options.firstOrNull()

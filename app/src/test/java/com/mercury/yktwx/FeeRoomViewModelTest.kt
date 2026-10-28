@@ -28,6 +28,7 @@ class FeeRoomViewModelTest {
     private val store = ViewModelStore().apply { put("rooms", model) }
 
     @After fun cleanup() {
+        fees.restoreGate.complete(Unit)
         fees.writeGate.complete(Unit)
         fees.familySwitchGate.complete(Unit)
         fees.wenbeiSwitchGate.complete(Unit)
@@ -273,6 +274,30 @@ class FeeRoomViewModelTest {
         selectRoom(1)
         assertNull(model.state.value.roomDialog)
     }
+    @Test fun fixedRoomRestoreKeepsIntermediateSelectionsOutOfTheVisibleState() {
+        val target = fees.room(0)
+        fees.restoreGate = CompletableDeferred()
+        model.open(FeeProject.Wenbei, vault.username, false, target)
+        await { 2 in fees.queryLevels }
+        val loading = model.state.value
+        assertTrue(loading.loading)
+        assertEquals(fees.levels, loading.levels)
+        assertTrue(loading.selections.isEmpty())
+        assertNull(loading.query)
+        model.createWithMethod(100, "ACCOUNTTSM")
+        assertEquals(0, fees.creations)
+
+        fees.restoreGate.complete(Unit)
+        await { !model.state.value.loading }
+        val ready = model.state.value
+        assertTrue(target.sameTarget(ready.currentRoom))
+        assertEquals(setOf("campus"), ready.hiddenLevels)
+        assertEquals(fees.rooms, ready.options[2])
+        assertEquals(target.selections, org.json.JSONObject(ready.query!!.thirdParty!!)
+            .let { value -> value.keys().asSequence().associateWith { value.getString(it) } })
+        assertEquals(0, fees.writes)
+    }
+
     @Test fun requestedSavedRoomRestoresOptionsAndReselectingNeverPromptsAutomatically() {
         fees.saved = fees.room(0)
         open(requestedRoom = fees.saved)
@@ -442,6 +467,7 @@ class FeeRoomViewModelTest {
         var applyWrite = true
         var writeFailure: Exception? = null
         var writeGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var restoreGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         fun room(index: Int) = FeeRoomBinding.from(levels,
             mapOf("campus" to "demo-campus", "room" to rooms[index].id),
             mapOf("campus" to "示例校区", "room" to rooms[index].name))!!
@@ -452,6 +478,7 @@ class FeeRoomViewModelTest {
         }
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
             queryLevels += level
+            if (detail) restoreGate.await()
             if (detail && detailFails) throw NetworkFailure()
             if (wenbeiBranches && project == FeeProject.Wenbei) {
                 val branchLevels = listOf(FeeLevel("campus", 1, "校区"), FeeLevel("building", 2, "楼栋"),

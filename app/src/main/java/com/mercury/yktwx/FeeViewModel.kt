@@ -252,52 +252,67 @@ class FeeViewModel internal constructor(
         }
     }
 
-    private suspend fun loadSelection(state: FeeUiState, level: FeeLevel, option: FeeOption, generation: Long,
-        continueLoading: Boolean = false) {
-        val config = state.config ?: return
+    private fun selectedState(state: FeeUiState, level: FeeLevel, option: FeeOption): FeeUiState {
         val keep = state.levels.filter { it.number < level.number }.map { it.key }.toSet()
         val selections = state.selections.filterKeys { it in keep } + (level.key to option.id)
         val names = state.names.filterKeys { it in keep } + (level.key to option.name)
-        val next = state.levels.firstOrNull { it.number > level.number }
         val hidden = if (level == state.levels.firstOrNull() && state.options[level.number]?.size == 1 &&
             level.key in setOf("campus", "xiaoqu_id")) state.hiddenLevels + level.key else state.hiddenLevels
-        mutable.value = copy(mutable.value, selections = selections, names = names,
+        return copy(state, selections = selections, names = names,
             options = state.options.filterKeys { it <= level.number }, query = null, hiddenLevels = hidden)
+    }
+
+    private suspend fun resolveSelection(state: FeeUiState, level: FeeLevel, generation: Long,
+        continueLoading: Boolean = false): FeeUiState? {
+        val config = state.config ?: return null
+        val next = state.levels.firstOrNull { it.number > level.number }
         val query = if (state.preview) previewQuery(config.project, next == null, level.number)
-            else repository.feeQuery(owner, config.project, level.number, selections, next == null)
-        if (generation != attempt) return
-        mutable.value = copy(mutable.value, loading = continueLoading, selecting = false, error = query.tip, stage = state.stage,
-            options = if (next == null) mutable.value.options else mutable.value.options + (next.number to query.options),
+            else repository.feeQuery(owner, config.project, level.number, state.selections, next == null)
+        if (generation != attempt) return null
+        return copy(state, loading = continueLoading, selecting = false, error = query.tip,
+            options = if (next == null) state.options else state.options + (next.number to query.options),
             query = if (next == null) query else null)
+    }
+
+    private suspend fun loadSelection(state: FeeUiState, level: FeeLevel, option: FeeOption, generation: Long) {
+        if (state.config == null) return
+        val selected = selectedState(state, level, option)
+        // Explicit selection still clears downstream fields as soon as the user changes a field.
+        mutable.value = copy(mutable.value, selections = selected.selections, names = selected.names,
+            options = selected.options, query = null, hiddenLevels = selected.hiddenLevels)
+        resolveSelection(mutable.value, level, generation)?.let { mutable.value = it }
     }
 
     private suspend fun restoreRoom(entrance: FeeUiState, binding: FeeRoomBinding, generation: Long) {
         val unavailable = "已保存的房间选项已失效，请重新选择后保存"
-        mutable.value = copy(entrance, loading = true)
+        var current = copy(entrance, loading = true)
+        mutable.value = current
         if (binding.selections.keys != entrance.levels.map { it.key }.toSet()) {
             mutable.value = copy(entrance, error = unavailable)
             return
         }
         try {
+            // A fixed hall target only needs the final verified room. Keep intermediate traversal
+            // local so every level does not rebuild the amount sheet during its entrance animation.
             for ((index, level) in entrance.levels.withIndex()) {
-                val current = mutable.value
                 val options = current.options[level.number].orEmpty()
                 val option = options.firstOrNull { it.id == binding.selections[level.key] }
                 if (option == null) {
                     mutable.value = copy(current, loading = false, error = unavailable)
                     return
                 }
-                loadSelection(current, level, option, generation,
-                    continueLoading = index != entrance.levels.lastIndex)
-                if (attempt != generation) return
-                if (mutable.value.error != null) {
-                    mutable.value = copy(mutable.value, loading = false)
+                current = selectedState(current, level, option)
+                current = resolveSelection(current, level, generation,
+                    continueLoading = index != entrance.levels.lastIndex) ?: return
+                if (current.error != null) {
+                    mutable.value = copy(current, loading = false)
                     return
                 }
             }
+            mutable.value = current
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
-            if (attempt == generation) mutable.value = copy(mutable.value, loading = false, error = message(e))
+            if (attempt == generation) mutable.value = copy(current, loading = false, error = message(e))
         }
     }
 
