@@ -73,7 +73,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
-            InlineError(error)
+            if (!error.isNullOrBlank()) InlineError(error)
             if (UiPreview.enabled && display.preview) PreviewNotes.CardPassword()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = ::dismiss, enabled = state.visible && !display.submitting, modifier = Modifier.weight(1f)) { Text("取消") }

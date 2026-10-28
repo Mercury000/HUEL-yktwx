@@ -80,6 +80,17 @@ fun BillPage(
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
 ) {
+    val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
+        state.listAvailable
+    val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
+        (state.stats.period.trendSupported && state.stats.dailyLoaded)
+    val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
+        state.typeId, state.amountFromCents, state.amountToCents) {
+        rememberInitialReadError(if (state.statsVisible) statsHasContent else listHasContent,
+            if (state.statsVisible) state.stats.error ?: state.stats.categoriesError ?: state.stats.dailyError ?: state.stats.rankingError
+            else state.error ?: state.summaryError ?: state.countsError,
+            if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
+    }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
@@ -149,6 +160,15 @@ fun BillPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
+                InitialReadTransition(initialError) { displayedError ->
+                    val showFailure = displayedError != null
+                    // Only an empty pending shell is retained for the outgoing skeleton.
+                    val state = if (!showFailure && (initialError != null ||
+                        (if (state.statsVisible) state.stats.loading && !statsHasContent
+                         else (state.loading || state.refreshing) && !listHasContent))) state.copy(
+                            error = null, loaded = false, listLoaded = false, listAvailable = false,
+                            summaryLoaded = false, countsLoaded = false, summaryError = null, countsError = null,
+                            stats = com.mercury.yktwx.BillStatsState(period = state.stats.period, type = state.stats.type)) else state
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().overScrollVertical(),
@@ -170,14 +190,11 @@ fun BillPage(
                                         selectedContentColor = DashboardPalette.ink))
                             }
                         }
-                        if (state.needsLogin) {
+                        if (showFailure && !state.needsLogin) {
+                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                        } else if (state.needsLogin) {
                             item(key = "login") {
-                                BillErrorCard(
-                                    "登录已失效，请重新登录。",
-                                    title = "登录已失效",
-                                    actionLabel = "重试",
-                                    onAction = onActivate,
-                                )
+                                BillErrorCard("登录已失效，请重新登录")
                             }
                         } else {
                             item(key = "date") {
@@ -208,8 +225,6 @@ fun BillPage(
                             } else {
                             item(key = "summary") {
                                 BillSummaryCard(state)
-                                state.summaryError?.let { InlineError(it, actionLabel = "重试", onAction = onRefresh) }
-                                state.countsError?.let { InlineError(it, actionLabel = "重试", onAction = onRefresh) }
                             }
                             item(key = "search") {
                                 Box(Modifier.fillMaxWidth()) {
@@ -253,7 +268,7 @@ fun BillPage(
                             }
                             if (state.error != null && state.items.isNotEmpty()) {
                                 item(key = "inline-error") {
-                                    InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
+                                    ReadNotice(state.error, cached = true)
                                 }
                             }
                             when {
@@ -262,7 +277,7 @@ fun BillPage(
                                 state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
                                     item(key = "loading") { BillLoadingCard() }
                                 state.error != null && state.items.isEmpty() -> item(key = "error") {
-                                    BillErrorCard(state.error, onAction = onRefresh)
+                                    BillErrorCard(state.error)
                                 }
                                 state.items.isEmpty() -> item(key = "empty") {
                                     BillEmptyCard("当前时间段还没有账单", "试试切换日期范围，或调整搜索和筛选条件。")
@@ -302,6 +317,7 @@ fun BillPage(
                         }
                     }
                 }
+                }
             }
             BillFilterSheet(
                 show = showFilter && isActive && !state.statsVisible,
@@ -326,6 +342,7 @@ private fun BillSummaryCard(state: BillUiState) {
     val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
     val pending = !state.summaryLoaded && state.error == null && state.summaryError == null && state.summary == null
     Card(Modifier.fillMaxWidth()) {
+        Column {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(expensesLabel, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -348,6 +365,10 @@ private fun BillSummaryCard(state: BillUiState) {
                     color = MiuixTheme.colorScheme.primary,
                 )
             }
+        }
+        val error = state.summaryError ?: state.countsError
+        if (error != null) ReadNotice(error, cached = state.summary != null || state.counts != null,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp))
         }
     }
 }
@@ -392,9 +413,7 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
-        state.loadMoreError != null -> InlineError(
-            state.loadMoreError, actionLabel = "重试", onAction = onLoadMore,
-        )
+        state.loadMoreError != null -> ReadNotice(state.loadMoreError, cached = true)
         state.currentPage in 1 until state.pages -> Row(
             Modifier.fillMaxWidth().height(56.dp),
             horizontalArrangement = Arrangement.Center,
@@ -465,7 +484,7 @@ private fun BillFilterSheet(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 )
             }
-            InlineError(error)
+            if (!error.isNullOrBlank()) InlineError(error)
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

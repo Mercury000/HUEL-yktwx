@@ -119,7 +119,7 @@ internal fun DailyBillChartPlaceholder(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().semantics { contentDescription = "正在加载趋势图" }) {
         BillChartHeaderPlaceholder()
         Spacer(Modifier.height(12.dp))
-        Canvas(Modifier.fillMaxWidth().height(150.dp).clearAndSetSemantics {}) {
+        Canvas(Modifier.fillMaxWidth().height(150.dp).then(delayedSkeletonModifier()).clearAndSetSemantics {}) {
             val chartTop = 8.dp.toPx()
             val chartHeight = size.height - chartTop
             for (i in 0..4) {
@@ -150,7 +150,7 @@ internal fun CategoryDonutChartPlaceholder(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Box(Modifier.size(180.dp), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.fillMaxSize().clearAndSetSemantics {}) {
+                Canvas(Modifier.fillMaxSize().then(delayedSkeletonModifier()).clearAndSetSemantics {}) {
                     val strokeWidth = 22.dp.toPx()
                     drawCircle(placeholder, radius = (size.minDimension - strokeWidth) / 2,
                         center = center, style = Stroke(width = strokeWidth))

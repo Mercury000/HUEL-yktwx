@@ -61,7 +61,9 @@ class HallViewModel internal constructor(
     }
     fun onActivate() {
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
-        if (!mutable.value.loaded || System.currentTimeMillis() - refreshedAt > 60_000) refresh()
+        val current = mutable.value
+        if (!current.loaded || System.currentTimeMillis() - refreshedAt > 60_000 ||
+            current.error != null || current.networkError != null || current.rooms.any { room -> room.meters.any { it.error != null } }) refresh()
     }
     fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) refreshPending = true }
     fun selectRoom(index: Int) {
@@ -121,16 +123,17 @@ class HallViewModel internal constructor(
         val username = owner
         val previous = mutable.value
         refreshPending = false
-        update(loading = true, error = managementError ?: previous.error)
+        update(loading = true, error = managementError, networkError = null)
         launchTask {
             val rooms = previous.rooms.flatMap { it.bindings }.associateBy { it.project }.toMutableMap()
             val errors = mutableMapOf<FeeProject, String>()
             val bindingProjects = mutableSetOf<FeeProject>()
             val completed = mutableSetOf<FeeProject>()
+            var bindingsAvailable = previous.roomsAvailable
             var bindingsKnown = false
             var needsLogin = false
             var network: FeeQuery? = previous.network
-            var networkError: String? = previous.networkError
+            var networkError: String? = null
             fun publish(finished: Boolean = false) {
                 if (attempt != generation) return
                 val selectedRoom = mutable.value.selectedRoom
@@ -139,10 +142,8 @@ class HallViewModel internal constructor(
                 val merged = if (bindingsKnown) mergeFamilyRooms(FeeProject.entries.mapNotNull { rooms[it] })
                     .sortedBy(::roomOrder) else previous.rooms
                 val blockError = listOfNotNull(managementError,
-                    errors.takeIf { it.isNotEmpty() && merged.isEmpty() }?.entries?.sortedBy { it.key.ordinal }
-                        ?.joinToString("\n") { it.key.label + "：" + it.value })
+                    errors.entries.sortedBy { it.key.ordinal }.firstOrNull()?.value)
                     .takeIf { it.isNotEmpty() }?.joinToString("\n")
-                    ?: previous.error.takeIf { !finished }
                 val exactIndex = merged.indexOfFirst { current -> selectedRoom?.bindings?.any { old ->
                     current.bindings.any { it.project == old.project && it.binding.sameTarget(old.binding) }
                 } == true }
@@ -151,7 +152,8 @@ class HallViewModel internal constructor(
                     selectedIndex = if (exactIndex >= 0) exactIndex else rememberedRoomIndex(merged).coerceAtLeast(0),
                     network = network, networkError = networkError, bindingProjects = bindingProjects.toSet(),
                     roomsLoaded = previous.roomsLoaded || FeeProject.entries.filterNot { it.network }.all { it in completed },
-                    networkLoaded = previous.networkLoaded || FeeProject.Network in completed)
+                    networkLoaded = previous.networkLoaded || FeeProject.Network in completed,
+                    roomsAvailable = previous.roomsAvailable || bindingsAvailable)
             }
             coroutineScope {
                 val configurations = FeeProject.entries.associateWith { project -> async {
@@ -182,6 +184,7 @@ class HallViewModel internal constructor(
                             rooms[project] = DormRoom(project, binding, emptyList(), 0, pendingMeters = pending)
                         }
                     }
+                    bindingsAvailable = bound.values.any { it != null }
                     bindingsKnown = true
                     publish()
                 }
@@ -196,7 +199,6 @@ class HallViewModel internal constructor(
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
-                            network = null
                             networkError = (e as? YktException)?.message ?: "校园网读取失败"
                         }
                     } else {
@@ -214,13 +216,13 @@ class HallViewModel internal constructor(
                                             val old = rooms[project]?.takeIf { it.binding.sameTarget(partial.binding) }
                                             val retained = old?.meters.orEmpty().filter { meter ->
                                                 partial.pendingMeters.any { it.kind == meter.kind && it.project == (meter.project ?: project) }
-                                            }.map { DormMeter(it.kind, it.room, it.query, it.error, it.project ?: project, updating = true) }
-                                            rooms[project] = DormRoom(partial.project, partial.binding, partial.meters + retained,
-                                                partial.updatedAtMillis, partial.notice, pendingMeters = partial.pendingMeters)
+                                            }.map { DormMeter(it.kind, it.room, it.query, null, it.project ?: project, updating = true) }
+                                            rooms[project] = retainReadings(DormRoom(partial.project, partial.binding, partial.meters + retained,
+                                                partial.updatedAtMillis, partial.notice, pendingMeters = partial.pendingMeters), old)
                                             publish()
                                         }
                                     } })
-                                if (room != null) rooms[project] = room else rooms.remove(project)
+                                if (room != null) rooms[project] = retainReadings(room, rooms[project]) else rooms.remove(project)
                             } else rooms.remove(project)
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
@@ -228,7 +230,7 @@ class HallViewModel internal constructor(
                             errors[project] = (e as? YktException)?.message ?: "读取失败，请重试"
                             val old = previous.rooms.flatMap { it.bindings }.firstOrNull { it.project == project }
                             if (old != null) rooms[project] = DormRoom(old.project, old.binding,
-                                old.meters.map { DormMeter(it.kind, it.room, null, "更新失败", it.project ?: old.project) }, old.updatedAtMillis, old.notice)
+                                old.meters.map { DormMeter(it.kind, it.room, it.query, null, it.project ?: old.project) }, old.updatedAtMillis, old.notice)
                             else rooms.remove(project)
                         }
                     }
@@ -240,6 +242,19 @@ class HallViewModel internal constructor(
             publish(finished = true)
             refreshedAt = System.currentTimeMillis()
         }
+    }
+    /** Retain only readings for the exact same verified meter after a failed refresh. */
+    private fun retainReadings(fresh: DormRoom, previous: DormRoom?): DormRoom {
+        if (previous == null || !previous.binding.sameTarget(fresh.binding)) return fresh
+        val meters = fresh.meters.map { meter ->
+            val old = previous.meters.firstOrNull { it.kind == meter.kind &&
+                (it.project ?: previous.project) == (meter.project ?: fresh.project) && it.room.sameTarget(meter.room) }
+            if (meter.query == null && meter.error != null && old?.query != null)
+                DormMeter(meter.kind, meter.room, old.query, meter.error, meter.project ?: fresh.project)
+            else meter
+        }
+        return DormRoom(fresh.project, fresh.binding, meters, fresh.updatedAtMillis, fresh.notice,
+            pendingMeters = fresh.pendingMeters)
     }
     private fun launchTask(block: suspend CoroutineScope.() -> Unit) {
         val attempt = generation
@@ -256,10 +271,11 @@ class HallViewModel internal constructor(
         job.start()
     }
     private fun update(rooms: List<DormRoom> = mutable.value.rooms, loading: Boolean = mutable.value.loading,
-        error: String? = mutable.value.error, selectedIndex: Int = mutable.value.selectedIndex, managing: Boolean = mutable.value.managing) {
+        error: String? = mutable.value.error, selectedIndex: Int = mutable.value.selectedIndex, managing: Boolean = mutable.value.managing,
+        networkError: String? = mutable.value.networkError) {
         val s = mutable.value
         mutable.value = DormUiState(rooms, loading, s.loaded, error, s.needsLogin,
-            selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, s.networkError, managing, s.bindingProjects,
-            s.roomsLoaded, s.networkLoaded)
+            selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, networkError, managing, s.bindingProjects,
+            s.roomsLoaded, s.networkLoaded, s.roomsAvailable)
     }
 }

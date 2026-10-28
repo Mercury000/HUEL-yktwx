@@ -238,16 +238,20 @@ class UiSmokeTest {
         compose.onNodeWithText("充值 ¥ 10.00").assertIsNotEnabled()
     }
 
-    @Test fun rechargeEntryDoesNotDependOnBarcodeOrLoadedAccount() {
+    @Test fun firstReadFailureReplacesUnknownAccountAndRecoversByPulling() {
         var clicked = false
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { PaymentPage(PaymentUiState(needsLogin = false, username = "123", error = "付款码暂不可用"),
-                    settings, 0.dp, {}, onRecharge = { clicked = true }) }
+                    settings, 0.dp, { clicked = true }, onRecharge = { fail("Unknown account must not render a fabricated card") }) }
             }
         }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("充值"))
-        compose.onNodeWithText("充值").assertIsEnabled().performClick()
+        compose.onNodeWithText("充值").assertDoesNotExist()
+        compose.onNodeWithText("暂时无法加载，请下拉刷新").assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performTouchInput {
+            swipe(start = center.copy(y = height * .3f), end = center.copy(y = height * .9f), durationMillis = 600)
+        }
+        compose.waitForIdle()
         assertTrue(clicked)
     }
 

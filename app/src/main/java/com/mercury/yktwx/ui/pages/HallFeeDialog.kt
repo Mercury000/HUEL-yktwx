@@ -133,7 +133,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     if (config == null) {
                         if (form.loading) HallFeeTargetPlaceholder(
                             showRoomBinding = !saveOnly && displayProject in bindingProjects)
-                        InlineError(form.error, actionLabel = "重试", onAction = { if (active && !state.loading) onRetry() })
+                        if (!form.error.isNullOrBlank()) InlineError(form.error)
                     } else {
                         val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
                             state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
@@ -147,7 +147,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                 if (projects[index] != displayProject) onProject(projects[index])
                             }
                         }
-                        InlineError(form.error, actionLabel = "重试", onAction = { if (targetEnabled) onRetry() })
+                        if (!form.error.isNullOrBlank()) InlineError(form.error)
                         if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
                                 onClick = { saveCommon = !saveCommon }, enabled = targetEnabled && ready)
@@ -177,7 +177,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
                             active && ready && targetSelected && !state.preview, form.error, { onCreate(it, methodCode) }, onRetry,
                             enabled = active)
-                        else InlineError(form.error, actionLabel = "重试", onAction = { if (active && !state.loading) onRetry() })
+                        else InlineError(form.error)
                 }
                 HallFeePage.Result -> {
                     // Unavailable methods reuse the same choices without creating another order.

@@ -59,7 +59,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
-            InlineError(display.error)
+            if (!display.error.isNullOrBlank()) InlineError(display.error)
             Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }
         }

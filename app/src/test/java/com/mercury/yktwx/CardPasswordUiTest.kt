@@ -80,11 +80,11 @@ class CardPasswordUiTest {
         assertNull(submitted)
         screenshot("card-password-dark-error")
     }
-    @Test fun failurePreservesWhitespaceAndDoesNotAppendRetryText() {
+    @Test fun failureUsesOneLineAndDoesNotAppendRetryText() {
         val original = "  official error\nsecond line  "
         state.value = state.value.copy(error = original)
         dialog()
-        compose.onNodeWithText(original).assertExists()
+        compose.onNodeWithText("official error，second line").assertExists()
         compose.onNodeWithText("请重试").assertDoesNotExist()
         compose.onNodeWithText("修改成功后将退出登录，请重新登录").assertDoesNotExist()
     }

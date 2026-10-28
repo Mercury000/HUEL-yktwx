@@ -239,6 +239,7 @@ private fun MainContent(
     dormModel: HallViewModel,
     isActive: Boolean,
 ) {
+    val context = LocalContext.current
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
@@ -301,6 +302,7 @@ private fun MainContent(
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
         feeOpening = project
         feeProject = project
         feeSaveOnly = saveOnly
@@ -335,12 +337,14 @@ private fun MainContent(
     }
     fun recharge() {
         if (isActive && feeOpening == null && !passwordState.loading && !cardState.loading && !rechargeState.loading) {
+            if (!allowOnlineEntry(context, state.preview)) return
             cardModel.dismiss(); passwordModel.dismiss()
             rechargeModel.open(state.username, state.account?.account, state.preview)
         }
     }
     fun cardAction(action: CampusCardAction) {
         if (isActive) {
+            if (!allowOnlineEntry(context, state.preview)) return
             dormPaymentVisible = false
             feeOpening = null
             feeModel.dismiss()
@@ -415,6 +419,7 @@ private fun MainContent(
                                         val account = state.account?.account
                                         if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
                                             feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
+                                            if (!allowOnlineEntry(context, state.preview)) return@PaymentPage
                                             rechargeModel.dismiss()
                                             passwordModel.dismiss()
                                             cardModel.openUnlost(state.username, account, state.preview)

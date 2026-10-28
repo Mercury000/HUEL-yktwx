@@ -5,9 +5,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -34,40 +32,36 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     if (stats.error != null) {
         if (!stats.loaded) {
             item(key = "error") {
-                BillErrorCard(stats.error, title = "统计数据加载失败", onAction = onRetry)
+                BillErrorCard(stats.error)
             }
             return
         }
         item(key = "inline-error") {
-            InlineError(stats.error, actionLabel = "重试", onAction = onRetry)
+            ReadNotice(stats.error, cached = true)
         }
     }
     item(key = "overview") { StatsOverview(stats) }
     if (stats.period.trendSupported) item(key = "trend") {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-trend")) {
             Column(Modifier.padding(20.dp)) {
-                StableChartContent({ DailyBillChartPlaceholder() }) {
-                    when {
-                        stats.dailyLoaded -> DailyBillChart(stats.daily, stats.period.mode)
-                        stats.dailyError != null -> StatsBlockError("趋势图读取失败", stats.dailyError, onRetry)
-                        else -> DailyBillChartPlaceholder()
-                    }
+                when {
+                    stats.dailyLoaded -> DailyBillChart(stats.daily, stats.period.mode)
+                    stats.dailyError != null -> ReadUnavailable(stats.dailyError)
+                    else -> DailyBillChartPlaceholder()
                 }
-                if (stats.dailyLoaded && stats.dailyError != null) InlineError(stats.dailyError, actionLabel = "重试", onAction = onRetry)
+                if (stats.dailyLoaded && stats.dailyError != null) ReadNotice(stats.dailyError, cached = true)
             }
         }
     }
     item(key = "category") {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-category")) {
             Column(Modifier.padding(20.dp)) {
-                StableChartContent({ CategoryDonutChartPlaceholder() }) {
-                    when {
-                        stats.categoriesLoaded -> CategoryDonutChart(stats.categories, stats.type)
-                        stats.categoriesError != null -> StatsBlockError("分类统计读取失败", stats.categoriesError, onRetry)
-                        else -> CategoryDonutChartPlaceholder()
-                    }
+                when {
+                    stats.categoriesLoaded -> CategoryDonutChart(stats.categories, stats.type)
+                    stats.categoriesError != null -> ReadUnavailable(stats.categoriesError)
+                    else -> CategoryDonutChartPlaceholder()
                 }
-                if (stats.categoriesLoaded && stats.categoriesError != null) InlineError(stats.categoriesError, actionLabel = "重试", onAction = onRetry)
+                if (stats.categoriesLoaded && stats.categoriesError != null) ReadNotice(stats.categoriesError, cached = true)
             }
         }
     }
@@ -76,29 +70,11 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) item(key = "ranking") {
         Column {
             if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
-            stats.rankingError?.let { InlineError(it, actionLabel = "重试", onAction = onRetry) }
+            stats.rankingError?.let {
+                if (stats.ranking.isNotEmpty()) ReadNotice(it, cached = true)
+                else Card(Modifier.fillMaxWidth()) { ReadUnavailable(it) }
+            }
         }
-    }
-}
-
-/** Measure a content-shaped placeholder without placing it; small/empty results keep the same slot. */
-@Composable
-private fun StableChartContent(placeholder: @Composable () -> Unit, content: @Composable () -> Unit) {
-    Layout(content = {
-        Box(Modifier.clearAndSetSemantics {}) { placeholder() }
-        Box { content() }
-    }) { measurables, constraints ->
-        val reserved = measurables[0].measure(constraints.copy(minHeight = 0))
-        val actual = measurables[1].measure(constraints.copy(minHeight = maxOf(constraints.minHeight, reserved.height)))
-        layout(actual.width, actual.height) { actual.placeRelative(0, 0) }
-    }
-}
-
-@Composable
-private fun StatsBlockError(title: String, error: String, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        InlineError(error, actionLabel = "重试", onAction = onRetry)
     }
 }
 

@@ -92,6 +92,47 @@ class PersonalDataViewModelTest {
         assertNotNull(model.state.value.summaryError)
         assertNull(model.state.value.profileError)
     }
+
+    @Test fun returningAfterOfflineFailureRetriesImmediatelyWithoutTreatingErrorsAsFreshCache() {
+        var offline = true
+        var profileReads = 0
+        var summaryEntered = false
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String): PersonalProfile {
+                profileReads++
+                if (offline) throw NetworkFailure()
+                return PersonalProfile("示例姓名", "fake-id", "示例部门", "示例专业", null)
+            }
+            override suspend fun avatar(path: String): ByteArray? = null
+            override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity? = null
+        }
+        val ykt = object : YktService by YktApi({ error("No live request") }) {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                if (offline) throw NetworkFailure()
+                summaryEntered = true; gate.await(); return BillSummary(100, 200)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+                if (offline) throw NetworkFailure()
+                return type
+            }
+        }
+        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        store.put("mine", model)
+        model.accountChanged(vault.username); model.onActivate()
+        await { model.state.value.loaded && !model.state.value.loading }
+        assertNotNull(model.state.value.profileError)
+        assertNotNull(model.state.value.summaryError)
+        offline = false; model.onActivate()
+        await { summaryEntered && model.state.value.profile != null }
+        assertEquals(2, profileReads)
+        assertNull(model.state.value.profileError)
+        assertNull(model.state.value.summaryError)
+        assertNull(model.state.value.countsError)
+        assertTrue(model.state.value.loading)
+        gate.complete(Unit)
+        await { !model.state.value.loading }
+        assertNull(model.state.value.summaryError)
+    }
     @Test fun firstReadPublishesIdentityBeforeTheSlowMonthlySummary() {
         var summaryEntered = false
         val profiles = object : ProfileService {

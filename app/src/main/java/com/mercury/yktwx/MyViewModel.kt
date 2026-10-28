@@ -51,7 +51,12 @@ class MyViewModel internal constructor(app: Application, private val repository:
             refreshedAt = System.currentTimeMillis()
         }
     }
-    fun onActivate() { if (refreshedAt == 0L || System.currentTimeMillis() - refreshedAt > 60_000 || mutable.value.month != YearMonth.now()) refresh() }
+    fun onActivate() {
+        val current = mutable.value
+        if (refreshedAt == 0L || System.currentTimeMillis() - refreshedAt > 60_000 || current.month != YearMonth.now() ||
+            current.profileError != null || current.homeIdentityError != null || current.avatarError != null ||
+            current.summaryError != null || current.countsError != null) refresh()
+    }
     fun refresh() {
         if (owner.isBlank() || preview || task?.isActive == true) return
         val attempt = generation
@@ -62,8 +67,9 @@ class MyViewModel internal constructor(app: Application, private val repository:
         mutable.value = current.copy(
             month = month, loading = true, needsLogin = false,
             summary = current.summary.takeIf { sameMonth }, counts = current.counts.takeIf { sameMonth },
-            summaryError = current.summaryError.takeIf { sameMonth }, countsError = current.countsError.takeIf { sameMonth },
-            summaryLoaded = sameMonth && current.summaryLoaded, countsLoaded = sameMonth && current.countsLoaded)
+            profileError = null, homeIdentityError = null, avatarError = null, summaryError = null, countsError = null,
+            profileLoaded = current.profile != null, homeIdentityLoaded = current.homeIdentity != null,
+            summaryLoaded = sameMonth && current.summary != null, countsLoaded = sameMonth && current.counts != null)
         task = viewModelScope.launch {
             // Each branch updates the latest state on Main, so a late avatar cannot undo a summary.
             fun publish(change: (MyUiState) -> MyUiState) {

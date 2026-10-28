@@ -37,17 +37,18 @@ class CardServiceViewModelTest {
         service.writeGate.complete(Unit); service.queryGate.complete(Unit); service.cardGate.complete(Unit); service.configGate.complete(Unit)
         store.clear(); shadowOf(Looper.getMainLooper()).idle()
     }
-    @Test fun paymentUnlostOpensImmediatelyAndSelectsOnlyTheMatchingCard() {
+    @Test fun paymentUnlostWaitsForConfigurationAndSelectsOnlyTheMatchingCard() {
         service.lost = true
         service.needsPassword = true
         service.extraCards = listOf(CampusCard("other-card", "另一张卡", "202600000002", true, false, 0))
         service.cardGate = CompletableDeferred()
         model.openUnlost(vault.username, "fake-card", false)
-        assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.visible)
         assertTrue(model.state.value.loading)
         assertEquals(CampusCardAction.Unlost, model.state.value.operation)
         service.cardGate.complete(Unit)
         await { !model.state.value.loading }
+        assertTrue(model.state.value.visible)
         assertEquals("fake-card", model.state.value.selectedCard!!.account)
         assertEquals(1, model.state.value.cards.size)
         assertTrue(model.state.value.needsPassword)
@@ -69,23 +70,25 @@ class CardServiceViewModelTest {
         assertOneResult("校园卡已解挂，正在更新付款状态")
     }
 
-    @Test fun paymentUnlostWithMissingTargetOrFailedReadKeepsAnInertDialog() {
+    @Test fun paymentUnlostWithMissingTargetOrFailedReadStaysClosedAndNotifiesOnce() {
         service.cardFailure = NetworkFailure()
         model.openUnlost(vault.username, "fake-card", false)
         await { !model.state.value.loading }
-        assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.visible)
         assertNull(model.state.value.selectedCard)
-        assertEquals(NetworkFailure().message, model.state.value.error)
+        assertNull(model.state.value.error)
+        assertOneNotification(NetworkFailure().message!!)
         model.changeCard("123456")
         assertEquals(0, service.writes)
         model.dismiss()
         service.cardFailure = null
         model.openUnlost(vault.username, "missing-card", false)
         await { !model.state.value.loading }
-        assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.visible)
         assertNull(model.state.value.selectedCard)
         assertTrue(model.state.value.cards.isEmpty())
         assertEquals(0, service.writes)
+        assertOneNotification("付款账户对应的校园卡已变更，请刷新卡状态")
     }
 
     private fun openCards() {
@@ -409,6 +412,10 @@ class CardServiceViewModelTest {
         model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "abcde")
         await { !model.state.value.loading }
         assertEquals(1, model.state.value.recipients.size)
+    }
+    private fun assertOneNotification(message: String) {
+        runBlocking { assertEquals(message, withTimeout(1_000) { model.messages.first() }) }
+        assertNoResult()
     }
     private fun assertOneResult(message: String) {
         runBlocking {

@@ -44,6 +44,9 @@ import java.util.Locale
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true) {
     val displayCode = state.code.takeIf { state.problem == null && !state.busy }
+    val readError = state.error ?: "暂时无法确认卡状态".takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
+    val initialError = rememberInitialReadError(state.account != null || displayCode != null,
+        readError, !state.busy)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -61,12 +64,19 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     color = MiuixTheme.colorScheme.primary,
                     refreshTexts = AppRefreshTexts,
                 ) {
+                InitialReadTransition(initialError) { displayedError ->
+                    val showFailure = displayedError != null
+                    // Only an empty pending shell is retained for the outgoing skeleton.
+                    val state = if (!showFailure && initialError != null) state.copy(error = null, busy = true) else state
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().overScrollVertical().imePadding(),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        if (showFailure) {
+                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                        } else {
                         item {
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -77,8 +87,9 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                             state.busy -> "核验中"
                                             state.problem == PaymentCodeProblem.Lost -> "已挂失"
                                             state.problem == PaymentCodeProblem.Frozen -> "已冻结"
-                                            state.problem == PaymentCodeProblem.StatusUnverified -> "待确认"
+                                            state.problem == PaymentCodeProblem.StatusUnverified -> ""
                                             displayCode != null -> "${state.secondsLeft}s 后刷新"
+                                            state.error != null -> ""
                                             else -> "等待刷新"
                                         }
                                         val restricted = state.problem == PaymentCodeProblem.Lost || state.problem == PaymentCodeProblem.Frozen
@@ -97,8 +108,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         val bodyHeight = paymentContentHeight(maxWidth)
                                         Box(Modifier.fillMaxWidth().height(bodyHeight).testTag("payment-code-content"),
                                             contentAlignment = Alignment.Center) {
-                                            if (state.busy || state.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen, PaymentCodeProblem.StatusUnverified)) {
+                                            if (state.busy || state.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen)) {
                                                 PaymentStatusContent(state, onUnlost, unlostLoading, unlostEnabled)
+                                            } else if (displayCode == null && readError != null) {
+                                                ReadUnavailable(readError)
                                             } else {
                                                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
                                                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -166,7 +179,9 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                         }
                         if (UiPreview.enabled && state.preview) item { PreviewNotes.Payment(state.problem != null) }
+                        }
                     }
+                }
                 }
             }
 

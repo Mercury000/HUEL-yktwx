@@ -76,6 +76,74 @@ class HallViewModelTest {
         assertTrue(fees.writes.isEmpty())
     }
 
+    @Test fun failedConfigurationRefreshKeepsKnownReadingsAndNetwork() {
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
+        open()
+        val room = model.state.value.rooms.single()
+        val query = room.meters.single().query
+        val network = model.state.value.network
+        fees.failConfigurations = true
+        model.refresh()
+        await { !model.state.value.loading }
+        assertSame(query, model.state.value.rooms.single().meters.single().query)
+        assertSame(network, model.state.value.network)
+        assertNotNull(model.state.value.error)
+        assertNotNull(model.state.value.networkError)
+        assertTrue(model.state.value.roomsAvailable)
+        assertTrue(fees.writes.isEmpty())
+    }
+
+    @Test fun failedMeterRefreshKeepsOnlyTheSameMetersLastReading() {
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
+        open()
+        val query = model.state.value.rooms.single().meters.single().query
+        fees.failDetails = true
+        model.refresh()
+        await { !model.state.value.loading }
+        val meter = model.state.value.rooms.single().meters.single()
+        assertSame(query, meter.query)
+        assertNotNull(meter.error)
+        // A newly selected binding cannot inherit the old room's reading.
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "B")
+        model.refresh()
+        await { !model.state.value.loading }
+        assertNull(model.state.value.rooms.single().meters.single().query)
+        assertTrue(fees.writes.isEmpty())
+    }
+
+    @Test fun firstOfflineReadDoesNotClaimEmptyBindingsWereSuccessfullyRead() {
+        fees.failConfigurations = true
+        open()
+        assertFalse(model.state.value.roomsAvailable)
+        assertTrue(model.state.value.rooms.isEmpty())
+        assertNull(model.state.value.network)
+        assertNotNull(model.state.value.error)
+        fees.failConfigurations = false
+        model.refresh()
+        await { !model.state.value.loading }
+        assertTrue(model.state.value.roomsAvailable)
+        assertNull(model.state.value.error)
+    }
+
+    @Test fun reconnectingPublishesTheRoomWithoutTheOldFailureWhileNetworkIsStillReading() {
+        fees.failConfigurations = true
+        open()
+        assertNotNull(model.state.value.error)
+        fees.failConfigurations = false
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
+        fees.networkGate = CompletableDeferred()
+        fees.networkEntered = false
+        model.refresh()
+        await { fees.networkEntered && model.state.value.rooms.singleOrNull()?.meters?.singleOrNull()?.query != null }
+        assertTrue(model.state.value.loading)
+        assertNull("A recovered room must not carry last attempt's page error", model.state.value.error)
+        assertNull("The old network error must not reappear beside the recovered room", model.state.value.networkError)
+        fees.networkGate!!.complete(Unit)
+        await { !model.state.value.loading }
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.networkError)
+    }
+
     @Test fun bindingInvalidatedDuringRefreshIsReadAgainBeforeBeingConsideredFresh() {
         fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
         fees.networkGate = CompletableDeferred()
@@ -296,7 +364,7 @@ class HallViewModelTest {
         fees.networkEntered = false
         model.refresh()
         await { fees.networkEntered }
-        assertEquals("模拟解绑拒绝", model.state.value.error)
+        assertNull("A new explicit refresh must clear last operation's error", model.state.value.error)
         fees.networkGate!!.complete(Unit)
         await { !model.state.value.loading }
         assertNull(model.state.value.error)
@@ -335,6 +403,8 @@ class HallViewModelTest {
         val configReads = mutableMapOf<FeeProject, Int>()
         val writes = mutableListOf<FeeProject>()
         var failWrite: FeeProject? = null
+        var failConfigurations = false
+        var failDetails = false
         var networkGate: CompletableDeferred<Unit>? = null
         var networkEntered = false
         var paired = false
@@ -350,6 +420,7 @@ class HallViewModelTest {
             mapOf("campus" to "示例校区", "room" to name))!!
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             configReads[project] = configReads.getOrDefault(project, 0) + 1
+            if (failConfigurations) throw NetworkFailure()
             if (project == FeeProject.Zhengdong && projectGate != null) {
                 blockedProjectEntered = true; projectGate!!.await()
             }
@@ -364,6 +435,7 @@ class HallViewModelTest {
                 return FeeQuery(thirdParty = "{}", display = listOf("用户套餐" to "示例套餐"))
             }
             if (detail) {
+                if (failDetails) throw NetworkFailure()
                 detailsEntered += project
                 if (project == detailGateProject) detailGate?.await()
                 return FeeQuery(thirdParty = "{}", display = listOf(

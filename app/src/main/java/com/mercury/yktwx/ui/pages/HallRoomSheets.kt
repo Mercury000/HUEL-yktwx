@@ -76,7 +76,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                     if (enabled) session.page = if (it == 1) RoomSheetPage.Temporary else RoomSheetPage.Rooms
                 }
                 if (page == RoomSheetPage.Rooms) {
-                    InlineError(state.error)
+                    if (!state.error.isNullOrBlank()) InlineError(state.error)
                     if (state.rooms.isEmpty()) {
                         if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
                             fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

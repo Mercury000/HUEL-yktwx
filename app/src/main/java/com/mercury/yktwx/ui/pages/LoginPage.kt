@@ -85,7 +85,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
             }, modifier = Modifier.fillMaxWidth().trackInputFocus())
-        InlineError(state.error)
+        if (!state.error.isNullOrBlank()) InlineError(state.error)
         Button(onClick = { submit() }, enabled = !state.busy && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
             Text(if (state.busy) "正在登录…" else "登录")
         }
