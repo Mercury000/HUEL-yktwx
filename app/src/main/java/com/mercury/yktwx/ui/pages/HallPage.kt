@@ -44,8 +44,9 @@ fun HallPage(
     bottomPadding: Dp,
     onOpenFee: (FeeProject) -> Unit = {},
     feeOpening: FeeProject? = null,
+    feeOpeningTarget: FeeRoomBinding? = null,
     onOpenCardService: (CampusCardAction) -> Unit = {},
-    cardServiceOpening: Boolean = false,
+    othersRechargeLoading: Boolean = false,
     dorm: DormUiState = DormUiState(),
     isActive: Boolean = false,
     onActivate: () -> Unit = {},
@@ -85,7 +86,7 @@ fun HallPage(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     item {
-                        UtilityCard(dorm, feeOpening, onRefreshDorm,
+                        UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
                             onSwitch = { targetTab = 0; targetAdding = false; targets = true },
                             onAdd = { targetTab = 0; targetAdding = true; targets = true },
                             onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
@@ -96,7 +97,7 @@ fun HallPage(
                         Card(Modifier.fillMaxWidth().testTag("hall-others-card"), cornerRadius = 24.dp) {
                             DashboardPreference(title = "代人充值",
                                 startAction = { Icon(AppIcons.OthersRecharge, null, Modifier.size(22.dp), tint = MiuixTheme.colorScheme.primary) },
-                                enabled = !cardServiceOpening, onClick = { onOpenCardService(CampusCardAction.OthersRecharge) })
+                                enabled = !othersRechargeLoading, onClick = { onOpenCardService(CampusCardAction.OthersRecharge) })
                         }
                     }
                 }
@@ -113,7 +114,7 @@ fun HallPage(
 }
 
 @Composable
-private fun UtilityCard(state: DormUiState, opening: FeeProject?, onRefresh: () -> Unit,
+private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget: FeeRoomBinding?, onRefresh: () -> Unit,
     onSwitch: () -> Unit, onAdd: () -> Unit, onTemporaryPay: () -> Unit, onPay: (FeeProject, FeeRoomBinding) -> Unit) {
     Card(Modifier.fillMaxWidth().testTag("hall-utility-card"), cornerRadius = 24.dp) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -121,7 +122,7 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, onRefresh: () 
                 Icon(AppIcons.Electricity, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.primary)
                 Text("水电费", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 if (state.rooms.isNotEmpty() || !state.loaded) {
-                    DashboardLink("切换", onClick = onSwitch, enabled = opening == null && !state.managing)
+                    DashboardLink("切换", onClick = onSwitch, enabled = !state.managing)
                 }
             }
             if (state.error != null) InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
@@ -129,10 +130,12 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, onRefresh: () 
                 if (state.rooms.isEmpty() && !state.loaded) {
                     UtilityPlaceholder()
                 } else if (state.rooms.isEmpty()) {
-                    UnboundRoomContent(enabled = opening == null && !state.managing && !state.loading,
+                    UnboundRoomContent(enabled = !state.managing && !state.loading,
                         onAdd = onAdd, onTemporaryPay = onTemporaryPay)
                 } else state.selectedRoom?.let { room ->
-                    key(room.project, room.binding.selections) { DormRoomContent(room, opening, { onSwitch() }, onPay) }
+                    key(room.project, room.binding.selections) {
+                        DormRoomContent(room, opening, openingTarget, { onSwitch() }, onPay)
+                    }
                 }
             }
         }
@@ -212,7 +215,7 @@ private fun UtilityPlaceholder() {
 }
 
 @Composable
-private fun DormRoomContent(room: DormRoom, opening: FeeProject?, onChoose: (FeeProject) -> Unit,
+private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
     onPay: (FeeProject, FeeRoomBinding) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(room.hallLabel, Modifier.weight(1f), fontSize = 15.sp, lineHeight = 22.sp,
@@ -257,7 +260,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, onChoose: (Fee
                 InlineError(meter.error)
                 Surface(
                     onClick = { onPay(project, meter.room) },
-                    enabled = opening == null,
+                    enabled = !feeEntryOpening(opening, openingTarget, project, meter.room),
                     modifier = Modifier.fillMaxWidth().then(
                         if (room.meters.size == 1) Modifier.testTag("utility-single-recharge") else Modifier),
                     shape = RoundedCornerShape(12.dp),
@@ -276,7 +279,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, onChoose: (Fee
     }
     if (room.notice != null) {
         Text(room.notice, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        DashboardLink("核实房间", onClick = { onChoose(room.project) }, enabled = opening == null)
+        DashboardLink("核实房间", onClick = { onChoose(room.project) })
     }
 }
 
@@ -293,12 +296,15 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 if (!state.loaded && state.network == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
                 else Text(state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—", Modifier.weight(1f),
                     fontSize = 15.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                CompactButton("充值", onClick = onOpen, enabled = opening == null, modifier = Modifier.testTag("network-recharge"))
+                CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))
             }
             InlineError(state.networkError)
         }
     }
 }
+
+private fun feeEntryOpening(opening: FeeProject?, openingTarget: FeeRoomBinding?, project: FeeProject,
+    target: FeeRoomBinding): Boolean = opening == project && openingTarget?.sameTarget(target) != false
 
 internal val DormRoom.hallLabel: String get() {
     val region = when (project) {

@@ -291,7 +291,7 @@ private fun MainContent(
         }
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
-        if (!isActive || passwordState.loading || feeOpening != null || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         feeOpening = project
         feeProject = project
         feeSaveOnly = saveOnly
@@ -331,12 +331,15 @@ private fun MainContent(
         }
     }
     fun cardAction(action: CampusCardAction) {
-        if (isActive && feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
+        if (isActive) {
+            dormPaymentVisible = false
+            feeOpening = null
+            feeModel.dismiss()
             rechargeModel.dismiss()
             if (action == CampusCardAction.ChangePassword) {
                 cardModel.dismiss(); passwordModel.open(state.username, state.preview)
             } else {
-                passwordModel.dismiss(); cardModel.open(action, state.username, state.preview)
+                passwordModel.dismiss(); cardModel.dismiss(); cardModel.open(action, state.username, state.preview)
             }
         }
     }
@@ -421,9 +424,9 @@ private fun MainContent(
                                     onOpenDormFee = { project, target -> openFee(project, target) },
                                     onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
                                     onAddRoom = { openFee(it, saveOnly = true) },
-                                    feeOpening = feeOpening,
+                                    feeOpening = feeOpening, feeOpeningTarget = feeTarget,
                                     onOpenCardService = ::cardAction,
-                                    cardServiceOpening = cardState.loading || passwordState.loading || rechargeState.loading || feeOpening != null,
+                                    othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
                                 )
                                 2 -> BillPage(
                                     state = billState,
