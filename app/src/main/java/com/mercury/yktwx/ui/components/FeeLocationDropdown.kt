@@ -44,7 +44,9 @@ internal fun FeeLocationDropdown(
 @Composable
 internal fun FeeLocationDropdownPlaceholder() {
     FeeLocationField {
-        BasicComponent(title = "", enabled = false, endActions = {
+        // PaymentControlPlaceholder erases this content, but a non-empty title keeps
+        // Miuix's text metrics identical to the real location fields.
+        BasicComponent(title = "位置", enabled = false, endActions = {
             Text("请选择", Modifier.padding(end = 8.dp).align(Alignment.CenterVertically).weight(1f, fill = false),
                 fontSize = MiuixTheme.textStyles.body2.fontSize, textAlign = TextAlign.End)
             DropdownArrowEndAction(actionColor = MiuixTheme.colorScheme.disabledOnSecondaryVariant)
