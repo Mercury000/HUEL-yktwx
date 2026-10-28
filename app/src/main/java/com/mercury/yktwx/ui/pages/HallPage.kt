@@ -32,6 +32,7 @@ import com.mercury.yktwx.data.FeeRoomBinding
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.DormRoom
 import com.mercury.yktwx.data.DormMeterKind
+import com.mercury.yktwx.data.DormMeterSlot
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -121,13 +122,13 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget:
             Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(AppIcons.Electricity, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.primary)
                 Text("水电费", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                if (state.rooms.isNotEmpty() || !state.loaded) {
+                if (state.rooms.isNotEmpty() || !state.roomsLoaded) {
                     DashboardLink("切换", onClick = onSwitch, enabled = !state.managing)
                 }
             }
             if (state.error != null) InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.rooms.isEmpty() && !state.loaded) {
+                if (state.rooms.isEmpty() && !state.roomsLoaded) {
                     UtilityPlaceholder()
                 } else if (state.rooms.isEmpty()) {
                     UnboundRoomContent(enabled = !state.managing && !state.loading,
@@ -223,56 +224,61 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
         HallBadge("已绑定")
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        room.meters.forEach { meter ->
-            val project = meter.project ?: room.project
-            val water = project == FeeProject.FamilyWater
-            val family = project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
-            val air = meter.kind == DormMeterKind.AirConditioning
-            val secondary = air || water
-            val ink = if (secondary) DashboardPalette.airInk else DashboardPalette.lightingInk
-            val accent = if (secondary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
-            val panel = if (secondary) DashboardPalette.airPanel else DashboardPalette.lightingPanel
-            val button = if (secondary) DashboardPalette.airButton else DashboardPalette.lightingButton
-            Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(if (water) AppIcons.Water else if (air) AppIcons.AirConditioning else AppIcons.Electricity,
-                        null, Modifier.size(17.dp), tint = accent)
-                    Text(if (family) if (water) "水费" else "电费" else meter.kind.label, fontSize = 13.sp, lineHeight = 18.sp, color = ink)
-                }
-                val readings = meter.readings
-                val primary = readings.firstOrNull()
-                Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
-                    fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                UtilityValueRow {
-                    Text(primary?.value ?: "—", fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
-                        modifier = Modifier.weight(1f, fill = false), overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold, color = ink)
-                    if (primary?.unit?.isNotEmpty() == true) Text(primary.unit,
-                        Modifier.padding(start = 3.dp, bottom = 4.dp), fontSize = 11.sp, lineHeight = 16.sp,
+        val slots = (room.meters.map { DormMeterSlot(it.kind, it.project ?: room.project) } + room.pendingMeters)
+            .distinct().sortedWith(compareBy<DormMeterSlot> { it.kind.ordinal }.thenBy { it.project.ordinal })
+        slots.forEach { slot ->
+            val meter = room.meters.firstOrNull { it.kind == slot.kind && (it.project ?: room.project) == slot.project }
+            if (meter == null) PendingMeterPanel(slot, Modifier.weight(1f)) else {
+                val project = slot.project
+                val water = project == FeeProject.FamilyWater
+                val family = project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
+                val air = meter.kind == DormMeterKind.AirConditioning
+                val secondary = air || water
+                val ink = if (secondary) DashboardPalette.airInk else DashboardPalette.lightingInk
+                val accent = if (secondary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
+                val panel = if (secondary) DashboardPalette.airPanel else DashboardPalette.lightingPanel
+                val button = if (secondary) DashboardPalette.airButton else DashboardPalette.lightingButton
+                Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(if (water) AppIcons.Water else if (air) AppIcons.AirConditioning else AppIcons.Electricity,
+                            null, Modifier.size(17.dp), tint = accent)
+                        Text(if (family) if (water) "水费" else "电费" else meter.kind.label, fontSize = 13.sp, lineHeight = 18.sp, color = ink)
+                    }
+                    val readings = meter.readings
+                    val primary = readings.firstOrNull()
+                    Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
+                        fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                }
-                readings.drop(1).takeIf { it.isNotEmpty() }?.let { extra ->
-                    Text(extra.joinToString(" · ") { "${it.label} ${it.value}${it.unit}" }, fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                }
-                InlineError(meter.error)
-                Surface(
-                    onClick = { onPay(project, meter.room) },
-                    enabled = !feeEntryOpening(opening, openingTarget, project, meter.room),
-                    modifier = Modifier.fillMaxWidth().then(
-                        if (room.meters.size == 1) Modifier.testTag("utility-single-recharge") else Modifier),
-                    shape = RoundedCornerShape(12.dp),
-                    color = button,
-                    contentColor = accent,
-                ) {
-                    Text(
-                        if (family) if (water) "水费充值" else "电费充值"
-                        else if (meter.kind == DormMeterKind.Other) "充值" else "${meter.kind.label}充值",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
-                    )
+                    UtilityValueRow {
+                        Text(primary?.value ?: "—", fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false), overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold, color = ink)
+                        if (primary?.unit?.isNotEmpty() == true) Text(primary.unit,
+                            Modifier.padding(start = 3.dp, bottom = 4.dp), fontSize = 11.sp, lineHeight = 16.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                    readings.drop(1).takeIf { it.isNotEmpty() }?.let { extra ->
+                        Text(extra.joinToString(" · ") { "${it.label} ${it.value}${it.unit}" }, fontSize = 11.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                    InlineError(meter.error)
+                    Surface(
+                        onClick = { onPay(project, meter.room) },
+                        enabled = !feeEntryOpening(opening, openingTarget, project, meter.room),
+                        modifier = Modifier.fillMaxWidth().then(
+                            if (room.meters.size == 1) Modifier.testTag("utility-single-recharge") else Modifier),
+                        shape = RoundedCornerShape(12.dp),
+                        color = button,
+                        contentColor = accent,
+                    ) {
+                        Text(
+                            if (family) if (water) "水费充值" else "电费充值"
+                            else if (meter.kind == DormMeterKind.Other) "充值" else "${meter.kind.label}充值",
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         }
@@ -280,6 +286,30 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
     if (room.notice != null) {
         Text(room.notice, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         DashboardLink("核实房间", onClick = { onChoose(room.project) })
+    }
+}
+
+@Composable
+private fun PendingMeterPanel(slot: DormMeterSlot, modifier: Modifier) {
+    val water = slot.project == FeeProject.FamilyWater
+    val secondary = water || slot.kind == DormMeterKind.AirConditioning
+    val family = slot.project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
+    val ink = if (secondary) DashboardPalette.airInk else DashboardPalette.lightingInk
+    val accent = if (secondary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
+    Column(modifier.clip(RoundedCornerShape(18.dp))
+        .background(if (secondary) DashboardPalette.airPanel else DashboardPalette.lightingPanel).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(if (water) AppIcons.Water else if (secondary) AppIcons.AirConditioning else AppIcons.Electricity,
+                null, Modifier.size(17.dp), tint = accent)
+            Text(if (family) if (water) "水费" else "电费" else slot.kind.label,
+                fontSize = 13.sp, lineHeight = 18.sp, color = ink)
+        }
+        DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
+        UtilityValueRow { DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0") }
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
+        }
     }
 }
 
@@ -293,7 +323,7 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 state.network?.display?.firstOrNull { "状态" in it.first }?.second?.let { HallBadge(it, air = true) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!state.loaded && state.network == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
+                if (!state.networkLoaded && state.network == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
                 else Text(state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—", Modifier.weight(1f),
                     fontSize = 15.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))

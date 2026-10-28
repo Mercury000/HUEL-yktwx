@@ -51,6 +51,45 @@ class HallPreviewTest {
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
     }
+    @Test fun roomSelectionAndUnbindingKeepTheirOriginalInteraction() {
+        val ready = PreviewData.hallState(multiple = true)
+        var state by mutableStateOf(ready)
+        var selections = 0
+        var removals = 0
+        var theme by mutableStateOf(ColorSchemeMode.Light)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(theme) { Scaffold {
+                    HallRoomSheet(state, true, onDismiss = {}, onSelect = { index ->
+                        selections++
+                        state = DormUiState(ready.rooms, loaded = true, selectedIndex = index,
+                            network = ready.network, bindingProjects = ready.bindingProjects)
+                    }, onRemove = { removals++ }, onProject = {}, onAdd = {})
+                } }
+            }
+        }
+        compose.onNodeWithText("设为默认").assertDoesNotExist()
+        compose.onNodeWithText("当前默认").assertDoesNotExist()
+        compose.onAllNodesWithText("解绑").assertCountEquals(2)
+        capture("38-restored-room-management")
+        compose.onAllNodesWithText("解绑").onLast().performClick()
+        compose.onNodeWithText("解绑房间").assertIsDisplayed()
+        assertEquals(0, selections)
+        assertEquals(0, removals)
+        compose.onNodeWithText("取消").performClick()
+        assertEquals(0, removals)
+        compose.onNodeWithTag("hall-room-1").performClick()
+        assertEquals(1, selections)
+        assertEquals(FeeProject.Wenbei, state.selectedRoom!!.project)
+        capture("39-restored-wenbei-selection")
+        compose.runOnIdle { theme = ColorSchemeMode.Dark }
+        capture("40-restored-room-management-dark")
+        compose.onAllNodesWithText("解绑").onLast().performClick()
+        compose.onNodeWithText("解绑房间").assertIsDisplayed()
+        compose.onAllNodesWithText("解绑").onLast().performClick()
+        assertEquals(1, removals)
+        assertEquals(1, selections)
+    }
     @Test fun bindingTransitionResizesGraduallyAndKeepsTitleUntilDismissed() {
         val state = PreviewData.hallState(multiple = true)
         var visible by mutableStateOf(true)

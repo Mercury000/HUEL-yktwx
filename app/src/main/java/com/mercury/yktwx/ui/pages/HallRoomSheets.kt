@@ -77,12 +77,14 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                 }
                 if (page == RoomSheetPage.Rooms) {
                     InlineError(state.error)
-                    if (state.rooms.isEmpty()) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
-                        fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    if (state.rooms.isEmpty()) {
+                        if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
+                            fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        else DashboardPlaceholder(14.sp, Modifier.fillMaxWidth().padding(vertical = 16.dp))
+                    }
                     state.rooms.forEachIndexed { index, room ->
-                        val selected = index == state.selectedIndex
-                        PaymentSelectionCard(selected = selected, onClick = { onSelect(index) },
-                            enabled = enabled) { contentColor ->
+                        PaymentSelectionCard(selected = index == state.selectedIndex, onClick = { onSelect(index) },
+                            enabled = enabled, modifier = Modifier.testTag("hall-room-$index")) { contentColor ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(room.hallLabel, Modifier.weight(1f), fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold, color = contentColor)

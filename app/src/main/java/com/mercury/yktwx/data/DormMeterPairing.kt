@@ -1,11 +1,18 @@
 package com.mercury.yktwx.data
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
 /** Project-specific traversal. Every target keeps the IDs and names returned for its own service. */
 internal class DormMeterPairing(private val service: FeeService) {
     /** Resolve the other family service from one household without writing an official binding. */
     suspend fun family(token: String, targetProject: FeeProject,
-        sourceBinding: FeeRoomBinding): DormMeter? {
-        val targetConfig = service.feeConfiguration(token, targetProject)
+        sourceBinding: FeeRoomBinding, configuration: FeeConfiguration? = null): DormMeter? {
+        val targetConfig = configuration ?: service.feeConfiguration(token, targetProject)
+        if (targetConfig.project != targetProject) return null
         if (!targetConfig.roomBindingEnabled || targetConfig.invalidRoomBinding ||
             targetConfig.roomBinding?.let { familyHouseholdKey(it) == familyHouseholdKey(sourceBinding) } == true) return null
         val initial = service.feeQuery(token, targetProject, 0, emptyMap(), false)
@@ -52,24 +59,25 @@ internal class DormMeterPairing(private val service: FeeService) {
         val floorQuery = service.feeQuery(token, project, building.number, selections.toMap(), false)
         if (floorQuery.tip != null || floorQuery.options.isEmpty()) return null
         // Confirm uniqueness across this building; a floor label alone does not identify the meter.
-        val targets = mutableListOf<Pair<DormMeterKind, FeeRoomBinding>>()
-        for (floorOption in floorQuery.options) {
-            selections[floor.key] = floorOption.id
-            names[floor.key] = floorOption.name
-            val roomQuery = service.feeQuery(token, project, floor.number, selections.toMap(), false)
-            if (roomQuery.tip != null) return null
+        val limit = Semaphore(3)
+        val floors = coroutineScope { floorQuery.options.map { floorOption -> async { limit.withPermit {
+            val floorSelections = selections + (floor.key to floorOption.id)
+            val floorNames = names + (floor.key to floorOption.name)
+            val roomQuery = service.feeQuery(token, project, floor.number, floorSelections, false)
+            if (roomQuery.tip != null) return@withPermit null
             val wantedRoom = roomKey(binding.names.getValue(room.key))
             val matches = roomQuery.options.filter {
                 kind(it.name) == targetKind && roomKey(it.name) == wantedRoom
             }
-            if (matches.size > 1) return null
-            val roomOption = matches.singleOrNull() ?: continue
+            if (matches.size > 1) return@withPermit null
+            val roomOption = matches.singleOrNull() ?: return@withPermit emptyList()
             val target = FeeRoomBinding.from(levels,
-                selections + (room.key to roomOption.id), names + (room.key to roomOption.name)) ?: return null
-            targets += targetKind to target
-            if (targets.size > 1) return null
-        }
-        return targets.singleOrNull()
+                floorSelections + (room.key to roomOption.id), floorNames + (room.key to roomOption.name))
+                ?: return@withPermit null
+            listOf(targetKind to target)
+        } } }.awaitAll() }
+        if (floors.any { it == null }) return null
+        return floors.filterNotNull().flatten().singleOrNull()
     }
     private fun kind(name: String) = DormMeterDiscovery.kind(name)
     private fun roomKey(name: String): String {
