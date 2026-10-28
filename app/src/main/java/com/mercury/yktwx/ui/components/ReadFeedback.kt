@@ -1,0 +1,106 @@
+package com.mercury.yktwx.ui.components
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+internal object FeedbackText {
+    const val Offline = "网络连接失败"
+    fun read(error: String, cached: Boolean = false): String {
+        if ("登录" in error && ("失效" in error || "重新登录" in error)) return "登录已失效，请重新登录"
+        val reason = if (isNetwork(error)) "网络连接失败" else "暂时无法加载"
+        return "$reason，" + if (cached) "下拉刷新更新" else "请下拉刷新"
+    }
+    fun inline(message: String): String = message.replace(Regex("[\\r\\n]+"), "，").trim()
+    fun isNetwork(message: String) = listOf("网络连接失败", "网络异常", "网络不可用").any { it in message }
+}
+
+private val LocalSkeletonActive = staticCompositionLocalOf { true }
+
+/** Keep a failed first read visible during retries; only actual content replaces it. */
+@Composable
+internal fun rememberInitialReadError(hasContent: Boolean, error: String?, settled: Boolean): String? {
+    var failure by remember { mutableStateOf<String?>(null) }
+    SideEffect {
+        if (hasContent) failure = null
+        else if (settled && error != null) failure = error
+    }
+    return if (hasContent) null else (error.takeIf { settled } ?: failure)
+}
+
+/** Delay only the skeleton's paint, preserving its real measurements and immediate results. */
+@Composable
+internal fun delayedSkeletonModifier(): Modifier {
+    val opacity = remember { Animatable(0f) }
+    val active = LocalSkeletonActive.current
+    LaunchedEffect(active) {
+        if (active) {
+            delay(250)
+            opacity.animateTo(1f, tween(150))
+        } else opacity.stop()
+    }
+    return Modifier.graphicsLayer { alpha = opacity.value }
+}
+
+/** Both outgoing skeleton and incoming failure share the viewport during the crossfade. */
+@Composable
+internal fun InitialReadTransition(error: String?, content: @Composable (displayedError: String?) -> Unit) {
+    val displayedError = rememberWhileShown(error != null, error.orEmpty())
+    AnimatedContent(targetState = error != null, modifier = Modifier.fillMaxSize(),
+        transitionSpec = { (fadeIn(tween(150)) togetherWith fadeOut(tween(150))).using(null) },
+        label = "InitialReadFailureTransition") { showFailure ->
+        CompositionLocalProvider(LocalSkeletonActive provides (error == null)) {
+            content(displayedError.takeIf { showFailure })
+        }
+    }
+}
+
+/** First-read and region failures share one icon and one line, without an extra action. */
+@Composable
+internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullToRefresh: Boolean = true) {
+    Column(modifier.fillMaxWidth().testTag("read-unavailable")
+        .padding(horizontal = 8.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(48.dp).background(MiuixTheme.colorScheme.error.copy(alpha = .06f), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center) {
+            Icon(MiuixIcons.Info, null, Modifier.size(26.dp), tint = MiuixTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(if (pullToRefresh) FeedbackText.read(error) else FeedbackText.inline(error),
+            fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    }
+}
+
+/** Low-weight feedback belongs at the bottom of the affected content region. */
+@Composable
+internal fun ReadNotice(error: String?, cached: Boolean = false, modifier: Modifier = Modifier) {
+    if (error.isNullOrBlank()) return
+    Row(modifier.fillMaxWidth().testTag("read-notice").padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(MiuixIcons.Info, null, Modifier.size(16.dp), tint = MiuixTheme.colorScheme.error)
+        Text(FeedbackText.read(error, cached), Modifier.weight(1f), fontSize = 13.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    }
+}

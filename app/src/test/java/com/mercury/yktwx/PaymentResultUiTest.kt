@@ -124,7 +124,8 @@ class PaymentResultUiTest {
         compose.onNodeWithText("支付结果").assertExists()
         compose.onNodeWithText("¥ 10.00").assertExists()
         compose.onNodeWithText("网络连接失败").assertExists()
-        compose.onNodeWithText("重试").performClick()
+        compose.onNodeWithText("重试").assertDoesNotExist()
+        compose.onNodeWithText("查询结果").performClick()
         compose.runOnIdle { assertEquals(1, checks) }
         compose.onNodeWithText("继续支付").assertDoesNotExist()
         compose.onNodeWithText("一卡通支付").assertDoesNotExist()

@@ -52,14 +52,13 @@ internal fun PaymentAmountForm(
     val valid = amountError == null
     // Keep validation live, and share the same banner as server errors above the action.
     val validationMessage = amountError.takeIf { amount.isNotBlank() }
-    val canRetry = validationMessage == null && !error.isNullOrBlank() && onRetry != null
     val keyboard = LocalSoftwareKeyboardController.current
     Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     PaymentAmountInput(config, amount, onAmountChange, enabled = enabled && !loading)
     Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     HallNeutralTabs(methods, selectedMethod) { if (enabled && !loading) onMethod(it) }
-    InlineError(validationMessage ?: error, actionLabel = if (canRetry) "重试" else null,
-        onAction = { if (enabled && !loading && canRetry) onRetry() })
+    val feedback = validationMessage ?: error
+    if (!feedback.isNullOrBlank()) InlineError(feedback)
     Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
         enabled = enabled && canSubmit && !loading && valid,
         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
@@ -95,7 +94,6 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
         }
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
         PaymentControlPlaceholder { HallNeutralTabs(methods, 0) {} }
-        InlineError(null)
         PaymentControlPlaceholder {
             Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("充值") }
@@ -231,8 +229,7 @@ internal fun PaymentResultContent(
         )
         if (queryError) {
             Spacer(Modifier.height(16.dp))
-            InlineError(detail, actionLabel = if (onCheck != null) "重试" else null,
-                onAction = { if (enabled) onCheck?.invoke() })
+            if (!detail.isNullOrBlank()) InlineError(detail)
         } else if (!busy && !failed && phase != RechargePhase.Paid && detail != null) {
             Spacer(Modifier.height(12.dp))
             Text(
@@ -267,7 +264,14 @@ internal fun PaymentResultContent(
             }
         } else if (!busy) {
             Spacer(Modifier.height(28.dp))
-            Button(onClick = onFinish, enabled = enabled, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
+            // Querying an existing order remains a normal result action, not a banner retry.
+            if (queryError && onCheck != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onFinish, enabled = enabled, modifier = Modifier.weight(1f)) { Text("完成") }
+                    Button(onClick = onCheck, enabled = enabled, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary()) { Text("查询结果") }
+                }
+            } else Button(onClick = onFinish, enabled = enabled, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("完成") }
         }
     }
 }

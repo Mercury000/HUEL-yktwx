@@ -68,7 +68,7 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         dismiss()
         owner = username
         paymentAccount = account
-        mutable.value = CardServiceUiState(visible = true, action = CampusCardAction.Unlost, preview = UiPreview.enabled && preview)
+        mutable.value = CardServiceUiState(action = CampusCardAction.Unlost, preview = UiPreview.enabled && preview)
         refreshCards()
     }
     private fun refreshCards() {
@@ -98,9 +98,8 @@ class CardServiceViewModel internal constructor(app: Application, private val re
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (attempt == current) {
-                    mutable.value = mutable.value.copy(visible = targetAccount != null, loading = false,
-                        error = safeError(e).takeIf { targetAccount != null })
-                    if (targetAccount == null) notifications.send(safeError(e))
+                    mutable.value = mutable.value.copy(visible = false, loading = false, error = null)
+                    notifications.send(safeError(e))
                 }
             }
         }

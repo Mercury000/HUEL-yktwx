@@ -240,11 +240,11 @@ class DashboardInteractionTest {
         compose.runOnIdle { state = BillUiState(error = "账单加载失败，请稍后重试") }
         compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
         compose.onNodeWithText("当前时间段还没有账单").assertDoesNotExist()
-        compose.onNodeWithText("账单加载失败，请稍后重试").assertIsDisplayed()
+        compose.onNodeWithText("暂时无法加载，请下拉刷新").assertIsDisplayed()
         compose.runOnIdle { state = BillUiState(needsLogin = true) }
         compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
         compose.onNodeWithText("当前时间段还没有账单").assertDoesNotExist()
-        compose.onNodeWithText("登录已失效，请重新登录。").assertIsDisplayed()
+        compose.onNodeWithText("登录已失效，请重新登录").assertIsDisplayed()
     }
 
     @Test fun billOverlaysCloseWithPageAndReopenWithAppliedFilters() {

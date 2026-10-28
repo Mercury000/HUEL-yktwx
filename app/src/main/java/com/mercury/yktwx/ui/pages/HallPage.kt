@@ -62,6 +62,9 @@ fun HallPage(
     var targetTab by remember { mutableIntStateOf(0) }
     var targetAdding by remember { mutableStateOf(false) }
     LaunchedEffect(isActive) { if (!isActive) targets = false }
+    val initialError = rememberInitialReadError(
+        dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null,
+        dorm.error ?: dorm.networkError, !dorm.loading && dorm.loaded)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -77,6 +80,12 @@ fun HallPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
+                InitialReadTransition(initialError) { displayedError ->
+                    val showFailure = displayedError != null
+                    // Only an empty pending shell is retained for the outgoing skeleton.
+                    val dorm = if (!showFailure && (initialError != null ||
+                        dorm.loading && !dorm.roomsAvailable && dorm.rooms.isEmpty() && dorm.network == null))
+                        DormUiState(loading = true) else dorm
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().overScrollVertical().imePadding(),
                     contentPadding = PaddingValues(
@@ -86,6 +95,9 @@ fun HallPage(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    if (showFailure) {
+                        item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                    } else {
                     item {
                         UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
                             onSwitch = { targetTab = 0; targetAdding = false; targets = true },
@@ -101,6 +113,8 @@ fun HallPage(
                                 enabled = !othersRechargeLoading, onClick = { onOpenCardService(CampusCardAction.OthersRecharge) })
                         }
                     }
+                    }
+                }
                 }
                 }
             }
@@ -126,16 +140,17 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget:
                     DashboardLink("切换", onClick = onSwitch, enabled = !state.managing)
                 }
             }
-            if (state.error != null) InlineError(state.error, actionLabel = "重试", onAction = onRefresh)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.rooms.isEmpty() && !state.roomsLoaded) {
+                if (state.rooms.isEmpty() && !state.roomsLoaded && state.error == null) {
                     UtilityPlaceholder()
+                } else if (state.rooms.isEmpty() && state.error != null) {
+                    ReadUnavailable(state.error)
                 } else if (state.rooms.isEmpty()) {
                     UnboundRoomContent(enabled = !state.managing && !state.loading,
                         onAdd = onAdd, onTemporaryPay = onTemporaryPay)
                 } else state.selectedRoom?.let { room ->
                     key(room.project, room.binding.selections) {
-                        DormRoomContent(room, opening, openingTarget, { onSwitch() }, onPay)
+                        DormRoomContent(room, opening, openingTarget, { onSwitch() }, onPay, state.error)
                     }
                 }
             }
@@ -192,7 +207,7 @@ private fun UtilityValueRow(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 private fun UtilityPlaceholder() {
-    Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取房间" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().then(delayedSkeletonModifier()).semantics { contentDescription = "正在读取房间" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DashboardPlaceholder(15.sp, Modifier.fillMaxWidth(), lineHeight = 22.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             repeat(2) {
@@ -217,7 +232,7 @@ private fun UtilityPlaceholder() {
 
 @Composable
 private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
-    onPay: (FeeProject, FeeRoomBinding) -> Unit) {
+    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: String? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(room.hallLabel, Modifier.weight(1f), fontSize = 15.sp, lineHeight = 22.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -262,7 +277,6 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                         Text(extra.joinToString(" · ") { "${it.label} ${it.value}${it.unit}" }, fontSize = 11.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
-                    InlineError(meter.error)
                     Surface(
                         onClick = { onPay(project, meter.room) },
                         enabled = !feeEntryOpening(opening, openingTarget, project, meter.room),
@@ -283,7 +297,9 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
             }
         }
     }
-    if (room.notice != null) {
+    ReadNotice(readError ?: room.meters.firstNotNullOfOrNull { it.error },
+        cached = room.meters.any { it.query != null })
+    if (room.notice != null && readError == null && room.meters.none { it.error != null }) {
         Text(room.notice, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         DashboardLink("核实房间", onClick = { onChoose(room.project) })
     }
@@ -322,13 +338,15 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 Text("校园网", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
                 state.network?.display?.firstOrNull { "状态" in it.first }?.second?.let { HallBadge(it, air = true) }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!state.networkLoaded && state.network == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
+            if (state.network == null && state.networkError != null) {
+                ReadUnavailable(state.networkError)
+            } else Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!state.networkLoaded && state.network == null && state.networkError == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
                 else Text(state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—", Modifier.weight(1f),
                     fontSize = 15.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))
             }
-            InlineError(state.networkError)
+            if (state.network != null) ReadNotice(state.networkError, cached = true)
         }
     }
 }

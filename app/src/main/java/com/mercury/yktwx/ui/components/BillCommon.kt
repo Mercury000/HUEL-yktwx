@@ -550,17 +550,8 @@ private const val DISPLAY_YEAR_BUFFER = 5
 @Composable
 internal fun BillErrorCard(
     message: String,
-    title: String = "账单加载失败",
-    actionLabel: String = "重试",
-    onAction: () -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Text(message, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            Button(onClick = onAction, colors = ButtonDefaults.buttonColorsPrimary()) { Text(actionLabel) }
-        }
-    }
+    Card(Modifier.fillMaxWidth()) { ReadUnavailable(message) }
 }
 
 @Composable
@@ -580,7 +571,7 @@ internal fun BillEmptyCard(title: String, message: String) {
 
 @Composable
 internal fun BillLoadingCard(message: String = "正在加载账单") {
-    Card(Modifier.fillMaxWidth().semantics { contentDescription = message }) {
+    Card(Modifier.fillMaxWidth().then(delayedSkeletonModifier()).semantics { contentDescription = message }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             repeat(4) { index ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -48,11 +48,10 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
-    val identityPending = !state.profileLoaded && state.profile == null && state.homeIdentity == null && state.profileError == null
-    val studyPending = identityPending || !state.homeIdentityLoaded && state.homeIdentity == null &&
-        state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
-    val summaryPending = !state.summaryLoaded && state.summary == null && state.summaryError == null
-    val countsPending = !state.countsLoaded && state.counts == null && state.countsError == null
+    val initialError = rememberInitialReadError(state.profile != null || state.homeIdentity != null ||
+        state.summary != null || state.counts != null || payment.account != null,
+        state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError,
+        state.loaded && !state.loading)
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -64,9 +63,23 @@ internal fun MyPage(
                 DashboardPullToRefresh(loading = state.loading, onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scroll) {
+                InitialReadTransition(initialError) { displayedError ->
+                    val showFailure = displayedError != null
+                    // Only an empty pending shell is retained for the outgoing skeleton.
+                    val state = if (!showFailure && (initialError != null || state.loading &&
+                        state.profile == null && state.homeIdentity == null && state.summary == null && state.counts == null))
+                        MyUiState(loading = true) else state
+                    val identityPending = !state.profileLoaded && state.profile == null && state.homeIdentity == null && state.profileError == null
+                    val studyPending = identityPending || !state.homeIdentityLoaded && state.homeIdentity == null &&
+                        state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
+                    val summaryPending = !state.summaryLoaded && state.summary == null && state.summaryError == null
+                    val countsPending = !state.countsLoaded && state.counts == null && state.countsError == null
                     LazyColumn(Modifier.fillMaxSize().overScrollVertical(),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (showFailure) {
+                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                        } else {
                         item {
                             Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -94,9 +107,9 @@ internal fun MyPage(
                                 }
                             }
                         }
-                        if (state.profileError != null) item { InlineError(state.profileError, actionLabel = "重试", onAction = onRefresh) }
-                        if (state.homeIdentityError != null) item { InlineError(state.homeIdentityError, actionLabel = "重试", onAction = onRefresh) }
-                        if (state.avatarError != null) item { InlineError(state.avatarError, actionLabel = "重试", onAction = onRefresh) }
+                        val identityError = state.profileError ?: state.homeIdentityError ?: state.avatarError
+                        if (identityError != null) item { ReadNotice(identityError,
+                            cached = state.profile != null || state.homeIdentity != null) }
                         item {
                             val primary = MiuixTheme.colorScheme.primary
                             val foreground = MiuixTheme.colorScheme.onPrimary
@@ -161,8 +174,8 @@ internal fun MyPage(
                                             fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
-                                    if (state.summaryError != null) InlineError(state.summaryError, actionLabel = "重试", onAction = onRefresh)
-                                    if (state.countsError != null) InlineError(state.countsError, actionLabel = "重试", onAction = onRefresh)
+                                    ReadNotice(state.summaryError ?: state.countsError,
+                                        cached = state.summary != null || state.counts != null)
                                 }
                             }
                         }
@@ -178,7 +191,9 @@ internal fun MyPage(
                         }
                         item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "应用设置", startAction = { Icon(MiuixIcons.Settings, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary) }, onClick = onSettings) } }
                         item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "关于财小通", startAction = { Icon(MiuixIcons.Info, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary) }, onClick = onAbout) } }
+                        }
                     }
+                }
                 }
             }
         }
@@ -222,8 +237,9 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
 
 @Composable
 internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit) {
-    val pending = !state.profileLoaded && state.profile == null && state.profileError == null
-    ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh) {
+    val initialError = rememberInitialReadError(state.profile != null, state.profileError, !state.loading)
+    val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
+    ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError) {
         item {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -236,8 +252,8 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
                 state.profile?.departmentName?.takeIf { it.isNotBlank() }?.let { ProfileField("部门", it) }
             }
         }
-        if (state.profileError != null) item { InlineError(state.profileError, actionLabel = "重试", onAction = onRefresh) }
-        if (state.avatarError != null) item { InlineError(state.avatarError, actionLabel = "重试", onAction = onRefresh) }
+        val error = state.profileError ?: state.avatarError
+        if (error != null) item { ReadNotice(error, cached = state.profile != null) }
     }
 }
 
@@ -269,7 +285,7 @@ private fun ProfileField(label: String, value: String?, pending: Boolean = false
 
 @Composable
 private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack: () -> Unit,
-    loading: Boolean = false, onRefresh: (() -> Unit)? = null,
+    loading: Boolean = false, onRefresh: (() -> Unit)? = null, initialError: String? = null,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
@@ -279,11 +295,16 @@ private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 val list: @Composable () -> Unit = {
+                    InitialReadTransition(initialError) { displayedError ->
                     LazyColumn(Modifier.fillMaxSize().overScrollVertical().then(
                         if (onRefresh == null) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                             bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+                        verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (displayedError != null) item { ReadUnavailable(displayedError, Modifier.fillParentMaxHeight()) }
+                        else content()
+                    }
+                    }
                 }
                 if (onRefresh != null) DashboardPullToRefresh(loading, onRefresh, Modifier.fillMaxSize(),
                     PaddingValues(top = padding.calculateTopPadding() + 16.dp), scroll, list)

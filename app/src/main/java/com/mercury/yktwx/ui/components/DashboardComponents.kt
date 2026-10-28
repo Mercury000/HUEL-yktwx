@@ -84,7 +84,7 @@ internal fun DashboardPlaceholder(fontSize: TextUnit, modifier: Modifier = Modif
 @Composable
 internal fun ContentPlaceholder(modifier: Modifier = Modifier, cornerRadius: Dp = 4.dp,
     color: Color = MiuixTheme.colorScheme.onSurface.copy(alpha = .08f)) {
-    Box(modifier.clearAndSetSemantics {}.background(color, RoundedCornerShape(cornerRadius)))
+    Box(modifier.then(delayedSkeletonModifier()).clearAndSetSemantics {}.background(color, RoundedCornerShape(cornerRadius)))
 }
 
 @Composable

@@ -37,6 +37,10 @@ class CardPasswordNavigationTest {
     }
     @Test fun myPageSubmissionShowsSuccessToastAndActuallyNavigatesToLoginWithoutRelogin() {
         val app = compose.activity.application
+        val connectivity = app.getSystemService(android.net.ConnectivityManager::class.java)
+        val capabilities = org.robolectric.shadows.ShadowNetworkCapabilities.newInstance()
+        shadowOf(capabilities).addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        shadowOf(connectivity).setNetworkCapabilities(connectivity.activeNetwork, capabilities)
         val vault = MemoryVault()
         var writes = 0
         var logins = 0

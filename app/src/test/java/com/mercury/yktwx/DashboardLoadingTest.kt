@@ -152,7 +152,7 @@ class DashboardLoadingTest {
         }
     }
 
-    @Test fun statisticsKeepTheirSlotsAndDoNotUseTheTrendAsAnUnfinishedTotal() {
+    @Test fun statisticsUseActualChartHeightAndDoNotUseTheTrendAsAnUnfinishedTotal() {
         val period = BillDateFilter.month(java.time.YearMonth.of(2026, 10))
         var state by mutableStateOf(BillStatsState(period = period, loading = true))
         var scale by mutableFloatStateOf(1f)
@@ -175,16 +175,19 @@ class DashboardLoadingTest {
             compose.runOnIdle { state = state.copy(daily = listOf(BillDailyPoint(period.start, 900)), dailyLoaded = true) }
             compose.onNodeWithContentDescription("正在加载统计").assertExists()
             compose.onNodeWithText("¥ 9.00").assertDoesNotExist()
-            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            stable(overview, "bill-stats-overview")
+            assertTrue("A real trend must not inherit the hidden placeholder height", bounds("bill-stats-category").top <= category.top)
             if (fontScale == 1f) capture("stats-trend-only")
             compose.runOnIdle { state = state.copy(categories = listOf(BillCategory("餐饮", 700),
                 BillCategory("超市", 200), BillCategory("其他", 100)), categoriesLoaded = true) }
             compose.onNodeWithContentDescription("正在加载统计").assertDoesNotExist()
             compose.onAllNodesWithText("¥ 10.00").assertCountEquals(2)
-            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            stable(overview, "bill-stats-overview")
+            assertTrue("Loaded categories must not reserve skeleton whitespace", bounds("bill-stats-category").height <= category.height)
             compose.runOnIdle { state = state.copy(daily = emptyList(), categories = emptyList(), rankingLoaded = true,
                 loading = false, loaded = true) }
-            stable(overview, "bill-stats-overview"); stable(category, "bill-stats-category")
+            stable(overview, "bill-stats-overview")
+            assertTrue("Empty categories must shrink to their content", bounds("bill-stats-category").height < category.height)
             compose.onAllNodesWithText("¥ 0.00").assertCountEquals(2)
             capture(if (fontScale == 1f) "stats-empty" else "stats-empty-large-dark")
         }

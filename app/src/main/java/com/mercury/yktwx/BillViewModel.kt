@@ -63,6 +63,7 @@ data class BillUiState(
     val listLoading: Boolean = false,
     val summaryError: String? = null,
     val countsError: String? = null,
+    val listAvailable: Boolean = listLoaded && error == null,
 ) {
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
@@ -128,7 +129,8 @@ class BillViewModel internal constructor(
                 return@launch
             }
             mutable.value = current.copy(needsLogin = false)
-            if (!current.loaded || System.currentTimeMillis() - lastLoadedAt > CACHE_MS) load()
+            if (!current.loaded || current.error != null || current.summaryError != null || current.countsError != null ||
+                System.currentTimeMillis() - lastLoadedAt > CACHE_MS) load()
         }
     }
 
@@ -152,7 +154,7 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             dateFilter = filter, items = emptyList(), summary = null, counts = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
-            listLoaded = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
+            listLoaded = false, listAvailable = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
             summaryError = null, countsError = null,
             stats = BillStatsState(period = filter, type = current.stats.type),
         )
@@ -173,7 +175,7 @@ class BillViewModel internal constructor(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
             items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
-            listLoaded = false, summaryLoaded = false, listLoading = false, summaryError = null,
+            listLoaded = false, listAvailable = false, summaryLoaded = false, listLoading = false, summaryError = null,
         )
         if (!preview && !mutable.value.needsLogin) load()
     }
@@ -185,7 +187,7 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(
             info = value, items = emptyList(), summary = null, currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
-            listLoaded = false, summaryLoaded = false, listLoading = false, summaryError = null,
+            listLoaded = false, listAvailable = false, summaryLoaded = false, listLoading = false, summaryError = null,
         )
         if (!preview && !mutable.value.needsLogin) load()
     }
@@ -290,7 +292,7 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             loading = !manualRefresh && !hasItems,
             refreshing = manualRefresh || hasItems,
-            error = null,
+            error = null, summaryError = null, countsError = null,
             loadMoreError = null,
             listLoading = true, loadingMore = false,
         )
@@ -316,7 +318,7 @@ class BillViewModel internal constructor(
                                 typeId, amountFrom, amountTo, info.ifBlank { null })
                             currentCoroutineContext().ensureActive()
                             publish { it.copy(items = page.items, currentPage = page.current, pages = page.pages,
-                                listLoading = false, listLoaded = true, error = null) }
+                                listLoading = false, listLoaded = true, listAvailable = true, error = null) }
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             currentCoroutineContext().ensureActive()
@@ -373,7 +375,8 @@ class BillViewModel internal constructor(
         if (mutable.value.needsLogin) return
         statsJob?.cancel()
         val stats = mutable.value.stats
-        mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null))
+        mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null,
+            dailyError = null, categoriesError = null, rankingError = null))
         statsJob = viewModelScope.launch {
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value

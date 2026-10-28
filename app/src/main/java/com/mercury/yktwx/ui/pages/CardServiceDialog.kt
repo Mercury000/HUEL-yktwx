@@ -93,7 +93,7 @@ private fun RecipientRechargeSheet(
                         enabled = enabled)
                 } else {
                     if (display.loading) PaymentAmountPlaceholder()
-                    InlineError(display.error, actionLabel = "重试", onAction = { if (enabled) onRetryRecharge() })
+                    if (!display.error.isNullOrBlank()) InlineError(display.error)
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -121,7 +121,7 @@ private fun RecipientRechargeSheet(
                     TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
                         enabled = enabled, modifier = Modifier.trackInputFocus().weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
-                InlineError(display.error)
+                if (!display.error.isNullOrBlank()) InlineError(display.error)
                 Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
                     enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "查询中…" else "查询") }
@@ -162,7 +162,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                 if (!display.loading && card == null && display.error == null) Text(
                     if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
             }
-            InlineError(display.error)
+            if (!display.error.isNullOrBlank()) InlineError(display.error)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },

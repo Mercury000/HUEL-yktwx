@@ -132,7 +132,8 @@ class PaymentLostUiTest {
                 }
             }
         }
-        compose.onNodeWithText("暂时无法确认卡状态").assertIsDisplayed()
+        compose.onNodeWithText("暂时无法加载，请下拉刷新").assertIsDisplayed()
+        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
         compose.onNodeWithText("重新检查").assertDoesNotExist()
         compose.onNodeWithText("已挂失").assertDoesNotExist()
         compose.onNodeWithText("解挂").assertDoesNotExist()
@@ -160,7 +161,7 @@ class PaymentLostUiTest {
                 }
             }
         }
-        compose.onNodeWithText("示例服务端错误").assertIsDisplayed()
+        compose.onNodeWithText("暂时无法加载，请下拉刷新").assertIsDisplayed()
         compose.onNodeWithText("重新获取").assertDoesNotExist()
         compose.onNodeWithText("重新检查").assertDoesNotExist()
         compose.onNodeWithText("刷新卡状态").assertDoesNotExist()
