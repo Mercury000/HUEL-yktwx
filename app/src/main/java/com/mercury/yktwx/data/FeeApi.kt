@@ -1,6 +1,8 @@
 package com.mercury.yktwx.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
@@ -13,7 +15,8 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
     private suspend fun post(path: String, token: String, fields: Map<String, String>, sign: Boolean = false) =
         http.json(http.request(path, token, form = if (sign) RechargeProtocol.signed(fields) else fields, chargeClient = true), feePayment = true)
 
-    override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
+    // Include JSON decoding and option conversion in the background work, not just HTTP I/O.
+    override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration = withContext(Dispatchers.Default) {
         val response = get("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to project.id))
         val item = response.getJSONObject("feeitem")
         if (item.rechargeText("feeitemid") != project.id) throw YktException("缴费项目不匹配")
@@ -29,7 +32,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
             item.optJSONObject("feeitemImplBean")?.optInt("bindinfo") == 1
         val scene = response.rechargeText("sceneinfo")
         val binding = if (enabled) FeeRoomBinding.parse(scene) else null
-        return FeeConfiguration(project, rules,
+        FeeConfiguration(project, rules,
             enabled, binding, enabled && scene.isNotBlank() && binding == null)
     }
 
@@ -40,7 +43,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         http.json(http.request("/charge/sceneBind/add", token, chargeClient = true, jsonBody = body))
     }
 
-    override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
+    override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery = withContext(Dispatchers.Default) {
         val map = post("/charge/feeitem/getThirdData", token, selections + mapOf(
             "feeitemid" to project.id, "type" to if (detail) "IEC" else "select", "level" to level.toString(),
         )).getJSONObject("map")
@@ -60,7 +63,7 @@ class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection()
         val display = map.optJSONObject("showData")?.let { d -> d.keys().asSequence().map { it to d.rechargeText(it) }.toList() }.orEmpty()
         val target = if (detail) map.optJSONObject("data")?.takeIf { it.length() > 0 }?.withRoomInfo()?.toString() else null
         val tip = map.rechargeText("tipinfo").ifBlank { null }
-        return FeeQuery(levels, items, target, display, tip, tip == null && !map.optBoolean("notPay", false))
+        FeeQuery(levels, items, target, display, tip, tip == null && !map.optBoolean("notPay", false))
     }
 
     /** The old frontend adds this client-side; the server derives the bill abstract from it. */

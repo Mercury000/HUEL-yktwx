@@ -8,8 +8,13 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.graphics.Insets
@@ -17,6 +22,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.AppTheme
+import com.mercury.yktwx.ui.components.FeeLocationDropdown
+import com.mercury.yktwx.ui.components.FeeLocationDropdownPlaceholder
 import com.mercury.yktwx.ui.pages.HallFeeDialog
 import org.junit.Assert.*
 import org.junit.Rule
@@ -78,6 +85,33 @@ class FeeSelectorUiTest {
         output.parentFile?.mkdirs()
         output.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+    @Test fun lightweightLocationPlaceholderMatchesDropdownHeightAtDifferentFontScales() {
+        var fontScale by mutableFloatStateOf(1f)
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalInspectionMode provides true,
+                LocalDensity provides Density(density.density, fontScale)) {
+                AppTheme { Scaffold {
+                    Column {
+                        Column(Modifier.fillMaxWidth().testTag("location-field")) {
+                            FeeLocationDropdown("", emptyList(), 0, false) {}
+                        }
+                        Column(Modifier.fillMaxWidth().testTag("location-placeholder")) {
+                            FeeLocationDropdownPlaceholder()
+                        }
+                    }
+                } }
+            }
+        }
+        for (scale in listOf(1f, 1.3f, 1.8f)) {
+            compose.runOnIdle { fontScale = scale }
+            val field = compose.onNodeWithTag("location-field").getUnclippedBoundsInRoot()
+            val placeholder = compose.onNodeWithTag("location-placeholder").getUnclippedBoundsInRoot()
+            assertEquals("Location field height at font scale $scale",
+                (field.bottom - field.top).value, (placeholder.bottom - placeholder.top).value, .001f)
+        }
+    }
+
     @Test fun everyFixedCardEntryKeepsItsMeterAndOnlyAsksForAmount() {
         var current by mutableStateOf(state(FeeProject.FamilyElectric))
         var dark by mutableStateOf(false)
