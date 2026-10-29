@@ -4,11 +4,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -68,75 +70,108 @@ internal fun DailyBillChart(
             }
             return@Column
         }
-        Canvas(Modifier.fillMaxWidth().height(150.dp).testTag("bill-trend-plot")
-            .semantics {
-                contentDescription = selected?.let { "${it.date}，金额 ${money(it.amountCents)} 元" } ?: "收支趋势，点按查看金额"
-                customActions = listOf(CustomAccessibilityAction("查看下一个时间点") {
-                    val index = points.indexOfFirst { it.date == selectedDate }
-                    selectedDate = points[(index + 1).coerceAtMost(points.lastIndex)].date
-                    true
-                }, CustomAccessibilityAction("查看上一个时间点") {
-                    val index = points.indexOfFirst { it.date == selectedDate }
-                    selectedDate = points[(index - 1).coerceAtLeast(0)].date
-                    true
-                })
-            }.pointerInput(points) {
-                detectTapGestures { position ->
-                    val index = if (points.size <= 1) 0 else
-                        (position.x / size.width.coerceAtLeast(1) * points.lastIndex).roundToInt().coerceIn(points.indices)
-                    selectedDate = points[index].date
+        Box(Modifier.fillMaxWidth().height(150.dp)) {
+            Canvas(Modifier.fillMaxSize().testTag("bill-trend-plot")
+                .semantics {
+                    contentDescription = selected?.let {
+                        val date = if (mode == BillDateMode.Year) "${it.date.year}年${it.date.monthValue}月" else it.date.toString()
+                        "$date，金额 ${money(it.amountCents)} 元"
+                    } ?: "收支趋势"
+                    customActions = listOf(CustomAccessibilityAction("查看下一个时间点") {
+                        val index = points.indexOfFirst { it.date == selectedDate }
+                        selectedDate = points[(index + 1).coerceAtMost(points.lastIndex)].date
+                        true
+                    }, CustomAccessibilityAction("查看上一个时间点") {
+                        val index = points.indexOfFirst { it.date == selectedDate }
+                        selectedDate = points[(index - 1).coerceAtLeast(0)].date
+                        true
+                    })
+                }.pointerInput(points) {
+                    detectTapGestures { position ->
+                        val index = if (points.size <= 1) 0 else
+                            (position.x / size.width.coerceAtLeast(1) * points.lastIndex).roundToInt().coerceIn(points.indices)
+                        selectedDate = points[index].date
+                    }
+                }) {
+                // Empty -> nonempty may compose before the interpolation effect acquires its target.
+                if (chartPoints.isEmpty()) return@Canvas
+                val chartTop = 8.dp.toPx()
+                val chartHeight = size.height - chartTop
+                val step = if (chartPoints.size <= 1) 0f else size.width / (chartPoints.size - 1)
+                fun point(index: Int): Offset {
+                    val x = if (chartPoints.size == 1) size.width / 2 else index * step
+                    val ratio = (chartPoints[index].value / chartMax).toFloat()
+                    return Offset(x, chartTop + chartHeight * (1f - ratio))
                 }
-            }) {
-            // Empty -> nonempty may compose before the interpolation effect acquires its target.
-            if (chartPoints.isEmpty()) return@Canvas
-            val chartTop = 8.dp.toPx()
-            val chartHeight = size.height - chartTop
-            val step = if (chartPoints.size <= 1) 0f else size.width / (chartPoints.size - 1)
-            fun point(index: Int): Offset {
-                val x = if (chartPoints.size == 1) size.width / 2 else index * step
-                val ratio = (chartPoints[index].value / chartMax).toFloat()
-                return Offset(x, chartTop + chartHeight * (1f - ratio))
+                for (i in 0..4) {
+                    val y = chartTop + chartHeight * i / 4f
+                    drawLine(grid.copy(alpha = 0.45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                }
+                if (chartPoints.size == 1) {
+                    val p = point(0)
+                    drawCircle(primary, radius = 3.5.dp.toPx(), center = p)
+                } else {
+                    val line = Path().apply {
+                        moveTo(point(0).x, point(0).y)
+                        for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
+                    }
+                    val fill = Path().apply {
+                        moveTo(0f, size.height)
+                        lineTo(point(0).x, point(0).y)
+                        for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
+                        lineTo(size.width, size.height)
+                        close()
+                    }
+                    drawPath(
+                        fill,
+                        Brush.verticalGradient(
+                            colors = listOf(primary.copy(alpha = 0.26f), primary.copy(alpha = 0f)),
+                            startY = chartTop, endY = size.height,
+                        ),
+                    )
+                    drawPath(line, primary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                }
+                val selectedIndex = chartPoints.indexOfFirst { it.key == selectedDate }
+                if (selectedIndex >= 0) {
+                    val selectedPoint = point(selectedIndex)
+                    drawLine(primary.copy(alpha = .35f), Offset(selectedPoint.x, chartTop), Offset(selectedPoint.x, size.height), strokeWidth = 1.dp.toPx())
+                    drawCircle(primary, radius = 5.dp.toPx(), center = selectedPoint)
+                    drawCircle(surface, radius = 2.5.dp.toPx(), center = selectedPoint)
+                }
+                val maxIndex = chartPoints.indexOfFirst { it.value == chartMax }
+                if (maxIndex >= 0) {
+                    val p = point(maxIndex)
+                    drawCircle(primary, radius = 4.5.dp.toPx(), center = p)
+                    drawCircle(surface, radius = 2.dp.toPx(), center = p)
+                }
             }
-            for (i in 0..4) {
-                val y = chartTop + chartHeight * i / 4f
-                drawLine(grid.copy(alpha = 0.45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
-            }
-            if (chartPoints.size == 1) {
-                val p = point(0)
-                drawCircle(primary, radius = 3.5.dp.toPx(), center = p)
-                return@Canvas
-            }
-            val line = Path().apply {
-                moveTo(point(0).x, point(0).y)
-                for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
-            }
-            val fill = Path().apply {
-                moveTo(0f, size.height)
-                lineTo(point(0).x, point(0).y)
-                for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
-                lineTo(size.width, size.height)
-                close()
-            }
-            drawPath(
-                fill,
-                Brush.verticalGradient(
-                    colors = listOf(primary.copy(alpha = 0.26f), primary.copy(alpha = 0f)),
-                    startY = chartTop, endY = size.height,
-                ),
-            )
-            drawPath(line, primary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
             val selectedIndex = chartPoints.indexOfFirst { it.key == selectedDate }
-            if (selectedIndex >= 0) {
-                val selectedPoint = point(selectedIndex)
-                drawLine(primary.copy(alpha = .35f), Offset(selectedPoint.x, chartTop), Offset(selectedPoint.x, size.height), strokeWidth = 1.dp.toPx())
-                drawCircle(primary, radius = 5.dp.toPx(), center = selectedPoint)
-                drawCircle(surface, radius = 2.5.dp.toPx(), center = selectedPoint)
-            }
-            val maxIndex = chartPoints.indexOfFirst { it.value == chartMax }
-            if (maxIndex >= 0) {
-                val p = point(maxIndex)
-                drawCircle(primary, radius = 4.5.dp.toPx(), center = p)
-                drawCircle(surface, radius = 2.dp.toPx(), center = p)
+            if (selected != null && selectedIndex >= 0) {
+                // Measure the label inside the plot, then keep it near the point without clipping.
+                Layout(modifier = Modifier.matchParentSize(), content = {
+                    val date = if (mode == BillDateMode.Year) "${selected.date.monthValue}月"
+                        else "${selected.date.monthValue}月${selected.date.dayOfMonth}日"
+                    Text("$date · ¥ ${money(selected.amountCents)}",
+                        Modifier.testTag("bill-trend-selection")
+                            .background(surface.copy(alpha = .96f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        fontSize = 12.sp, color = primary, fontWeight = FontWeight.Medium,
+                        maxLines = 1)
+                }) { measurables, constraints ->
+                    val label = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val width = constraints.maxWidth
+                    val height = constraints.maxHeight
+                    val pointX = if (chartPoints.size == 1) width / 2f
+                        else width.toFloat() * selectedIndex / chartPoints.lastIndex
+                    val top = 8.dp.toPx()
+                    val pointY = top + (height - top) * (1f - (chartPoints[selectedIndex].value / chartMax).toFloat())
+                    val gap = 10.dp.roundToPx()
+                    val x = (pointX - label.width / 2f).roundToInt().coerceIn(0, (width - label.width).coerceAtLeast(0))
+                    val above = pointY.roundToInt() - label.height - gap
+                    val y = (if (above >= 0) above else pointY.roundToInt() + gap)
+                        .coerceIn(0, (height - label.height).coerceAtLeast(0))
+                    layout(width, height) { label.place(x, y) }
+                }
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -146,9 +181,6 @@ internal fun DailyBillChart(
             Spacer(Modifier.weight(1f))
             Text(pointShort(points.last(), mode), fontSize = 11.sp, color = summary)
         }
-        Text(selected?.let { "${it.date} · ¥ ${money(it.amountCents)}" } ?: "点按曲线查看金额",
-            Modifier.fillMaxWidth().padding(top = 6.dp).testTag("bill-trend-selection"), fontSize = 12.sp, lineHeight = 18.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = summary)
     }
 }
 
@@ -182,9 +214,6 @@ internal fun DailyBillChartPlaceholder(modifier: Modifier = Modifier) {
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             repeat(3) { DashboardPlaceholder(11.sp, Modifier.width(36.dp), fraction = 1f, sample = "0.00") }
-        }
-        Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
-            DashboardPlaceholder(12.sp, lineHeight = 18.sp, modifier = Modifier.width(140.dp), fraction = .8f)
         }
     }
 }
