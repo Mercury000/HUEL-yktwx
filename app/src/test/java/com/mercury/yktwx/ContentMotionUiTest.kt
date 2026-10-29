@@ -36,6 +36,38 @@ class ContentMotionUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private fun frames(count: Int = 20) { repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() } }
 
+    @Test fun cachedStatisticsTypeSwitchKeepsModeTabsUnchangedInEveryFrame() {
+        var state by mutableStateOf(PreviewData.billState().copy(statsVisible = true))
+        val settings = ThemeSettings(compose.activity.application)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { BillPage(state, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {},
+                    onStatsTypeChange = { state = state.copy(stats = BillStatsState(period = state.stats.period, type = it, loading = true)) }) }
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        val tabs = compose.onNodeWithTag("bill-mode-tabs")
+        val baseline = tabs.captureToImage().asAndroidBitmap()
+        val bounds = tabs.fetchSemanticsNode().boundsInRoot
+        val nodeId = tabs.fetchSemanticsNode().id
+        for (type in listOf(1, 2, 1, 2)) {
+            compose.onNodeWithText(if (type == 1) "收入" else "支出").performClick()
+            frames(2)
+            compose.runOnIdle {
+                state = state.copy(stats = PreviewData.billStats(state.stats.period, type).copy(loading = true, displayRestored = true))
+            }
+            repeat(16) { frame ->
+                frames(1)
+                assertEquals("Mode tabs were recreated when restoring type $type", nodeId, tabs.fetchSemanticsNode().id)
+                assertEquals(bounds, tabs.fetchSemanticsNode().boundsInRoot)
+                assertTrue("Mode tabs flashed when restoring type $type at frame $frame",
+                    baseline.sameAs(tabs.captureToImage().asAndroidBitmap()))
+            }
+            compose.runOnIdle { state = state.copy(stats = state.stats.copy(loading = false)) }
+            frames(30)
+        }
+    }
+
     @Test fun statisticsTabsSurviveRapidPendingEmptyAndLoadedTransitions() {
         var state by mutableStateOf(PreviewData.billState().copy(statsVisible = true))
         val period = state.dateFilter

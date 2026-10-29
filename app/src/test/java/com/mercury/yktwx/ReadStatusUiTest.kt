@@ -62,6 +62,37 @@ class ReadStatusUiTest {
         assertEquals(android.graphics.Color.BLACK, compose.onRoot().captureToImage().asAndroidBitmap().getPixel(30, 30))
     }
 
+    @Test fun restoredSnapshotKeepsControlsAliveAndLaterNetworkContentStillFades() {
+        var restored by mutableStateOf(false)
+        var value by mutableIntStateOf(0)
+        var disposals = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            Box(Modifier.fillMaxSize().background(Color.White)) {
+                InitialReadTransition(null, displayRestored = restored) {
+                    DisposableEffect(Unit) { onDispose { disposals++ } }
+                    ContentFade(value) { shown ->
+                        Box(Modifier.size(100.dp).background(if (shown == 1) Color.Black else Color.White))
+                    }
+                }
+            }
+        }
+        compose.runOnIdle { restored = true; value = 1 }
+        repeat(2) { frame() }
+        assertEquals(0, disposals)
+        assertEquals(android.graphics.Color.BLACK, compose.onRoot().captureToImage().asAndroidBitmap().getPixel(30, 30))
+        // A subsequent network result should retain the usual content transition.
+        compose.runOnIdle { value = 2 }
+        repeat(5) { frame() }
+        val pixel = compose.onRoot().captureToImage().asAndroidBitmap().getPixel(30, 30)
+        assertTrue(android.graphics.Color.red(pixel) in 1..254)
+        repeat(12) { frame() }
+        assertEquals(android.graphics.Color.WHITE, compose.onRoot().captureToImage().asAndroidBitmap().getPixel(30, 30))
+        compose.runOnIdle { restored = false }
+        repeat(2) { frame() }
+        assertEquals(0, disposals)
+    }
+
     @Test fun pendingReadCompletesAndCollapsesWithoutChangingCachedContent() {
         var loading by mutableStateOf(true)
         compose.mainClock.autoAdvance = false

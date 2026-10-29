@@ -78,14 +78,22 @@ internal fun UpdatedText(
     }
 }
 
+/** Carries cache restoration through nested transitions without rebuilding the page. */
+internal val LocalReadSnapshotRestored = staticCompositionLocalOf { false }
+
+private data class ContentFadeTarget<T>(val value: T, val restored: Boolean)
+
 /** Shared skeleton/empty/content transition; cached content does not replay entry on navigation. */
 @Composable
 internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it },
     animate: Boolean = true, content: @Composable (T) -> Unit) {
-    AnimatedContent(targetState = state, modifier = modifier, transitionSpec = {
-        (if (animate) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
+    AnimatedContent(targetState = ContentFadeTarget(state, LocalReadSnapshotRestored.current), modifier = modifier, transitionSpec = {
+        // A newly restored snapshot replaces pending paint immediately. Keep the
+        // composition alive so controls and their selection/scroll state survive.
+        val restoring = targetState.restored && !initialState.restored
+        (if (animate && !restoring) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
         else EnterTransition.None togetherWith ExitTransition.None).using(null)
-    }, label = "ContentFade", contentKey = contentKey, content = { content(it) })
+    }, label = "ContentFade", contentKey = { contentKey(it.value) }, content = { content(it.value) })
 }
 
 /** A short-lived insertion event, never an animation triggered by merely scrolling into view. */

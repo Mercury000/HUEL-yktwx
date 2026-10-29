@@ -201,7 +201,7 @@ fun BillPage(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item(key = "mode") {
-                            Box(Modifier.width(180.dp)) {
+                            Box(Modifier.width(180.dp).testTag("bill-mode-tabs")) {
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
                                     onTabSelected = { if (it == 0) onShowDetails() else onOpenStats() },
                                     minWidth = 85.dp, maxWidth = 85.dp, height = 38.dp, cornerRadius = 12.dp, itemSpacing = 0.dp,

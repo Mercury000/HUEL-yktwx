@@ -165,8 +165,8 @@ internal fun delayedSkeletonModifier(): Modifier {
 internal fun InitialReadTransition(error: String?, networkError: String? = null,
     displayRestored: Boolean = false,
     content: @Composable (displayedError: String?) -> Unit) {
-    // A local snapshot is the initial display, never an animated replacement for a skeleton.
-    key(displayRestored) {
+    // Cache restoration only changes the content transition, never the page's identity.
+    CompositionLocalProvider(LocalReadSnapshotRestored provides displayRestored) {
         val displayedError = rememberWhileShown(error != null, error.orEmpty())
         ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
             CompositionLocalProvider(LocalSkeletonActive provides (error == null),
