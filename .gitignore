@@ -26,18 +26,6 @@
 *.zip
 *.7z
 
-# Python caches and virtual environments
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.venv/
-venv/
-.coverage
-.coverage.*
-htmlcov/
-
 # Local diagnostics, downloaded docs and preview screenshots
 /tools/
 *.log
@@ -46,6 +34,7 @@ hs_err_pid*
 replay_pid*
 
 # Account material and signing secrets
+*.har
 .env
 .env.*
 !.env.example

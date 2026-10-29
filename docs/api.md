@@ -6,7 +6,7 @@
 
 `https://yktwx2.huel.edu.cn`
 
-Python 与 Android 均只向该 HTTPS 源站请求，不依赖网页登录 Cookie，不跟随重定向发送账密，不关闭 TLS 校验。
+Android 的登录及一卡通业务请求均只向该 HTTPS 源站发送，不依赖网页登录 Cookie，不跟随重定向发送账密，不关闭 TLS 校验。微信 H5 支付桥接另允许经校验的 `https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb` 与 `weixin://wap/pay` 跳转，校验预支付标识及官方订单回跳，不携带学校 Token。
 
 ## 登录
 
@@ -22,7 +22,7 @@ Python 与 Android 均只向该 HTTPS 源站请求，不依赖网页登录 Cooki
    - `Content-Type: application/x-www-form-urlencoded`。
    - `Authorization` 使用官网前端公开的 OAuth Basic 客户端标识，不是用户密码或 Token。
    - 表单：`username`、`password`（编码后）、`grant_type=password`、`scope=all`、`loginFrom=h5`、`logintype=snoNew`、`device_token=h5`、`synAccessSource=h5`。
-   - 解析 `access_token`、`token_type`、`expires_in`。Android 加密保存访问 Token，不使用 Refresh Token；Python 仅在进程中使用访问 Token。
+   - 解析 `access_token`、`token_type`、`expires_in`。Android 加密保存访问 Token，不使用 Refresh Token。
    - 首次登录、密码过期、验证码或账户异常需在官方渠道处理，不绕过验证。
 
 ## 获取付款码
@@ -54,7 +54,7 @@ synAccessSource: h5
 - 连接建立及付款码变化时发送 `{"appCode":"mobile_service_platform","module":"qrcode_ykt","userId":"<当前付款码>"}`。不要记录实际付款码。
 - 收到消息后仅在外层 `code===200` 时读取 `data.content`，存为 `consumeData` 并打开成功结果；金额来自 `consumeData.tranamt / 100`，交易信息来自 `payName`、`orderId`、`jndatetimeStr`。非 200 消息不触发成功反馈。
 - 用户反馈该 WebSocket 目前无法连接、疑似配置问题。本轮只核对源码和配置，未独立确认故障原因、未接入或测试真实消费通知；不能把此项写成已可用。
-- 当前原生翻转检测后根据同账户余额减少显示“支付成功”、展示差额并刷新付款码，按用户明确要求作为实验性功能保留。这是余额变化推测，与官网交易通知机制不同；它不参与充值／缴费订单状态判断。后续若官网通知恢复可用，应以真实交易结果替代推测。
+- 当前原生翻转检测后根据同账户余额减少显示“支付成功”、展示差额并刷新付款码，作为默认关闭、需用户主动开启的实验性功能。检测本身只查询余额；确认扣减后发布数据失效事件，账单和本月概览在对应页面可见时重新读取，不重复查询已取得的新余额。这是余额变化推测，与官网交易通知机制不同；它不参与充值／缴费订单状态判断。后续若官网通知恢复可用，应以真实交易结果替代推测。
 
 ## 账单
 
@@ -68,7 +68,7 @@ synAccessSource: h5
 
 1. `GET /berserker-search/search/personal/turnover`
    - 列表/搜索参数：`current`、`size`、`timeFrom`、`timeTo`，可选 `typeId`、`amountFrom`、`amountTo`（单位分）、`info`，以及 `synAccessSource=h5`。
-   - 搜索沿用当前日期范围并传 `info`；不在本地保存搜索词或账单明细。
+   - 搜索沿用当前日期范围并传 `info`；不单独保存搜索输入，按日期、筛选和查询条件隔离的账单首屏展示快照使用本地加密缓存，搜索条件改变时重新查询。
    - 排行复用该接口，附加 `current=1`、`size=5`、`type=2`、`sortFields=tranamt`、`sortType=desc`。
    - 解析 `data.{records,total,size,current,pages}`；记录字段包括 `orderId`、`resume`、`payName`、`turnoverType`、`icon`、`typeId`、`typeFrom`、`tranamt`、`cardBalance`、`feeAmt`、`effectdateStr`、`jndatetimeStr`、`fromAccount`、`posCode`、`remark`、`toMerchant`、`sno`、`labelName`。
    - 收入/支出笔数复用该列表接口，附加 `type=1`（收入）或 `type=2`（支出）、`current=1`、`size=1`，读取 `data.total`。
@@ -89,8 +89,8 @@ synAccessSource: h5
 
 - `tranamt` 等金额字段按分处理；接口可能返回 `800.0` 形式，解析时四舍五入为整数分。`tranamt` 恒为正，收支方向看 `typeFrom`：`"1"` 为收入，其他为支出。收入显示 `+`，支出显示 `-`。
 - 空值字段可能为字符串 `"null"`，解析时统一转为空字符串，避免界面显示 `null`。
-- 列表按 `orderId` 去重；分页加载到 `current >= pages` 后停止。
-- Token 过期或被拒绝时映射为 `AuthenticationRequired`，由账户仓库最多重登一次；不在此处保存账单响应。
+- 列表按稳定交易标识去重，优先使用 `orderId`，缺失时使用流水号或交易字段摘要；分页加载到 `current >= pages` 后停止。仅首屏持久化，后续分页留在本次运行内存；恢复快照后先核对实时首屏，再允许继续分页。
+- Token 过期或被拒绝时映射为 `AuthenticationRequired`，由账户仓库最多重登一次；API 层不保存原始账单响应，页面层仅缓存解析后的展示字段。
 - Android 的账单预览模式只注入虚构记录、金额和账户名，不读取真实账单。
 
 ## 挂失与解挂（接入调查）
@@ -106,7 +106,7 @@ synAccessSource: h5
 
 ## 修改查询密码
 
-详见 [修改查询密码协议与登录处理](card-password.md)。入口为“大厅 → 校园卡服务 → 修改查询密码”。
+详见 [修改查询密码协议与登录处理](card-password.md)。入口为“我的 → 校园卡管理 → 修改查询密码”。
 
 - `POST /berserker-app/ykt/tsm/modifyPwd`，JSON 字段 `account`、`oldpw`、`newpw`、`renewpw`、`synAccessSource`。
 - 三个密码分别使用同次数字安全键盘映射与 UUID；原生固定顺序编码使用 `Number&order=0`，不提交明文。
@@ -147,14 +147,15 @@ synAccessSource: h5
 - 下单和支付：`POST /blade-pay/pay`，缴费先 `paystep=0`，再按订单动态选择渠道；一卡通 ACCOUNTTSM、微信 TSM，不是卡充值 CAMPUSCARD。
 - 一卡通支付密码采用缴费安全键盘的数字位置编码，不使用网页登录密码协议，也不自动使用保存的登录密码。
 - 结果：`GET /charge/order/personal_data`，只核验本人匹配订单；不能仅凭 code=200 认定支付成功。
-- 所有金额以接口各自单位为准；用户密码、Token、Cookie、房间/宽带 ID 与键盘映射不写入仓库。当前未实现通用缴费 UI。
+- 所有金额以接口各自单位为准；用户密码、Token、Cookie、房间/宽带 ID 与键盘映射不写入仓库。Android 已通过大厅金额弹层接入宿舍、家属区、商业街水电与校园网缴费，复用渠道选择、一卡通支付密码、微信唤起及查单流程；项目、目标和渠道以实时官方配置为准。界面已接入不代表全部项目已完成真机支付验证。
 
 ## 刷新与错误边界
 
 - Android 使用加密保存的 Token；普通查询取得会话后释放账户仓库互斥锁并行读取，登录与不可重放的写操作仍由锁保护。Token 过期或被拒绝时，并发请求共享一次重登，每个查询最多重试一次；迟到的旧 Token 拒绝不清除新会话。账密无效或需要验证码时清除保存登录状态并要求重新登录，已取消查询不再改动凭据，网络故障不等同于账密错误。
-- Python 不自动重试登录；下次启动 `--login` 再次隐藏输入账密。
 - 官方前端显示周期为 60 秒；若 `expires` 更短则缩短周期，不将批次有效期当成离线可用承诺。
 - Android 每个周期重新取批次，只显示首码；后台移除当前码，回前台重新获取。
+- 余额、账单首屏 / 统计、资料及大厅展示值有按账号和查询目标隔离的本地加密快照；冷启动先恢复展示，再联网核对，同一运行中沿用一分钟内存新鲜度。失败保留有效旧数据，退出登录、改密或确认身份失效时清理当前账号缓存。
+- 本人充值及一卡通缴费查单成功后使自己的余额失效，在付款 / 我的 / 账户详情可见时重新读取；代人充值和微信缴费不重查自己的余额。所有确认成功的充值 / 缴费都使账单和本月概览失效，缴费同时使大厅失效，待对应页面可见时刷新；关闭结果弹层的方式不影响事件发送，其他账号或过期任务不能更新当前数据。
 - 接口格式、键盘布局或验证码规则改变需重新验证；不支持官网键盘以外的字符。
 - 多客户端取码对旧码的影响、离线付款、实际扫码消费及消费结果监听未验证。
 

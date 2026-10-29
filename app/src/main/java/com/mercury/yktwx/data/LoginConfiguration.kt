@@ -14,8 +14,7 @@ internal object LoginConfiguration {
                 is JSONObject -> rawConfig
                 else -> throw JSONException("Invalid front config type")
             }
-            // Do not call getJSONArray on a JSON string: parse its contents first,
-            // exactly as PasswordLoginClient._login_type does in payment_api.py.
+            // The website may return loginType as a JSON string; parse it before reading the array.
             val rawMethods: Any? = config.opt("loginType")
             val methods = when (rawMethods) {
                 is String -> JSONArray(rawMethods)
