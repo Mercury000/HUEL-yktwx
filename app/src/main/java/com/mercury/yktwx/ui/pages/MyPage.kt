@@ -52,6 +52,7 @@ internal fun MyPage(
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     val balancePending = payment.balanceLoading || payment.accountLoading
+    val cardPending = payment.cardStatusLoading
     val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
     val hasContent = state.profile != null || state.homeIdentity != null ||
         state.summary != null || state.counts != null || payment.account != null
@@ -61,8 +62,9 @@ internal fun MyPage(
     val networkError = key(state.month) { rememberPageNetworkError(FeedbackText.mergedNetworkError(
         "资料" to FeedbackText.networkError(state.profileError, state.homeIdentityError, state.avatarError),
         "余额" to FeedbackText.networkError(payment.accountError, balanceError),
+        "卡状态" to FeedbackText.networkError(payment.cardStatusError),
         "概览" to FeedbackText.networkError(state.summaryError, state.countsError)),
-        state.loading || balancePending, hasContent) }
+        state.loading || balancePending || cardPending, hasContent) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -71,7 +73,7 @@ internal fun MyPage(
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                DashboardPullToRefresh(loading = state.loading || payment.accountLoading, onRefresh = onRefresh,
+                DashboardPullToRefresh(loading = state.loading || balancePending || cardPending, onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scroll) {
                 InitialReadTransition(initialError, networkError, state.displayRestored) { displayedError ->
@@ -93,9 +95,9 @@ internal fun MyPage(
                         } else {
                         item {
                             PageReadNotice(networkError, 10.dp, loading =
-                                (state.loading || balancePending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
+                                (state.loading || balancePending || cardPending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
                                 failed = state.profileError != null || state.homeIdentityError != null || state.avatarError != null ||
-                                    state.summaryError != null || state.countsError != null || payment.accountError != null) {
+                                    state.summaryError != null || state.countsError != null || payment.accountError != null || payment.cardStatusError != null) {
                                 Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         key(payment.username, state.profile?.sno.takeUnless { customAvatar }) {
@@ -147,19 +149,20 @@ internal fun MyPage(
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text("校园卡余额", fontSize = 12.sp, color = foreground.copy(alpha = .8f))
                                             Spacer(Modifier.weight(1f))
-                                            val restricted = !balancePending && payment.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen)
+                                            val card = payment.accountCard?.takeIf { it.account == payment.account?.account }
+                                            val restricted = !cardPending && card?.let { it.lost || it.frozen } == true
                                             val statusBackground = if (restricted) Color(0xFFFFE0AE) else foreground.copy(alpha = .14f)
                                             val statusForeground = if (restricted) Color(0xFF804900) else foreground
                                             Row(Modifier.clip(CircleShape).background(statusBackground).padding(horizontal = 9.dp, vertical = 5.dp),
                                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Box(Modifier.size(4.dp).background(statusForeground, CircleShape))
-                                                UpdatedText(cardStatus(payment.problem, payment.account != null, balancePending), numeric = false, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
+                                                UpdatedText(cardStatus(card, payment.account?.account, cardPending), numeric = false, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
                                                     fontWeight = if (restricted) FontWeight.SemiBold else FontWeight.Normal, color = statusForeground)
                                             }
                                         }
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            ContentFade(payment, Modifier.weight(1f), contentKey = { (it.busy || it.accountLoading) && it.account == null }) { displayed ->
-                                            if ((displayed.busy || displayed.accountLoading) && displayed.account == null) {
+                                            ContentFade(payment, Modifier.weight(1f), contentKey = { (it.balanceLoading || it.accountLoading) && it.account == null }) { displayed ->
+                                            if ((displayed.balanceLoading || displayed.accountLoading) && displayed.account == null) {
                                                 DashboardPlaceholder(36.sp, Modifier.fillMaxWidth(), fraction = .58f,
                                                     lineHeight = 44.sp, sample = "¥ 0.00", color = foreground.copy(alpha = .18f))
                                             } else UpdatedText(displayed.account?.let { money(it.balanceCents) } ?: "—", Modifier.fillMaxWidth(), prefix = "¥ ", identity = displayed.account?.account,
@@ -182,6 +185,7 @@ internal fun MyPage(
                                     }
                                 }
                                 ReadNotice(payment.accountError, cached = payment.account != null)
+                                ReadNotice(payment.cardStatusError, cached = payment.accountCard != null)
                             }
                         }
                         item {
@@ -248,13 +252,13 @@ private fun ProfileServiceIcon(icon: androidx.compose.ui.graphics.vector.ImageVe
         contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(19.dp), tint = MiuixTheme.colorScheme.primary.copy(alpha = .7f)) }
 }
 
-internal fun cardStatus(problem: PaymentCodeProblem?, hasAccount: Boolean, busy: Boolean): String = when {
+internal fun cardStatus(card: CampusCard?, account: String?, busy: Boolean): String = when {
     busy -> "核验中"
-    problem == PaymentCodeProblem.Lost -> "已挂失"
-    problem == PaymentCodeProblem.Frozen -> "已冻结"
-    problem == PaymentCodeProblem.StatusUnverified -> "状态待确认"
-    hasAccount && problem == null -> "正常"
-    else -> "状态待确认"
+    card == null || card.account != account -> "状态待确认"
+    card.frozen -> "已冻结"
+    card.lost -> "已挂失"
+    card.status == 0 -> "正常"
+    else -> "状态异常"
 }
 
 @Composable
@@ -314,17 +318,18 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
 internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings, onBack: () -> Unit, onRecharge: () -> Unit,
     rechargeLoading: Boolean = false, onRefresh: (() -> Unit)? = null) {
     val balancePending = payment.balanceLoading || payment.accountLoading
+    val reading = balancePending || payment.cardStatusLoading
     val initialError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
-    val error = rememberPageNetworkError(payment.accountError, balancePending, payment.account != null)
-    ProfileDetailScaffold("账户详情", settings, onBack, payment.accountLoading, onRefresh, initialError) {
+    val error = rememberPageNetworkError(payment.accountError ?: payment.cardStatusError, reading, payment.account != null)
+    ProfileDetailScaffold("账户详情", settings, onBack, reading, onRefresh, initialError) {
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
-                loading = balancePending && payment.account != null, errorTag = "read-notice") {
+                loading = reading && payment.account != null, errorTag = "read-notice") {
             Card(Modifier.fillMaxWidth()) {
                 val pending = payment.account == null && (balancePending || initialError != null)
                 ProfileField("账户", payment.account?.name, pending)
                 ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" }, pending)
-                ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, balancePending))
+                ProfileField("校园卡状态", cardStatus(payment.accountCard, payment.account?.account, payment.cardStatusLoading))
             }
             }
         }

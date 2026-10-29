@@ -75,6 +75,16 @@ class YktApiLoginTest {
         assertEquals(1, fake.calls.size)
         assertTrue(fake.calls.single().url.path.endsWith("/codebarPayinfo"))
     }
+    @Test fun standaloneCardStatusReadDoesNotFetchBalanceBarcodeOrManagementSettings() = runBlocking {
+        val fake = ScriptedApi(paymentStatus = 0, lost = 1)
+        val card = fake.api.paymentCard("fake-token", "fake-account")
+        assertTrue(card.lost)
+        assertFalse(card.frozen)
+        assertEquals(0, card.status)
+        assertEquals(1, fake.calls.size)
+        assertTrue(fake.calls.single().url.path.endsWith("/getCampusCards"))
+    }
+
     @Test fun paymentPublishesTheVerifiedBalanceBeforeCardPreflightWithoutAnotherAccountQuery() = runBlocking {
         val fake = ScriptedApi()
         var published: PaymentAccount? = null

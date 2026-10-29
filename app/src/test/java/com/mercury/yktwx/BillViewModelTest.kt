@@ -668,6 +668,7 @@ class BillViewModelTest {
     }
 
     private class FakeService : YktService {
+        override suspend fun paymentCard(token: String, account: String) = CampusCard(account, "校园卡", "123", false, false, 0)
         override suspend fun paymentAccount(token: String) = PaymentAccount("0", "0", "0", "Demo", 0)
         @Volatile var requests = 0
         var requestGate = CompletableDeferred<Unit>()

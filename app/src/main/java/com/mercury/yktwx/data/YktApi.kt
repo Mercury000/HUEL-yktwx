@@ -13,6 +13,7 @@ interface YktService {
     suspend fun login(credentials: Credentials): Session
     suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit = {}): PaymentBatch
     suspend fun paymentAccount(token: String): PaymentAccount
+    suspend fun paymentCard(token: String, account: String): CampusCard
     suspend fun bills(
         token: String,
         current: Int,
@@ -108,12 +109,15 @@ class YktApi(
     }
     override suspend fun paymentAccount(token: String): PaymentAccount = paymentAccountInfo(token).first
 
+    override suspend fun paymentCard(token: String, account: String): CampusCard =
+        CardServiceApi(openConnection).paymentCard(token, account)
+
     override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
         val (account, selected) = paymentAccountInfo(token)
         onAccount(account)
         // An issued barcode can still be rejected at payment time. Verify the matching card
         // before requesting any codes; preserve balance and recharge independently.
-        val card = try { CardServiceApi(openConnection).paymentCard(token, account.account) }
+        val card = try { paymentCard(token, account.account) }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: AuthenticationRequired) { throw e }
         catch (_: Exception) { throw PaymentCodeUnavailable(account, "暂时无法确认卡状态，请检查网络后重试", PaymentCodeProblem.StatusUnverified) }

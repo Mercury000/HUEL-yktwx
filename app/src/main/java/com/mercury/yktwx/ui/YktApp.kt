@@ -345,9 +345,9 @@ private fun MainContent(
         ReadPage.Payment -> state.busy
         ReadPage.Hall -> dormState.loading || dormState.managing
         ReadPage.Bill -> if (billState.statsVisible) billState.stats.loading else billState.loading || billState.refreshing
-        ReadPage.My -> myState.loading || state.accountLoading || state.busy
+        ReadPage.My -> myState.loading || state.accountLoading || state.balanceLoading || state.cardStatusLoading
         ReadPage.Profile -> myState.loading
-        ReadPage.Account -> state.accountLoading || state.busy
+        ReadPage.Account -> state.accountLoading || state.balanceLoading || state.cardStatusLoading
         null -> false
     }
     val networkError = when (readPage) {
@@ -357,9 +357,9 @@ private fun MainContent(
         ReadPage.Bill -> if (billState.statsVisible) FeedbackText.networkError(billState.stats.error,
             billState.stats.dailyError, billState.stats.categoriesError, billState.stats.rankingError)
             else FeedbackText.networkError(billState.error, billState.summaryError, billState.countsError, billState.loadMoreError)
-        ReadPage.My -> FeedbackText.networkError(myNetworkError, state.accountError)
+        ReadPage.My -> FeedbackText.networkError(myNetworkError, state.accountError, state.cardStatusError)
         ReadPage.Profile -> FeedbackText.networkError(myState.profileError, myState.avatarError)
-        ReadPage.Account -> FeedbackText.networkError(state.accountError)
+        ReadPage.Account -> FeedbackText.networkError(state.accountError, state.cardStatusError)
         null -> null
     }
     ReadRecoveryEffect(availability, readPage, readLoading, networkError) {
@@ -369,7 +369,7 @@ private fun MainContent(
             ReadPage.Bill -> billViewModel.refresh()
             ReadPage.My -> {
                 if (myNetworkError != null) myModel.refresh()
-                if (FeedbackText.networkError(state.accountError) != null) viewModel.refreshAccount()
+                if (FeedbackText.networkError(state.accountError, state.cardStatusError) != null) viewModel.refreshAccount()
             }
             ReadPage.Profile -> myModel.refresh()
             ReadPage.Account -> viewModel.refreshAccount()
