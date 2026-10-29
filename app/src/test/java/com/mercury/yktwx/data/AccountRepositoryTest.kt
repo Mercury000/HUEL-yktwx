@@ -28,6 +28,7 @@ class AccountRepositoryTest {
         override fun clear() { savedCredentials = null; savedSession = null }
     }
     private open class FakeService : YktService {
+        override suspend fun paymentCard(token: String, account: String) = CampusCard(account, "校园卡", "123", false, false, 0)
         var balanceQueries = 0
         var balanceFailures = mutableListOf<YktException>()
         override suspend fun paymentAccount(token: String): PaymentAccount {

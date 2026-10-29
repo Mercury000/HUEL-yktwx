@@ -70,6 +70,9 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun paymentAccount(username: String): PaymentAccount = withSession(expectedUsername = username) {
         service.paymentAccount(it)
     }
+    suspend fun paymentCard(username: String, account: String): CampusCard = withSession(expectedUsername = username) {
+        service.paymentCard(it, account)
+    }
     suspend fun personalProfile(username: String): PersonalProfile = withSession(expectedUsername = username) { profileService.profile(it) }
     suspend fun homeIdentity(username: String, sno: String): HomeCardIdentity? = withSession(expectedUsername = username) { profileService.homeIdentity(it, sno) }
     suspend fun profileAvatar(path: String): ByteArray? = profileService.avatar(path)

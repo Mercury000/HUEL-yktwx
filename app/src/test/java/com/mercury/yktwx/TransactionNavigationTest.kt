@@ -64,6 +64,7 @@ class TransactionNavigationTest {
             override fun clear() = Unit
         }
         val service = object : YktService by YktApi({ error("Unexpected HTTP request") }) {
+            override suspend fun paymentCard(token: String, account: String) = CampusCard(account, "校园卡", "fake-user", false, false, 0)
             override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 codes++; onAccount(account())
                 return PaymentBatch(listOf("12345678901234567890"), 60, account())

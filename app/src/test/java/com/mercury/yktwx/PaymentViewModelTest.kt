@@ -40,7 +40,21 @@ class PaymentViewModelTest {
     private var accountResponses = 0
     private var accountPublishGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var paymentFailure: Exception? = null
+    @Volatile private var cardQueries = 0
+    @Volatile private var cardResponses = 0
+    private var cardFailure: Exception? = null
+    private var cardGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private var cardLost = false
+    private var cardFrozen = false
+    private var cardAccount: String? = null
     private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
+        override suspend fun paymentCard(token: String, account: String): CampusCard {
+            cardQueries++
+            val result = CampusCard(cardAccount ?: account, "校园卡", "123", cardLost, cardFrozen, 0)
+            withContext(NonCancellable) { cardGate.await(); cardResponses++ }
+            cardFailure?.let { throw it }
+            return result
+        }
         override suspend fun login(credentials: Credentials): Session {
             logins++
             loginFailure?.let { throw it }
@@ -70,7 +84,7 @@ class PaymentViewModelTest {
     private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
     private val store = ViewModelStore().apply { put("payment", model) }
 
-    @After fun cleanup() { accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+    @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
     @Test fun newlyAcceptedNoticeClearsOldCredentialsAndWaitsForExplicitLogin() {
         codeAvailable = true
@@ -134,29 +148,37 @@ class PaymentViewModelTest {
         assertEquals(0L, model.state.value.secondsLeft)
     }
 
-    @Test fun cachedBalanceAvoidsAutomaticReadsAndManualAccountRefreshOnlyReadsBalance() {
+    @Test fun cachedBalanceIsReusedWhileCardStatusIsReadAndManualRefreshNeverFetchesCodes() {
         readyForTurn()
         model.setPageVisible(false)
         model.setAccountPageVisible(true)
+        await { model.state.value.accountCard != null && !model.state.value.cardStatusLoading }
+        assertEquals(0, accountQueries)
+        assertEquals(1, cardQueries)
+        model.setAccountPageVisible(false); model.setAccountPageVisible(true)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(0, accountQueries)
+        assertEquals(1, cardQueries)
         account = account.with(balanceCents = 1234)
         model.refreshAccount(manual = true)
-        await { accountResponses == 1 && !model.state.value.accountLoading }
+        await { accountResponses == 1 && !model.state.value.accountLoading && !model.state.value.cardStatusLoading }
         assertEquals(1234L, model.state.value.account!!.balanceCents)
         assertNull(model.state.value.problem)
         assertEquals(1, payments)
         assertNull(model.state.value.code)
+        assertEquals(2, cardQueries)
     }
 
     @Test fun differentBalanceAccountDoesNotInheritThePreviousCardStatus() {
         readyForTurn()
         model.setPageVisible(false)
         model.setAccountPageVisible(true)
+        await { !model.state.value.cardStatusLoading }
         account = account.with(account = "other-account", balanceCents = 1234)
         model.refreshAccount(manual = true)
-        await { model.state.value.account!!.account == "other-account" && !model.state.value.accountLoading }
+        await { model.state.value.account!!.account == "other-account" && !model.state.value.accountLoading && !model.state.value.cardStatusLoading }
         assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
+        assertEquals("other-account", model.state.value.accountCard!!.account)
         assertNull(model.state.value.code)
         assertEquals(1, payments)
     }
@@ -184,6 +206,7 @@ class PaymentViewModelTest {
         readyForTurn()
         model.setPageVisible(false)
         model.setAccountPageVisible(true)
+        await { !model.state.value.cardStatusLoading }
         accountFailure = NetworkFailure()
         model.refreshAccount(manual = true)
         await { model.state.value.accountError != null }
@@ -263,6 +286,7 @@ class PaymentViewModelTest {
         readyForTurn()
         model.setPageVisible(false)
         model.setAccountPageVisible(true)
+        await { !model.state.value.cardStatusLoading }
         accountFailure = AuthenticationRequired()
         model.refreshAccount(manual = true)
         await { model.state.value.needsLogin && !model.state.value.accountLoading }
@@ -573,6 +597,109 @@ class PaymentViewModelTest {
         assertNotNull(model.state.value.account)
     }
 
+    @Test fun accountPageConfirmsCardWithoutEverLoadingThePaymentPage() {
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); model.setAccountPageVisible(true)
+        await { model.state.value.accountCard != null && !model.state.value.cardStatusLoading }
+        assertEquals("正常", com.mercury.yktwx.ui.pages.cardStatus(model.state.value.accountCard, account.account, false))
+        assertEquals(PaymentCodeProblem.StatusUnverified, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertEquals(0, payments)
+        assertEquals(1, accountQueries)
+        assertEquals(1, cardQueries)
+    }
+
+    @Test fun manualAccountRefreshUpdatesLostCardIndependentlyOfThePreviousPaymentError() {
+        problem = PaymentCodeProblem.Lost
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { !model.state.value.busy }
+        cardLost = true
+        model.setPageVisible(false); model.setAccountPageVisible(true)
+        await { model.state.value.accountCard != null && !model.state.value.cardStatusLoading }
+        assertEquals("已挂失", com.mercury.yktwx.ui.pages.cardStatus(model.state.value.accountCard, account.account, false))
+        cardLost = false
+        model.refreshAccount(manual = true)
+        await { !model.state.value.cardStatusLoading && model.state.value.accountCard?.lost == false }
+        assertEquals("正常", com.mercury.yktwx.ui.pages.cardStatus(model.state.value.accountCard, account.account, false))
+        assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
+        assertNull(model.state.value.code)
+        assertEquals(1, payments)
+    }
+
+    @Test fun delayedCardReadDoesNotHideTheBalanceAndAccountReentrySharesIt() {
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        cardGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { cardQueries == 1 && model.state.value.account != null }
+        assertFalse(model.state.value.accountLoading)
+        assertTrue(model.state.value.cardStatusLoading)
+        assertEquals(6496L, model.state.value.account!!.balanceCents)
+        model.refreshAccount(); model.refreshAccount(manual = true)
+        assertEquals(1, cardQueries)
+        assertEquals(1, accountQueries)
+        cardGate.complete(Unit)
+        await { model.state.value.accountCard != null && !model.state.value.cardStatusLoading }
+        assertEquals(0, payments)
+    }
+
+    @Test fun failedCardReadPreservesBalanceAndIsRetriedWithoutRequeryingFreshBalance() {
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        cardFailure = NetworkFailure()
+        model.setAccountPageVisible(true)
+        await { model.state.value.cardStatusError != null && !model.state.value.cardStatusLoading }
+        assertNotNull(model.state.value.account)
+        assertNull(model.state.value.accountError)
+        assertNull(model.state.value.accountCard)
+        model.setAccountPageVisible(false)
+        cardFailure = null; cardFrozen = true
+        model.setAccountPageVisible(true)
+        await { model.state.value.accountCard != null && !model.state.value.cardStatusLoading }
+        assertEquals("已冻结", com.mercury.yktwx.ui.pages.cardStatus(model.state.value.accountCard, account.account, false))
+        assertNull(model.state.value.cardStatusError)
+        assertEquals(1, accountQueries)
+        assertEquals(2, cardQueries)
+        assertEquals(0, payments)
+    }
+
+    @Test fun mismatchedCardResponseCannotMarkTheSelectedAccountNormal() {
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        cardAccount = "another-account"
+        model.setAccountPageVisible(true)
+        await { model.state.value.cardStatusError != null && !model.state.value.cardStatusLoading }
+        assertNull(model.state.value.accountCard)
+        assertEquals("状态待确认", com.mercury.yktwx.ui.pages.cardStatus(model.state.value.accountCard, account.account, false))
+        assertNotNull(model.state.value.account)
+        assertEquals(0, payments)
+    }
+
+    @Test fun lateCardResponseCannotRestoreStateAfterLogoutAndAnotherLogin() {
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        cardGate = CompletableDeferred()
+        model.setAccountPageVisible(true)
+        await { cardQueries == 1 && model.state.value.account != null }
+        model.logout(); await { model.state.value.needsLogin && !model.state.value.busy }
+        account = account.with(account = "new-account", balanceCents = 9876)
+        codeAvailable = true
+        model.login("456", "new-password")
+        await { !model.state.value.needsLogin && !model.state.value.busy }
+        cardGate.complete(Unit)
+        await { cardResponses == 1 }
+        assertEquals("456", model.state.value.username)
+        assertEquals("new-account", model.state.value.account!!.account)
+        assertNull(model.state.value.accountCard)
+        assertFalse(model.state.value.cardStatusLoading)
+        assertNull(model.state.value.code)
+    }
+
     private fun PaymentAccount.with(account: String = this.account, balanceCents: Long = this.balanceCents) =
         PaymentAccount(account, payacc, paytype, name, balanceCents)
 
@@ -670,8 +797,8 @@ class PaymentViewModelTest {
         model.paymentTurnReturned()
         await { accountResponses == 1 }
         account = account.with(balanceCents = 6296)
-        shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
-        await { model.paymentSuccess.value != null }
+        // The IO result may schedule its retry after a single virtual-time jump.
+        await(advanceTime = true) { model.paymentSuccess.value != null }
         assertEquals(200L, model.paymentSuccess.value)
     }
 
@@ -747,10 +874,11 @@ class PaymentViewModelTest {
         assertNull(model.state.value.code)
     }
 
-    private fun await(condition: () -> Boolean) {
+    private fun await(advanceTime: Boolean = false, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
-            shadowOf(Looper.getMainLooper()).idle()
+            if (advanceTime) shadowOf(Looper.getMainLooper()).idleFor(100, TimeUnit.MILLISECONDS)
+            else shadowOf(Looper.getMainLooper()).idle()
             if (condition()) return
             Thread.sleep(5)
         }

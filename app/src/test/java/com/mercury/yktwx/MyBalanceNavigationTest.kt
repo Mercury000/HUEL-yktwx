@@ -29,18 +29,20 @@ class MyBalanceNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val paymentGate = CompletableDeferred<Unit>()
     private val balanceGate = CompletableDeferred<Unit>()
+    private val billsGate = CompletableDeferred<Unit>()
+    @Volatile private var billReads = 0
     @Volatile private var payments = 0
     @Volatile private var balanceReads = 0
     @Volatile private var paymentResponses = 0
     private lateinit var payment: PaymentViewModel
 
     @After fun cleanup() {
-        paymentGate.complete(Unit); balanceGate.complete(Unit)
+        paymentGate.complete(Unit); balanceGate.complete(Unit); billsGate.complete(Unit)
         if (::payment.isInitialized) payment.onBackground()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
-    @Test fun switchingToMyLoadsMissingBalanceAndAccountDetailsShareThePendingRead() {
+    @Test fun myBalanceCardAndStatisticsLoadWhilePaymentAndBillsArePendingAndAccountDetailsShareTheRead() {
         val app = compose.activity.application
         val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
         val vault = object : Vault {
@@ -52,6 +54,7 @@ class MyBalanceNavigationTest {
             override fun clear() = Unit
         }
         val service = object : YktService by YktApi({ error("Unexpected HTTP request") }) {
+            override suspend fun paymentCard(token: String, account: String) = CampusCard(account, "校园卡", "fake-user", false, false, 0)
             override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 payments++
                 withContext(NonCancellable) { paymentGate.await(); onAccount(account) }
@@ -63,8 +66,15 @@ class MyBalanceNavigationTest {
                 balanceGate.await()
                 return account
             }
-            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
-            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 0
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(1200, 3456)
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
+            override suspend fun billTypes(token: String) = emptyList<BillType>()
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
+                billReads++
+                billsGate.await()
+                return BillPageData(emptyList(), current, 0)
+            }
         }
         val profiles = object : ProfileService {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-user", "示例部门", "", null)
@@ -81,17 +91,24 @@ class MyBalanceNavigationTest {
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); !payment.state.value.restoringLogin }
         compose.runOnIdle { payment.onForeground() }
         compose.waitUntil(5_000) { payments == 1 }
-        val bills = BillViewModel(app, repository).also { it.initialize(true) }
+        val bills = BillViewModel(app, repository).also { it.initialize() }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
         }
         // Adjacent tab composition must not start the independent balance read.
         assertEquals(0, balanceReads)
+        compose.onNode(hasText("账单") and hasClickAction()).performClick()
+        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); billReads == 1 }
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
         compose.waitForIdle()
         compose.onNode(hasText("我的") and hasClickAction()).assertIsSelected()
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); balanceReads == 1 }
-        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); mine.state.value.profile != null }
+        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); mine.state.value.loaded }
+        assertEquals(0, paymentResponses)
+        assertTrue(bills.state.value.loading)
+        assertEquals(1200L, mine.state.value.summary!!.incomeCents)
+        assertEquals(3456L, mine.state.value.summary!!.expensesCents)
+        compose.onNodeWithText("本月共 3 笔交易").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("¥ —").assertDoesNotExist()
         compose.onNodeWithText("账户详情").performScrollTo().performClick()
         compose.waitForIdle()
@@ -99,6 +116,8 @@ class MyBalanceNavigationTest {
         compose.runOnIdle { balanceGate.complete(Unit) }
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payment.state.value.account != null && !payment.state.value.accountLoading }
         compose.onNode(hasText("¥ 64.96") and hasAnySibling(hasText("余额"))).assertIsDisplayed()
+        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payment.state.value.accountCard != null }
+        compose.onNode(hasText("正常") and hasAnySibling(hasText("校园卡状态"))).assertIsDisplayed()
         compose.runOnIdle { paymentGate.complete(Unit) }
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); paymentResponses == 1 }
         assertEquals(1, payments)
@@ -106,6 +125,7 @@ class MyBalanceNavigationTest {
         compose.onNodeWithContentDescription("付款条形码").assertDoesNotExist()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNode(hasText("¥ 64.96") and hasAnyAncestor(hasTestTag("my-balance-card"))).assertIsDisplayed()
+        compose.onNode(hasText("正常") and hasAnyAncestor(hasTestTag("my-balance-card"))).assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasTestTag("my-balance-card")) and
             SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange)).performTouchInput {
             swipe(start = center.copy(y = height * .15f), end = center.copy(y = height * .8f), durationMillis = 600)
