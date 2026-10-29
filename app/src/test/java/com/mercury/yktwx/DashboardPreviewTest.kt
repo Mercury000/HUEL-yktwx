@@ -88,6 +88,8 @@ class DashboardPreviewTest {
         capture("stats-light")
         compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(center) }
         capture("stats-selection-light")
+        compose.onNodeWithText("每日趋势").performTouchInput { click() }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
         compose.onNodeWithText("明细").performClick()
         compose.onNodeWithContentDescription("选择日期").performClick()
         capture("bill-date-picker")

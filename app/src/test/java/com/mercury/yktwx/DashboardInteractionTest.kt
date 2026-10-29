@@ -305,6 +305,17 @@ class DashboardInteractionTest {
         compose.runOnIdle { state.value = state.value.copy(statsVisible = true) }
         pull()
         assertEquals(2, refreshes)
+        compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(center) }
+        val selection = compose.onNodeWithTag("bill-trend-selection")
+        selection.assertExists()
+        selection.performTouchInput {
+            down(center)
+            moveTo(center.copy(y = center.y - 250f), delayMillis = 400)
+            up()
+        }
+        assertTrue("Dragging from the amount label must allow the statistics list to scroll",
+            list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
+        selection.assertExists()
     }
 
     @Test fun personalInformationSupportsPullRefreshWithOfficialFields() {
