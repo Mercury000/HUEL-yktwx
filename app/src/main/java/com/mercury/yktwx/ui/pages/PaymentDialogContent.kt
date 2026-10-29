@@ -3,8 +3,6 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -12,6 +10,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -20,8 +19,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,6 +30,7 @@ import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.RechargeMoney
 import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.data.RechargeRecipient
+import com.mercury.yktwx.ui.components.AmountTextField
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
@@ -50,11 +51,18 @@ internal fun PaymentAmountForm(
     val cents = RechargeMoney.cents(amount)
     val amountError = config.amountError(cents)
     val valid = amountError == null
-    // Keep validation live, and share the same banner as server errors above the action.
-    val validationMessage = amountError.takeIf { amount.isNotBlank() }
+    var focused by remember(config) { mutableStateOf(false) }
+    var hasFocused by remember(config) { mutableStateOf(false) }
+    var validate by remember(config) { mutableStateOf(false) }
+    val validationMessage = amountError.takeIf { amount.isNotBlank() && validate && !focused }
     val keyboard = LocalSoftwareKeyboardController.current
-    Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    PaymentAmountInput(config, amount, onAmountChange, enabled = enabled && !loading)
+    PaymentAmountHeader(config)
+    PaymentAmountInput(config, amount, { validate = false; onAmountChange(it) }, enabled = enabled && !loading,
+        onFocus = { next ->
+            if (focused && !next && hasFocused) validate = true
+            if (next) hasFocused = true
+            focused = next
+        })
     Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     HallNeutralTabs(methods, selectedMethod) { if (enabled && !loading) onMethod(it) }
     val feedback = validationMessage ?: error
@@ -63,6 +71,35 @@ internal fun PaymentAmountForm(
         enabled = enabled && canSubmit && !loading && valid,
         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
         Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
+    }
+}
+
+/** Bounds use secondary text in the existing row; the input keeps its familiar placeholder. */
+@Composable
+private fun PaymentAmountHeader(config: RechargeConfiguration) {
+    val limits = listOfNotNull(config.minimumCents?.let { "最低 ¥ ${RechargeMoney.label(it)}" },
+        config.maximumCents?.let { "单次最高 ¥ ${RechargeMoney.label(it)}" })
+    val full = limits.joinToString(" · ")
+    val compact = when {
+        config.minimumCents != null && config.maximumCents != null ->
+            "¥ ${RechargeMoney.label(config.minimumCents)}–${RechargeMoney.label(config.maximumCents)}"
+        config.minimumCents != null -> "≥ ¥ ${RechargeMoney.label(config.minimumCents)}"
+        config.maximumCents != null -> "≤ ¥ ${RechargeMoney.label(config.maximumCents)}"
+        else -> ""
+    }
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        if (limits.isNotEmpty()) BoxWithConstraints(Modifier.weight(1f).testTag("payment-amount-limits")
+            .semantics { contentDescription = full }, contentAlignment = Alignment.CenterEnd) {
+            val width = with(density) { maxWidth.toPx().coerceAtLeast(1f) }
+            val text = if (measurer.measure(AnnotatedString(full), TextStyle(fontSize = 12.sp)).size.width <= width) full else compact
+            val measured = measurer.measure(AnnotatedString(text), TextStyle(fontSize = 12.sp))
+            Text(text, fontSize = 12.sp * (width / measured.size.width.coerceAtLeast(1)).coerceAtMost(1f),
+                maxLines = 1, textAlign = TextAlign.End, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
     }
 }
 
@@ -89,7 +126,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
             if (config?.allowCustom != false) PaymentControlPlaceholder {
                 TextField(value = "", onValueChange = {}, label = paymentAmountLabel(config),
                     useLabelAsPlaceholder = true, singleLine = true, enabled = false,
-                    modifier = Modifier.trackInputFocus().fillMaxWidth())
+                    modifier = Modifier.trackInputFocus(false).fillMaxWidth())
             }
         }
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
@@ -131,6 +168,7 @@ internal fun PaymentAmountInput(
     amount: String,
     onAmountChange: (String) -> Unit,
     enabled: Boolean = true,
+    onFocus: (Boolean) -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -152,21 +190,8 @@ internal fun PaymentAmountInput(
             }
         }
         if (config.allowCustom) {
-            TextField(
-                value = amount,
-                onValueChange = { value ->
-                    if (value.length <= 11 && value.all { it in '0'..'9' || it == '.' } && value.count { it == '.' } <= 1) {
-                        onAmountChange(value)
-                    }
-                },
-                label = paymentAmountLabel(config), useLabelAsPlaceholder = true, singleLine = true, enabled = enabled,
-                modifier = Modifier.trackInputFocus().fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = if (config.integerOnly) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    focusManager.clearFocus()
-                    keyboard?.hide()
-                }),
-            )
+            AmountTextField(amount, onAmountChange, paymentAmountLabel(config), Modifier.fillMaxWidth(),
+                enabled = enabled, integerOnly = config.integerOnly, onFocus = onFocus)
         }
     }
 }

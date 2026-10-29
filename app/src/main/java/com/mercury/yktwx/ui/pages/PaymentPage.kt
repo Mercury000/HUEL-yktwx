@@ -3,7 +3,10 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import com.mercury.yktwx.ui.PaymentCodePresentationEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,35 +22,53 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.MultiFormatWriter
 import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true) {
     val displayCode = state.code.takeIf { state.problem == null && !state.busy && state.error == null }
+    PaymentCodePresentationEffect(isActive && displayCode != null)
+    var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
+    LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
     val readError = state.error ?: "暂时无法确认卡状态".takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
     val initialError = rememberInitialReadError(state.account != null || displayCode != null,
         readError, !state.busy)
+    val showEnlarged = isActive && displayCode != null && enlarged != null
+    // Only the format survives exit. The popup may still compose its previous content
+    // after the close action clears enlarged, so it must not unwrap that live state.
+    val enlargedFormat = rememberWhileShown(showEnlarged, enlarged)
+    val currentCode by rememberUpdatedState(displayCode.takeIf { isActive })
+    OverlayDialog(show = showEnlarged, title = if (enlargedFormat == BarcodeFormat.CODE_128) "付款条形码" else "付款二维码",
+        onDismissRequest = { enlarged = null }, renderInRootScaffold = true) {
+        // Always re-read validity, including in a retained popup callback during exit.
+        val code = currentCode
+        val format = enlargedFormat
+        if (code != null && format != null) {
+            val barcode = format == BarcodeFormat.CODE_128
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                CodeArtwork(code, format, if (barcode) 1440 else 1200, if (barcode) 480 else 1200,
+                    Modifier.fillMaxWidth().aspectRatio(if (barcode) 3f else 1f),
+                    if (barcode) "放大的付款条形码" else "放大的付款二维码")
+                TextButton("收起", onClick = { enlarged = null }, enabled = enlarged != null, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -117,7 +138,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                     Box(Modifier.fillMaxWidth().height(88.dp), contentAlignment = Alignment.Center) {
                                                         displayCode?.let { code ->
                                                             key(code) {
-                                                                CodeArtwork(code, BarcodeFormat.CODE_128, 960, 220, Modifier.fillMaxSize(), "付款条形码")
+                                                                CodeArtwork(code, BarcodeFormat.CODE_128, 1440, 330, Modifier.fillMaxSize().clickable(enabled = isActive, role = Role.Button, onClickLabel = "放大条形码") { enlarged = BarcodeFormat.CODE_128 }, "付款条形码")
                                                             }
                                                         }
                                                     }
@@ -125,7 +146,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                         val code = displayCode
                                                         if (code != null) {
                                                             key(code) {
-                                                                CodeArtwork(code, BarcodeFormat.QR_CODE, 600, 600, Modifier.fillMaxSize(), "付款二维码")
+                                                                CodeArtwork(code, BarcodeFormat.QR_CODE, 900, 900, Modifier.fillMaxSize().clickable(enabled = isActive, role = Role.Button, onClickLabel = "放大二维码") { enlarged = BarcodeFormat.QR_CODE }, "付款二维码")
                                                             }
                                                         } else {
                                                             Text(state.error ?: "付款码暂不可用，请下拉刷新",
@@ -134,9 +155,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                                 fontSize = 14.sp, textAlign = TextAlign.Center)
                                                         }
                                                     }
-                                                    Text(displayCode?.let { it.take(4) + " •••• •••• ••••" } ?: " ",
-                                                        modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
-                                                        fontSize = 14.sp, lineHeight = 20.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                    PaymentCodeNumber(displayCode, isActive)
                                                     Text("向商户出示，切勿分享或截图", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
                                                         fontSize = 13.sp, lineHeight = 18.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                                 }
@@ -211,7 +230,7 @@ private fun paymentContentHeight(width: Dp): Dp {
             style = TextStyle(fontSize = size.sp, lineHeight = lineHeight.sp, fontWeight = weight), constraints = constraints)
         return with(density) { result.size.height.toDp() }
     }
-    val codeHeight = 88.dp + 232.dp + 48.dp + textHeight("0000 •••• •••• ••••", 14, 20) +
+    val codeHeight = 88.dp + 232.dp + 48.dp + maxOf(24.dp, textHeight("0000 •••• •••• ••••", 14, 20)) +
         textHeight("向商户出示，切勿分享或截图", 13, 18)
     val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态", "付款码暂不可用")
         .maxOf { textHeight(it, 23, 30, FontWeight.SemiBold) }
@@ -292,20 +311,5 @@ private fun PaymentStatusContent(
                 statusMessage()
             }
         }
-    }
-}
-
-@Composable
-private fun CodeArtwork(code: String, format: BarcodeFormat, width: Int, height: Int, modifier: Modifier, description: String) {
-    val bitmap by produceState<android.graphics.Bitmap?>(null, code, format) {
-        value = withContext(Dispatchers.Default) {
-            val hints = mapOf(EncodeHintType.MARGIN to if (format == BarcodeFormat.QR_CODE) 4 else 12)
-            val matrix = MultiFormatWriter().encode(code, format, width, height, hints)
-            val pixels = IntArray(width * height) { index -> if (matrix[index % width, index / width]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
-            android.graphics.Bitmap.createBitmap(pixels, width, height, android.graphics.Bitmap.Config.ARGB_8888)
-        }
-    }
-    Box(modifier.background(Color.White), contentAlignment = Alignment.Center) {
-        bitmap?.let { Image(it.asImageBitmap(), contentDescription = description, modifier = Modifier.fillMaxSize(), filterQuality = FilterQuality.None) }
     }
 }

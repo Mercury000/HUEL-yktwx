@@ -62,17 +62,17 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 label = "原查询密码", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
-                modifier = Modifier.trackInputFocus().fillMaxWidth())
+                modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             TextField(value = newPassword, onValueChange = { newPassword = it.filter { c -> c in '0'..'9' }.take(6) },
                 label = "新查询密码（6 位数字）", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
-                modifier = Modifier.trackInputFocus().fillMaxWidth())
+                modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             TextField(value = confirmation, onValueChange = { confirmation = it.filter { c -> c in '0'..'9' }.take(6) },
                 label = "确认新查询密码", singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
+                keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             if (!error.isNullOrBlank()) InlineError(error)
             if (UiPreview.enabled && display.preview) PreviewNotes.CardPassword()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

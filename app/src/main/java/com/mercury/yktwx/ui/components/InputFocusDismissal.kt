@@ -20,10 +20,14 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
 private class InputBounds {
     var bounds = Rect.Zero
+    var enabled = true
 }
 
 private class InputFocusRegistry {
+    val inputs = mutableSetOf<InputBounds>()
     var focused: InputBounds? = null
+
+    fun containsInput(position: Offset) = inputs.any { it.enabled && it.bounds.contains(position) }
 }
 
 private val LocalInputFocusRegistry = staticCompositionLocalOf<InputFocusRegistry?> { null }
@@ -41,7 +45,9 @@ internal fun InputFocusDismissalHost(content: @Composable () -> Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     val input = registry.focused
-                    if (input != null && !input.bounds.contains(down.position + origin)) {
+                    // A press on another field transfers focus directly; do not close the IME
+                    // between its numeric/password sessions or make inset-driven layouts jump.
+                    if (input != null && !registry.containsInput(down.position + origin)) {
                         focus.clearFocus()
                         keyboard?.hide()
                     }
@@ -51,11 +57,16 @@ internal fun InputFocusDismissalHost(content: @Composable () -> Unit) {
 }
 
 /** Attach before the Miuix TextField's focus target, including its trailing icons. */
-internal fun Modifier.trackInputFocus(): Modifier = composed {
+internal fun Modifier.trackInputFocus(enabled: Boolean = true): Modifier = composed {
     val registry = LocalInputFocusRegistry.current ?: return@composed this
     val input = remember { InputBounds() }
+    SideEffect { input.enabled = enabled }
     DisposableEffect(registry, input) {
-        onDispose { if (registry.focused === input) registry.focused = null }
+        registry.inputs.add(input)
+        onDispose {
+            registry.inputs.remove(input)
+            if (registry.focused === input) registry.focused = null
+        }
     }
     onGloballyPositioned { input.bounds = it.boundsInWindow() }
         .onFocusChanged { state ->

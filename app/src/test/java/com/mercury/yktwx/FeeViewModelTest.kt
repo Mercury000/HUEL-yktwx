@@ -9,6 +9,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -285,6 +287,35 @@ class FeeViewModelTest {
         assertFalse(model.state.value.loading)
         assertEquals(1, fees.payments)
         assertEquals(1, fees.resultQueries)
+    }
+
+    @Test fun confirmedFeePaymentEmitsOneUpdateEvenAfterImmediatelyClosingTheSheet() {
+        openPassword()
+        model.payAccount("demo-type", "123456")
+        await { model.state.value.resultPhase == RechargePhase.Paid }
+        model.checkResult()
+        model.dismiss()
+        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
+        assertNotNull(event)
+        assertTrue(event!!.hall)
+        assertTrue(event.balance)
+        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
+        assertEquals(1, fees.payments)
+    }
+
+    @Test fun confirmedWechatFeeUpdatesHallWithoutInvalidatingCampusCardBalance() {
+        model.onForeground(); model.onResumed(true)
+        model.open(FeeProject.Network, "test-user", false)
+        await { !model.state.value.loading && model.state.value.query != null }
+        model.createWithMethod(100, fees.wechatMethod.code)
+        await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
+        model.checkResult()
+        await { model.state.value.resultPhase == RechargePhase.Paid }
+        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
+        assertNotNull(event)
+        assertTrue(event!!.hall)
+        assertFalse(event.balance)
+        assertEquals(0, fees.payments)
     }
 
     @Test fun suspendedQueryEndsAtIndependentDeadlineWithoutReplayingPayment() {

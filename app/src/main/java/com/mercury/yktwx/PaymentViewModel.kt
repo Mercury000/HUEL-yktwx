@@ -63,6 +63,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var requestVersion = 0L
     private val mutableSuccess = MutableStateFlow<Long?>(null)
     val paymentSuccess = mutableSuccess.asStateFlow()
+    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
+    val transactionUpdates = updates.receiveAsFlow()
     private var motionActive = false
     private var balanceCheck: Job? = null
     private var detectionVersion = 0L
@@ -105,7 +107,10 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         paymentTurn = null
                         mutableSuccess.value = baseline.balanceCents - updated.balanceCents
                         // Preserve the confirmed balance even if the following barcode request fails.
-                        mutable.value = mutable.value.copy(account = updated)
+                        accountReadAt = SystemClock.elapsedRealtime()
+                        mutable.value = mutable.value.copy(account = updated, accountFromCache = false)
+                        viewModelScope.launch { repository.saveDisplay(turn.username, DisplayKeys.Account, updated, DisplayCodecs.Account) }
+                        updates.trySend(TransactionUpdate(turn.username, balance = false))
                         requestVersion++; request?.cancel(); ticker?.cancel()
                         mutable.value = mutable.value.copy(busy = false)
                         refresh()
@@ -179,6 +184,17 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         accountPageVisible = visible
         if (visible) refreshAccount() else cancelAccountRead()
     }
+    fun invalidateBalance() {
+        cancelAccountRead()
+        accountReadAt = 0L
+        resumeNeedsRefresh = true
+        if (mutable.value.busy) {
+            requestVersion++; request?.cancel(); ticker?.cancel()
+            mutable.value = mutable.value.copy(busy = false, refreshing = false)
+        }
+        if (pageVisible) refresh() else if (accountPageVisible) refreshAccount()
+    }
+
     fun refreshAccount(manual: Boolean = false) {
         val current = mutable.value
         if (!accountPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||

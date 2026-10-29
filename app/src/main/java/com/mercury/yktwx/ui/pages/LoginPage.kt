@@ -9,6 +9,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalAutofillManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -59,21 +63,23 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
     var visible by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
+    val autofill = LocalAutofillManager.current
+    LaunchedEffect(state.needsLogin) {
+        if (!state.needsLogin) { autofill?.commit(); password = ""; visible = false }
+    }
     fun submit() {
         if (!state.busy && username.isNotBlank() && password.isNotBlank()) {
             focus.clearFocus()
             keyboard?.hide()
-            val submittedPassword = password
-            password = ""
             visible = false
-            onLogin(username, submittedPassword)
+            onLogin(username, password)
         }
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("登录校园一卡通", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
         Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         TextField(value = username, onValueChange = { username = it.filter { c -> c in '0'..'9' }.take(24) }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus())
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Username })
         TextField(value = password, onValueChange = { password = it }, label = "密码", singleLine = true, enabled = !state.busy,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
@@ -84,7 +90,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
                         contentDescription = if (visible) "隐藏密码" else "显示密码",
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
-            }, modifier = Modifier.fillMaxWidth().trackInputFocus())
+            }, modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Password })
         if (!state.error.isNullOrBlank()) InlineError(state.error)
         Button(onClick = { submit() }, enabled = !state.busy && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
             Text(if (state.busy) "正在登录…" else "登录")

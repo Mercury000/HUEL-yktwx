@@ -41,6 +41,8 @@ class RechargeViewModel internal constructor(
     val events = launches.receiveAsFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
+    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
+    val transactionUpdates = updates.receiveAsFlow()
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
@@ -170,7 +172,12 @@ class RechargeViewModel internal constructor(
     private fun requireOwner(pending: PendingRecharge) {
         if (pending.username != owner || !repository.ownsAccount(pending.username)) throw YktException("账户已切换")
     }
-    private fun showResult(phase: RechargePhase, error: String? = null) = update(visible = true, loading = false, phase = phase, error = error)
+    private fun showResult(phase: RechargePhase, error: String? = null) {
+        val previous = mutable.value
+        update(visible = true, loading = false, phase = phase, error = error)
+        if (phase == RechargePhase.Paid && previous.phase != RechargePhase.Paid && !previous.preview && repository.ownsAccount(owner))
+            updates.trySend(TransactionUpdate(owner, balance = previous.pending?.recipient == null))
+    }
     private fun requestError(message: String) {
         paymentReturn.reset()
         update(visible = true, loading = false, phase = RechargePhase.Amount, pending = null, error = message)

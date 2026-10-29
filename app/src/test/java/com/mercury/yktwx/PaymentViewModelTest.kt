@@ -8,6 +8,9 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -558,10 +561,15 @@ class PaymentViewModelTest {
         assertEquals(1, accountQueries)
         assertEquals(2, payments)
         assertNotEquals(first, model.state.value.code)
+        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
+        assertNotNull(event)
+        assertFalse(event!!.balance)
+        assertFalse(event.hall)
         model.dismissPaymentSuccess()
         model.paymentTurnStarted(); model.paymentTurnReturned()
         await { accountQueries == 2 }
         assertNull(model.paymentSuccess.value)
+        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
     }
     @Test fun unchangedOrIncreasedBalanceAndErrorsKeepThePageSilent() {
         readyForTurn()
