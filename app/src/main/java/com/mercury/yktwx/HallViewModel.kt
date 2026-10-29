@@ -121,10 +121,21 @@ class HallViewModel internal constructor(
         if (owner.isBlank() || preview || task?.isActive == true) return
         val attempt = generation
         val username = owner
-        val previous = mutable.value
         refreshPending = false
         update(loading = true, error = managementError, networkError = null)
         launchTask {
+            if (mutable.value.rooms.isEmpty() && mutable.value.network == null) {
+                val cachedRooms = FeeProject.entries.filterNot { it.network }.mapNotNull { project ->
+                    repository.cachedDisplay(username, DisplayKeys.room(project), DisplayCodecs.Room)
+                }
+                val cachedNetwork = repository.cachedDisplay(username, DisplayKeys.Network, DisplayCodecs.Query)
+                if (attempt != generation) return@launchTask
+                val merged = mergeFamilyRooms(cachedRooms).sortedBy(::roomOrder)
+                mutable.value = DormUiState(rooms = merged, loading = true, network = cachedNetwork,
+                    selectedIndex = rememberedRoomIndex(merged).coerceAtLeast(0), roomsAvailable = merged.isNotEmpty(),
+                    roomsLoaded = merged.isNotEmpty(), networkLoaded = cachedNetwork != null)
+            }
+            val previous = mutable.value
             val rooms = previous.rooms.flatMap { it.bindings }.associateBy { it.project }.toMutableMap()
             val errors = mutableMapOf<FeeProject, String>()
             val bindingProjects = mutableSetOf<FeeProject>()
@@ -196,6 +207,7 @@ class HallViewModel internal constructor(
                             query.tip?.let { throw YktException(it) }
                             network = query
                             networkError = null
+                            repository.saveDisplay(username, DisplayKeys.Network, query, DisplayCodecs.Query)
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
@@ -220,15 +232,32 @@ class HallViewModel internal constructor(
                                             rooms[project] = retainReadings(DormRoom(partial.project, partial.binding, partial.meters + retained,
                                                 partial.updatedAtMillis, partial.notice, pendingMeters = partial.pendingMeters), old)
                                             publish()
+                                            if (partial.meters.any { it.query != null && it.error == null }) {
+                                                val snapshot = rooms.getValue(project)
+                                                viewModelScope.launch {
+                                                    if (attempt == generation) repository.saveDisplay(username, DisplayKeys.room(project), snapshot, DisplayCodecs.Room)
+                                                }
+                                            }
                                         }
                                     } })
-                                if (room != null) rooms[project] = retainReadings(room, rooms[project]) else rooms.remove(project)
-                            } else rooms.remove(project)
+                                if (room != null) {
+                                    rooms[project] = retainReadings(room, rooms[project])
+                                    if (room.meters.any { it.query != null && it.error == null }) {
+                                        repository.saveDisplay(username, DisplayKeys.room(project), rooms.getValue(project), DisplayCodecs.Room)
+                                    }
+                                } else {
+                                    rooms.remove(project)
+                                    repository.removeDisplay(username, DisplayKeys.room(project))
+                                }
+                            } else {
+                                rooms.remove(project)
+                                repository.removeDisplay(username, DisplayKeys.room(project))
+                            }
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
                             errors[project] = (e as? YktException)?.message ?: "读取失败，请重试"
-                            val old = previous.rooms.flatMap { it.bindings }.firstOrNull { it.project == project }
+                            val old = rooms[project]
                             if (old != null) rooms[project] = DormRoom(old.project, old.binding,
                                 old.meters.map { DormMeter(it.kind, it.room, it.query, null, it.project ?: old.project) }, old.updatedAtMillis, old.notice)
                             else rooms.remove(project)
@@ -240,7 +269,8 @@ class HallViewModel internal constructor(
             }
             if (attempt != generation) return@launchTask
             publish(finished = true)
-            refreshedAt = System.currentTimeMillis()
+            if (errors.isEmpty() && networkError == null && rooms.values.all { room -> room.meters.all { it.error == null } })
+                refreshedAt = System.currentTimeMillis()
         }
     }
     /** Retain only readings for the exact same verified meter after a failed refresh. */

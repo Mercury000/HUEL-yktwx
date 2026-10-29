@@ -249,7 +249,8 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
             .distinct().sortedWith(compareBy<DormMeterSlot> { it.kind.ordinal }.thenBy { it.project.ordinal })
         slots.forEach { slot ->
             val meter = room.meters.firstOrNull { it.kind == slot.kind && (it.project ?: room.project) == slot.project }
-            if (meter == null) PendingMeterPanel(slot, Modifier.weight(1f)) else {
+            ContentFade(meter, Modifier.weight(1f), contentKey = { it != null }) { meter ->
+            if (meter == null) PendingMeterPanel(slot, Modifier.fillMaxWidth()) else {
                 val project = slot.project
                 val water = project == FeeProject.FamilyWater
                 val family = project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
@@ -259,7 +260,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                 val accent = if (secondary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
                 val panel = if (secondary) DashboardPalette.airPanel else DashboardPalette.lightingPanel
                 val button = if (secondary) DashboardPalette.airButton else DashboardPalette.lightingButton
-                Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(if (water) AppIcons.Water else if (air) AppIcons.AirConditioning else AppIcons.Electricity,
@@ -268,11 +269,11 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                     }
                     val readings = meter.readings
                     val primary = readings.firstOrNull()
-                    Text((primary?.label ?: if (water) "剩余水量" else "剩余电量") + if (meter.updating) " · 更新中" else "",
+                    Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
                         fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     UtilityValueRow {
-                        Text(primary?.value ?: "—", fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
+                        UpdatedText(primary?.value ?: "—", identity = listOf(project, meter.room.selections), fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
                             modifier = Modifier.weight(1f, fill = false), overflow = TextOverflow.Ellipsis,
                             fontWeight = FontWeight.SemiBold, color = ink)
                         if (primary?.unit?.isNotEmpty() == true) Text(primary.unit,
@@ -300,6 +301,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                         )
                     }
                 }
+            }
             }
         }
     }

@@ -32,7 +32,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal data class BillDayGroup(val date: LocalDate?, val records: List<BillRecord>) {
-    val key: String get() = date?.toString() ?: "unknown:${records.firstOrNull()?.orderId.orEmpty()}"
+    val key: String get() = date?.toString() ?: "unknown:${records.firstOrNull()?.stableId.orEmpty()}"
 }
 
 internal val AppRefreshTexts = listOf("下拉刷新", "松开刷新", "正在刷新", "刷新完成")

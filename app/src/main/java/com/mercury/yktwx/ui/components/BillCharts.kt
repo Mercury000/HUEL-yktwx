@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,12 +41,15 @@ internal fun DailyBillChart(
     val grid = MiuixTheme.colorScheme.dividerLine
     val surface = MiuixTheme.colorScheme.surface
     val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val displayed = rememberChartValues(points.associate { it.date to it.amountCents.toDouble() }).toSortedMap()
+    val chartPoints = displayed.entries.toList()
+    val chartMax = displayed.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
     val max = points.maxOfOrNull { it.amountCents } ?: 0L
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (mode == BillDateMode.Year) "每月趋势" else "每日趋势", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
-            Text(if (max > 0) "最高 ¥ ${money(max)}" else "暂无数据", fontSize = 12.sp, color = summary)
+            UpdatedText(if (max > 0) "最高 ¥ ${money(max)}" else "暂无数据", fontSize = 12.sp, color = summary)
         }
         Spacer(Modifier.height(12.dp))
         if (points.isEmpty() || max <= 0L) {
@@ -55,31 +59,33 @@ internal fun DailyBillChart(
             return@Column
         }
         Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+            // Empty -> nonempty may compose before the interpolation effect acquires its target.
+            if (chartPoints.isEmpty()) return@Canvas
             val chartTop = 8.dp.toPx()
             val chartHeight = size.height - chartTop
-            val step = if (points.size == 1) 0f else size.width / (points.size - 1)
+            val step = if (chartPoints.size <= 1) 0f else size.width / (chartPoints.size - 1)
             fun point(index: Int): Offset {
-                val x = if (points.size == 1) size.width / 2 else index * step
-                val ratio = points[index].amountCents.toFloat() / max.toFloat()
+                val x = if (chartPoints.size == 1) size.width / 2 else index * step
+                val ratio = (chartPoints[index].value / chartMax).toFloat()
                 return Offset(x, chartTop + chartHeight * (1f - ratio))
             }
             for (i in 0..4) {
                 val y = chartTop + chartHeight * i / 4f
                 drawLine(grid.copy(alpha = 0.45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
             }
-            if (points.size == 1) {
+            if (chartPoints.size == 1) {
                 val p = point(0)
                 drawCircle(primary, radius = 3.5.dp.toPx(), center = p)
                 return@Canvas
             }
             val line = Path().apply {
                 moveTo(point(0).x, point(0).y)
-                for (index in 1 until points.size) lineTo(point(index).x, point(index).y)
+                for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
             }
             val fill = Path().apply {
                 moveTo(0f, size.height)
                 lineTo(point(0).x, point(0).y)
-                for (index in 1 until points.size) lineTo(point(index).x, point(index).y)
+                for (index in 1 until chartPoints.size) lineTo(point(index).x, point(index).y)
                 lineTo(size.width, size.height)
                 close()
             }
@@ -91,7 +97,7 @@ internal fun DailyBillChart(
                 ),
             )
             drawPath(line, primary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-            val maxIndex = points.indexOfFirst { it.amountCents == max }
+            val maxIndex = chartPoints.indexOfFirst { it.value == chartMax }
             if (maxIndex >= 0) {
                 val p = point(maxIndex)
                 drawCircle(primary, radius = 4.5.dp.toPx(), center = p)
@@ -188,6 +194,11 @@ private fun BillChartHeaderPlaceholder() {
 internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modifier: Modifier = Modifier) {
     val palette = chartPalette()
     val total = categories.sumOf { it.amountCents }
+    val displayed = rememberChartValues(categories.associate { it.name to it.amountCents.toDouble() })
+    val displayedTotal = displayed.values.sum()
+    val assignedColors = remember(type) { linkedMapOf<String, Int>() }
+    categories.forEach { assignedColors.getOrPut(it.name) { assignedColors.size } }
+    fun categoryColor(name: String) = palette[(assignedColors[name] ?: 0) % palette.size]
     val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val grid = MiuixTheme.colorScheme.dividerLine
     Column(modifier.fillMaxWidth()) {
@@ -203,7 +214,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
                     val strokeWidth = 22.dp.toPx()
                     val diameter = size.minDimension - strokeWidth
                     val topLeft = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
-                    if (total <= 0L) {
+                    if (displayedTotal <= 0.0) {
                         drawCircle(
                             color = grid,
                             radius = diameter / 2,
@@ -212,10 +223,10 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
                         )
                     } else {
                         var start = -90f
-                        categories.forEachIndexed { index, category ->
-                            val sweep = category.amountCents.toFloat() / total.toFloat() * 360f
+                        displayed.filterValues { it > 0.0 }.forEach { (name, amount) ->
+                            val sweep = (amount / displayedTotal * 360).toFloat()
                             drawArc(
-                                color = palette[index % palette.size],
+                                color = categoryColor(name),
                                 startAngle = start + 1.5f,
                                 sweepAngle = (sweep - 3f).coerceAtLeast(0.5f),
                                 useCenter = false,
@@ -229,7 +240,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(if (type == 2) "支出合计" else "收入合计", fontSize = 12.sp, color = summary)
-                    Text("¥ ${money(total)}", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    UpdatedText(money(total), prefix = "¥ ", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -241,18 +252,18 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
             return@Column
         }
         Spacer(Modifier.height(8.dp))
-        categories.take(6).forEachIndexed { index, category ->
+        categories.take(6).forEach { category ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(8.dp).background(palette[index % palette.size], CircleShape))
+                Box(Modifier.size(8.dp).background(categoryColor(category.name), CircleShape))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     category.name.ifBlank { "其他" }, modifier = Modifier.weight(1f),
                     fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Text("¥ ${money(category.amountCents)}", fontSize = 13.sp)
+                UpdatedText(money(category.amountCents), prefix = "¥ ", identity = category.name, fontSize = 13.sp)
                 Text(
                     String.format(Locale.CHINA, "%.0f%%", category.amountCents * 100.0 / total.coerceAtLeast(1)),
                     modifier = Modifier.width(42.dp), fontSize = 12.sp, color = summary, textAlign = TextAlign.End,

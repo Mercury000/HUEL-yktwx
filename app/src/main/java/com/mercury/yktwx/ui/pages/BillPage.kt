@@ -1,5 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -109,6 +113,7 @@ fun BillPage(
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
     var showFilter by remember { mutableStateOf(false) }
     var query by remember(state.info) { mutableStateOf(state.info) }
+    val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
     val groups = remember(state.items) { state.items.groupByDay() }
     val listState = rememberLazyListState()
     val currentState by rememberUpdatedState(state)
@@ -133,7 +138,7 @@ fun BillPage(
             .filter { it }
             .collect {
                 val latest = currentState
-                if (!latest.statsVisible && !latest.loadingMore && latest.loadMoreError == null &&
+                if (!latest.statsVisible && !latest.loadingMore && latest.paginationReady &&
                     latest.currentPage in 1 until latest.pages
                 ) {
                     currentOnLoadMore()
@@ -296,7 +301,8 @@ fun BillPage(
                                 }
                                 else -> {
                                     items(groups, key = { it.key }) { group ->
-                                        Column {
+                                        Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null,
+                                            placementSpec = tween(ContentMotion.Insert, easing = ContentMotion.Easing))) {
                                             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically) {
                                                 Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
@@ -313,9 +319,21 @@ fun BillPage(
                                             }
                                             Card(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
                                                 group.records.forEachIndexed { index, record ->
-                                                    BillRow(record) { onOpenDetail(record) }
-                                                    if (index != group.records.lastIndex) {
-                                                        HorizontalDivider(Modifier.padding(start = 68.dp))
+                                                    key(record.stableId) {
+                                                        val arrives = remember(state.listUpdateId) {
+                                                            record.stableId in state.animatedOrderIds &&
+                                                                android.os.SystemClock.elapsedRealtime() - arrivalAt < 450
+                                                        }
+                                                        val appended = state.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
+                                                        val visible = remember(state.listUpdateId) { MutableTransitionState(!arrives || appended) }
+                                                        visible.targetState = true
+                                                        AnimatedVisibility(visibleState = visible,
+                                                            enter = expandVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing), expandFrom = Alignment.Top)) {
+                                                            Column(recordArrivalModifier(state.listUpdateId, arrives, appended, index)) {
+                                                                BillRow(record) { onOpenDetail(record) }
+                                                                if (index != group.records.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -357,22 +375,22 @@ private fun BillSummaryCard(state: BillUiState) {
         Column {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(expensesLabel, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                UpdatedText(expensesLabel, identity = state.dateFilter, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
                 if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
-                    lineHeight = 34.sp, sample = "¥ 0.00") else Text(
-                    state.summary?.let { "¥ ${money(it.expensesCents)}" } ?: "—",
+                    lineHeight = 34.sp, sample = "¥ 0.00") else UpdatedText(
+                    state.summary?.let { money(it.expensesCents) } ?: "—", prefix = "¥ ", identity = state.dateFilter,
                     fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
                 )
             }
             Column(Modifier.weight(1f)) {
-                Text(incomeLabel, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                UpdatedText(incomeLabel, identity = state.dateFilter, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
                 if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
-                    lineHeight = 34.sp, sample = "¥ 0.00") else Text(
-                    state.summary?.let { "¥ ${money(it.incomeCents)}" } ?: "—",
+                    lineHeight = 34.sp, sample = "¥ 0.00") else UpdatedText(
+                    state.summary?.let { money(it.incomeCents) } ?: "—", prefix = "¥ ", identity = state.dateFilter,
                     fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
                     color = MiuixTheme.colorScheme.primary,
                 )
@@ -407,7 +425,7 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Text(signedMoney(record), fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+            UpdatedText(money(record.amountCents), prefix = if (record.income) "+¥ " else "-¥ ", identity = record.stableId, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                 color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
         }
     }
@@ -415,29 +433,28 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
 
 @Composable
 private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
-    when {
-        state.loadingMore -> Row(
-            Modifier.fillMaxWidth().height(56.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircularProgressIndicator(Modifier.size(24.dp))
-            Spacer(Modifier.width(10.dp))
-            Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        }
-        state.loadMoreError != null -> ReadNotice(state.loadMoreError, cached = true)
-        state.currentPage in 1 until state.pages -> Row(
-            Modifier.fillMaxWidth().height(56.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        }
-        state.items.isNotEmpty() -> Row(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Text("没有更多了", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    val mode = when {
+        state.loadingMore -> "loading"
+        state.loadMoreError != null -> "error"
+        !state.paginationReady -> "verifying"
+        state.currentPage in 1 until state.pages -> "more"
+        state.items.isNotEmpty() -> "end"
+        else -> "empty"
+    }
+    ContentFade(mode to state.loadMoreError, Modifier.fillMaxWidth().heightIn(min = 56.dp), contentKey = { it.first }) { (displayed, error) ->
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically) {
+            when (displayed) {
+                "loading" -> {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
+                "error" -> InlineError(if (FeedbackText.isNetwork(error.orEmpty()))
+                    "网络连接失败，更多账单未加载，请再次上拉" else "更多账单加载失败，请再次上拉")
+                "more" -> Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                "end" -> Text("没有更多了", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
         }
     }
 }

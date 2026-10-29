@@ -12,7 +12,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Reads share authenticated snapshots; session changes and non-replayable operations stay exclusive. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi()) {
+class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null) {
     private val mutex = Mutex()
     private var accountGeneration = 0L
     private var sessionRevision = 0L
@@ -25,6 +25,23 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun username() = mutex.withLock { account().credentials?.username.orEmpty() }
     /** UI guards fail closed before restoration and never touch disk or Android Keystore. */
     fun ownsAccount(username: String) = username.isNotBlank() && cachedAccount?.credentials?.username == username
+    /** Serialize tiny disk transactions with identity revocation; no late write can survive logout. */
+    internal suspend fun <T> cachedDisplay(username: String, key: String, codec: DisplayCodec<T>): T? = mutex.withLock {
+        currentCoroutineContext().ensureActive()
+        if (displayCache == null || !ownsAccount(username)) return@withLock null
+        withContext(Dispatchers.IO) { displayCache.read(username, key, codec) }
+    }
+    internal suspend fun <T> saveDisplay(username: String, key: String, value: T, codec: DisplayCodec<T>) = mutex.withLock {
+        currentCoroutineContext().ensureActive()
+        if (!ownsAccount(username)) return@withLock
+        withContext(Dispatchers.IO) { displayCache?.write(username, key, value, codec) }
+        Unit
+    }
+    internal suspend fun removeDisplay(username: String, key: String) = mutex.withLock {
+        currentCoroutineContext().ensureActive()
+        if (ownsAccount(username)) withContext(Dispatchers.IO) { displayCache?.remove(username, key) }
+        Unit
+    }
     /** All snapshot initialization and mutations are serialized by the session mutex. */
     private suspend fun account(): AccountSnapshot = cachedAccount ?: onVaultThread {
         val credentials = credentials()
@@ -134,8 +151,10 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         onVaultThread { clearSession() }
     }
     private suspend fun clearCredentials() = withContext(NonCancellable) {
+        val previousOwner = cachedAccount?.credentials?.username
         accountGeneration++; sessionRevision++; unverifiedSessionRevision = null
         cachedAccount = AccountSnapshot(null, null)
+        if (previousOwner != null) withContext(Dispatchers.IO) { displayCache?.clear(previousOwner) }
         onVaultThread { clear() }
     }
     /** Android Keystore operations are synchronous Binder calls; never run them on a UI caller. */
@@ -212,7 +231,7 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         @Volatile private var sharedInstance: AccountRepository? = null
 
         fun shared(context: Context): AccountRepository = sharedInstance ?: synchronized(this) {
-            sharedInstance ?: AccountRepository(YktApi(), SecureVault(context.applicationContext)).also { sharedInstance = it }
+            sharedInstance ?: AccountRepository(YktApi(), SecureVault(context.applicationContext), displayCache = DisplayCache(context.applicationContext)).also { sharedInstance = it }
         }
     }
 }

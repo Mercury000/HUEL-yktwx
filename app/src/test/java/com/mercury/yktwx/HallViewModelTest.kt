@@ -418,7 +418,8 @@ class HallViewModelTest {
         fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
         fees.networkGate = CompletableDeferred()
         model.accountChanged("fake-owner"); model.refresh()
-        await { fees.networkEntered }
+        // Parallel projects can enter in either order; cancel only after both relevant reads begin.
+        await { fees.networkEntered && fees.configReads[FeeProject.Zhengdong] == 1 }
         model.invalidate()
         model.accountChanged("")
         fees.networkGate!!.complete(Unit)

@@ -71,6 +71,13 @@ data class BillRecord(
     val labelName: String,
 ) {
     val income: Boolean get() = typeFrom == "1"
+    /** Some legacy transactions omit orderId; UI identity must still survive refresh/pagination. */
+    val stableId: String get() = orderId.ifBlank {
+        serialNumber.takeIf { it.isNotBlank() }?.let { "serial:$fromAccount:$it" } ?: "record:" +
+            java.security.MessageDigest.getInstance("SHA-256").digest(JSONArray(listOf(fromAccount, typeId,
+                typeFrom, effectTime, bookTime, amountCents, balanceCents, resume, merchant)).toString().toByteArray())
+                .joinToString("") { "%02x".format(it) }
+    }
     override fun toString() = "BillRecord(type=$typeId, amountCents=$amountCents)"
 }
 
