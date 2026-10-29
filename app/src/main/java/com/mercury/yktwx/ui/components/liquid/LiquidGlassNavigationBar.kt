@@ -228,15 +228,14 @@ internal fun IosLiquidGlassNavigationBar(
 
     val offsetAnimation = remember { Animatable(0f) }
     val rubberBandPx = with(density) { 4.dp.toPx() }
-    val panelOffset by remember(rubberBandPx) {
-        derivedStateOf {
-            if (totalWidthPx == 0f) {
-                0f
-            } else {
-                val fraction = (offsetAnimation.value / totalWidthPx).coerceIn(-1f, 1f)
-                rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
-            }
-        }
+    // Read the source states directly in layer/draw callbacks. Reading a newly
+    // changed derivedStateOf here can synchronously re-enter layer updates in
+    // Compose 1.12 and overwrite its shared GraphicsLayerScope with another
+    // node's size/clip (e.g. the notice button after returning to login).
+    fun panelOffset(): Float {
+        if (totalWidthPx == 0f) return 0f
+        val fraction = (offsetAnimation.value / totalWidthPx).coerceIn(-1f, 1f)
+        return rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
     }
 
     var currentIndex by remember { mutableIntStateOf(selectedIndex) }
@@ -318,9 +317,9 @@ internal fun IosLiquidGlassNavigationBar(
             position = { layerSize, _ ->
                 Offset(
                     x = if (isLtr) {
-                        (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset
+                        (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset()
                     } else {
-                        layerSize.width - (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset
+                        layerSize.width - (dampedDrag.value + 0.5f) * tabWidthPx + panelOffset()
                     },
                     y = layerSize.height / 2f,
                 )
@@ -408,7 +407,7 @@ internal fun IosLiquidGlassNavigationBar(
                             val contentWidthPx = totalWidthPx - with(density) { 8.dp.toPx() }
                             tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
                         }
-                        .graphicsLayer { translationX = panelOffset }
+                        .graphicsLayer { translationX = panelOffset() }
                         .dropShadow(
                             shape = pillShape,
                             shadow = Shadow(
@@ -475,7 +474,7 @@ internal fun IosLiquidGlassNavigationBar(
                             .clearAndSetSemantics {}
                             .alpha(0f)
                             .layerBackdrop(tabsBackdrop)
-                            .graphicsLayer { translationX = panelOffset }
+                            .graphicsLayer { translationX = panelOffset() }
                             .drawBackdrop(
                                 backdrop = backdrop,
                                 shape = { pillShape },
@@ -507,7 +506,7 @@ internal fun IosLiquidGlassNavigationBar(
                             .graphicsLayer {
                                 val singleTabWidth = tabWidthPx
                                 val progressOffset = dampedDrag.value * singleTabWidth
-                                translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
+                                translationX = if (isLtr) progressOffset + panelOffset() else -progressOffset + panelOffset()
                             }
                             .drawBackdrop(
                                 backdrop = combinedBackdrop,
@@ -554,7 +553,7 @@ internal fun IosLiquidGlassNavigationBar(
                             .padding(horizontal = 4.dp)
                             .graphicsLayer {
                                 val progressOffset = dampedDrag.value * tabWidthPx
-                                translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
+                                translationX = if (isLtr) progressOffset + panelOffset() else -progressOffset + panelOffset()
                             }
                             .clip(pillShape)
                             .background(accentColor.copy(alpha = 0.15f), pillShape)
