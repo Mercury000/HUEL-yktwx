@@ -158,7 +158,8 @@ fun BillPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
-                InitialReadTransition(initialError, networkError) { displayedError ->
+                InitialReadTransition(initialError, networkError,
+                    if (state.statsVisible) state.stats.displayRestored else state.displayRestored) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && (initialError != null ||
@@ -196,7 +197,13 @@ fun BillPage(
                             }
                         } else {
                             item(key = "date") {
-                                PageNetworkNotice(networkError, 12.dp) {
+                                PageReadNotice(networkError, 12.dp, loading = if (state.statsVisible)
+                                    state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
+                                    else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
+                                        (state.loaded || state.displayRestored),
+                                    failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
+                                        state.stats.categoriesError != null || state.stats.rankingError != null
+                                        else state.error != null || state.summaryError != null || state.countsError != null) {
                                     BillDateSelector(
                                         filter = state.dateFilter,
                                         minimumDate = BillListMinimumDate,
@@ -227,6 +234,7 @@ fun BillPage(
                                 BillSummaryCard(state)
                             }
                             item(key = "search") {
+                                Column {
                                 Box(Modifier.fillMaxWidth()) {
                                 TextField(
                                     value = query,
@@ -270,6 +278,10 @@ fun BillPage(
                                         onSearch(query)
                                     }),
                                 )
+                                }
+                                // A cached query is checked below the stable overview and search field.
+                                PageReadNotice(null, 0.dp, loading = state.listOnlyRead && state.listLoading && state.listAvailable,
+                                    failed = state.error != null, topSpacing = 12.dp) {}
                                 }
                             }
                             if (state.activeFilterCount > 0 || state.info.isNotBlank()) item(key = "conditions") {

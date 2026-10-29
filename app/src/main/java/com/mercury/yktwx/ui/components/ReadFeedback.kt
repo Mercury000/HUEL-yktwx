@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -15,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +27,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -44,6 +50,18 @@ internal object FeedbackText {
     }
 }
 
+/** Fixed footprint keeps the amount and its adjacent action still throughout a balance read. */
+@Composable
+internal fun BalanceReadIndicator(loading: Boolean) {
+    Box(Modifier.padding(start = 8.dp).size(20.dp).testTag("balance-read-slot"), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(loading, enter = fadeIn(tween(ContentMotion.Fade)), exit = fadeOut(tween(ContentMotion.Fade))) {
+            CircularProgressIndicator(Modifier.testTag("balance-read-progress").semantics {
+                contentDescription = "正在刷新余额"
+            }, size = 14.dp, strokeWidth = 1.5.dp, colors = readProgressColors())
+        }
+    }
+}
+
 private val LocalSkeletonActive = staticCompositionLocalOf { true }
 internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
 private val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
@@ -60,20 +78,61 @@ internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasCo
 
 /** Keep the first content item stable and animate the notice together with its spacing. */
 @Composable
-internal fun PageNetworkNotice(error: String?, spacing: Dp, content: @Composable () -> Unit) {
+internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = false,
+    errorTag: String = "page-network-error",
+    failed: Boolean = error != null,
+    topSpacing: Dp = 0.dp,
+    content: @Composable () -> Unit) {
+    val userRefresh = LocalUserRefresh.current
+    val reading = loading && !userRefresh
+    var finishing by remember { mutableStateOf(false) }
+    val completion = remember { Animatable(0f) }
+    var wasReading by remember { mutableStateOf(reading) }
+    LaunchedEffect(reading, error, failed) {
+        if (reading) {
+            finishing = false
+            completion.snapTo(0f)
+        } else if (wasReading && !failed && !userRefresh) {
+            finishing = true
+            completion.animateTo(1f, tween(ContentMotion.Append))
+            finishing = false
+        } else finishing = false
+        wasReading = reading
+    }
     // Cached failures are already present on entry; only a new visibility change animates.
-    val visible = remember { MutableTransitionState(error != null) }
-    visible.targetState = error != null
+    val showing = error != null || reading || finishing
+    val visible = remember { MutableTransitionState(showing) }
+    visible.targetState = showing
     val displayedError = rememberWhileShown(error != null, error.orEmpty())
     Column(Modifier.fillMaxWidth()) {
         AnimatedVisibility(visibleState = visible,
             enter = fadeIn(tween(ContentMotion.Fade)) + expandVertically(tween(ContentMotion.Layout), expandFrom = Alignment.Top),
             exit = fadeOut(tween(ContentMotion.Fade)) + shrinkVertically(tween(ContentMotion.Layout), shrinkTowards = Alignment.Top)) {
-            InlineError(displayedError, Modifier.testTag("page-network-error").padding(bottom = spacing))
+            Box(Modifier.fillMaxWidth().padding(top = topSpacing, bottom = spacing)
+                .animateContentSize(tween(ContentMotion.Layout))) {
+                if (error != null || displayedError.isNotEmpty() && !reading && !finishing) {
+                    InlineError(displayedError, Modifier.testTag(errorTag))
+                    if (reading) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
+                } else ReadProgress(Modifier, completion.value)
+            }
         }
         content()
     }
 }
+
+/** A moving segment signals activity without suggesting a measured percentage. */
+@Composable
+private fun ReadProgress(modifier: Modifier, completion: Float) {
+    LinearProgressIndicator(modifier.testTag("page-read-progress").semantics {
+        contentDescription = "正在刷新数据"
+    }, progress = completion.takeIf { it > 0 }?.let { .45f + .55f * it },
+        height = 2.dp, colors = readProgressColors())
+}
+
+@Composable
+private fun readProgressColors() = ProgressIndicatorDefaults.progressIndicatorColors(
+    foregroundColor = MiuixTheme.colorScheme.primary.copy(alpha = .5f),
+    backgroundColor = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
 
 /** Keep a failed first read visible during retries; only actual content replaces it. */
 @Composable
@@ -104,14 +163,18 @@ internal fun delayedSkeletonModifier(): Modifier {
 /** Both outgoing skeleton and incoming failure share the viewport during the crossfade. */
 @Composable
 internal fun InitialReadTransition(error: String?, networkError: String? = null,
+    displayRestored: Boolean = false,
     content: @Composable (displayedError: String?) -> Unit) {
-    val displayedError = rememberWhileShown(error != null, error.orEmpty())
-    ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
-        CompositionLocalProvider(LocalSkeletonActive provides (error == null),
-            LocalSkeletonDelayEnabled provides true,
-            LocalPageNetworkError provides networkError.takeIf { !showFailure && error == null },
-            LocalInitialReadFailure provides showFailure) {
-            content(displayedError.takeIf { showFailure })
+    // A local snapshot is the initial display, never an animated replacement for a skeleton.
+    key(displayRestored) {
+        val displayedError = rememberWhileShown(error != null, error.orEmpty())
+        ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
+            CompositionLocalProvider(LocalSkeletonActive provides (error == null),
+                LocalSkeletonDelayEnabled provides true,
+                LocalPageNetworkError provides networkError.takeIf { !showFailure && error == null },
+                LocalInitialReadFailure provides showFailure) {
+                content(displayedError.takeIf { showFailure })
+            }
         }
     }
 }

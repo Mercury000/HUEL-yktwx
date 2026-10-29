@@ -48,7 +48,7 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
-    val balancePending = payment.busy || payment.accountLoading
+    val balancePending = payment.balanceLoading || payment.accountLoading
     val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
     val hasContent = state.profile != null || state.homeIdentity != null ||
         state.summary != null || state.counts != null || payment.account != null
@@ -71,7 +71,7 @@ internal fun MyPage(
                 DashboardPullToRefresh(loading = state.loading || payment.accountLoading, onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scroll) {
-                InitialReadTransition(initialError, networkError) { displayedError ->
+                InitialReadTransition(initialError, networkError, state.displayRestored) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && (initialError != null || state.loading &&
@@ -89,7 +89,10 @@ internal fun MyPage(
                             item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                         } else {
                         item {
-                            PageNetworkNotice(networkError, 10.dp) {
+                            PageReadNotice(networkError, 10.dp, loading =
+                                (state.loading || balancePending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
+                                failed = state.profileError != null || state.homeIdentityError != null || state.avatarError != null ||
+                                    state.summaryError != null || state.countsError != null || payment.accountError != null) {
                                 Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         key(payment.username, state.profile?.sno) { ProfileAvatar(state.avatar, 66.dp) }
@@ -259,7 +262,7 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
     val displayed = if (source == null) null else bitmap ?: previousBitmap
     SideEffect { if (bitmap != null || source == null) previousBitmap = bitmap }
     Box(Modifier.size(size).clip(RoundedCornerShape(size * .28f)).background(MiuixTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
-        ContentFade(displayed) { image ->
+        ContentFade(displayed, animate = previousBitmap != null) { image ->
             if (image != null) Image(image, "校园系统头像", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             else Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = MiuixTheme.colorScheme.primary)
         }
@@ -270,8 +273,11 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
 internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit) {
     val initialError = rememberInitialReadError(state.profile != null, state.profileError, !state.loading)
     val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
-    ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError) {
+    val error = rememberPageNetworkError(state.profileError ?: state.avatarError, state.loading, state.profile != null)
+    ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError, state.displayRestored) {
         item {
+            PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
+                loading = state.loading && state.profile != null, errorTag = "read-notice") {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("头像", Modifier.weight(1f), fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -282,27 +288,29 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
                 ProfileField("手机号", state.profile?.mobile, pending)
                 state.profile?.departmentName?.takeIf { it.isNotBlank() }?.let { ProfileField("部门", it) }
             }
+            }
         }
-        val error = state.profileError ?: state.avatarError
-        if (error != null) item { ReadNotice(error, cached = state.profile != null) }
     }
 }
 
 @Composable
 internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings, onBack: () -> Unit, onRecharge: () -> Unit,
     rechargeLoading: Boolean = false, onRefresh: (() -> Unit)? = null) {
-    val balancePending = payment.busy || payment.accountLoading
+    val balancePending = payment.balanceLoading || payment.accountLoading
     val initialError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
+    val error = rememberPageNetworkError(payment.accountError, balancePending, payment.account != null)
     ProfileDetailScaffold("账户详情", settings, onBack, payment.accountLoading, onRefresh, initialError) {
         item {
+            PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
+                loading = balancePending && payment.account != null, errorTag = "read-notice") {
             Card(Modifier.fillMaxWidth()) {
                 val pending = payment.account == null && (balancePending || initialError != null)
                 ProfileField("账户", payment.account?.name, pending)
                 ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" }, pending)
                 ProfileField("校园卡状态", cardStatus(payment.problem, payment.account != null, balancePending))
             }
+            }
         }
-        if (payment.accountError != null && payment.account != null) item { ReadNotice(payment.accountError, cached = true) }
         item { TextButton("充值", onClick = onRecharge, enabled = !rechargeLoading,
             modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary()) }
     }
@@ -320,6 +328,7 @@ private fun ProfileField(label: String, value: String?, pending: Boolean = false
 @Composable
 private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack: () -> Unit,
     loading: Boolean = false, onRefresh: (() -> Unit)? = null, initialError: String? = null,
+    displayRestored: Boolean = false,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
@@ -329,7 +338,7 @@ private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 val list: @Composable () -> Unit = {
-                    InitialReadTransition(initialError) { displayedError ->
+                    InitialReadTransition(initialError, displayRestored = displayRestored) { displayedError ->
                     LazyColumn(Modifier.fillMaxSize().overScrollVertical().then(
                         if (onRefresh == null) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,

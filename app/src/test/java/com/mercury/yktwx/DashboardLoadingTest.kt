@@ -93,7 +93,10 @@ class DashboardLoadingTest {
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
             capture(if (fontScale == 1f) "hall-loaded" else "hall-loaded-large-dark")
             compose.runOnIdle { state = DormUiState(ready.rooms, loading = true, loaded = true, network = ready.network) }
-            stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+            val shift = bounds("hall-network-card").top - network.top
+            assertTrue("A cached refresh adds only the compact notice", shift > 0 && shift < 80)
+            stable(network.translate(0f, shift), "hall-network-card"); stable(others.translate(0f, shift), "hall-others-card")
             val room = ready.rooms.single()
             compose.runOnIdle { state = DormUiState(listOf(DormRoom(room.project, room.binding, room.meters.take(1), 0)),
                 loaded = true, network = ready.network) }
@@ -145,7 +148,10 @@ class DashboardLoadingTest {
             compose.runOnIdle { rechargeLoading = true
                 state = MyUiState(ready.profile, summary = ready.summary, counts = ready.counts,
                     homeIdentity = ready.homeIdentity, loaded = true, loading = true) }
-            stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
+            compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+            val shift = bounds("my-balance-card").top - balance.top
+            assertTrue("Both cards move only with the compact notice", shift > 0 && shift < 80)
+            stable(balance.translate(0f, shift), "my-balance-card"); stable(summary.translate(0f, shift), "my-summary-card")
             compose.onNodeWithText("+ 充值").assertIsNotEnabled()
             compose.runOnIdle { state = MyUiState(loaded = true) }
             stable(balance, "my-balance-card"); stable(summary, "my-summary-card")

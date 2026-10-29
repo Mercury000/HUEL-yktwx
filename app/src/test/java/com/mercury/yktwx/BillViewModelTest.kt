@@ -130,8 +130,10 @@ class BillViewModelTest {
 
     @Test fun missingCredentialsEndsRefreshAndRequiresLogin() {
         vault.savedCredentials = null
+        vault.credentialsGate = CountDownLatch(1)
         model.refresh()
         assertTrue(model.state.value.refreshing)
+        vault.credentialsGate!!.countDown()
         await { !model.state.value.refreshing }
         assertTrue(model.state.value.needsLogin)
         assertFalse(model.state.value.loaded)

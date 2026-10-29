@@ -1,6 +1,8 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -78,9 +80,11 @@ internal fun UpdatedText(
 
 /** Shared skeleton/empty/content transition; cached content does not replay entry on navigation. */
 @Composable
-internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it }, content: @Composable (T) -> Unit) {
+internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it },
+    animate: Boolean = true, content: @Composable (T) -> Unit) {
     AnimatedContent(targetState = state, modifier = modifier, transitionSpec = {
-        (fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))).using(null)
+        (if (animate) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
+        else EnterTransition.None togetherWith ExitTransition.None).using(null)
     }, label = "ContentFade", contentKey = contentKey, content = { content(it) })
 }
 

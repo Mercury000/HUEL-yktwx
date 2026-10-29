@@ -7,6 +7,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.preview.PreviewData
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -18,6 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -29,8 +34,9 @@ class DisplayCacheRecoveryTest {
     private val cache by lazy { DisplayCache(folder.root, { b, _ -> b }, { b, _ -> b }) }
     private class MemoryVault : Vault {
         var owner: String? = "fake-owner"
+        var savedSession: Session? = Session("fake-token", Long.MAX_VALUE)
         override fun credentials() = owner?.let { Credentials(it, "fake-password") }
-        override fun session() = Session("fake-token", Long.MAX_VALUE)
+        override fun session() = savedSession
         override fun saveCredentials(value: Credentials) { owner = value.username }
         override fun saveSession(value: Session) = Unit
         override fun clearSession() = Unit
@@ -47,6 +53,93 @@ class DisplayCacheRecoveryTest {
         fail("Timed out waiting for cache recovery")
     }
     @After fun cleanup() { gate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+
+    @Test fun accountRestorationPreparesAllDisplayTabsWithoutRequestingTheirNetworkData() {
+        var requests = 0
+        val service = object : YktService by FakeAccountService() {
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
+                requests++; throw AssertionError("Prewarming must not read bills")
+            }
+        }
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String): PersonalProfile {
+                requests++; throw AssertionError("Prewarming must not read profile")
+            }
+            override suspend fun avatar(path: String): ByteArray? = throw AssertionError("Prewarming must not download avatar")
+        }
+        val fees = object : FeeService by FeeApi() {
+            override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
+                requests++; throw AssertionError("Prewarming must not read hall")
+            }
+        }
+        val repository = AccountRepository(service, vault, profileService = profiles, feeService = fees, displayCache = cache)
+        val hall = PreviewData.hallState()
+        val bill = PreviewData.billState()
+        val my = PreviewData.myState()
+        runBlocking {
+            repository.username()
+            repository.saveDisplay("fake-owner", DisplayKeys.Profile, my.profile!!, DisplayCodecs.Profile)
+            repository.saveDisplay("fake-owner", DisplayKeys.summary(bill.dateFilter.timeFrom, bill.dateFilter.timeTo), bill.summary!!, DisplayCodecs.Summary)
+            repository.saveDisplay("fake-owner", DisplayKeys.bills(bill.dateFilter, null, null, null, ""), BillPageData(bill.items, 1, 2), DisplayCodecs.Page)
+            hall.rooms.flatMap { it.bindings }.forEach {
+                repository.saveDisplay("fake-owner", DisplayKeys.room(it.project), it, DisplayCodecs.Room)
+            }
+            repository.saveDisplay("fake-owner", DisplayKeys.Network, hall.network!!, DisplayCodecs.Query)
+        }
+        val bills = BillViewModel(app, repository).also { store.put("bill", it); it.initialize(); it.accountChanged("fake-owner") }
+        val mine = MyViewModel(app, repository).also { store.put("my", it); it.accountChanged("fake-owner") }
+        val dorm = HallViewModel(app, repository).also { store.put("hall", it); it.accountChanged("fake-owner") }
+        await { bills.state.value.displayRestored && mine.state.value.displayRestored && dorm.state.value.displayRestored }
+        assertEquals(0, requests)
+        assertFalse(bills.state.value.loaded); assertFalse(bills.state.value.loading)
+        assertFalse(mine.state.value.loaded); assertFalse(mine.state.value.loading)
+        assertFalse(dorm.state.value.loaded); assertFalse(dorm.state.value.loading)
+        bills.accountChanged(null); mine.accountChanged(""); dorm.accountChanged("")
+        assertTrue(bills.state.value.items.isEmpty()); assertNull(mine.state.value.profile); assertTrue(dorm.state.value.rooms.isEmpty())
+    }
+
+    @Test fun displayCacheReadDoesNotWaitForSlowTokenRenewal() {
+        vault.savedSession = null
+        var logins = 0
+        val service = object : YktService by FakeAccountService() {
+            override suspend fun login(credentials: Credentials): Session {
+                logins++; gate.await(); throw NetworkFailure()
+            }
+        }
+        val repository = AccountRepository(service, vault, displayCache = cache)
+        val account = PaymentAccount("card", "pay", "1", "示例账户", 100)
+        runBlocking { repository.username(); repository.saveDisplay("fake-owner", DisplayKeys.Account, account, DisplayCodecs.Account) }
+        val model = PaymentViewModel(app, repository)
+        store.put("payment", model); model.onForeground(); model.initialize()
+        await { logins == 1 }
+        val cached = runBlocking { kotlinx.coroutines.withTimeout(1000) {
+            repository.cachedDisplay("fake-owner", DisplayKeys.Account, DisplayCodecs.Account)
+        } }
+        assertEquals(100L, cached!!.balanceCents)
+    }
+
+    @Test fun logoutRevokesADisplayReadAlreadyDecodingOnDisk() = runBlocking {
+        val decoding = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val slowCache = DisplayCache(folder.root, { bytes, _ -> bytes }, { bytes, _ ->
+            decoding.countDown()
+            check(finish.await(5, TimeUnit.SECONDS))
+            bytes
+        })
+        val repository = AccountRepository(FakeAccountService(), vault, displayCache = slowCache)
+        repository.username()
+        repository.saveDisplay("fake-owner", DisplayKeys.Account, PaymentAccount("a", "p", "1", "old", 10), DisplayCodecs.Account)
+        val read = async(Dispatchers.Default) { repository.cachedDisplay("fake-owner", DisplayKeys.Account, DisplayCodecs.Account) }
+        try {
+            assertTrue(decoding.await(5, TimeUnit.SECONDS))
+            val logout = async(Dispatchers.Default) { repository.logout() }
+            withTimeout(1000) { while (repository.ownsAccount("fake-owner")) yield() }
+            finish.countDown()
+            assertNull(read.await())
+            logout.await()
+        } finally { finish.countDown() }
+    }
 
     @Test fun billRestartRestoresFirstPageButWaitsForLiveValidationBeforeAppending() {
         val period = BillDateFilter.currentMonth()

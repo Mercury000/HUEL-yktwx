@@ -184,10 +184,14 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                 DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
                                                     lineHeight = 38.sp, sample = "¥ 0.00")
                                             } else {
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                 UpdatedText(
                                                     state.account?.let { money(it.balanceCents) } ?: "—", prefix = "¥ ", identity = state.account?.account,
+                                                    modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                     fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 )
+                                                BalanceReadIndicator(state.balanceLoading || state.accountLoading)
+                                                }
                                             }
                                         }
                                         CompactButton("充值", onClick = onRecharge,

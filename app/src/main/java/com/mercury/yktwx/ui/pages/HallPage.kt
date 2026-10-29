@@ -84,7 +84,7 @@ fun HallPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
-                InitialReadTransition(initialError, networkError) { displayedError ->
+                InitialReadTransition(initialError, networkError, dorm.displayRestored) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val dorm = if (!showFailure && (initialError != null ||
@@ -103,7 +103,9 @@ fun HallPage(
                         item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                     } else {
                     item {
-                        PageNetworkNotice(networkError, 14.dp) {
+                        PageReadNotice(networkError, 14.dp,
+                            loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
+                            failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
                             UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
                                 onSwitch = { targetTab = 0; targetAdding = false; targets = true },
                                 onAdd = { targetTab = 0; targetAdding = true; targets = true },
