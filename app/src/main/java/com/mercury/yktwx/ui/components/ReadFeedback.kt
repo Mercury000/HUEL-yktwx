@@ -3,8 +3,12 @@ package com.mercury.yktwx.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +20,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -46,10 +51,30 @@ internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
 private val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
 private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 
-/** One page-level inline error replaces repeated network feedback inside its regions. */
+/** An existing merged failure stays put until the current retry has a settled result. */
 @Composable
-internal fun PageNetworkNotice(error: String) {
-    InlineError(error, Modifier.testTag("page-network-error"))
+internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasContent: Boolean): String? {
+    var previous by remember { mutableStateOf<String?>(null) }
+    val displayed = if (!hasContent) null else if (refreshing && previous != null) previous else error
+    SideEffect { previous = displayed }
+    return displayed
+}
+
+/** Keep the first content item stable and animate the notice together with its spacing. */
+@Composable
+internal fun PageNetworkNotice(error: String?, spacing: Dp, content: @Composable () -> Unit) {
+    // Cached failures are already present on entry; only a new visibility change animates.
+    val visible = remember { MutableTransitionState(error != null) }
+    visible.targetState = error != null
+    val displayedError = rememberWhileShown(error != null, error.orEmpty())
+    Column(Modifier.fillMaxWidth()) {
+        AnimatedVisibility(visibleState = visible,
+            enter = fadeIn(tween(150)) + expandVertically(tween(200), expandFrom = Alignment.Top),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top)) {
+            InlineError(displayedError, Modifier.testTag("page-network-error").padding(bottom = spacing))
+        }
+        content()
+    }
 }
 
 /** Keep a failed first read visible during retries; only actual content replaces it. */

@@ -55,10 +55,11 @@ internal fun MyPage(
     val initialError = rememberInitialReadError(hasContent,
         state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError ?: payment.accountError,
         state.loaded && !state.loading && !balancePending)
-    val networkError = FeedbackText.mergedNetworkError(
+    val networkError = key(state.month) { rememberPageNetworkError(FeedbackText.mergedNetworkError(
         "资料" to FeedbackText.networkError(state.profileError, state.homeIdentityError, state.avatarError),
         "余额" to FeedbackText.networkError(payment.accountError, balanceError),
-        "概览" to FeedbackText.networkError(state.summaryError, state.countsError)).takeIf { hasContent }
+        "概览" to FeedbackText.networkError(state.summaryError, state.countsError)),
+        state.loading || balancePending, hasContent) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -87,36 +88,37 @@ internal fun MyPage(
                         if (showFailure) {
                             item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                         } else {
-                        if (networkError != null) item { PageNetworkNotice(networkError) }
                         item {
-                            Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    ProfileAvatar(state.avatar, 66.dp)
-                                    Spacer(Modifier.width(14.dp))
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        if (identityPending) {
-                                            DashboardPlaceholder(22.sp, Modifier.fillMaxWidth(), lineHeight = 30.sp)
-                                            DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 18.sp, sample = "0")
-                                        } else {
-                                            Text(state.homeIdentity?.name?.takeIf { it.isNotBlank() } ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户",
-                                                fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(state.homeIdentity?.sno ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
-                                                fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            PageNetworkNotice(networkError, 10.dp) {
+                                Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        ProfileAvatar(state.avatar, 66.dp)
+                                        Spacer(Modifier.width(14.dp))
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                            if (identityPending) {
+                                                DashboardPlaceholder(22.sp, Modifier.fillMaxWidth(), lineHeight = 30.sp)
+                                                DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 18.sp, sample = "0")
+                                            } else {
+                                                Text(state.homeIdentity?.name?.takeIf { it.isNotBlank() } ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户",
+                                                    fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(state.homeIdentity?.sno ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
+                                                    fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                            }
+                                            val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
+                                                ?: state.profile?.professionName.orEmpty()
+                                            if (studyPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
+                                            else Text(study.ifBlank { "资料" }, modifier = if (study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier,
+                                                fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                color = if (study.isBlank()) Color.Transparent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
-                                        val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
-                                            ?: state.profile?.professionName.orEmpty()
-                                        if (studyPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
-                                        else Text(study.ifBlank { "资料" }, modifier = if (study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier,
-                                            fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                            color = if (study.isBlank()) Color.Transparent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        Icon(MiuixIcons.ChevronForward, null, Modifier.size(18.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
-                                    Icon(MiuixIcons.ChevronForward, null, Modifier.size(18.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                 }
                             }
                         }
                         val identityError = state.profileError ?: state.homeIdentityError ?: state.avatarError
-                        if (identityError != null) item { ReadNotice(identityError,
+                        if (identityError != null && (networkError == null || !FeedbackText.isNetwork(identityError))) item { ReadNotice(identityError,
                             cached = state.profile != null || state.homeIdentity != null) }
                         item {
                             if (balanceError != null) {

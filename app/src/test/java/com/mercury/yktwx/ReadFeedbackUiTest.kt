@@ -409,7 +409,7 @@ class ReadFeedbackUiTest {
         capture("my-cache-network-error")
     }
 
-    @Test fun paymentNetworkFailureKeepsBalanceAndUsesInlineErrorInsideThePaymentCodeCard() {
+    @Test fun paymentNetworkFailureKeepsBalanceAndUsesTheCenteredPaymentStatus() {
         val settings = ThemeSettings(compose.activity.application)
         val payment = PreviewData.paymentState(false).copy(code = null, error = networkError)
         compose.setContent {
@@ -418,11 +418,113 @@ class ReadFeedbackUiTest {
             }
         }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
-        compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("payment-code-card")))
+        compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
+        compose.onNodeWithTag("payment-status-group").assert(hasAnyAncestor(hasTestTag("payment-code-card")))
+        compose.onNodeWithText("付款码暂不可用").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        compose.onNodeWithContentDescription("付款条形码").assertDoesNotExist()
+        compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
+        compose.onNodeWithText("解挂").assertDoesNotExist()
         compose.onNodeWithTag("payment-code-card").assertExists()
         compose.onNodeWithText("¥ ${money(payment.account!!.balanceCents)}").assertIsDisplayed()
         capture("payment-cache-network-error")
+    }
+
+    @Test fun pageNetworkNoticeMovesCachedContentGraduallyAndLeavesNoGapAfterRecovery() {
+        val settings = ThemeSettings(compose.activity.application)
+        val ready = PreviewData.hallState()
+        var state by mutableStateOf(ready)
+        val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
+            error = networkError, networkError = networkError)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) { HallPage(settings, 0.dp, dorm = state) }
+            }
+        }
+        fun cardTop() = compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.top
+        val before = cardTop()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state = failed }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        val start = cardTop()
+        compose.mainClock.advanceTimeBy(64)
+        val entering = cardTop()
+        capture("hall-network-notice-entering")
+        compose.mainClock.advanceTimeBy(240)
+        val shown = cardTop()
+        assertEquals("Inserting the notice must not jump the first card", before, start, 1f)
+        assertTrue("The notice and its spacing should expand gradually", entering > before && entering < shown)
+        compose.onNodeWithText("水电费、校园网更新失败，请下拉刷新").assertIsDisplayed()
+
+        compose.runOnIdle { state = ready }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(64)
+        capture("hall-network-notice-exiting")
+        val exiting = cardTop()
+        assertTrue("Recovery should shrink the notice gradually: before=$before, shown=$shown, exiting=$exiting",
+            exiting > before && exiting < shown)
+        compose.onNodeWithText("水电费、校园网更新失败，请下拉刷新").assertExists()
+        // A new failure while the old notice exits must resume without an empty banner.
+        compose.runOnIdle { state = failed }
+        compose.waitForIdle()
+        // Compose uses a spring when an in-flight size transition reverses; let it settle.
+        compose.mainClock.advanceTimeBy(1000)
+        assertEquals(shown, cardTop(), 1f)
+        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+        compose.runOnIdle { state = ready }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(320)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        assertEquals("Recovery must leave no reserved notice row or spacing", before, cardTop(), 1f)
+    }
+
+    @Test fun cachedHallNoticeStaysStillAcrossReactivationAndRepeatedOfflineFailures() {
+        val settings = ThemeSettings(compose.activity.application)
+        val ready = PreviewData.hallState()
+        val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
+            error = networkError, networkError = networkError)
+        val pending = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true, loading = true)
+        var state by mutableStateOf(failed)
+        var active by mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { HallPage(settings, 0.dp, dorm = state, isActive = active,
+                    onActivate = { state = pending }) }
+            }
+        }
+        fun cardTop() = compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.top
+        val original = cardTop()
+        compose.mainClock.autoAdvance = false
+        for (attempt in 1..2) {
+            compose.runOnIdle { active = true }
+            compose.waitForIdle()
+            for (step in 1..5) {
+                compose.mainClock.advanceTimeBy(64)
+                assertEquals("Retry must retain the cached notice in frame $step", original, cardTop(), 1f)
+                assertSingleNetworkFeedback("水电费、校园网更新失败，请下拉刷新")
+            }
+            compose.runOnIdle { state = failed }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(320)
+            assertEquals("The same failure must not animate again", original, cardTop(), 1f)
+            compose.runOnIdle { active = false }
+            compose.waitForIdle()
+        }
+        compose.runOnIdle { active = true }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(320)
+        compose.runOnIdle { state = ready }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(64)
+        val exiting = cardTop()
+        assertTrue("A successful retry must animate the notice out", exiting < original)
+        compose.mainClock.advanceTimeBy(320)
+        assertTrue(cardTop() < exiting)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        capture("hall-network-notice-recovered")
     }
 
     @Test fun networkAggregationKeepsIndependentBusinessFailureVisible() {

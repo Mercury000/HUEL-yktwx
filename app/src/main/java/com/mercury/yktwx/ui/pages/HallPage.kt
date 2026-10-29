@@ -65,10 +65,10 @@ fun HallPage(
     val hasContent = dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null
     val initialError = rememberInitialReadError(hasContent,
         dorm.error ?: dorm.networkError, !dorm.loading && dorm.loaded)
-    val networkError = FeedbackText.mergedNetworkError(
+    val networkError = rememberPageNetworkError(FeedbackText.mergedNetworkError(
         "水电费" to FeedbackText.networkError(dorm.error,
             *dorm.rooms.flatMap { room -> room.meters.map { it.error } }.toTypedArray()),
-        "校园网" to dorm.networkError).takeIf { hasContent }
+        "校园网" to dorm.networkError), dorm.loading, hasContent)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -102,13 +102,14 @@ fun HallPage(
                     if (showFailure) {
                         item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                     } else {
-                    if (networkError != null) item { PageNetworkNotice(networkError) }
                     item {
-                        UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
-                            onSwitch = { targetTab = 0; targetAdding = false; targets = true },
-                            onAdd = { targetTab = 0; targetAdding = true; targets = true },
-                            onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
-                            onPay = onOpenDormFee)
+                        PageNetworkNotice(networkError, 14.dp) {
+                            UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
+                                onSwitch = { targetTab = 0; targetAdding = false; targets = true },
+                                onAdd = { targetTab = 0; targetAdding = true; targets = true },
+                                onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
+                                onPay = onOpenDormFee)
+                        }
                     }
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }
                     item {
