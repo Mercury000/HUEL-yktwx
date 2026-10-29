@@ -52,7 +52,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
         mutable.value = MyUiState()
         if (UiPreview.enabled && preview && username.isNotBlank()) {
             mutable.value = PreviewData.myState()
-            refreshedAt = System.currentTimeMillis()
+            refreshedAt = ReadCachePolicy.now()
         } else if (username.isNotBlank()) {
             val attempt = generation
             displayTask = viewModelScope.launch { restoreDisplay(username, YearMonth.now(), attempt) }
@@ -65,7 +65,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
 
     fun onActivate() {
         val current = mutable.value
-        if (refreshedAt == 0L || System.currentTimeMillis() - refreshedAt > 60_000 || current.month != YearMonth.now() ||
+        if (!ReadCachePolicy.isFresh(refreshedAt) || current.month != YearMonth.now() ||
             current.profileError != null || current.homeIdentityError != null || current.avatarError != null ||
             current.summaryError != null || current.countsError != null) refresh()
     }
@@ -159,7 +159,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
             if (attempt != generation) return@launch
             publish { it.copy(loading = false, loaded = true) }
             if (mutable.value.profileError == null && mutable.value.homeIdentityError == null && mutable.value.summaryError == null && mutable.value.countsError == null)
-                refreshedAt = System.currentTimeMillis()
+                refreshedAt = ReadCachePolicy.now()
         }
     }
     /** Prepare local display only; activation still owns every network read and freshness check. */

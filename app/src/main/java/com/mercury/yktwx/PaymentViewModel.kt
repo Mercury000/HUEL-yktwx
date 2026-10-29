@@ -207,7 +207,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (!accountPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||
             current.busy || accountRequest?.isActive == true ||
             !manual && current.account != null && current.accountError == null &&
-                accountReadAt != 0L && SystemClock.elapsedRealtime() - accountReadAt < 60_000) return
+                ReadCachePolicy.isFresh(accountReadAt)) return
         val username = current.username
         val version = ++accountReadVersion
         mutable.value = current.copy(accountLoading = true, accountError = null)

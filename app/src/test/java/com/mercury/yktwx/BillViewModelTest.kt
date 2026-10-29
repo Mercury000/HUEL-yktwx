@@ -25,8 +25,9 @@ import java.util.concurrent.TimeUnit
 class BillViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeService()
+    private var now = 10_000L
     private val model = BillViewModel(
-        ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault),
+        ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault), { now },
     )
     private val store = ViewModelStore().apply { put("bills", model) }
 
@@ -79,7 +80,8 @@ class BillViewModelTest {
         assertEquals(setOf("page"), service.queries.toSet())
         val before = service.requests
         model.clearQuery(); await { model.state.value.loaded }
-        assertEquals(before + 1, service.requests)
+        assertEquals(before, service.requests)
+        assertEquals(BillListUpdate.Restore, model.state.value.listUpdate)
         assertEquals("", model.state.value.info)
         assertEquals(0, model.state.value.activeFilterCount)
     }
@@ -218,6 +220,198 @@ class BillViewModelTest {
         assertTrue(model.state.value.stats.loading)
         service.auxiliaryGate.complete(Unit)
         await { model.state.value.stats.loaded }
+    }
+
+    @Test fun returningToSuccessfulStatsReusesTheCorrectTypeAndPeriodWithoutLoading() {
+        loadExistingBills()
+        val original = model.state.value.dateFilter
+        service.categories = listOf(BillCategory("支出分类", 800))
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        service.categories = listOf(BillCategory("收入分类", 1200))
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        val calls = service.statsRequests.size
+        model.selectStatsType(2)
+        assertFalse(model.state.value.stats.loading)
+        assertEquals(listOf(BillCategory("支出分类", 800)), model.state.value.stats.categories)
+        model.selectStatsType(1)
+        assertFalse(model.state.value.stats.loading)
+        assertEquals(listOf(BillCategory("收入分类", 1200)), model.state.value.stats.categories)
+        assertEquals(calls, service.statsRequests.size)
+
+        val next = BillDateFilter.month(java.time.YearMonth.from(original.start).minusMonths(1))
+        service.categories = listOf(BillCategory("其他月份", 2000))
+        model.selectDate(next); await { !model.state.value.stats.loading }
+        val beforeReturn = service.statsRequests.size
+        model.selectDate(original)
+        assertEquals(original, model.state.value.stats.period)
+        assertFalse(model.state.value.stats.loading)
+        assertEquals(listOf(BillCategory("收入分类", 1200)), model.state.value.stats.categories)
+        assertEquals(beforeReturn, service.statsRequests.size)
+    }
+
+    @Test fun statsFreshnessBelongsToEachQueryAndExpiresWithoutClearingVisibleContent() {
+        loadExistingBills()
+        service.categories = listOf(BillCategory("支出", 800))
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        now += 30_000
+        service.categories = listOf(BillCategory("收入", 1200))
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        now = 69_999
+        val before = service.statsRequests.size
+        model.selectStatsType(2)
+        assertFalse(model.state.value.stats.loading)
+        assertEquals(before, service.statsRequests.size)
+        now = 70_000
+        model.selectStatsType(1)
+        assertFalse(model.state.value.stats.loading)
+        service.queryGates["categories"] = CompletableDeferred()
+        model.selectStatsType(2)
+        assertTrue(model.state.value.stats.loading)
+        assertEquals(listOf(BillCategory("支出", 800)), model.state.value.stats.categories)
+        await { service.statsRequests.size == before + 3 }
+        service.queryGates.getValue("categories").complete(Unit)
+        await { !model.state.value.stats.loading }
+    }
+
+    @Test fun failedStatsAreDisplayedButRetriedWhenReturningWithinTheReuseWindow() {
+        loadExistingBills()
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        service.categories = listOf(BillCategory("已读取分类", 800))
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        assertNotNull(model.state.value.stats.dailyError)
+        service.queryFailures = emptyMap()
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        val before = service.statsRequests.size
+        service.queryGates["trend"] = CompletableDeferred()
+        model.selectStatsType(2)
+        assertTrue(model.state.value.stats.loading)
+        assertEquals(listOf(BillCategory("已读取分类", 800)), model.state.value.stats.categories)
+        await { service.statsRequests.size == before + 3 }
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        assertNull(model.state.value.stats.dailyError)
+    }
+
+    @Test fun interruptedManualStatsRefreshRemainsStaleWhenReturningToThatType() {
+        loadExistingBills()
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        model.selectStatsType(2)
+        service.queryGates["categories"] = CompletableDeferred()
+        val before = service.statsRequests.size
+        model.refreshStats(); await { service.statsRequests.size == before + 3 }
+        model.selectStatsType(1)
+        assertFalse(model.state.value.stats.loading)
+        model.selectStatsType(2)
+        assertTrue(model.state.value.stats.loading)
+        await { service.statsRequests.size == before + 6 }
+        service.queryGates.getValue("categories").complete(Unit)
+        await { !model.state.value.stats.loading }
+    }
+
+    @Test fun invalidationAndLogoutRevokeEveryStatsQueryIncludingTheSameAccount() {
+        model.initialize(); model.accountChanged("test-user")
+        loadExistingBills()
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        model.invalidate()
+        val beforeInvalidation = service.statsRequests.size
+        model.selectStatsType(2); await { !model.state.value.stats.loading }
+        model.selectStatsType(1); await { !model.state.value.stats.loading }
+        assertEquals(beforeInvalidation + 6, service.statsRequests.size)
+        model.accountChanged(null); model.accountChanged("test-user")
+        service.queryGates["categories"] = CompletableDeferred()
+        model.openStats()
+        assertTrue(model.state.value.stats.loading)
+        assertFalse(model.state.value.stats.categoriesLoaded)
+        service.queryGates.getValue("categories").complete(Unit)
+        await { !model.state.value.stats.loading }
+    }
+
+    @Test fun returningToBillQueriesKeepsPaginationAndSkipsArrivalAnimationUntilExpired() {
+        val original = model.state.value.dateFilter
+        service.pages = 2
+        service.nextItems = listOf(record.copy(orderId = "second-page"))
+        loadExistingBills()
+        model.loadMore(); await { model.state.value.currentPage == 2 }
+        model.search("商户"); await { model.state.value.loaded && !model.state.value.loading }
+        val before = service.requests
+        model.search("")
+        assertEquals(before, service.requests)
+        assertEquals(2, model.state.value.currentPage)
+        assertTrue(model.state.value.paginationReady)
+        assertEquals(BillListUpdate.Restore, model.state.value.listUpdate)
+        assertTrue(model.state.value.animatedOrderIds.isEmpty())
+
+        model.selectDate(BillDateFilter.month(java.time.YearMonth.from(original.start).minusMonths(1)))
+        await { model.state.value.loaded && !model.state.value.loading }
+        val beforeDateReturn = service.requests
+        model.selectDate(original)
+        assertEquals(beforeDateReturn, service.requests)
+        assertEquals(2, model.state.value.currentPage)
+
+        model.search("商户")
+        now += 60_000
+        service.requestGate = CompletableDeferred()
+        model.search("")
+        assertTrue(model.state.value.refreshing)
+        assertEquals(2, model.state.value.items.size)
+        assertFalse(model.state.value.paginationReady)
+        await { service.requests == beforeDateReturn + 1 }
+        service.requestGate.complete(Unit)
+        await { !model.state.value.refreshing }
+        assertEquals(1, model.state.value.currentPage)
+    }
+
+    @Test fun longBillHistoriesDoNotMultiplyTheMemoryCacheAndAreReadAgainOnReturn() {
+        val original = model.state.value.dateFilter
+        service.items = (0..200).map { record.copy(orderId = "record-$it") }
+        service.requestGate.complete(Unit)
+        model.refresh(); await { model.state.value.loaded }
+        model.selectDate(BillDateFilter.month(java.time.YearMonth.from(original.start).minusMonths(1)))
+        await { model.state.value.loaded }
+        val before = service.requests
+        model.selectDate(original); await { model.state.value.loaded }
+        assertEquals(before + 1, service.requests)
+    }
+
+    @Test fun readingAnotherQueryDoesNotExtendTheOverviewReuseWindow() {
+        loadExistingBills()
+        now += 30_000
+        model.search("商户"); await { model.state.value.loaded }
+        now += 30_000
+        service.queries.clear()
+        service.queryGates["summary"] = CompletableDeferred()
+        model.search("")
+        await { service.queries.containsAll(listOf("page", "summary", "income", "expenses")) }
+        assertTrue(model.state.value.refreshing)
+        service.queryGates.getValue("summary").complete(Unit)
+        await { !model.state.value.refreshing }
+    }
+
+    @Test fun businessInvalidationRevokesBillQueriesAndTheirCachedOverview() {
+        loadExistingBills()
+        model.search("商户"); await { model.state.value.loaded }
+        model.invalidate()
+        service.queries.clear()
+        model.clearQuery(); await { model.state.value.loaded && !model.state.value.refreshing }
+        assertTrue(service.queries.containsAll(listOf("page", "summary", "income", "expenses")))
+        model.search("商户"); await { model.state.value.loaded && !model.state.value.refreshing }
+        assertEquals(4, service.requests)
+    }
+
+    @Test fun returningFromStatsAfterARepeatDateSelectionReusesTheLoadedBillDetails() {
+        model.initialize()
+        loadExistingBills()
+        val original = model.state.value.dateFilter
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.selectDate(BillDateFilter.month(java.time.YearMonth.from(original.start).minusMonths(1)))
+        await { !model.state.value.stats.loading }
+        model.selectDate(original)
+        val before = service.requests
+        model.showDetails(); await { model.state.value.loaded && !model.state.value.loading && !model.state.value.refreshing }
+        assertEquals(before, service.requests)
+        assertEquals(listOf(record), model.state.value.items)
     }
     @Test fun firstPageAndPaginationRemainUsableWhileOptionalMetricsAreSlow() {
         service.items = listOf(record)
@@ -474,6 +668,7 @@ class BillViewModelTest {
         var requestGate = CompletableDeferred<Unit>()
         var auxiliaryGate = CompletableDeferred<Unit>().apply { complete(Unit) }
         val queries = Collections.synchronizedSet(mutableSetOf<String>())
+        val statsRequests = Collections.synchronizedList(mutableListOf<Pair<String, Int>>())
         var queryFailures: Map<String, YktException> = emptyMap()
         val queryGates = mutableMapOf<String, CompletableDeferred<Unit>>()
         val searchGates = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<BillPageData>>()
@@ -519,14 +714,17 @@ class BillViewModelTest {
         override suspend fun login(credentials: Credentials): Session = Session("renewed", Long.MAX_VALUE)
         override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch = error("Unexpected payment")
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+            statsRequests += "categories" to type
             query("categories")
             return categories
         }
         override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+            statsRequests += "trend" to type
             query("trend")
             return emptyList()
         }
         override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+            statsRequests += "ranking" to type
             query("ranking")
             return ranking
         }
