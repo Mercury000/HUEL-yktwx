@@ -473,11 +473,16 @@ class BillViewModelTest {
         service.categories = listOf(BillCategory("旧分类", 800))
         service.queryGates["trend"] = CompletableDeferred()
         model.openStats()
-        await { model.state.value.stats.categoriesLoaded }
+        await { model.state.value.stats.categoriesLoaded && service.statsRequests.contains("trend" to 2) }
         service.categories = listOf(BillCategory("新分类", 1200))
+        // Hold the new response while checking the cleared state; a fast IO thread may otherwise publish it first.
+        val categoriesGate = CompletableDeferred<Unit>()
+        service.queryGates["categories"] = categoriesGate
         model.selectStatsType(1)
+        await { service.statsRequests.contains("categories" to 1) }
         assertFalse(model.state.value.stats.categoriesLoaded)
         assertTrue(model.state.value.stats.categories.isEmpty())
+        categoriesGate.complete(Unit)
         await { model.state.value.stats.categoriesLoaded }
         service.queryGates.getValue("trend").complete(Unit)
         await { !model.state.value.stats.loading }
@@ -670,7 +675,7 @@ class BillViewModelTest {
         val queries = Collections.synchronizedSet(mutableSetOf<String>())
         val statsRequests = Collections.synchronizedList(mutableListOf<Pair<String, Int>>())
         var queryFailures: Map<String, YktException> = emptyMap()
-        val queryGates = mutableMapOf<String, CompletableDeferred<Unit>>()
+        val queryGates = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<Unit>>()
         val searchGates = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<BillPageData>>()
         private suspend fun query(name: String) {
             queries += name
