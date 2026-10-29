@@ -56,6 +56,21 @@ class RechargeViewModelTest {
         assertNull(model.state.value.pending)
     }
 
+    @Test fun confirmedRechargeEmitsOneUpdateEvenWhenResultIsDismissedImmediately() {
+        prepareOrder()
+        service.resultGate.complete(Unit)
+        model.checkResult()
+        await { model.state.value.phase == RechargePhase.Paid }
+        model.checkResult()
+        model.dismiss()
+        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
+        assertNotNull(event)
+        assertTrue(event!!.balance)
+        assertFalse(event.hall)
+        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
+        assertEquals(1, service.creations)
+    }
+
     @Test fun repeatedClicksCreateAndLaunchOnlyOneOrderWithExactCents() {
         open()
         service.creationGate = CompletableDeferred()
@@ -237,6 +252,9 @@ class RechargeViewModelTest {
         model.checkResult()
         await { model.state.value.phase == RechargePhase.Paid }
         assertEquals(1, service.resultQueries)
+        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
+        assertNotNull(event)
+        assertFalse(event!!.balance)
     }
 
     private fun prepareOrder() {

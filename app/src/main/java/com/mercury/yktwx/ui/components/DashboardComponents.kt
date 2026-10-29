@@ -19,6 +19,12 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.Clear
+import top.yukonga.miuix.kmp.icon.extended.Hide
+import top.yukonga.miuix.kmp.icon.extended.Show
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -107,7 +113,34 @@ internal fun DashboardLink(text: String, onClick: () -> Unit, modifier: Modifier
             if (leading != null) Icon(leading, null, Modifier.size(16.dp), tint = color)
             Text(text, modifier = if (trailingArrowAtEnd) Modifier.weight(1f) else Modifier,
                 fontSize = 12.sp, color = if (enabled) color else MiuixTheme.colorScheme.disabledOnSurface)
-            if (arrow) Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = color)
+            if (arrow) Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = if (enabled) color else MiuixTheme.colorScheme.disabledOnSurface)
+        }
+    }
+}
+
+/** Compact condition label with one removal action and the standard Surface touch target. */
+@Composable
+internal fun RemovableCondition(label: String, onRemove: () -> Unit) {
+    Surface(onClick = onRemove, color = MiuixTheme.colorScheme.primary.copy(alpha = .08f),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.semantics { contentDescription = "移除条件：$label" }) {
+        Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label, Modifier.widthIn(max = 240.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = MiuixTheme.colorScheme.primary)
+            Icon(MiuixIcons.Clear, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** A small visibility icon with the same expanded touch target as other compact actions. */
+@Composable
+internal fun VisibilityToggle(visible: Boolean, subject: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(onClick = onClick, modifier = modifier.size(24.dp), color = Color.Transparent) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(if (visible) MiuixIcons.Hide else MiuixIcons.Show,
+                contentDescription = if (visible) "隐藏$subject" else "显示$subject",
+                modifier = Modifier.size(16.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
     }
 }

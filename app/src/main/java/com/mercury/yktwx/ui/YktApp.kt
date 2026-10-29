@@ -35,6 +35,7 @@ import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.merge
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -284,6 +285,33 @@ private fun MainContent(
         layers.isNotEmpty() -> null
         else -> ReadPage.entries[pagerState.currentPage]
     }
+    val currentOwner by rememberUpdatedState(state.username.takeUnless { state.needsLogin })
+    val currentReadPage by rememberUpdatedState(readPage)
+    LaunchedEffect(rechargeModel, feeModel, viewModel) {
+        merge(rechargeModel.transactionUpdates, feeModel.transactionUpdates, viewModel.transactionUpdates).collect { update ->
+            if (update.username != currentOwner) return@collect
+            if (update.balance) viewModel.invalidateBalance()
+            billViewModel.invalidate(); myModel.invalidate()
+            if (update.hall) dormModel.invalidate()
+            when (currentReadPage) {
+                ReadPage.Bill -> billViewModel.onActivate()
+                ReadPage.My, ReadPage.Profile -> myModel.onActivate()
+                ReadPage.Hall -> if (update.hall) dormModel.onActivate()
+                else -> Unit
+            }
+        }
+    }
+    // When an overlay closes, apply any invalidation deferred while it covered the page.
+    LaunchedEffect(readPage) {
+        when (readPage) {
+            ReadPage.My -> { myModel.onActivate(); viewModel.refreshAccount() }
+            ReadPage.Profile -> myModel.onActivate()
+            ReadPage.Account -> viewModel.refreshAccount()
+            ReadPage.Bill -> billViewModel.onActivate()
+            ReadPage.Hall -> dormModel.onActivate()
+            else -> Unit
+        }
+    }
     val myNetworkError = FeedbackText.networkError(myState.profileError, myState.homeIdentityError,
         myState.avatarError, myState.summaryError, myState.countsError)
     val readLoading = when (readPage) {
@@ -468,6 +496,7 @@ private fun MainContent(
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                    isActive = paymentPageSelected && !paymentPageCovered,
                                     onUnlost = {
                                         val account = state.account?.account
                                         if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
@@ -509,6 +538,7 @@ private fun MainContent(
                                     onShowDetails = billViewModel::showDetails,
                                     onStatsTypeChange = billViewModel::selectStatsType,
                                     onRefreshStats = billViewModel::refreshStats,
+                                    onClearQuery = billViewModel::clearQuery,
                                     onOpenDetail = ::openBillDetail,
                                     isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
                                     showBack = false,
@@ -542,9 +572,7 @@ private fun MainContent(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
                         onCheck = rechargeModel::checkResult,
                         onFinish = {
-                            val paid = rechargeState.phase == com.mercury.yktwx.RechargePhase.Paid
                             rechargeModel.finish()
-                            if (paid) { viewModel.refresh(); viewModel.refreshAccount(manual = true); myModel.refresh(); billViewModel.refresh() }
                         },
                     )
                     HallFeeDialog(
@@ -564,9 +592,7 @@ private fun MainContent(
                         onContinuePayment = feeModel::continuePayment,
                         onCheck = feeModel::checkResult,
                         onFinish = {
-                            val paid = feeState.resultPhase == com.mercury.yktwx.RechargePhase.Paid
                             dormPaymentVisible = false; feeOpening = null; feeModel.dismiss()
-                            if (paid) { viewModel.refresh(); viewModel.refreshAccount(manual = true); billViewModel.refresh(); myModel.refresh(); dormModel.invalidate(); dormModel.refresh() }
                         },
                     )
                 }

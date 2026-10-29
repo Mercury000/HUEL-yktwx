@@ -34,7 +34,7 @@ data class BillStatsState(
     val rankingError: String? = null,
 )
 
-enum class BillListUpdate { Initial, Restore, Refresh, Append }
+enum class BillListUpdate { Initial, Restore, Refresh, Append, Query }
 
 data class BillUiState(
     val preview: Boolean = false,
@@ -125,6 +125,14 @@ class BillViewModel internal constructor(
             else BillUiState(needsLogin = username == null)
     }
 
+    /** A completed transaction makes both date views stale without discarding visible content. */
+    fun invalidate() {
+        cancelListJobs(); statsJob?.cancel(); loginCheck?.cancel(); loginCheck = null
+        lastLoadedAt = 0L; lastStatsLoadedAt = 0L
+        mutable.value = mutable.value.copy(loading = false, refreshing = false, listLoading = false, loadingMore = false,
+            stats = mutable.value.stats.copy(loading = false))
+    }
+
     fun onActivate() {
         if (mutable.value.statsVisible) { openStats(); return }
         if (!initialized || preview || loginCheck?.isActive == true || loadJob?.isActive == true) return
@@ -180,11 +188,11 @@ class BillViewModel internal constructor(
         cancelListJobs()
         mutable.value = current.copy(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
-            items = emptyList(), summary = null, currentPage = 0, pages = 0,
+            items = emptyList(), currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
-            listLoaded = false, listAvailable = false, summaryLoaded = false, listLoading = false, summaryError = null,
+            listLoaded = false, listAvailable = false, listLoading = false,
         )
-        if (!preview && !mutable.value.needsLogin) load()
+        if (!preview && !mutable.value.needsLogin) load(queryChanged = true)
     }
 
     fun search(info: String) {
@@ -192,11 +200,21 @@ class BillViewModel internal constructor(
         if (value == mutable.value.info) return
         cancelListJobs()
         mutable.value = mutable.value.copy(
-            info = value, items = emptyList(), summary = null, currentPage = 0, pages = 0,
+            info = value, items = emptyList(), currentPage = 0, pages = 0,
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
-            listLoaded = false, listAvailable = false, summaryLoaded = false, listLoading = false, summaryError = null,
+            listLoaded = false, listAvailable = false, listLoading = false,
         )
-        if (!preview && !mutable.value.needsLogin) load()
+        if (!preview && !mutable.value.needsLogin) load(queryChanged = true)
+    }
+
+    fun clearQuery() {
+        val current = mutable.value
+        if (current.activeFilterCount == 0 && current.info.isBlank()) return
+        cancelListJobs()
+        mutable.value = current.copy(typeId = null, amountFromCents = null, amountToCents = null, info = "",
+            items = emptyList(), currentPage = 0, pages = 0, loaded = false, error = null, loadMoreError = null,
+            loading = false, refreshing = false, listLoaded = false, listAvailable = false, listLoading = false)
+        if (!preview && !current.needsLogin) load(queryChanged = true)
     }
 
     fun loadMore() {
@@ -287,7 +305,7 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(detail = record)
     }
 
-    private fun load(manualRefresh: Boolean = false) {
+    private fun load(manualRefresh: Boolean = false, queryChanged: Boolean = false) {
         val current = mutable.value
         if (current.needsLogin && !manualRefresh) return
         loadJob?.cancel()
@@ -298,11 +316,13 @@ class BillViewModel internal constructor(
         val amountTo = current.amountToCents
         val info = current.info
         val hasItems = current.items.isNotEmpty()
+        val readSummary = !queryChanged || !current.summaryLoaded || current.summary == null || current.summaryError != null
+        val readCounts = !queryChanged || !current.countsLoaded || current.counts == null || current.countsError != null
         // PullToRefresh needs the busy state before any suspension, including the credential check.
         mutable.value = current.copy(
             loading = !manualRefresh && !hasItems,
             refreshing = manualRefresh || hasItems,
-            error = null, summaryError = null, countsError = null,
+            error = null, summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
             loadMoreError = null,
             listLoading = true, loadingMore = false,
         )
@@ -315,7 +335,7 @@ class BillViewModel internal constructor(
                 val latest = mutable.value
                 mutable.value = latest.copy(items = page?.items.orEmpty(), currentPage = page?.current ?: 0, pages = page?.pages ?: 0,
                     listAvailable = page != null, listLoaded = page != null, paginationReady = false,
-                    summary = summary ?: latest.summary, counts = counts ?: latest.counts,
+                    summary = latest.summary ?: summary, counts = latest.counts ?: counts,
                     summaryLoaded = summary != null || latest.summaryLoaded, countsLoaded = counts != null || latest.countsLoaded,
                     listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet())
             }
@@ -342,11 +362,11 @@ class BillViewModel internal constructor(
                             currentCoroutineContext().ensureActive()
                             publish {
                                 val previousIds = it.items.mapTo(HashSet()) { r -> r.stableId }
-                                val update = if (it.listAvailable) BillListUpdate.Refresh else BillListUpdate.Initial
+                                val update = if (queryChanged) BillListUpdate.Query else if (it.listAvailable) BillListUpdate.Refresh else BillListUpdate.Initial
                                 it.copy(items = page.items, currentPage = page.current, pages = page.pages,
                                     listLoading = false, listLoaded = true, listAvailable = true, error = null, paginationReady = true,
                                     listUpdate = update, listUpdateId = ++listUpdateId,
-                                    animatedOrderIds = page.items.filter { r -> update == BillListUpdate.Initial || r.stableId !in previousIds }.mapTo(mutableSetOf()) { r -> r.stableId })
+                                    animatedOrderIds = page.items.filter { r -> update != BillListUpdate.Query && (update == BillListUpdate.Initial || r.stableId !in previousIds) }.mapTo(mutableSetOf()) { r -> r.stableId })
                             }
                             repository.saveDisplay(username, DisplayKeys.bills(dateFilter, typeId, amountFrom, amountTo, info), page, DisplayCodecs.Page)
                             lastLoadedAt = System.currentTimeMillis()
@@ -358,13 +378,13 @@ class BillViewModel internal constructor(
                                 error = (e as? YktException)?.message ?: "账单加载失败，请稍后重试") }
                         }
                     }
-                    launch {
+                    if (readSummary) launch {
                         val result = optionalData { repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo) }
                         publish { it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
                             summaryError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.summary(dateFilter.timeFrom, dateFilter.timeTo), it, DisplayCodecs.Summary) }
                     }
-                    launch {
+                    if (readCounts) launch {
                         val result = optionalData { repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo) }
                         publish { it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
                             countsError = result.exceptionOrNull()?.let(::message)) }

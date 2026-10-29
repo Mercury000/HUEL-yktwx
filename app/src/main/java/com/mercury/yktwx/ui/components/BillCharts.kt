@@ -4,8 +4,15 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -30,6 +37,7 @@ import com.mercury.yktwx.data.BillDailyPoint
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 internal fun DailyBillChart(
@@ -45,6 +53,8 @@ internal fun DailyBillChart(
     val chartPoints = displayed.entries.toList()
     val chartMax = displayed.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
     val max = points.maxOfOrNull { it.amountCents } ?: 0L
+    var selectedDate by remember(points) { mutableStateOf<java.time.LocalDate?>(null) }
+    val selected = points.firstOrNull { it.date == selectedDate }
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (mode == BillDateMode.Year) "每月趋势" else "每日趋势", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -58,7 +68,25 @@ internal fun DailyBillChart(
             }
             return@Column
         }
-        Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(150.dp).testTag("bill-trend-plot")
+            .semantics {
+                contentDescription = selected?.let { "${it.date}，金额 ${money(it.amountCents)} 元" } ?: "收支趋势，点按查看金额"
+                customActions = listOf(CustomAccessibilityAction("查看下一个时间点") {
+                    val index = points.indexOfFirst { it.date == selectedDate }
+                    selectedDate = points[(index + 1).coerceAtMost(points.lastIndex)].date
+                    true
+                }, CustomAccessibilityAction("查看上一个时间点") {
+                    val index = points.indexOfFirst { it.date == selectedDate }
+                    selectedDate = points[(index - 1).coerceAtLeast(0)].date
+                    true
+                })
+            }.pointerInput(points) {
+                detectTapGestures { position ->
+                    val index = if (points.size <= 1) 0 else
+                        (position.x / size.width.coerceAtLeast(1) * points.lastIndex).roundToInt().coerceIn(points.indices)
+                    selectedDate = points[index].date
+                }
+            }) {
             // Empty -> nonempty may compose before the interpolation effect acquires its target.
             if (chartPoints.isEmpty()) return@Canvas
             val chartTop = 8.dp.toPx()
@@ -97,6 +125,13 @@ internal fun DailyBillChart(
                 ),
             )
             drawPath(line, primary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            val selectedIndex = chartPoints.indexOfFirst { it.key == selectedDate }
+            if (selectedIndex >= 0) {
+                val selectedPoint = point(selectedIndex)
+                drawLine(primary.copy(alpha = .35f), Offset(selectedPoint.x, chartTop), Offset(selectedPoint.x, size.height), strokeWidth = 1.dp.toPx())
+                drawCircle(primary, radius = 5.dp.toPx(), center = selectedPoint)
+                drawCircle(surface, radius = 2.5.dp.toPx(), center = selectedPoint)
+            }
             val maxIndex = chartPoints.indexOfFirst { it.value == chartMax }
             if (maxIndex >= 0) {
                 val p = point(maxIndex)
@@ -111,6 +146,9 @@ internal fun DailyBillChart(
             Spacer(Modifier.weight(1f))
             Text(pointShort(points.last(), mode), fontSize = 11.sp, color = summary)
         }
+        Text(selected?.let { "${it.date} · ¥ ${money(it.amountCents)}" } ?: "点按曲线查看金额",
+            Modifier.fillMaxWidth().padding(top = 6.dp).testTag("bill-trend-selection"), fontSize = 12.sp, lineHeight = 18.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = summary)
     }
 }
 
@@ -144,6 +182,9 @@ internal fun DailyBillChartPlaceholder(modifier: Modifier = Modifier) {
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             repeat(3) { DashboardPlaceholder(11.sp, Modifier.width(36.dp), fraction = 1f, sample = "0.00") }
+        }
+        Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+            DashboardPlaceholder(12.sp, lineHeight = 18.sp, modifier = Modifier.width(140.dp), fraction = .8f)
         }
     }
 }
@@ -194,6 +235,7 @@ private fun BillChartHeaderPlaceholder() {
 internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modifier: Modifier = Modifier) {
     val palette = chartPalette()
     val total = categories.sumOf { it.amountCents }
+    var expanded by remember(type) { mutableStateOf(false) }
     val displayed = rememberChartValues(categories.associate { it.name to it.amountCents.toDouble() })
     val displayedTotal = displayed.values.sum()
     val assignedColors = remember(type) { linkedMapOf<String, Int>() }
@@ -201,7 +243,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
     fun categoryColor(name: String) = palette[(assignedColors[name] ?: 0) % palette.size]
     val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val grid = MiuixTheme.colorScheme.dividerLine
-    Column(modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth().animateContentSize(tween(ContentMotion.Layout, easing = ContentMotion.Easing))) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("分类占比", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
@@ -252,7 +294,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
             return@Column
         }
         Spacer(Modifier.height(8.dp))
-        categories.take(6).forEach { category ->
+        (if (expanded) categories else categories.take(6)).forEach { category ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -270,6 +312,8 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
                 )
             }
         }
+        if (categories.size > 6) TextButton(if (expanded) "收起分类" else "查看全部 ${categories.size} 项",
+            onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth())
     }
 }
 

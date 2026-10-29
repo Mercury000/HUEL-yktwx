@@ -47,7 +47,7 @@ fun RechargeDialog(
     OverlayBottomSheet(
         show = show,
         startAction = { key(session) { SheetTitle(title) } },
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (isResult) onFinish() else onDismiss() },
         renderInRootScaffold = true,
         // The result has its own spacing; avoid adding the sheet's defaults again.
         insideMargin = DpSize(0.dp, 0.dp),

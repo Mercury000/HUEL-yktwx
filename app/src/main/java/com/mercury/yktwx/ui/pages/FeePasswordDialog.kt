@@ -58,7 +58,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
                 label = "六位支付密码", singleLine = true, useLabelAsPlaceholder = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.trackInputFocus().fillMaxWidth())
+                keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             if (!display.error.isNullOrBlank()) InlineError(display.error)
             Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }

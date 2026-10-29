@@ -165,17 +165,29 @@ class FeeSelectorUiTest {
             assertTrue("Amount action is clipped during error entry", button.bottom.value <= content.bottom.value + 1f)
         }
         compose.mainClock.autoAdvance = true
-        for ((amount, message) in listOf("9" to "最低充值 ¥ 10", "501" to "单次最高 ¥ 500",
-            "10.50" to "仅支持整数金额", "10.001" to formatError)) {
+        for ((amount, message) in listOf("9" to "最低充值 ¥ 10", "501" to "单次最高 ¥ 500", "0" to formatError)) {
+            input.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
             input.performTextReplacement(amount)
+            compose.onNodeWithText(message).assertDoesNotExist()
+            input.performImeAction()
             compose.onNodeWithText(message).assertIsDisplayed()
             compose.onNodeWithText("充值").assertIsNotEnabled()
             compose.onNodeWithText("请输入有效金额，最多两位小数").assertDoesNotExist()
             compose.onNodeWithText("重试").assertDoesNotExist()
         }
+        input.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+        input.performTextReplacement("10")
+        input.performTextReplacement("10.50")
+        input.assertTextContains("10")
+        compose.onNodeWithText("充值 ¥ 10.00").assertIsEnabled()
+        input.performTextReplacement("10.001")
+        input.assertTextContains("10")
+        input.performImeAction()
         input.performTextReplacement("")
         compose.onNodeWithText(formatError).assertDoesNotExist()
+        input.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
         input.performTextReplacement("501")
+        input.performImeAction()
         compose.onNodeWithText("单次最高 ¥ 500").assertIsDisplayed()
         val hint = compose.onNodeWithText("单次最高 ¥ 500").fetchSemanticsNode().boundsInRoot
         assertTrue(hint.top > compose.onNodeWithText("支付方式").fetchSemanticsNode().boundsInRoot.bottom)

@@ -5,10 +5,6 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,13 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -36,7 +25,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -83,6 +71,7 @@ fun BillPage(
     onShowDetails: () -> Unit = {},
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
+    onClearQuery: () -> Unit = { onFiltersApplied(null, null, null); onSearch("") },
 ) {
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
@@ -105,17 +94,19 @@ fun BillPage(
             else state.error ?: state.summaryError ?: state.countsError,
             if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
     }
-    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val detailBar = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberTopAppBarState() }
+    val statsBar = key(state.stats.period) { rememberTopAppBarState() }
+    val scrollBehavior = MiuixScrollBehavior(if (state.statsVisible) statsBar else detailBar)
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    var searchBounds by remember { mutableStateOf(Rect.Zero) }
-    var contentOrigin by remember { mutableStateOf(Offset.Zero) }
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
     var showFilter by remember { mutableStateOf(false) }
     var query by remember(state.info) { mutableStateOf(state.info) }
     val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
     val groups = remember(state.items) { state.items.groupByDay() }
-    val listState = rememberLazyListState()
+    val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
+    val statisticsState = key(state.stats.period) { rememberLazyListState() }
+    val listState = if (state.statsVisible) statisticsState else detailsState
     val currentState by rememberUpdatedState(state)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // Adjacent tabs may be precomposed. Load only when the bill tab is active.
@@ -123,7 +114,6 @@ fun BillPage(
         if (isActive) onActivate()
         if (!isActive || state.statsVisible) showFilter = false
     }
-    LaunchedEffect(state.statsVisible, state.dateFilter) { listState.scrollToItem(0) }
     LaunchedEffect(isActive, state.statsVisible) { if (!isActive || state.statsVisible) dismissSearch() }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.distinctUntilChanged().filter { it }.collect { dismissSearch() }
@@ -147,14 +137,7 @@ fun BillPage(
     }
 
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
-        Scaffold(modifier = Modifier.onGloballyPositioned { contentOrigin = it.positionInWindow() }
-            .pointerInput(focus, keyboard) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    if (!searchBounds.contains(down.position + contentOrigin)) dismissSearch()
-                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                }
-            }, topBar = {
+        Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior) else TopAppBar(
                     title = "账单",
@@ -186,7 +169,7 @@ fun BillPage(
                             stats = com.mercury.yktwx.BillStatsState(period = state.stats.period, type = state.stats.type)) else state
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize().overScrollVertical(),
+                        modifier = Modifier.fillMaxSize().testTag(if (state.statsVisible) "bill-stats-list" else "bill-list").overScrollVertical(),
                         contentPadding = PaddingValues(
                             top = padding.calculateTopPadding() + 8.dp,
                             bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
@@ -249,7 +232,6 @@ fun BillPage(
                                     value = query,
                                     onValueChange = { query = it },
                                     modifier = Modifier.trackInputFocus().fillMaxWidth().testTag("bill-search")
-                                        .onGloballyPositioned { searchBounds = it.boundsInWindow() }
                                         .semantics { contentDescription = "搜索商户或摘要" },
                                     insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
                                     label = "搜索商户或摘要",
@@ -266,6 +248,12 @@ fun BillPage(
                                         )
                                     },
                                     trailingIcon = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (query.trim().isNotEmpty() && query.trim() != state.info) {
+                                            IconButton(onClick = { dismissSearch(); onSearch(query) }) {
+                                                Icon(MiuixIcons.Search, "提交搜索", Modifier.size(20.dp))
+                                            }
+                                        }
                                         if (query.isNotEmpty()) {
                                             IconButton(onClick = {
                                                 query = ""
@@ -273,6 +261,7 @@ fun BillPage(
                                             }) {
                                                 Icon(MiuixIcons.Clear, contentDescription = "清除搜索")
                                             }
+                                        }
                                         }
                                     },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -282,6 +271,9 @@ fun BillPage(
                                     }),
                                 )
                                 }
+                            }
+                            if (state.activeFilterCount > 0 || state.info.isNotBlank()) item(key = "conditions") {
+                                BillQueryConditions(state, onFiltersApplied, onSearch)
                             }
                             if (state.error != null && state.items.isNotEmpty()) {
                                 item(key = "inline-error") {
@@ -297,7 +289,14 @@ fun BillPage(
                                     BillErrorCard(state.error)
                                 }
                                 state.items.isEmpty() -> item(key = "empty") {
-                                    BillEmptyCard("当前时间段还没有账单", "试试切换日期范围，或调整搜索和筛选条件。")
+                                    if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
+                                        Card(Modifier.fillMaxWidth()) {
+                                            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("没有符合条件的账单", fontSize = 15.sp)
+                                                TextButton("清除条件", onClick = onClearQuery)
+                                            }
+                                        }
+                                    } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
                                 }
                                 else -> {
                                     items(groups, key = { it.key }) { group ->
@@ -368,10 +367,10 @@ fun BillPage(
 @Composable
 private fun BillSummaryCard(state: BillUiState) {
     val label = billDateScopeLabel(state.dateFilter)
-    val expensesLabel = "${label}支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
-    val incomeLabel = "${label}收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
+    val expensesLabel = "${label}全部支出" + (state.counts?.let { "·共 ${it.expenses} 笔" } ?: "")
+    val incomeLabel = "${label}全部收入" + (state.counts?.let { "·共 ${it.income} 笔" } ?: "")
     val pending = !state.summaryLoaded && state.error == null && state.summaryError == null && state.summary == null
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().testTag("bill-summary")) {
         Column {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
@@ -486,9 +485,9 @@ private fun BillFilterSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text("交易类型", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            FlowRow(
+                Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 BillFilterPill("全部", typeId == null, show) { typeId = null }
                 types.forEach { type ->
@@ -501,17 +500,11 @@ private fun BillFilterSheet(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextField(
-                    value = min, onValueChange = { min = it.amountInput() },
-                    modifier = Modifier.trackInputFocus().weight(1f), label = "最低", singleLine = true, enabled = show,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
-                )
+                AmountTextField(min, { min = it; error = null }, "最低", Modifier.weight(1f), enabled = show,
+                    wholeDigits = 9, imeAction = ImeAction.Next, useLabelAsPlaceholder = false)
                 Text("—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                TextField(
-                    value = max, onValueChange = { max = it.amountInput() },
-                    modifier = Modifier.trackInputFocus().weight(1f), label = "最高", singleLine = true, enabled = show,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                )
+                AmountTextField(max, { max = it; error = null }, "最高", Modifier.weight(1f), enabled = show,
+                    wholeDigits = 9, useLabelAsPlaceholder = false)
             }
             if (!error.isNullOrBlank()) InlineError(error)
             Row(
@@ -531,7 +524,9 @@ private fun BillFilterSheet(
                     onClick = {
                         val from = min.centsOrNull()
                         val to = max.centsOrNull()
-                        if (from != null && to != null && from > to) {
+                        if (min.isNotBlank() && from == null || max.isNotBlank() && to == null) {
+                            error = "请输入有效金额"
+                        } else if (from != null && to != null && from > to) {
                             error = "最低金额不能高于最高金额"
                         } else {
                             onApply(typeId, from, to)
@@ -544,21 +539,30 @@ private fun BillFilterSheet(
     }
 }
 
+@Composable
+private fun BillQueryConditions(state: BillUiState, onFiltersApplied: (String?, Long?, Long?) -> Unit, onSearch: (String) -> Unit) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        state.typeId?.let { type ->
+            RemovableCondition(state.types.firstOrNull { it.id == type }?.name ?: "交易类型") {
+                onFiltersApplied(null, state.amountFromCents, state.amountToCents)
+            }
+        }
+        if (state.amountFromCents != null || state.amountToCents != null) {
+            val from = state.amountFromCents; val to = state.amountToCents
+            val label = when {
+                from != null && to != null -> "¥ ${moneyInput(from)}–${moneyInput(to)}"
+                from != null -> "≥ ¥ ${moneyInput(from)}"
+                else -> "≤ ¥ ${moneyInput(requireNotNull(to))}"
+            }
+            RemovableCondition(label) { onFiltersApplied(state.typeId, null, null) }
+        }
+        if (state.info.isNotBlank()) RemovableCondition("搜索：${state.info}") { onSearch("") }
+    }
+}
+
 private fun moneyInput(cents: Long): String {
     if (cents % 100L == 0L) return (cents / 100L).toString()
     return String.format(Locale.CHINA, "%.2f", cents / 100.0).trimEnd('0').trimEnd('.')
-}
-
-private fun String.amountInput(): String {
-    val cleaned = filter { it.isDigit() || it == '.' }
-    val dot = cleaned.indexOf('.')
-    return if (dot < 0) {
-        cleaned.take(9)
-    } else {
-        val whole = cleaned.take(dot).take(9)
-        val fraction = cleaned.drop(dot + 1).filter { it.isDigit() }.take(2)
-        "$whole.$fraction"
-    }
 }
 
 private fun String.centsOrNull(): Long? {

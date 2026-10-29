@@ -51,6 +51,11 @@ class MyViewModel internal constructor(app: Application, private val repository:
             refreshedAt = System.currentTimeMillis()
         }
     }
+    fun invalidate() {
+        generation++; task?.cancel(); task = null; refreshedAt = 0L
+        mutable.value = mutable.value.copy(loading = false)
+    }
+
     fun onActivate() {
         val current = mutable.value
         if (refreshedAt == 0L || System.currentTimeMillis() - refreshedAt > 60_000 || current.month != YearMonth.now() ||

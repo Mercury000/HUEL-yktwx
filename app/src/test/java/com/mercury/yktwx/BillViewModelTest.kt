@@ -54,6 +54,49 @@ class BillViewModelTest {
         assertTrue(model.state.value.loaded)
     }
 
+    @Test fun changingSearchAndFiltersPreservesOverviewAndDoesNotReadItAgainOrAnimateArrivals() {
+        loadExistingBills()
+        val summary = model.state.value.summary
+        val counts = model.state.value.counts
+        service.queries.clear()
+        service.requestGate = CompletableDeferred()
+        model.search("示例商户")
+        assertSame(summary, model.state.value.summary)
+        assertSame(counts, model.state.value.counts)
+        assertTrue(model.state.value.summaryLoaded)
+        await { service.requests == 2 }
+        assertEquals(setOf("page"), service.queries.toSet())
+        service.requestGate.complete(Unit)
+        await { model.state.value.loaded }
+        assertEquals(BillListUpdate.Query, model.state.value.listUpdate)
+        assertTrue(model.state.value.animatedOrderIds.isEmpty())
+        service.queries.clear()
+        model.applyFilters("4", 100, 2000)
+        await { model.state.value.loaded }
+        assertSame(summary, model.state.value.summary)
+        assertSame(counts, model.state.value.counts)
+        assertEquals(setOf("page"), service.queries.toSet())
+        val before = service.requests
+        model.clearQuery(); await { model.state.value.loaded }
+        assertEquals(before + 1, service.requests)
+        assertEquals("", model.state.value.info)
+        assertEquals(0, model.state.value.activeFilterCount)
+    }
+
+    @Test fun queryChangeWhileOverviewIsStillReadingCompletesTheMissingMetrics() {
+        service.requestGate.complete(Unit)
+        service.queryGates["summary"] = CompletableDeferred()
+        service.queryGates["income"] = CompletableDeferred()
+        model.refresh()
+        await { model.state.value.listAvailable && service.queries.contains("income") }
+        model.search("商户")
+        service.queryGates.getValue("summary").complete(Unit)
+        service.queryGates.getValue("income").complete(Unit)
+        await { model.state.value.loaded && model.state.value.summary != null && model.state.value.counts != null }
+        assertNull(model.state.value.summaryError)
+        assertNull(model.state.value.countsError)
+    }
+
     @Test fun emptyBillListStaysRefreshingUntilRequestCompletes() {
         service.requestGate.complete(Unit)
         model.refresh()

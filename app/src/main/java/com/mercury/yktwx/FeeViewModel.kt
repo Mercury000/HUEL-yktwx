@@ -74,6 +74,8 @@ class FeeViewModel internal constructor(
     val events = launches.receiveAsFlow()
     private val roomUpdates = Channel<Unit>(Channel.CONFLATED)
     val roomChanges = roomUpdates.receiveAsFlow()
+    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
+    val transactionUpdates = updates.receiveAsFlow()
     private var task: Job? = null
     private var checkDeadline: Job? = null
     private var owner = ""
@@ -686,6 +688,8 @@ class FeeViewModel internal constructor(
             stage = FeeStage.Result, resultPhase = phase, preparation = null,
             order = if (retry != null) null else s.order,
             method = if (retry != null) null else s.method, paymentRetry = retry)
+        if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
+            updates.trySend(TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true))
     }
     private fun requestError(message: String) {
         checkDeadline?.cancel()
