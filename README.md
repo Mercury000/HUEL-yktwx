@@ -22,7 +22,7 @@
 
 支持 Android 14 / API 34 及以上。使用本人学号 / 工号与校园卡查询密码登录。
 
-安装包见 [Releases](https://github.com/Mercury000/HUEL-yktwx/releases)。
+安装包见 [Releases](https://github.com/Mercury000/HUEL-yktwx/releases)。首次启动阅读并同意使用须知。
 
 ## 构建
 

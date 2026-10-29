@@ -132,7 +132,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun dismissPaymentSuccess() { mutableSuccess.value = null }
 
-    fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false) {
+    fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false, restoreLogin: Boolean = true) {
         if (initialized) return
         initialized = true
         preview = UiPreview.enabled && uiPreview
@@ -144,6 +144,12 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val initializationVersion = requestVersion
         viewModelScope.launch {
             try {
+                // A newly accepted notice starts at explicit login, even if older credentials remain.
+                if (!restoreLogin) {
+                    withContext(Dispatchers.IO) { repository.username(); repository.logout() }
+                    if (initializationVersion == requestVersion) mutable.value = PaymentUiState()
+                    return@launch
+                }
                 val username = withContext(Dispatchers.IO) { repository.username() }
                 val exists = username.isNotBlank()
                 val cached = if (exists) repository.cachedDisplay(username, DisplayKeys.Account, DisplayCodecs.Account) else null

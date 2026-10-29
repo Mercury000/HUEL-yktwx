@@ -80,7 +80,7 @@ private enum class AuthPage { Restoring, Login, Main }
 private enum class ReadPage { Payment, Hall, Bill, My, Profile, Account }
 
 @Composable
-fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel) {
+fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null) {
     val mode = when (settings.themeMode.value) {
         1 -> ColorSchemeMode.Light
         2 -> ColorSchemeMode.Dark
@@ -88,6 +88,20 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
     }
     AppTheme(mode, settings.accentMode.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
+        val agreed = consent?.accepted != false
+        val keepLoginWhileInitializing = remember(consent) { consent?.accepted == false }
+        LaunchedEffect(agreed) {
+            // An Activity can retain its models while a changed notice is restored.
+            // Revoke that old login before consent can expose the shell again.
+            if (!agreed && !viewModel.state.value.needsLogin) viewModel.logout()
+        }
+        var hadLogin by remember { mutableStateOf(false) }
+        LaunchedEffect(state.needsLogin, state.restoringLogin) {
+            if (!state.restoringLogin) {
+                if (hadLogin && state.needsLogin) consent?.revoke()
+                hadLogin = !state.needsLogin
+            }
+        }
         val billState by billViewModel.state.collectAsStateWithLifecycle()
         val rechargeModel: RechargeViewModel = viewModel()
         val feeModel: FeeViewModel = viewModel()
@@ -97,8 +111,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val avatarModel: AvatarViewModel = viewModel()
         val dormModel: HallViewModel = viewModel()
         val context = LocalContext.current
-        LaunchedEffect(state.restoringLogin, state.needsLogin, state.username, state.preview) {
-            if (!state.restoringLogin) {
+        LaunchedEffect(agreed, state.restoringLogin, state.needsLogin, state.username, state.preview) {
+            if ((agreed || state.needsLogin) && !state.restoringLogin) {
                 val owner = state.username.takeUnless { state.needsLogin }
                 rechargeModel.accountChanged(owner.orEmpty())
                 feeModel.accountChanged(owner.orEmpty())
@@ -143,7 +157,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             }
         }
         val authPage = when {
-            state.restoringLogin -> AuthPage.Restoring
+            !agreed -> AuthPage.Login
+            state.restoringLogin -> if (keepLoginWhileInitializing) AuthPage.Login else AuthPage.Restoring
             state.needsLogin -> AuthPage.Login
             else -> AuthPage.Main
         }
@@ -184,9 +199,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                     AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                    AuthPage.Login -> LoginPage(state) { username, password ->
-                        if (interactive) viewModel.login(username, password)
-                    }
+                    AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
+                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) }, consent = consent)
                     AuthPage.Main -> {
                         // Keep only shell identity for the outgoing animation.
                         // Latest logged-out state has already removed payment codes.
@@ -199,6 +213,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                                     if (interactive) billState else BillUiState(),
                                     viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
                                     isActive = interactive,
+                                    onLogout = { consent?.revoke(); viewModel.logout() },
                                 )
                             }
                         }
@@ -245,6 +260,7 @@ private fun MainContent(
     dormModel: HallViewModel,
     avatarModel: AvatarViewModel,
     isActive: Boolean,
+    onLogout: () -> Unit,
 ) {
     val context = LocalContext.current
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
@@ -632,7 +648,7 @@ private fun MainContent(
                         settings = settings,
                         onBack = { close() },
                         onTheme = { open(Screen.Theme) },
-                        onLogout = { if (isActive) viewModel.logout() },
+                        onLogout = { if (isActive) onLogout() },
                     )
                 }
             }

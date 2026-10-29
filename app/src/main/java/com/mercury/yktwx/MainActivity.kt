@@ -12,9 +12,11 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.lifecycle.Lifecycle
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
+import com.mercury.yktwx.ui.UsageConsent
 
 class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
@@ -22,6 +24,8 @@ class MainActivity : ComponentActivity() {
     private val rechargeViewModel: RechargeViewModel by viewModels()
     private val feeViewModel: FeeViewModel by viewModels()
     private val latestConfig = mutableStateOf<Configuration?>(null)
+    private lateinit var consent: UsageConsent
+    private var businessStarted = false
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
     }
@@ -29,13 +33,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val preview = UiPreview.enabled && UiPreview.requested(intent)
         val settings = ThemeSettings(this)
+        consent = UsageConsent(this)
+        val restoreLogin = consent.accepted
         // Payments and password screens must not leak through screenshots or task previews.
         if (!preview && settings.preventScreenshots.value) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-        viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))
-        billViewModel.initialize(preview)
         setContent {
+            val agreed = preview || consent.accepted
+            LaunchedEffect(agreed) {
+                if (agreed) {
+                    viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent), restoreLogin = restoreLogin)
+                    billViewModel.initialize(preview)
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startBusiness()
+                } else stopBusiness()
+            }
             val secure = !preview && settings.preventScreenshots.value
             SideEffect {
                 if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -51,15 +63,32 @@ class MainActivity : ComponentActivity() {
                     )
                     onDispose {}
                 }
-                YktApp(settings, viewModel, billViewModel)
+                YktApp(settings, viewModel, billViewModel, consent = consent.takeUnless { preview })
             }
         }
     }
-    override fun onStart() { super.onStart(); viewModel.onForeground(); rechargeViewModel.onForeground(); feeViewModel.onForeground() }
+    private fun businessAllowed() = (UiPreview.enabled && UiPreview.requested(intent)) || consent.accepted
+    private fun startBusiness() {
+        if (businessStarted) return
+        businessStarted = true
+        viewModel.onForeground(); rechargeViewModel.onForeground(); feeViewModel.onForeground()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
+            feeViewModel.onResumed(window.decorView.hasWindowFocus())
+        }
+    }
+    private fun stopBusiness() {
+        if (!businessStarted) return
+        businessStarted = false
+        feeViewModel.onBackground(); rechargeViewModel.onBackground(); viewModel.onBackground()
+    }
+    override fun onStart() { super.onStart(); if (businessAllowed()) startBusiness() }
     override fun onResume() {
         super.onResume()
-        rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
-        feeViewModel.onResumed(window.decorView.hasWindowFocus())
+        if (businessAllowed()) {
+            rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
+            feeViewModel.onResumed(window.decorView.hasWindowFocus())
+        }
     }
     override fun onPause() {
         rechargeViewModel.onPaused()
@@ -68,8 +97,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        rechargeViewModel.onWindowFocusChanged(hasFocus)
-        feeViewModel.onWindowFocusChanged(hasFocus)
+        if (::consent.isInitialized && businessAllowed()) {
+            rechargeViewModel.onWindowFocusChanged(hasFocus)
+            feeViewModel.onWindowFocusChanged(hasFocus)
+        }
     }
-    override fun onStop() { feeViewModel.onBackground(); rechargeViewModel.onBackground(); viewModel.onBackground(); super.onStop() }
+    override fun onStop() { stopBusiness(); super.onStop() }
 }
