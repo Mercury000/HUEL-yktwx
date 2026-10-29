@@ -1,6 +1,7 @@
 package com.mercury.yktwx
 
 import android.graphics.Bitmap
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelStore
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
@@ -28,6 +30,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -35,6 +39,82 @@ import java.io.File
 class ContentMotionUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private fun frames(count: Int = 20) { repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() } }
+
+    @Test fun statisticsReuseShowsNoProgressUntilExpiredAndKeepsTheModeTabsStill() {
+        var now = 10_000L
+        var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        val service = object : YktService by YktApi({ error("Unexpected live request") }) {
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?) =
+                BillPageData(emptyList(), 1, 0)
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 0
+            override suspend fun billTypes(token: String) = emptyList<BillType>()
+            override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+                gate.await(); return PreviewData.billStats(filter, type).daily
+            }
+            override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+                gate.await(); return listOf(BillCategory(if (type == 2) "支出" else "收入", if (type == 2) 800 else 1200))
+            }
+            override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+                gate.await(); return emptyList()
+            }
+        }
+        val vault = object : Vault {
+            override fun credentials() = Credentials("fictional-user", "fictional-password")
+            override fun session() = Session("fake-token", Long.MAX_VALUE)
+            override fun saveCredentials(value: Credentials) = Unit
+            override fun saveSession(value: Session) = Unit
+            override fun clearSession() = Unit
+            override fun clear() = Unit
+        }
+        val model = BillViewModel(compose.activity.application, AccountRepository(service, vault), { now })
+        val store = ViewModelStore().apply { put("bill", model) }
+        val settings = ThemeSettings(compose.activity.application)
+        fun selectTab(label: String) { compose.onNode(hasText(label) and hasClickAction()).performClick() }
+        fun waitForRead(stats: Boolean) {
+            compose.waitUntil(5_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                if (stats) model.state.value.stats.loaded && !model.state.value.stats.loading
+                else model.state.value.loaded && !model.state.value.refreshing
+            }
+            compose.waitForIdle()
+        }
+        try {
+            model.initialize(); model.refresh()
+            compose.setContent {
+                val state by model.state.collectAsState()
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    AppTheme { BillPage(state, settings, {}, model::onActivate, model::refresh,
+                        model::loadMore, model::selectDate, model::applyFilters, model::search,
+                        model::openStats, model::openDetail, onStatsTypeChange = model::selectStatsType) }
+                }
+            }
+            waitForRead(false)
+            selectTab("统计"); waitForRead(true)
+            selectTab("收入"); waitForRead(true)
+            compose.mainClock.autoAdvance = false
+            val tabs = compose.onNodeWithTag("bill-mode-tabs")
+            val pixels = tabs.captureToImage().asAndroidBitmap()
+            selectTab("支出")
+            repeat(12) {
+                frames(1)
+                compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+                assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
+            }
+            assertEquals(800L, model.state.value.stats.categories.single().amountCents)
+            selectTab("收入")
+            compose.runOnIdle { now += 60_000; gate = CompletableDeferred() }
+            selectTab("支出")
+            frames(3)
+            compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+            assertEquals(800L, model.state.value.stats.categories.single().amountCents)
+            assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
+            compose.runOnIdle { gate.complete(Unit) }; waitForRead(true)
+        } finally {
+            gate.complete(Unit); store.clear(); compose.mainClock.autoAdvance = true
+        }
+    }
 
     @Test fun cachedStatisticsTypeSwitchKeepsModeTabsUnchangedInEveryFrame() {
         var state by mutableStateOf(PreviewData.billState().copy(statsVisible = true))

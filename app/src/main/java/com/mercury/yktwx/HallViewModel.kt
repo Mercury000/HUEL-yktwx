@@ -69,7 +69,7 @@ class HallViewModel internal constructor(
     fun onActivate() {
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
         val current = mutable.value
-        if (!current.loaded || System.currentTimeMillis() - refreshedAt > 60_000 ||
+        if (!current.loaded || !ReadCachePolicy.isFresh(refreshedAt) ||
             current.error != null || current.networkError != null || current.rooms.any { room -> room.meters.any { it.error != null } }) refresh()
     }
     fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) refreshPending = true }
@@ -272,7 +272,7 @@ class HallViewModel internal constructor(
             if (attempt != generation) return@launchTask
             publish(finished = true)
             if (errors.isEmpty() && networkError == null && rooms.values.all { room -> room.meters.all { it.error == null } })
-                refreshedAt = System.currentTimeMillis()
+                refreshedAt = ReadCachePolicy.now()
         }
     }
     /** Retain only readings for the exact same verified meter after a failed refresh. */
