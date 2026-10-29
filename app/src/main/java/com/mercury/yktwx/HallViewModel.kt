@@ -253,7 +253,17 @@ class HallViewModel internal constructor(
                 DormMeter(meter.kind, meter.room, old.query, meter.error, meter.project ?: fresh.project)
             else meter
         }
-        return DormRoom(fresh.project, fresh.binding, meters, fresh.updatedAtMillis, fresh.notice,
+        // A failed bound-meter read ends discovery before the sibling is queried. Keep an
+        // already verified sibling of this same project/target, without claiming a fresh read.
+        val failedBound = fresh.meters.firstOrNull { it.room.sameTarget(fresh.binding) &&
+            (it.project ?: fresh.project) == fresh.project && it.query == null && it.error != null }
+        val siblings = if (failedBound == null) emptyList() else previous.meters.filter { old ->
+            old.query != null && (old.project ?: previous.project) == fresh.project &&
+                meters.none { it.kind == old.kind && (it.project ?: fresh.project) == fresh.project }
+        }.map { DormMeter(it.kind, it.room, it.query, failedBound.error, it.project ?: fresh.project) }
+        val updatedAt = if (fresh.meters.any { it.query != null && it.error == null })
+            fresh.updatedAtMillis else previous.updatedAtMillis
+        return DormRoom(fresh.project, fresh.binding, meters + siblings, updatedAt, fresh.notice,
             pendingMeters = fresh.pendingMeters)
     }
     private fun launchTask(block: suspend CoroutineScope.() -> Unit) {

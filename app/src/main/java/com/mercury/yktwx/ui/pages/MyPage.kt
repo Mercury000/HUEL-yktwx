@@ -50,10 +50,15 @@ internal fun MyPage(
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     val balancePending = payment.busy || payment.accountLoading
     val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
-    val initialError = rememberInitialReadError(state.profile != null || state.homeIdentity != null ||
-        state.summary != null || state.counts != null || payment.account != null,
+    val hasContent = state.profile != null || state.homeIdentity != null ||
+        state.summary != null || state.counts != null || payment.account != null
+    val initialError = rememberInitialReadError(hasContent,
         state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError ?: payment.accountError,
         state.loaded && !state.loading && !balancePending)
+    val networkError = FeedbackText.mergedNetworkError(
+        "资料" to FeedbackText.networkError(state.profileError, state.homeIdentityError, state.avatarError),
+        "余额" to FeedbackText.networkError(payment.accountError, balanceError),
+        "概览" to FeedbackText.networkError(state.summaryError, state.countsError)).takeIf { hasContent }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -65,7 +70,7 @@ internal fun MyPage(
                 DashboardPullToRefresh(loading = state.loading || payment.accountLoading, onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scroll) {
-                InitialReadTransition(initialError) { displayedError ->
+                InitialReadTransition(initialError, networkError) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && (initialError != null || state.loading &&
@@ -82,6 +87,7 @@ internal fun MyPage(
                         if (showFailure) {
                             item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                         } else {
+                        if (networkError != null) item { PageNetworkNotice(networkError) }
                         item {
                             Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

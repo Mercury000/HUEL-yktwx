@@ -62,9 +62,13 @@ fun HallPage(
     var targetTab by remember { mutableIntStateOf(0) }
     var targetAdding by remember { mutableStateOf(false) }
     LaunchedEffect(isActive) { if (!isActive) targets = false }
-    val initialError = rememberInitialReadError(
-        dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null,
+    val hasContent = dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null
+    val initialError = rememberInitialReadError(hasContent,
         dorm.error ?: dorm.networkError, !dorm.loading && dorm.loaded)
+    val networkError = FeedbackText.mergedNetworkError(
+        "水电费" to FeedbackText.networkError(dorm.error,
+            *dorm.rooms.flatMap { room -> room.meters.map { it.error } }.toTypedArray()),
+        "校园网" to dorm.networkError).takeIf { hasContent }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -80,7 +84,7 @@ fun HallPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
-                InitialReadTransition(initialError) { displayedError ->
+                InitialReadTransition(initialError, networkError) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val dorm = if (!showFailure && (initialError != null ||
@@ -98,6 +102,7 @@ fun HallPage(
                     if (showFailure) {
                         item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                     } else {
+                    if (networkError != null) item { PageNetworkNotice(networkError) }
                     item {
                         UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
                             onSwitch = { targetTab = 0; targetAdding = false; targets = true },

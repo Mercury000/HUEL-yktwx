@@ -244,7 +244,9 @@ class BillViewModel internal constructor(
         val samePeriod = current.stats.period == current.dateFilter
         mutable.value = current.copy(statsVisible = true, stats = if (samePeriod) current.stats else BillStatsState(period = current.dateFilter, type = current.stats.type))
         if (samePeriod && current.stats.loading) return
-        if (!samePeriod || !current.stats.loaded || System.currentTimeMillis() - lastStatsLoadedAt > CACHE_MS) loadStats()
+        if (!samePeriod || !current.stats.loaded || current.stats.error != null ||
+            current.stats.dailyError != null || current.stats.categoriesError != null || current.stats.rankingError != null ||
+            System.currentTimeMillis() - lastStatsLoadedAt > CACHE_MS) loadStats()
     }
 
     fun showDetails() {
