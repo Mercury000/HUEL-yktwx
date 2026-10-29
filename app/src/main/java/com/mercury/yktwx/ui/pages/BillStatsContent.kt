@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -44,10 +45,14 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     if (stats.period.trendSupported) item(key = "trend") {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-trend")) {
             Column(Modifier.padding(20.dp)) {
-                when {
-                    stats.dailyLoaded -> DailyBillChart(stats.daily, stats.period.mode)
-                    stats.dailyError != null -> ReadUnavailable(stats.dailyError)
-                    else -> DailyBillChartPlaceholder()
+                key(stats.period, stats.type) {
+                    ContentFade(stats, contentKey = { if (it.dailyLoaded) "content" else if (it.dailyError != null) "error" else "pending" }) { displayed ->
+                        when {
+                            displayed.dailyLoaded -> DailyBillChart(displayed.daily, displayed.period.mode)
+                            displayed.dailyError != null -> ReadUnavailable(displayed.dailyError)
+                            else -> DailyBillChartPlaceholder()
+                        }
+                    }
                 }
                 if (stats.dailyLoaded && stats.dailyError != null) ReadNotice(stats.dailyError, cached = true)
             }
@@ -56,10 +61,14 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     item(key = "category") {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-category")) {
             Column(Modifier.padding(20.dp)) {
-                when {
-                    stats.categoriesLoaded -> CategoryDonutChart(stats.categories, stats.type)
-                    stats.categoriesError != null -> ReadUnavailable(stats.categoriesError)
-                    else -> CategoryDonutChartPlaceholder()
+                key(stats.period, stats.type) {
+                    ContentFade(stats, contentKey = { if (it.categoriesLoaded) "content" else if (it.categoriesError != null) "error" else "pending" }) { displayed ->
+                        when {
+                            displayed.categoriesLoaded -> CategoryDonutChart(displayed.categories, displayed.type)
+                            displayed.categoriesError != null -> ReadUnavailable(displayed.categoriesError)
+                            else -> CategoryDonutChartPlaceholder()
+                        }
+                    }
                 }
                 if (stats.categoriesLoaded && stats.categoriesError != null) ReadNotice(stats.categoriesError, cached = true)
             }
@@ -105,8 +114,8 @@ private fun StatsOverview(stats: BillStatsState) {
             Text(heading, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             if (amountPending) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
-            else Text(
-                total?.let { "¥ ${money(it)}" } ?: "—",
+            else UpdatedText(
+                total?.let { money(it) } ?: "—", prefix = "¥ ", identity = listOf(stats.period, stats.type),
                 fontSize = 30.sp, lineHeight = 38.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold,
                 color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
@@ -160,8 +169,8 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
                             )
                         }
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            signedMoney(record),
+                        UpdatedText(
+                            money(record.amountCents), prefix = if (record.income) "+¥ " else "-¥ ", identity = record.stableId,
                             fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                             color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                         )

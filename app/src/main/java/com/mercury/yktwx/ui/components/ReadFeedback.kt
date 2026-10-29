@@ -2,14 +2,12 @@ package com.mercury.yktwx.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,8 +32,8 @@ internal object FeedbackText {
     const val Offline = "网络连接失败"
     fun read(error: String, cached: Boolean = false): String {
         if ("登录" in error && ("失效" in error || "重新登录" in error)) return "登录已失效，请重新登录"
-        val reason = if (isNetwork(error)) "网络连接失败" else "暂时无法加载"
-        return "$reason，" + if (cached) "下拉刷新更新" else "请下拉刷新"
+        val reason = if (isNetwork(error)) "网络连接失败" else if (cached) "暂时无法更新" else "暂时无法加载"
+        return "$reason，" + if (cached) "显示上次数据" else "请下拉刷新"
     }
     fun inline(message: String): String = message.replace(Regex("[\\r\\n]+"), "，").trim()
     fun isNetwork(message: String) = listOf("网络连接失败", "网络异常", "网络不可用").any { it in message }
@@ -69,8 +67,8 @@ internal fun PageNetworkNotice(error: String?, spacing: Dp, content: @Composable
     val displayedError = rememberWhileShown(error != null, error.orEmpty())
     Column(Modifier.fillMaxWidth()) {
         AnimatedVisibility(visibleState = visible,
-            enter = fadeIn(tween(150)) + expandVertically(tween(200), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(150)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top)) {
+            enter = fadeIn(tween(ContentMotion.Fade)) + expandVertically(tween(ContentMotion.Layout), expandFrom = Alignment.Top),
+            exit = fadeOut(tween(ContentMotion.Fade)) + shrinkVertically(tween(ContentMotion.Layout), shrinkTowards = Alignment.Top)) {
             InlineError(displayedError, Modifier.testTag("page-network-error").padding(bottom = spacing))
         }
         content()
@@ -97,7 +95,7 @@ internal fun delayedSkeletonModifier(): Modifier {
     LaunchedEffect(active) {
         if (active) {
             delay(250)
-            opacity.animateTo(1f, tween(150))
+            opacity.animateTo(1f, tween(ContentMotion.Fade))
         } else opacity.stop()
     }
     return Modifier.graphicsLayer { alpha = opacity.value }
@@ -108,9 +106,7 @@ internal fun delayedSkeletonModifier(): Modifier {
 internal fun InitialReadTransition(error: String?, networkError: String? = null,
     content: @Composable (displayedError: String?) -> Unit) {
     val displayedError = rememberWhileShown(error != null, error.orEmpty())
-    AnimatedContent(targetState = error != null, modifier = Modifier.fillMaxSize(),
-        transitionSpec = { (fadeIn(tween(150)) togetherWith fadeOut(tween(150))).using(null) },
-        label = "InitialReadFailureTransition") { showFailure ->
+    ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
         CompositionLocalProvider(LocalSkeletonActive provides (error == null),
             LocalSkeletonDelayEnabled provides true,
             LocalPageNetworkError provides networkError.takeIf { !showFailure && error == null },

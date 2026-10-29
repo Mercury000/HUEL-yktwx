@@ -71,6 +71,17 @@ class MyViewModel internal constructor(app: Application, private val repository:
             profileLoaded = current.profile != null, homeIdentityLoaded = current.homeIdentity != null,
             summaryLoaded = sameMonth && current.summary != null, countsLoaded = sameMonth && current.counts != null)
         task = viewModelScope.launch {
+            if (current.profile == null && current.summary == null && current.counts == null) {
+                val profile = repository.cachedDisplay(username, DisplayKeys.Profile, DisplayCodecs.Profile)
+                val identity = profile?.let { repository.cachedDisplay(username, DisplayKeys.identity(it.sno), DisplayCodecs.Identity) }
+                val summary = repository.cachedDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Summary)
+                val avatar = profile?.avatarPath?.let { repository.cachedDisplay(username, DisplayKeys.avatar(profile.sno, it), DisplayCodecs.Avatar) }
+                val counts = repository.cachedDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Counts)
+                if (attempt != generation) return@launch
+                mutable.value = mutable.value.copy(profile = profile, avatar = avatar, homeIdentity = identity, summary = summary, counts = counts,
+                    profileLoaded = profile != null, homeIdentityLoaded = identity != null, summaryLoaded = summary != null, countsLoaded = counts != null)
+            }
+            val restored = mutable.value
             // Each branch updates the latest state on Main, so a late avatar cannot undo a summary.
             fun publish(change: (MyUiState) -> MyUiState) {
                 if (attempt == generation) mutable.value = change(mutable.value)
@@ -88,13 +99,19 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     publish { it.copy(profile = fresh, profileError = null, profileLoaded = true,
                         // Never associate an older student's card identity with a new profile.
                         homeIdentity = it.homeIdentity.takeIf { old -> old?.sno == fresh.sno },
-                        homeIdentityLoaded = it.homeIdentityLoaded && current.profile?.sno == fresh.sno,
-                        avatar = it.avatar.takeIf { current.profile?.avatarPath == fresh.avatarPath }) }
+                        homeIdentityLoaded = it.homeIdentityLoaded && restored.profile?.sno == fresh.sno,
+                        avatar = it.avatar.takeIf { restored.profile?.sno == fresh.sno && restored.profile.avatarPath == fresh.avatarPath }) }
+                    repository.saveDisplay(username, DisplayKeys.Profile, fresh, DisplayCodecs.Profile)
                     coroutineScope {
                         launch {
                             try {
                                 val avatar = fresh.avatarPath?.let { repository.profileAvatar(it) }
-                                publish { it.copy(avatar = avatar, avatarError = null) }
+                                publish { latest ->
+                                    val samePath = restored.profile?.sno == fresh.sno && restored.profile.avatarPath == fresh.avatarPath
+                                    latest.copy(avatar = if (samePath && (avatar == null || avatar.contentEquals(latest.avatar))) latest.avatar else avatar,
+                                        avatarError = if (avatar == null && fresh.avatarPath != null) "头像暂时无法更新" else null)
+                                }
+                                if (avatar != null) repository.saveDisplay(username, DisplayKeys.avatar(fresh.sno, requireNotNull(fresh.avatarPath)), avatar, DisplayCodecs.Avatar)
                             }
                             catch (e: CancellationException) { throw e }
                             catch (e: Exception) { publish { it.copy(avatarError = message(e),
@@ -104,6 +121,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                             try {
                                 val identity = repository.homeIdentity(username, fresh.sno)
                                 publish { it.copy(homeIdentity = identity, homeIdentityError = null, homeIdentityLoaded = true) }
+                                repository.saveDisplay(username, DisplayKeys.identity(fresh.sno), identity, DisplayCodecs.Identity)
                             }
                             catch (e: CancellationException) { throw e }
                             catch (e: Exception) { publish { it.copy(homeIdentityError = message(e), homeIdentityLoaded = true,
@@ -115,6 +133,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     try {
                         val summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
                         publish { it.copy(summary = summary, summaryError = null, summaryLoaded = true) }
+                        repository.saveDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), summary, DisplayCodecs.Summary)
                     }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) { publish { it.copy(summaryError = message(e), summaryLoaded = true,
@@ -124,6 +143,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     try {
                         val counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
                         publish { it.copy(counts = counts, countsError = null, countsLoaded = true) }
+                        repository.saveDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), counts, DisplayCodecs.Counts)
                     }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) { publish { it.copy(countsError = message(e), countsLoaded = true,
@@ -132,7 +152,8 @@ class MyViewModel internal constructor(app: Application, private val repository:
             }
             if (attempt != generation) return@launch
             publish { it.copy(loading = false, loaded = true) }
-            refreshedAt = System.currentTimeMillis()
+            if (mutable.value.profileError == null && mutable.value.homeIdentityError == null && mutable.value.summaryError == null && mutable.value.countsError == null)
+                refreshedAt = System.currentTimeMillis()
         }
     }
     private fun message(e: Exception) = (e as? YktException)?.message ?: "读取失败，请稍后重试"

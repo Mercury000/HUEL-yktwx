@@ -165,8 +165,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                 DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
                                                     lineHeight = 38.sp, sample = "¥ 0.00")
                                             } else {
-                                                Text(
-                                                    state.account?.let { "¥ " + String.format(Locale.CHINA, "%.2f", it.balanceCents / 100.0) } ?: "¥ —",
+                                                UpdatedText(
+                                                    state.account?.let { money(it.balanceCents) } ?: "—", prefix = "¥ ", identity = state.account?.account,
                                                     fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 )
                                             }

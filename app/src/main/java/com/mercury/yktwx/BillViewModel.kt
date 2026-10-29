@@ -34,6 +34,8 @@ data class BillStatsState(
     val rankingError: String? = null,
 )
 
+enum class BillListUpdate { Initial, Restore, Refresh, Append }
+
 data class BillUiState(
     val preview: Boolean = false,
     val needsLogin: Boolean = false,
@@ -64,6 +66,10 @@ data class BillUiState(
     val summaryError: String? = null,
     val countsError: String? = null,
     val listAvailable: Boolean = listLoaded && error == null,
+    val paginationReady: Boolean = true,
+    val listUpdate: BillListUpdate = BillListUpdate.Initial,
+    val listUpdateId: Long = 0,
+    val animatedOrderIds: Set<String> = emptySet(),
 ) {
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
@@ -86,6 +92,7 @@ class BillViewModel internal constructor(
     private var accountOwner: String? = null
     private var lastLoadedAt = 0L
     private var lastStatsLoadedAt = 0L
+    private var listUpdateId = 0L
 
     fun initialize(uiPreview: Boolean = false) {
         if (initialized) return
@@ -194,7 +201,7 @@ class BillViewModel internal constructor(
 
     fun loadMore() {
         val current = mutable.value
-        if (UiPreview.enabled && preview || current.listLoading || !current.listLoaded || current.loadingMore || current.needsLogin) return
+        if (UiPreview.enabled && preview || current.listLoading || !current.listLoaded || !current.paginationReady || current.loadingMore || current.needsLogin) return
         if (current.currentPage <= 0 || current.currentPage >= current.pages) return
         val next = current.currentPage + 1
         val dateFilter = current.dateFilter
@@ -215,15 +222,16 @@ class BillViewModel internal constructor(
                 if (latest.dateFilter != dateFilter || latest.typeId != typeId || latest.amountFromCents != amountFrom ||
                     latest.amountToCents != amountTo || latest.info != info
                 ) return@launch
-                val seen = latest.items.mapTo(HashSet()) { it.orderId }
-                val newItems = page.items.filter { it.orderId !in seen }
+                val seen = latest.items.mapTo(HashSet()) { it.stableId }
+                val newItems = page.items.distinctBy { it.stableId }.filter { it.stableId !in seen }
                 val exhausted = page.items.isEmpty() || newItems.isEmpty()
                 val loadedPage = next
                 val availablePages = if (exhausted) loadedPage else page.pages.coerceAtLeast(loadedPage)
                 mutable.value = latest.copy(
                     items = latest.items + newItems,
                     currentPage = loadedPage, pages = availablePages,
-                    loadingMore = false, loadMoreError = null,
+                    loadingMore = false, loadMoreError = null, listUpdate = BillListUpdate.Append,
+                    listUpdateId = ++listUpdateId, animatedOrderIds = newItems.mapTo(mutableSetOf()) { it.stableId },
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -299,6 +307,18 @@ class BillViewModel internal constructor(
             listLoading = true, loadingMore = false,
         )
         loadJob = viewModelScope.launch {
+            val username = accountOwner.orEmpty()
+            if (!current.listAvailable && current.items.isEmpty()) {
+                val page = repository.cachedDisplay(username, DisplayKeys.bills(dateFilter, typeId, amountFrom, amountTo, info), DisplayCodecs.Page)
+                val summary = repository.cachedDisplay(username, DisplayKeys.summary(dateFilter.timeFrom, dateFilter.timeTo), DisplayCodecs.Summary)
+                val counts = repository.cachedDisplay(username, DisplayKeys.counts(dateFilter.timeFrom, dateFilter.timeTo), DisplayCodecs.Counts)
+                val latest = mutable.value
+                mutable.value = latest.copy(items = page?.items.orEmpty(), currentPage = page?.current ?: 0, pages = page?.pages ?: 0,
+                    listAvailable = page != null, listLoaded = page != null, paginationReady = false,
+                    summary = summary ?: latest.summary, counts = counts ?: latest.counts,
+                    summaryLoaded = summary != null || latest.summaryLoaded, countsLoaded = counts != null || latest.countsLoaded,
+                    listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet())
+            }
             fun publish(change: (BillUiState) -> BillUiState) {
                 val latest = mutable.value
                 if (latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
@@ -316,11 +336,20 @@ class BillViewModel internal constructor(
                 coroutineScope {
                     launch {
                         try {
-                            val page = repository.bills(1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
+                            val result = repository.bills(1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
                                 typeId, amountFrom, amountTo, info.ifBlank { null })
+                            val page = result.copy(items = result.items.distinctBy { it.stableId })
                             currentCoroutineContext().ensureActive()
-                            publish { it.copy(items = page.items, currentPage = page.current, pages = page.pages,
-                                listLoading = false, listLoaded = true, listAvailable = true, error = null) }
+                            publish {
+                                val previousIds = it.items.mapTo(HashSet()) { r -> r.stableId }
+                                val update = if (it.listAvailable) BillListUpdate.Refresh else BillListUpdate.Initial
+                                it.copy(items = page.items, currentPage = page.current, pages = page.pages,
+                                    listLoading = false, listLoaded = true, listAvailable = true, error = null, paginationReady = true,
+                                    listUpdate = update, listUpdateId = ++listUpdateId,
+                                    animatedOrderIds = page.items.filter { r -> update == BillListUpdate.Initial || r.stableId !in previousIds }.mapTo(mutableSetOf()) { r -> r.stableId })
+                            }
+                            repository.saveDisplay(username, DisplayKeys.bills(dateFilter, typeId, amountFrom, amountTo, info), page, DisplayCodecs.Page)
+                            lastLoadedAt = System.currentTimeMillis()
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             currentCoroutineContext().ensureActive()
@@ -333,11 +362,13 @@ class BillViewModel internal constructor(
                         val result = optionalData { repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo) }
                         publish { it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
                             summaryError = result.exceptionOrNull()?.let(::message)) }
+                        result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.summary(dateFilter.timeFrom, dateFilter.timeTo), it, DisplayCodecs.Summary) }
                     }
                     launch {
                         val result = optionalData { repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo) }
                         publish { it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
                             countsError = result.exceptionOrNull()?.let(::message)) }
+                        result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.counts(dateFilter.timeFrom, dateFilter.timeTo), it, DisplayCodecs.Counts) }
                     }
                     launch {
                         if (current.types.isEmpty()) {
@@ -348,7 +379,6 @@ class BillViewModel internal constructor(
                 }
                 currentCoroutineContext().ensureActive()
                 publish { it.copy(loading = false, refreshing = false, loaded = true) }
-                lastLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
@@ -380,6 +410,15 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null,
             dailyError = null, categoriesError = null, rankingError = null))
         statsJob = viewModelScope.launch {
+            val username = accountOwner.orEmpty()
+            if (!stats.loaded) {
+                val daily = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), DisplayCodecs.Daily)
+                val categories = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), DisplayCodecs.Categories)
+                val ranking = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), DisplayCodecs.Records)
+                mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(daily = daily.orEmpty(), categories = categories.orEmpty(), ranking = ranking.orEmpty(),
+                    dailyLoaded = daily != null, categoriesLoaded = categories != null, rankingLoaded = ranking != null,
+                    loaded = daily != null || categories != null || ranking != null))
+            }
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
                 if (latest.stats.period == stats.period && latest.stats.type == stats.type)
@@ -393,21 +432,25 @@ class BillViewModel internal constructor(
                         }
                         publish { it.copy(daily = result.getOrNull() ?: it.daily,
                             dailyLoaded = it.dailyLoaded || result.isSuccess, dailyError = result.exceptionOrNull()?.let(::message)) }
+                        result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), it, DisplayCodecs.Daily) }
                     }
                     launch {
                         val result = optionalData { repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo) }
                         publish { it.copy(categories = result.getOrNull() ?: it.categories,
                             categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesError = result.exceptionOrNull()?.let(::message)) }
+                        result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), it, DisplayCodecs.Categories) }
                     }
                     launch {
                         val result = optionalData { repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5) }
                         publish { it.copy(ranking = result.getOrNull() ?: it.ranking,
                             rankingLoaded = it.rankingLoaded || result.isSuccess, rankingError = result.exceptionOrNull()?.let(::message)) }
+                        result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), it, DisplayCodecs.Records) }
                     }
                 }
                 currentCoroutineContext().ensureActive()
                 publish { it.copy(loading = false, loaded = true) }
-                lastStatsLoadedAt = System.currentTimeMillis()
+                if (mutable.value.stats.dailyError == null && mutable.value.stats.categoriesError == null && mutable.value.stats.rankingError == null)
+                    lastStatsLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {

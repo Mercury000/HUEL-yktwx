@@ -348,7 +348,7 @@ class ReadFeedbackUiTest {
         }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithText("网络连接失败，下拉刷新更新").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
         capture("bill-summary-only-network-error")
     }
 
@@ -542,7 +542,7 @@ class ReadFeedbackUiTest {
         }
         compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithText("暂时无法加载，下拉刷新更新").assertIsDisplayed()
+        compose.onNodeWithText("暂时无法更新，显示上次数据").assertIsDisplayed()
     }
 
     @Test fun cachedStatisticsNetworkFailuresShareOneInlineErrorInLargeDarkText() {

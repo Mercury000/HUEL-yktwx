@@ -37,6 +37,8 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 支持单日、自然月、自然年及自定义日期范围，各接口共用 `timeFrom` / `timeTo`。
 
+仅持久化首屏展示字段，先核对实时首屏后继续分页。
+
 ## 校园卡管理
 
 卡状态使用 `GET /berserker-app/ykt/tsm/getCampusCards`，目标是卡片 `account`。挂失与解挂分别使用 `POST /berserker-app/ykt/tsm/lostCard`、`unlostCard`，按配置提交 `account`、`synAccessSource` 和数字安全键盘编码的查询密码。成功核对外层、内层返回码与目标状态；响应未返回新状态时重新查询。超时先查状态，不自动重发。明确拒绝保留平台原因，存在目标回显时必须匹配。
