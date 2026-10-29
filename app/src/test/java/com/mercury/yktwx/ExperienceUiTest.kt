@@ -201,8 +201,20 @@ class ExperienceUiTest {
         assertTrue(selection.left >= bounds.left && selection.right <= bounds.right)
         assertEquals(bounds, plot.fetchSemanticsNode().boundsInRoot)
         capture("trend-selection")
+        plot.performTouchInput { click(centerRight) }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
+        plot.performTouchInput { click(centerRight) }
+        plot.performTouchInput { click(centerLeft) }
+        compose.onNodeWithText("10月1日 · ¥ 1.00").assertExists()
+        compose.onNodeWithTag("bill-trend-selection").performTouchInput { click() }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
+        plot.performTouchInput { click(centerRight) }
+        compose.onNodeWithText("每日趋势").performTouchInput { click() }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
+        plot.performTouchInput { click(centerRight) }
         compose.onNodeWithText("分类8").assertDoesNotExist()
-        compose.onNodeWithText("查看全部 8 项").performClick()
+        compose.onNodeWithText("查看全部 8 项").performTouchInput { click() }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
         compose.onNodeWithText("分类8").assertExists()
         compose.onNodeWithText("收起分类").performClick()
         compose.onNodeWithText("分类8").assertDoesNotExist()
@@ -254,6 +266,8 @@ class ExperienceUiTest {
         compose.onNodeWithText("12月 · ¥ 1234.56").assertExists()
         checkSelection()
         capture("trend-selection-year-single")
+        plot.performTouchInput { click(center) }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
     }
 
     @Test fun loginNetworkFailureKeepsPasswordForRetryAndSuccessfulLoginClearsIt() {

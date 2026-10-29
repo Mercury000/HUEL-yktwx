@@ -14,6 +14,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +71,8 @@ internal fun DailyBillChart(
             }
             return@Column
         }
-        Box(Modifier.fillMaxWidth().height(150.dp)) {
+        Box(Modifier.fillMaxWidth().height(150.dp)
+            .dismissOnOutsidePress(selected != null) { selectedDate = null }) {
             Canvas(Modifier.fillMaxSize().testTag("bill-trend-plot")
                 .semantics {
                     contentDescription = selected?.let {
@@ -85,12 +87,16 @@ internal fun DailyBillChart(
                         val index = points.indexOfFirst { it.date == selectedDate }
                         selectedDate = points[(index - 1).coerceAtLeast(0)].date
                         true
-                    })
+                    }) + if (selected != null) listOf(CustomAccessibilityAction("收起金额详情") {
+                        selectedDate = null
+                        true
+                    }) else emptyList()
                 }.pointerInput(points) {
                     detectTapGestures { position ->
                         val index = if (points.size <= 1) 0 else
                             (position.x / size.width.coerceAtLeast(1) * points.lastIndex).roundToInt().coerceIn(points.indices)
-                        selectedDate = points[index].date
+                        val date = points[index].date
+                        selectedDate = date.takeUnless { it == selectedDate }
                     }
                 }) {
                 // Empty -> nonempty may compose before the interpolation effect acquires its target.
@@ -153,6 +159,8 @@ internal fun DailyBillChart(
                         else "${selected.date.monthValue}月${selected.date.dayOfMonth}日"
                     Text("$date · ¥ ${money(selected.amountCents)}",
                         Modifier.testTag("bill-trend-selection")
+                            .semantics { onClick(label = "收起金额详情") { selectedDate = null; true } }
+                            .pointerInput(Unit) { detectTapGestures { selectedDate = null } }
                             .background(surface.copy(alpha = .96f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                         fontSize = 12.sp, color = primary, fontWeight = FontWeight.Medium,
