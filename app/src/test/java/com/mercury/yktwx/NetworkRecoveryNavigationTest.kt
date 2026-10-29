@@ -70,6 +70,7 @@ class NetworkRecoveryNavigationTest {
 
     @Test fun hallRecoversInPlaceAndCachedMyPageRecoversOnReconnectAndForegroundWithoutFetchingPaymentCodes() {
         val app = compose.activity.application
+        var feeRetryGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
         val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
         val vault = object : Vault {
             override fun credentials() = Credentials("fake-user", "fake-password")
@@ -100,6 +101,7 @@ class NetworkRecoveryNavigationTest {
         }
         val fees = object : FeeService by FeeApi({ error("Unexpected HTTP request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
+                feeRetryGate?.await()
                 requireOnline()
                 return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false),
                     roomBindingEnabled = !project.network)
@@ -132,6 +134,32 @@ class NetworkRecoveryNavigationTest {
         compose.onNode(visibleTag("read-unavailable")).assertDoesNotExist()
         assertEquals(originalPaymentReads, paymentReads.get())
 
+        // Reproduce Hall -> Payment -> Hall while still offline, with the retry held in flight.
+        compose.runOnIdle { connection(false); hall.refresh() }
+        await { hall.state.value.error != null && hall.state.value.networkError != null && !hall.state.value.loading }
+        compose.onNode(visibleTag("page-network-error")).assertIsDisplayed()
+        val failedTop = compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top
+        feeRetryGate = kotlinx.coroutines.CompletableDeferred()
+        compose.onNode(hasText("付款") and hasClickAction()).performClick()
+        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
+        await { hall.state.value.loading }
+        compose.mainClock.autoAdvance = false
+        for (frame in 1..5) {
+            compose.mainClock.advanceTimeBy(64)
+            compose.onNode(visibleTag("page-network-error")).assertIsDisplayed()
+            assertEquals("The offline re-entry must not collapse/reinsert the same notice", failedTop,
+                compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top, 1f)
+        }
+        compose.runOnIdle { feeRetryGate!!.complete(Unit); feeRetryGate = null }
+        await { !hall.state.value.loading }
+        compose.mainClock.advanceTimeBy(320)
+        assertEquals(failedTop, compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle { connection(true) }
+        await { hall.state.value.error == null && hall.state.value.networkError == null && !hall.state.value.loading }
+        compose.onNode(visibleTag("page-network-error")).assertDoesNotExist()
+        val paymentReadsBeforeMy = paymentReads.get()
+
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
         await { mine.state.value.profile != null && payment.state.value.account != null && !mine.state.value.loading }
         compose.runOnIdle { connection(false) }
@@ -155,7 +183,7 @@ class NetworkRecoveryNavigationTest {
         await { mine.state.value.profileError == null && payment.state.value.accountError == null &&
             !mine.state.value.loading && !payment.state.value.accountLoading }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        assertEquals(originalPaymentReads, paymentReads.get())
+        assertEquals(paymentReadsBeforeMy, paymentReads.get())
         assertNull(payment.state.value.code)
     }
 }

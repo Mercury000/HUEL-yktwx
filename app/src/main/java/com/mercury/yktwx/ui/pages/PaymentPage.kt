@@ -16,6 +16,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -43,7 +44,7 @@ import java.util.Locale
 
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true) {
-    val displayCode = state.code.takeIf { state.problem == null && !state.busy }
+    val displayCode = state.code.takeIf { state.problem == null && !state.busy && state.error == null }
     val readError = state.error ?: "暂时无法确认卡状态".takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
     val initialError = rememberInitialReadError(state.account != null || displayCode != null,
         readError, !state.busy)
@@ -108,10 +109,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         val bodyHeight = paymentContentHeight(maxWidth)
                                         Box(Modifier.fillMaxWidth().height(bodyHeight).testTag("payment-code-content"),
                                             contentAlignment = Alignment.Center) {
-                                            if (state.busy || state.problem in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen)) {
-                                                PaymentStatusContent(state, onUnlost, unlostLoading, unlostEnabled)
-                                            } else if (displayCode == null && readError != null) {
-                                                ReadUnavailable(readError)
+                                            if (state.busy || state.problem != null || readError != null) {
+                                                PaymentStatusContent(state, readError, onUnlost, unlostLoading, unlostEnabled)
                                             } else {
                                                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
                                                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -214,13 +213,13 @@ private fun paymentContentHeight(width: Dp): Dp {
     }
     val codeHeight = 88.dp + 232.dp + 48.dp + textHeight("0000 •••• •••• ••••", 14, 20) +
         textHeight("向商户出示，切勿分享或截图", 13, 18)
-    val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态")
+    val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态", "付款码暂不可用")
         .maxOf { textHeight(it, 23, 30, FontWeight.SemiBold) }
     val summaryHeight = listOf(
         "确认完成前，暂不展示付款码",
         "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用",
         "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理",
-        "请检查网络后下拉刷新\n确认卡状态后，再展示付款码",
+        "网络连接失败，请下拉刷新",
     ).maxOf { textHeight(it, 13, 21) }
     val actionHeight = maxOf(50.dp, with(density) { 24.sp.toDp() } + 24.dp)
     // Minimum status spacing for large fonts; normal-sized status uses the code footprint.
@@ -228,10 +227,11 @@ private fun paymentContentHeight(width: Dp): Dp {
     return maxOf(codeHeight, statusHeight)
 }
 
-/** Persistent business status, not a transient error or an obscured-but-scannable code. */
+/** Verification, paused payment and read failures share the existing centered status layout. */
 @Composable
 private fun PaymentStatusContent(
     state: PaymentUiState,
+    readError: String?,
     onUnlost: () -> Unit,
     unlostLoading: Boolean,
     unlostEnabled: Boolean,
@@ -259,15 +259,18 @@ private fun PaymentStatusContent(
             Text(when {
                 state.busy -> "正在确认卡状态"
                 restricted -> "付款已暂停"
-                else -> "暂时无法确认卡状态"
+                state.problem == PaymentCodeProblem.StatusUnverified -> "暂时无法确认卡状态"
+                else -> "付款码暂不可用"
             }, modifier = Modifier.fillMaxWidth(), fontSize = 23.sp, lineHeight = 30.sp,
+                maxLines = if (!state.busy && !restricted) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Text(when {
                 state.busy -> "确认完成前，暂不展示付款码"
                 lost -> "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用"
                 state.problem == PaymentCodeProblem.Frozen -> "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理"
-                else -> "请检查网络后下拉刷新\n确认卡状态后，再展示付款码"
+                else -> FeedbackText.read(readError.orEmpty())
             }, modifier = Modifier.fillMaxWidth(), fontSize = 13.sp, lineHeight = 21.sp,
+                maxLines = if (!state.busy && !restricted) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center)
         }
     }

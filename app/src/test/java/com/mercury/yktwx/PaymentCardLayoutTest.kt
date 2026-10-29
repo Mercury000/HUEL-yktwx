@@ -78,6 +78,7 @@ class PaymentCardLayoutTest {
             "normal-again" to state(),
             "waiting-for-code" to PaymentUiState(needsLogin = false, username = "fake-user", account = account),
             "code-error" to PaymentUiState(needsLogin = false, username = "fake-user", account = account, error = "示例服务端错误"),
+            "network-error" to state(error = "网络连接失败"),
         )) {
             compose.runOnIdle { current.value = next }
             compose.waitForIdle()
@@ -85,9 +86,17 @@ class PaymentCardLayoutTest {
             sameBounds(body, bounds("payment-code-content"))
             assertEquals("Account card must not move in $name", accountTop,
                 compose.onNodeWithText("统一账户").fetchSemanticsNode().boundsInRoot.top, 1f)
-            if (next.problem != null || next.busy) {
+            if (next.problem != null || next.busy || next.error != null) {
                 compose.onNodeWithContentDescription("付款条形码").assertDoesNotExist()
                 compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
+            }
+            if (next.error != null || next.problem == PaymentCodeProblem.StatusUnverified) {
+                val group = bounds("payment-status-group")
+                assertEquals(body.center.x, group.center.x, 1f)
+                assertEquals(body.center.y, group.center.y, 1f)
+                assertTrue(group.top >= body.top && group.bottom <= body.bottom)
+                compose.onNodeWithText("解挂").assertDoesNotExist()
+                compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
             }
             if (capture && name == "verifying") screenshot("payment-card-$name-stable")
         }
@@ -133,5 +142,24 @@ class PaymentCardLayoutTest {
         assertTrue(abs(body.center.x - group.center.x) <= 1f)
         assertTrue(abs(body.center.y - group.center.y) <= 1f)
         screenshot("payment-card-verifying-dark")
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w360dp-h800dp-xxhdpi", fontScale = 1.5f)
+    fun largeFontReadFailureUsesSingleLineStatusAndRetainsTheBalanceInDarkTheme() {
+        content(mutableStateOf(state(error = "网络连接失败")), dark = true)
+        val body = bounds("payment-code-content")
+        val group = bounds("payment-status-group")
+        assertEquals(body.center.y, group.center.y, 1f)
+        for (text in listOf("付款码暂不可用", "网络连接失败，请下拉刷新")) {
+            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            compose.onNodeWithText(text).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {
+                it(layouts)
+            }
+            assertEquals("Read failure text must remain single-line", 1, layouts.single().lineCount)
+        }
+        compose.onNodeWithText("¥ 128.60").assertIsDisplayed()
+        compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
+        screenshot("payment-card-network-error-dark")
     }
 }

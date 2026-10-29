@@ -84,12 +84,16 @@ fun BillPage(
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
         (state.stats.period.trendSupported && state.stats.dailyLoaded)
-    val networkError = (if (state.statsVisible) FeedbackText.mergedNetworkError(
-        "趋势" to state.stats.dailyError, "分类" to state.stats.categoriesError, "排行" to state.stats.rankingError)
-        else FeedbackText.mergedNetworkError(
-            "明细" to FeedbackText.networkError(state.error, state.loadMoreError),
-            "概览" to FeedbackText.networkError(state.summaryError, state.countsError)))
-        .takeIf { if (state.statsVisible) statsHasContent else listHasContent }
+    val networkError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
+        state.typeId, state.amountFromCents, state.amountToCents) {
+        rememberPageNetworkError(if (state.statsVisible) FeedbackText.mergedNetworkError(
+            "趋势" to state.stats.dailyError, "分类" to state.stats.categoriesError, "排行" to state.stats.rankingError)
+            else FeedbackText.mergedNetworkError(
+                "明细" to FeedbackText.networkError(state.error, state.loadMoreError),
+                "概览" to FeedbackText.networkError(state.summaryError, state.countsError)),
+            if (state.statsVisible) state.stats.loading else state.loading || state.refreshing,
+            if (state.statsVisible) statsHasContent else listHasContent)
+    }
     val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {
         rememberInitialReadError(if (state.statsVisible) statsHasContent else listHasContent,
@@ -203,26 +207,27 @@ fun BillPage(
                                 BillErrorCard("登录已失效，请重新登录")
                             }
                         } else {
-                            if (networkError != null) item(key = "network-error") { PageNetworkNotice(networkError) }
                             item(key = "date") {
-                                BillDateSelector(
-                                    filter = state.dateFilter,
-                                    minimumDate = BillListMinimumDate,
-                                    onDateSelected = onDateSelected,
-                                    isActive = isActive,
-                                ) {
-                                    if (!state.statsVisible) Box {
-                                        IconButton(
-                                            onClick = { showFilter = true },
-                                            backgroundColor = if (state.activeFilterCount > 0) MiuixTheme.colorScheme.primaryContainer else Color.Transparent,
-                                        ) {
-                                            Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        }
-                                        if (state.activeFilterCount > 0) {
-                                            Box(
-                                                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                                    .size(7.dp).background(MiuixTheme.colorScheme.primary, CircleShape),
-                                            )
+                                PageNetworkNotice(networkError, 12.dp) {
+                                    BillDateSelector(
+                                        filter = state.dateFilter,
+                                        minimumDate = BillListMinimumDate,
+                                        onDateSelected = onDateSelected,
+                                        isActive = isActive,
+                                    ) {
+                                        if (!state.statsVisible) Box {
+                                            IconButton(
+                                                onClick = { showFilter = true },
+                                                backgroundColor = if (state.activeFilterCount > 0) MiuixTheme.colorScheme.primaryContainer else Color.Transparent,
+                                            ) {
+                                                Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                            }
+                                            if (state.activeFilterCount > 0) {
+                                                Box(
+                                                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
+                                                        .size(7.dp).background(MiuixTheme.colorScheme.primary, CircleShape),
+                                                )
+                                            }
                                         }
                                     }
                                 }
