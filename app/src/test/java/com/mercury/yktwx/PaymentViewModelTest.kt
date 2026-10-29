@@ -72,6 +72,23 @@ class PaymentViewModelTest {
 
     @After fun cleanup() { accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
+    @Test fun balancePendingEndsBeforeTheRemainingPaymentVerification() {
+        codeAvailable = true
+        accountPublishGate = CompletableDeferred()
+        paymentGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { payments == 1 }
+        assertTrue(model.state.value.balanceLoading)
+        accountPublishGate.complete(Unit)
+        await { model.state.value.account != null && !model.state.value.balanceLoading }
+        assertTrue(model.state.value.busy)
+        assertNull(model.state.value.code)
+        paymentGate.complete(Unit)
+        await { !model.state.value.busy }
+        assertFalse(model.state.value.balanceLoading)
+        assertNotNull(model.state.value.code)
+    }
+
     @Test fun switchingBeforePaymentBalanceReturnsLoadsMissingBalanceWithoutFetchingAnotherCode() {
         accountPublishGate = CompletableDeferred()
         codeAvailable = true
@@ -449,10 +466,10 @@ class PaymentViewModelTest {
         await { payments == 1 }
         val loading = model.state.value
         model.setPageVisible(false, preserveDisplay = true)
-        assertEquals(loading, model.state.value)
+        assertEquals(loading.copy(balanceLoading = false), model.state.value)
         paymentGate.complete(Unit)
         await { responses == 1 }
-        assertEquals(loading, model.state.value)
+        assertEquals(loading.copy(balanceLoading = false), model.state.value)
         model.setPageVisible(true)
         await { payments == 2 && model.state.value.code != null }
     }

@@ -7,7 +7,8 @@ class DormUiState(val rooms: List<DormRoom> = emptyList(), val loading: Boolean 
     val network: FeeQuery? = null, val networkError: String? = null, val managing: Boolean = false,
     val bindingProjects: Set<FeeProject> = emptySet(),
     val roomsLoaded: Boolean = loaded, val networkLoaded: Boolean = loaded,
-    val roomsAvailable: Boolean = roomsLoaded && error == null) {
+    val roomsAvailable: Boolean = roomsLoaded && error == null,
+    val displayRestored: Boolean = false) {
     val selectedRoom get() = rooms.getOrNull(selectedIndex) ?: rooms.firstOrNull()
     override fun toString() = "DormUiState([redacted])"
 }

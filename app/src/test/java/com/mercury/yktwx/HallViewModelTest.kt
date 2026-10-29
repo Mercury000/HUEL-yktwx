@@ -432,17 +432,17 @@ class HallViewModelTest {
 
     private class FakeFees : FeeService by FeeApi({ error("No live request") }) {
         val saved = mutableMapOf<FeeProject, FeeRoomBinding?>()
-        val configReads = mutableMapOf<FeeProject, Int>()
+        val configReads = java.util.concurrent.ConcurrentHashMap<FeeProject, Int>()
         val writes = mutableListOf<FeeProject>()
         var failWrite: FeeProject? = null
         var failConfigurations = false
         var failDetails = false
         var networkGate: CompletableDeferred<Unit>? = null
-        var networkEntered = false
+        @Volatile var networkEntered = false
         var paired = false
         var pickerGate: CompletableDeferred<Unit>? = null
         var projectGate: CompletableDeferred<Unit>? = null
-        var blockedProjectEntered = false
+        @Volatile var blockedProjectEntered = false
         var detailGate: CompletableDeferred<Unit>? = null
         var detailGateProject = FeeProject.Zhengdong
         val detailsEntered = java.util.concurrent.ConcurrentHashMap.newKeySet<FeeProject>()
@@ -451,7 +451,7 @@ class HallViewModelTest {
             mapOf("campus" to "fake-campus", "room" to "${project.id}-$name"),
             mapOf("campus" to "示例校区", "room" to name))!!
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
-            configReads[project] = configReads.getOrDefault(project, 0) + 1
+            configReads.merge(project, 1, Int::plus)
             if (failConfigurations) throw NetworkFailure()
             if (project == FeeProject.Zhengdong && projectGate != null) {
                 blockedProjectEntered = true; projectGate!!.await()

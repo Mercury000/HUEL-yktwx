@@ -32,6 +32,7 @@ data class BillStatsState(
     val dailyError: String? = null,
     val categoriesError: String? = null,
     val rankingError: String? = null,
+    val displayRestored: Boolean = false,
 )
 
 enum class BillListUpdate { Initial, Restore, Refresh, Append, Query }
@@ -70,6 +71,8 @@ data class BillUiState(
     val listUpdate: BillListUpdate = BillListUpdate.Initial,
     val listUpdateId: Long = 0,
     val animatedOrderIds: Set<String> = emptySet(),
+    val displayRestored: Boolean = false,
+    val listOnlyRead: Boolean = false,
 ) {
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
@@ -89,6 +92,8 @@ class BillViewModel internal constructor(
     private var statsJob: Job? = null
     private var loginCheck: Job? = null
     private var initializationJob: Job? = null
+    private var displayJob: Job? = null
+    private var preparedDisplayKey: String? = null
     private var accountOwner: String? = null
     private var lastLoadedAt = 0L
     private var lastStatsLoadedAt = 0L
@@ -114,15 +119,21 @@ class BillViewModel internal constructor(
     fun accountChanged(username: String?) {
         if (accountOwner == username) return
         initializationJob?.cancel()
+        displayJob?.cancel()
         cancelListJobs()
         statsJob?.cancel()
         loginCheck?.cancel()
         loginCheck = null
         accountOwner = username
+        preparedDisplayKey = null
         lastLoadedAt = 0L
         lastStatsLoadedAt = 0L
         mutable.value = if (UiPreview.enabled && preview && username != null) PreviewData.billState()
             else BillUiState(needsLogin = username == null)
+        if (!preview && username != null) {
+            val snapshot = mutable.value
+            displayJob = viewModelScope.launch { restoreListDisplay(username, snapshot) }
+        }
     }
 
     /** A completed transaction makes both date views stale without discarding visible content. */
@@ -171,6 +182,7 @@ class BillViewModel internal constructor(
             loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
             listLoaded = false, listAvailable = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
             summaryError = null, countsError = null,
+            displayRestored = false,
             stats = BillStatsState(period = filter, type = current.stats.type),
         )
         if (UiPreview.enabled && preview) {
@@ -325,20 +337,12 @@ class BillViewModel internal constructor(
             error = null, summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
             loadMoreError = null,
             listLoading = true, loadingMore = false,
+            listOnlyRead = queryChanged && !readSummary && !readCounts,
         )
         loadJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
-            if (!current.listAvailable && current.items.isEmpty()) {
-                val page = repository.cachedDisplay(username, DisplayKeys.bills(dateFilter, typeId, amountFrom, amountTo, info), DisplayCodecs.Page)
-                val summary = repository.cachedDisplay(username, DisplayKeys.summary(dateFilter.timeFrom, dateFilter.timeTo), DisplayCodecs.Summary)
-                val counts = repository.cachedDisplay(username, DisplayKeys.counts(dateFilter.timeFrom, dateFilter.timeTo), DisplayCodecs.Counts)
-                val latest = mutable.value
-                mutable.value = latest.copy(items = page?.items.orEmpty(), currentPage = page?.current ?: 0, pages = page?.pages ?: 0,
-                    listAvailable = page != null, listLoaded = page != null, paginationReady = false,
-                    summary = latest.summary ?: summary, counts = latest.counts ?: counts,
-                    summaryLoaded = summary != null || latest.summaryLoaded, countsLoaded = counts != null || latest.countsLoaded,
-                    listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet())
-            }
+            displayJob?.join()
+            if (!mutable.value.listAvailable && mutable.value.items.isEmpty()) restoreListDisplay(username, current)
             fun publish(change: (BillUiState) -> BillUiState) {
                 val latest = mutable.value
                 if (latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
@@ -437,7 +441,8 @@ class BillViewModel internal constructor(
                 val ranking = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), DisplayCodecs.Records)
                 mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(daily = daily.orEmpty(), categories = categories.orEmpty(), ranking = ranking.orEmpty(),
                     dailyLoaded = daily != null, categoriesLoaded = categories != null, rankingLoaded = ranking != null,
-                    loaded = daily != null || categories != null || ranking != null))
+                    loaded = daily != null || categories != null || ranking != null,
+                    displayRestored = daily != null || categories != null || ranking != null))
             }
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
@@ -487,6 +492,26 @@ class BillViewModel internal constructor(
         }
     }
 
+    private suspend fun restoreListDisplay(username: String, snapshot: BillUiState) {
+        val period = snapshot.dateFilter
+        val displayKey = DisplayKeys.bills(period, snapshot.typeId, snapshot.amountFromCents, snapshot.amountToCents, snapshot.info)
+        if (preparedDisplayKey == displayKey) return
+        val page = repository.cachedDisplay(username, displayKey, DisplayCodecs.Page)
+        val summary = repository.cachedDisplay(username, DisplayKeys.summary(period.timeFrom, period.timeTo), DisplayCodecs.Summary)
+        val counts = repository.cachedDisplay(username, DisplayKeys.counts(period.timeFrom, period.timeTo), DisplayCodecs.Counts)
+        val latest = mutable.value
+        if (accountOwner != username || latest.dateFilter != period || latest.typeId != snapshot.typeId ||
+            latest.amountFromCents != snapshot.amountFromCents || latest.amountToCents != snapshot.amountToCents || latest.info != snapshot.info) return
+        preparedDisplayKey = displayKey
+        mutable.value = latest.copy(items = page?.items.orEmpty(), currentPage = page?.current ?: 0, pages = page?.pages ?: 0,
+            listAvailable = page != null, listLoaded = page != null, paginationReady = false,
+            summary = latest.summary ?: summary, counts = latest.counts ?: counts,
+            summaryLoaded = summary != null || latest.summaryLoaded, countsLoaded = counts != null || latest.countsLoaded,
+            listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet(),
+            displayRestored = latest.displayRestored || (snapshot.summary == null && snapshot.counts == null &&
+                (page != null || summary != null || counts != null)))
+    }
+
     /** Missing optional metrics keep the list usable; an invalid identity cancels the whole load. */
     private suspend fun <T> optionalData(block: suspend () -> T): Result<T> = try {
         val value = block()
@@ -516,6 +541,7 @@ class BillViewModel internal constructor(
 
     private fun cancelListJobs() {
         loadJob?.cancel(); loadMoreJob?.cancel()
+        preparedDisplayKey = null
     }
 
     private companion object {

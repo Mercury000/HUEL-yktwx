@@ -29,6 +29,7 @@ data class MyUiState(
     val homeIdentityLoaded: Boolean = loaded,
     val countsError: String? = null,
     val avatarError: String? = null,
+    val displayRestored: Boolean = false,
 ) { override fun toString() = "MyUiState([redacted])" }
 
 class MyViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
@@ -39,16 +40,22 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private var preview = false
     private var generation = 0L
     private var task: Job? = null
+    private var displayTask: Job? = null
+    private var displayPreparedMonth: YearMonth? = null
     private var refreshedAt = 0L
     fun accountChanged(username: String, uiPreview: Boolean = false) {
         val enabledPreview = UiPreview.enabled && uiPreview
         if (owner == username && preview == enabledPreview) return
-        generation++; task?.cancel(); task = null; refreshedAt = 0L
+        generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         owner = username; preview = enabledPreview
+        displayPreparedMonth = null
         mutable.value = MyUiState()
         if (UiPreview.enabled && preview && username.isNotBlank()) {
             mutable.value = PreviewData.myState()
             refreshedAt = System.currentTimeMillis()
+        } else if (username.isNotBlank()) {
+            val attempt = generation
+            displayTask = viewModelScope.launch { restoreDisplay(username, YearMonth.now(), attempt) }
         }
     }
     fun invalidate() {
@@ -76,16 +83,10 @@ class MyViewModel internal constructor(app: Application, private val repository:
             profileLoaded = current.profile != null, homeIdentityLoaded = current.homeIdentity != null,
             summaryLoaded = sameMonth && current.summary != null, countsLoaded = sameMonth && current.counts != null)
         task = viewModelScope.launch {
-            if (current.profile == null && current.summary == null && current.counts == null) {
-                val profile = repository.cachedDisplay(username, DisplayKeys.Profile, DisplayCodecs.Profile)
-                val identity = profile?.let { repository.cachedDisplay(username, DisplayKeys.identity(it.sno), DisplayCodecs.Identity) }
-                val summary = repository.cachedDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Summary)
-                val avatar = profile?.avatarPath?.let { repository.cachedDisplay(username, DisplayKeys.avatar(profile.sno, it), DisplayCodecs.Avatar) }
-                val counts = repository.cachedDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Counts)
-                if (attempt != generation) return@launch
-                mutable.value = mutable.value.copy(profile = profile, avatar = avatar, homeIdentity = identity, summary = summary, counts = counts,
-                    profileLoaded = profile != null, homeIdentityLoaded = identity != null, summaryLoaded = summary != null, countsLoaded = counts != null)
-            }
+            displayTask?.join()
+            if (attempt != generation) return@launch
+            if (mutable.value.profile == null && mutable.value.summary == null && mutable.value.counts == null)
+                restoreDisplay(username, month, attempt)
             val restored = mutable.value
             // Each branch updates the latest state on Main, so a late avatar cannot undo a summary.
             fun publish(change: (MyUiState) -> MyUiState) {
@@ -160,6 +161,20 @@ class MyViewModel internal constructor(app: Application, private val repository:
             if (mutable.value.profileError == null && mutable.value.homeIdentityError == null && mutable.value.summaryError == null && mutable.value.countsError == null)
                 refreshedAt = System.currentTimeMillis()
         }
+    }
+    /** Prepare local display only; activation still owns every network read and freshness check. */
+    private suspend fun restoreDisplay(username: String, month: YearMonth, attempt: Long) {
+        if (displayPreparedMonth == month) return
+        val profile = repository.cachedDisplay(username, DisplayKeys.Profile, DisplayCodecs.Profile)
+        val identity = profile?.let { repository.cachedDisplay(username, DisplayKeys.identity(it.sno), DisplayCodecs.Identity) }
+        val summary = repository.cachedDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Summary)
+        val avatar = profile?.avatarPath?.let { repository.cachedDisplay(username, DisplayKeys.avatar(profile.sno, it), DisplayCodecs.Avatar) }
+        val counts = repository.cachedDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Counts)
+        if (attempt != generation || mutable.value.month != month) return
+        displayPreparedMonth = month
+        mutable.value = mutable.value.copy(profile = profile, avatar = avatar, homeIdentity = identity, summary = summary, counts = counts,
+            profileLoaded = profile != null, homeIdentityLoaded = identity != null, summaryLoaded = summary != null, countsLoaded = counts != null,
+            displayRestored = profile != null || summary != null || counts != null)
     }
     private fun message(e: Exception) = (e as? YktException)?.message ?: "读取失败，请稍后重试"
     private fun isAuthenticationFailure(e: Exception) = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired

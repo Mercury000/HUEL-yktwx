@@ -35,6 +35,7 @@ data class PaymentUiState(
     val accountLoading: Boolean = false,
     val accountError: String? = null,
     val accountFromCache: Boolean = false,
+    val balanceLoading: Boolean = false,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
@@ -190,7 +191,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         resumeNeedsRefresh = true
         if (mutable.value.busy) {
             requestVersion++; request?.cancel(); ticker?.cancel()
-            mutable.value = mutable.value.copy(busy = false, refreshing = false)
+            mutable.value = mutable.value.copy(busy = false, refreshing = false, balanceLoading = false)
         }
         if (pageVisible) refresh() else if (accountPageVisible) refreshAccount()
     }
@@ -245,6 +246,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         ticker?.cancel(); request?.cancel()
         val old = mutable.value
         if (preserveDisplay) {
+            mutable.value = old.copy(balanceLoading = false)
             // One expiry wakeup replaces per-second updates; never leave an expired code visible.
             if (!preview && old.code != null) {
                 val version = requestVersion
@@ -329,7 +331,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val version = ++requestVersion
         val username = mutable.value.username
         val account = mutable.value.account
-        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account, accountFromCache = mutable.value.accountFromCache)
+        mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account,
+            accountFromCache = mutable.value.accountFromCache, balanceLoading = true)
         request = viewModelScope.launch {
             var accountObtained = false
             try {
@@ -338,7 +341,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         if (version == requestVersion && repository.ownsAccount(username) && !mutable.value.needsLogin) {
                             accountObtained = true
                             accountReadAt = SystemClock.elapsedRealtime()
-                            mutable.value = mutable.value.copy(account = fresh, accountFromCache = false)
+                            mutable.value = mutable.value.copy(account = fresh, accountFromCache = false, balanceLoading = false)
                             viewModelScope.launch {
                                 if (version == requestVersion) repository.saveDisplay(username, DisplayKeys.Account, fresh, DisplayCodecs.Account)
                             }
@@ -368,7 +371,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 )
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
-                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account, accountFromCache = mutable.value.accountFromCache, accountError = "余额暂时无法更新", problem = PaymentCodeProblem.StatusUnverified)
+                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
+                    accountFromCache = mutable.value.accountFromCache, accountError = "余额暂时无法更新".takeUnless { accountObtained },
+                    problem = PaymentCodeProblem.StatusUnverified)
             }
         }
     }

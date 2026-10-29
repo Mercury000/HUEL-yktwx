@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 /** Reads share authenticated snapshots; session changes and non-replayable operations stay exclusive. */
 class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null) {
     private val mutex = Mutex()
-    private var accountGeneration = 0L
+    @Volatile private var accountGeneration = 0L
     private var sessionRevision = 0L
     private var unverifiedSessionRevision: Long? = null
     private class AccountSnapshot(val credentials: Credentials?, val session: Session?)
@@ -25,12 +25,15 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun username() = mutex.withLock { account().credentials?.username.orEmpty() }
     /** UI guards fail closed before restoration and never touch disk or Android Keystore. */
     fun ownsAccount(username: String) = username.isNotBlank() && cachedAccount?.credentials?.username == username
-    /** Serialize tiny disk transactions with identity revocation; no late write can survive logout. */
-    internal suspend fun <T> cachedDisplay(username: String, key: String, codec: DisplayCodec<T>): T? = mutex.withLock {
+    /** Local display must not wait for a slow token renewal. Recheck revocation after disk IO. */
+    internal suspend fun <T> cachedDisplay(username: String, key: String, codec: DisplayCodec<T>): T? {
         currentCoroutineContext().ensureActive()
-        if (displayCache == null || !ownsAccount(username)) return@withLock null
-        withContext(Dispatchers.IO) { displayCache.read(username, key, codec) }
+        val generation = accountGeneration
+        if (displayCache == null || !ownsAccount(username)) return null
+        val cached = withContext(Dispatchers.IO) { displayCache.read(username, key, codec) }
+        return cached.takeIf { generation == accountGeneration && ownsAccount(username) }
     }
+    /** Serialize disk mutations with identity revocation; no late write can survive logout. */
     internal suspend fun <T> saveDisplay(username: String, key: String, value: T, codec: DisplayCodec<T>) = mutex.withLock {
         currentCoroutineContext().ensureActive()
         if (!ownsAccount(username)) return@withLock

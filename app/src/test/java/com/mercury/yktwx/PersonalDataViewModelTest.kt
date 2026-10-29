@@ -201,7 +201,7 @@ class PersonalDataViewModelTest {
     @Test fun profileSummaryAndBothCountsBeginWithoutWaitingForEachOther() {
         var profileEntered = false
         var summaryEntered = false
-        val directions = mutableSetOf<Int>()
+        val directions = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
         val profiles = object : ProfileService {
             override suspend fun profile(token: String): PersonalProfile {
                 profileEntered = true; gate.await()

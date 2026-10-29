@@ -30,6 +30,8 @@ class HallViewModel internal constructor(
     private var generation = 0L
     private var refreshedAt = 0L
     private var task: Job? = null
+    private var displayTask: Job? = null
+    private var displayPrepared = false
     private var refreshPending = false
     private var managementError: String? = null
     private var lastSelectedTargets: Set<String> = emptySet()
@@ -51,13 +53,18 @@ class HallViewModel internal constructor(
     fun accountChanged(username: String, uiPreview: Boolean = false) {
         val enabledPreview = UiPreview.enabled && uiPreview
         if (owner == username && preview == enabledPreview) return
-        generation++; task?.cancel(); task = null; refreshedAt = 0L
+        generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         refreshPending = false; managementError = null
         owner = username; preview = enabledPreview
+        displayPrepared = false
         lastSelectedTargets = if (owner.isBlank()) emptySet() else
             displayPreferences.getStringSet(displayKey(), emptySet()).orEmpty().toSet()
         mutable.value = if (UiPreview.enabled && preview && username.isNotBlank()) PreviewData.hallState() else DormUiState()
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
+        if (!preview && username.isNotBlank()) {
+            val attempt = generation
+            displayTask = viewModelScope.launch { restoreDisplay(username, attempt) }
+        }
     }
     fun onActivate() {
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
@@ -124,16 +131,10 @@ class HallViewModel internal constructor(
         refreshPending = false
         update(loading = true, error = managementError, networkError = null)
         launchTask {
+            displayTask?.join()
+            if (attempt != generation) return@launchTask
             if (mutable.value.rooms.isEmpty() && mutable.value.network == null) {
-                val cachedRooms = FeeProject.entries.filterNot { it.network }.mapNotNull { project ->
-                    repository.cachedDisplay(username, DisplayKeys.room(project), DisplayCodecs.Room)
-                }
-                val cachedNetwork = repository.cachedDisplay(username, DisplayKeys.Network, DisplayCodecs.Query)
-                if (attempt != generation) return@launchTask
-                val merged = mergeFamilyRooms(cachedRooms).sortedBy(::roomOrder)
-                mutable.value = DormUiState(rooms = merged, loading = true, network = cachedNetwork,
-                    selectedIndex = rememberedRoomIndex(merged).coerceAtLeast(0), roomsAvailable = merged.isNotEmpty(),
-                    roomsLoaded = merged.isNotEmpty(), networkLoaded = cachedNetwork != null)
+                restoreDisplay(username, attempt)
             }
             val previous = mutable.value
             val rooms = previous.rooms.flatMap { it.bindings }.associateBy { it.project }.toMutableMap()
@@ -162,6 +163,7 @@ class HallViewModel internal constructor(
                     error = blockError, needsLogin = needsLogin,
                     selectedIndex = if (exactIndex >= 0) exactIndex else rememberedRoomIndex(merged).coerceAtLeast(0),
                     network = network, networkError = networkError, bindingProjects = bindingProjects.toSet(),
+                    displayRestored = previous.displayRestored,
                     roomsLoaded = previous.roomsLoaded || FeeProject.entries.filterNot { it.network }.all { it in completed },
                     networkLoaded = previous.networkLoaded || FeeProject.Network in completed,
                     roomsAvailable = previous.roomsAvailable || bindingsAvailable)
@@ -316,6 +318,20 @@ class HallViewModel internal constructor(
         val s = mutable.value
         mutable.value = DormUiState(rooms, loading, s.loaded, error, s.needsLogin,
             selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, networkError, managing, s.bindingProjects,
-            s.roomsLoaded, s.networkLoaded, s.roomsAvailable)
+            s.roomsLoaded, s.networkLoaded, s.roomsAvailable, s.displayRestored)
+    }
+    private suspend fun restoreDisplay(username: String, attempt: Long) {
+        if (displayPrepared) return
+        val cachedRooms = FeeProject.entries.filterNot { it.network }.mapNotNull { project ->
+            repository.cachedDisplay(username, DisplayKeys.room(project), DisplayCodecs.Room)
+        }
+        val network = repository.cachedDisplay(username, DisplayKeys.Network, DisplayCodecs.Query)
+        if (attempt != generation) return
+        displayPrepared = true
+        val merged = mergeFamilyRooms(cachedRooms).sortedBy(::roomOrder)
+        mutable.value = DormUiState(rooms = merged, loading = mutable.value.loading, network = network,
+            selectedIndex = rememberedRoomIndex(merged).coerceAtLeast(0), roomsAvailable = merged.isNotEmpty(),
+            roomsLoaded = merged.isNotEmpty(), networkLoaded = network != null,
+            displayRestored = merged.isNotEmpty() || network != null)
     }
 }

@@ -63,6 +63,8 @@ internal fun DashboardTopBar(title: String, subtitle: String? = null, scrollBeha
 }
 
 /** Background reads keep the list usable; only a user pull owns the refresh indicator. */
+internal val LocalUserRefresh = staticCompositionLocalOf { false }
+
 @Composable
 internal fun DashboardPullToRefresh(loading: Boolean, onRefresh: () -> Unit, modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(), scrollBehavior: ScrollBehavior? = null,
@@ -71,7 +73,9 @@ internal fun DashboardPullToRefresh(loading: Boolean, onRefresh: () -> Unit, mod
     LaunchedEffect(loading, requested) { if (!loading) requested = false }
     PullToRefresh(isRefreshing = requested && loading, onRefresh = { requested = true; onRefresh() },
         modifier = modifier, contentPadding = contentPadding, topAppBarScrollBehavior = scrollBehavior,
-        color = MiuixTheme.colorScheme.primary, refreshTexts = AppRefreshTexts, content = content)
+        color = MiuixTheme.colorScheme.primary, refreshTexts = AppRefreshTexts) {
+        CompositionLocalProvider(LocalUserRefresh provides requested) { content() }
+    }
 }
 
 /** Reserve the same text metrics while data is unknown; placeholders expose no fake values. */
