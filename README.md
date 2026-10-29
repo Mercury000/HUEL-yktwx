@@ -100,7 +100,7 @@ macOS / Linux 使用 `./gradlew`。
 - 不存在：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 tag 为 `versionCode`、名称为 `versionName` 的 GitHub Release。
 - 也可手动触发 workflow，选择 debug 或 release；手动 release 只构建签名 APK，不创建 Release。
 
-APK 工作流仅由 Android 源码、Gradle 配置和该工作流文件的修改自动触发，也支持手动运行。所有 APK 构建先通过完整 Debug JVM 测试、Release 预览隔离测试和 `lintDebug`；任一检查失败，不上传可分发 APK、不执行签名或创建 Release。Android 检查与目标 APK 打包共用一次 Gradle 调用，测试与 Lint 报告作为 `check-reports` artifact 保留 14 天。
+APK 工作流仅由 Android 源码、Gradle 配置和该工作流文件的修改自动触发，也支持手动运行。工作流负责目标 APK 的编译打包、Release 签名及自动发布，仅调用对应构建类型的 `assemble` 任务。单元测试和 `lintDebug` 按下方命令在本地按需运行。构建失败时，不上传可分发 APK、不执行签名或创建 Release。
 
 构建任务使用只读仓库权限，不接触签名 Secrets；release 任务仅在成功的 release 构建后执行，单独取得发布写权限。签名材料缺失时直接失败，不生成标为 release 的未签名安装包；密码通过环境变量传给签名工具，临时密钥文件在任务结束时清理，APK 经 `apksigner verify` 校验后才上传或发布。
 
