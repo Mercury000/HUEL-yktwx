@@ -72,6 +72,24 @@ class PaymentViewModelTest {
 
     @After fun cleanup() { accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
+    @Test fun newlyAcceptedNoticeClearsOldCredentialsAndWaitsForExplicitLogin() {
+        codeAvailable = true
+        model.onForeground()
+        model.initialize(restoreLogin = false)
+        await { !model.state.value.restoringLogin }
+        assertTrue(model.state.value.needsLogin)
+        assertEquals("", model.state.value.username)
+        assertNull(vault.credentials())
+        assertNull(vault.session())
+        assertEquals(0, logins)
+        assertEquals(0, payments)
+        model.login("456", "new-password")
+        await { !model.state.value.busy }
+        assertFalse(model.state.value.needsLogin)
+        assertEquals("456", model.state.value.username)
+        assertEquals(1, logins)
+    }
+
     @Test fun balancePendingEndsBeforeTheRemainingPaymentVerification() {
         codeAvailable = true
         accountPublishGate = CompletableDeferred()

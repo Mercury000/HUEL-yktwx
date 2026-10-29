@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -7,14 +8,24 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalAutofillManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -25,6 +36,11 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.trackInputFocus
+import com.mercury.yktwx.ui.components.UsageNoticeSheet
+import com.mercury.yktwx.data.UsageNotice
+import com.mercury.yktwx.ui.UsageConsent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Show
@@ -34,6 +50,40 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Authentication is a separate screen, not one page of the main tab pager. */
 @Composable
 fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
+    LoginPage(state, null, onLogin)
+}
+
+@Composable
+fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onLogin: (String, String) -> Unit) {
+    var noticeVisible by remember(consent) { mutableStateOf(false) }
+    var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var consentError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    LaunchedEffect(consent) {
+        if (!hintShown) consent?.confirmationHint?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            hintShown = true
+        }
+    }
+    fun readNotice() { focus.clearFocus(); keyboard?.hide(); consentError = null; noticeVisible = true }
+    fun acceptNotice() {
+        val current = consent ?: return
+        if (saving) return
+        saving = true; consentError = null
+        scope.launch {
+            try {
+                current.accept()
+                noticeVisible = false
+            }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { consentError = "无法保存确认记录，请重试" }
+            finally { saving = false }
+        }
+    }
     Scaffold { padding ->
         Box(
             Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)
@@ -45,18 +95,43 @@ fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
                 Modifier.widthIn(max = 440.dp).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(28.dp),
             ) {
-                LoginForm(state, onLogin)
-                Text(
+                LoginForm(state, onLogin, consent?.accepted != false,
+                    consentRow = {
+                        if (consent != null) ConsentRow(consent.accepted, enabled = !state.busy && !saving,
+                            onToggle = { if (consent.accepted) consent.revoke() else readNotice() }, onRead = ::readNotice)
+                    })
+                if (consent == null) Text(
                     "登录信息仅保存在本机，并使用 Android Keystore 加密。",
                     fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
         }
+        if (consent != null) UsageNoticeSheet(noticeVisible, onDismiss = { if (!saving) noticeVisible = false },
+            onAgree = if (consent.accepted) null else ::acceptNotice, saving = saving, error = consentError)
     }
 }
 
 @Composable
-private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) {
+private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit, onRead: () -> Unit) {
+    val linkColor = MiuixTheme.colorScheme.primary
+    val text = remember(linkColor, enabled, onRead) { buildAnnotatedString {
+        append("我已阅读并同意")
+        withLink(LinkAnnotation.Clickable("usage-notice", TextLinkStyles(SpanStyle(color = linkColor)),
+            linkInteractionListener = { if (enabled) onRead() })) { append("《${UsageNotice.Title}》") }
+    } }
+    Surface(onClick = onToggle, enabled = enabled, color = Color.Transparent, modifier = Modifier.fillMaxWidth().testTag("usage-consent-row")) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(if (accepted) ToggleableState.On else ToggleableState.Off, onClick = onToggle,
+                enabled = enabled, modifier = Modifier.testTag("usage-consent-checkbox"))
+            Text(text, Modifier.weight(1f).padding(start = 10.dp, top = 8.dp, bottom = 8.dp), fontSize = 13.sp,
+                lineHeight = 20.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
+    }
+}
+
+@Composable
+private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean,
+    consentRow: (@Composable () -> Unit)? = null) {
     var username by remember { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
     var password by remember { mutableStateOf("") }
@@ -68,7 +143,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
         if (!state.needsLogin) { autofill?.commit(); password = ""; visible = false }
     }
     fun submit() {
-        if (!state.busy && username.isNotBlank() && password.isNotBlank()) {
+        if (agreed && !state.busy && !state.restoringLogin && username.isNotBlank() && password.isNotBlank()) {
             focus.clearFocus()
             keyboard?.hide()
             visible = false
@@ -85,14 +160,15 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit) 
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onDone = { submit() }),
             trailingIcon = {
-                IconButton(onClick = { visible = !visible }, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = { visible = !visible }, enabled = !state.busy, modifier = Modifier.size(48.dp)) {
                     Icon(if (visible) MiuixIcons.Hide else MiuixIcons.Show,
                         contentDescription = if (visible) "隐藏密码" else "显示密码",
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
             }, modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Password })
         if (!state.error.isNullOrBlank()) InlineError(state.error)
-        Button(onClick = { submit() }, enabled = !state.busy && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+        consentRow?.invoke()
+        Button(onClick = { submit() }, enabled = agreed && !state.busy && !state.restoringLogin && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
             Text(if (state.busy) "正在登录…" else "登录")
         }
     }
