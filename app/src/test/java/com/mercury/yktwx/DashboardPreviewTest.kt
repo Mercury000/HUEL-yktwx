@@ -86,6 +86,8 @@ class DashboardPreviewTest {
         compose.onNodeWithText("统计").performClick()
         assertTrue(bills.state.value.statsVisible)
         capture("stats-light")
+        compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(center) }
+        capture("stats-selection-light")
         compose.onNodeWithText("明细").performClick()
         compose.onNodeWithContentDescription("选择日期").performClick()
         capture("bill-date-picker")
@@ -123,6 +125,9 @@ class DashboardPreviewTest {
         capture("mine-dark")
         select("大厅"); capture("hall-dark")
         select("账单"); capture("bill-dark")
+        compose.onNodeWithText("统计").performClick()
+        compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(center) }
+        capture("stats-selection-dark")
     }
     @Test fun restrictedMineStatusHasDistinctAccent() {
         val app = compose.activity.application

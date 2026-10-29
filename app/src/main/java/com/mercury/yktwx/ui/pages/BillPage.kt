@@ -234,7 +234,6 @@ fun BillPage(
                                         if (!state.statsVisible) Box {
                                             IconButton(
                                                 onClick = { showFilter = true },
-                                                backgroundColor = if (state.activeFilterCount > 0) MiuixTheme.colorScheme.primaryContainer else Color.Transparent,
                                             ) {
                                                 Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                             }

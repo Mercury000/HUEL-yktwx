@@ -191,13 +191,69 @@ class ExperienceUiTest {
         val date = LocalDate.of(2026, 10, 1)
         content { Column { DailyBillChart(listOf(BillDailyPoint(date, 100), BillDailyPoint(date.plusDays(1), 200)), BillDateMode.Month)
             CategoryDonutChart((1..8).map { BillCategory("分类$it", it * 100L) }, 2) } }
-        compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(centerRight) }
-        compose.onNodeWithText("2026-10-02 · ¥ 2.00").assertExists()
+        val plot = compose.onNodeWithTag("bill-trend-plot")
+        val bounds = plot.fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("点按曲线查看金额").assertDoesNotExist()
+        plot.performTouchInput { click(centerRight) }
+        compose.onNodeWithText("10月2日 · ¥ 2.00").assertExists()
+        val selection = compose.onNodeWithTag("bill-trend-selection").fetchSemanticsNode().boundsInRoot
+        assertTrue(selection.top >= bounds.top && selection.bottom <= bounds.bottom)
+        assertTrue(selection.left >= bounds.left && selection.right <= bounds.right)
+        assertEquals(bounds, plot.fetchSemanticsNode().boundsInRoot)
+        capture("trend-selection")
         compose.onNodeWithText("分类8").assertDoesNotExist()
         compose.onNodeWithText("查看全部 8 项").performClick()
         compose.onNodeWithText("分类8").assertExists()
         compose.onNodeWithText("收起分类").performClick()
         compose.onNodeWithText("分类8").assertDoesNotExist()
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w320dp-h740dp-xxhdpi")
+    fun trendSelectionStaysInsideThePlotAtEdgesWithLargeTextInBothThemes() {
+        var dark by mutableStateOf(false)
+        var mode by mutableStateOf(BillDateMode.Month)
+        var points by mutableStateOf(listOf(BillDailyPoint(LocalDate.of(2026, 10, 1), 0),
+            BillDailyPoint(LocalDate.of(2026, 10, 31), 123456)))
+        compose.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(LocalInspectionMode provides true,
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, 1.4f)) {
+                AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+                    Column(Modifier.fillMaxSize().background(top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface).padding(16.dp)) {
+                        top.yukonga.miuix.kmp.basic.Card {
+                            DailyBillChart(points, mode, Modifier.padding(20.dp))
+                        }
+                    }
+                }
+            }
+        }
+        val plot = compose.onNodeWithTag("bill-trend-plot")
+        val bounds = plot.fetchSemanticsNode().boundsInRoot
+        fun checkSelection() {
+            val label = compose.onNodeWithTag("bill-trend-selection").fetchSemanticsNode().boundsInRoot
+            assertTrue(label.left >= bounds.left && label.right <= bounds.right)
+            assertTrue(label.top >= bounds.top && label.bottom <= bounds.bottom)
+            assertEquals(bounds, plot.fetchSemanticsNode().boundsInRoot)
+        }
+        plot.performTouchInput { click(centerLeft) }
+        compose.onNodeWithText("10月1日 · ¥ 0.00").assertExists()
+        checkSelection()
+        plot.performTouchInput { click(centerRight) }
+        compose.onNodeWithText("10月31日 · ¥ 1234.56").assertExists()
+        checkSelection()
+        capture("trend-selection-narrow-light")
+        compose.runOnIdle { dark = true }
+        checkSelection()
+        capture("trend-selection-narrow-dark")
+        compose.runOnIdle {
+            mode = BillDateMode.Year
+            points = listOf(BillDailyPoint(LocalDate.of(2026, 12, 1), 123456))
+        }
+        compose.onNodeWithTag("bill-trend-selection").assertDoesNotExist()
+        plot.performTouchInput { click(center) }
+        compose.onNodeWithText("12月 · ¥ 1234.56").assertExists()
+        checkSelection()
+        capture("trend-selection-year-single")
     }
 
     @Test fun loginNetworkFailureKeepsPasswordForRetryAndSuccessfulLoginClearsIt() {
