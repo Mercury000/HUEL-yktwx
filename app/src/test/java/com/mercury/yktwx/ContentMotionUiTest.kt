@@ -112,6 +112,13 @@ class ContentMotionUiTest {
         compose.mainClock.autoAdvance = true
     }
 
+    @Test fun invalidAvatarFinishesDecodingAndShowsTheFallbackInsteadOfStayingPending() {
+        compose.setContent { AppTheme { ProfileAvatar(byteArrayOf(1, 2, 3), 64.dp) } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("头像").fetchSemanticsNodes().size == 1 }
+        compose.onNodeWithContentDescription("头像").assertIsDisplayed()
+        compose.onNodeWithContentDescription("校园系统头像").assertDoesNotExist()
+    }
+
     @Test fun sharedNumberTransitionsKeepLayoutAndExposeOnlyTheActualValue() {
         var value by mutableStateOf("186.50")
         compose.setContent { AppTheme { UpdatedText(value, Modifier.testTag("number"), prefix = "¥ ", fontSize = 30.sp) } }

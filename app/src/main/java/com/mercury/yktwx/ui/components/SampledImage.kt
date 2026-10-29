@@ -15,13 +15,19 @@ import kotlinx.coroutines.withContext
 
 /** Each input/size owns its result, so a cancelled decode cannot restore an older image. */
 @Composable
-internal fun rememberSampledImage(bytes: ByteArray?, width: Dp, height: Dp, crop: Boolean = false): ImageBitmap? {
+internal fun rememberSampledImage(bytes: ByteArray?, width: Dp, height: Dp, crop: Boolean = false): ImageBitmap? =
+    rememberSampledImageResult(bytes, width, height, crop).image
+
+internal data class SampledImageResult(val image: ImageBitmap? = null, val loading: Boolean = false)
+
+@Composable
+internal fun rememberSampledImageResult(bytes: ByteArray?, width: Dp, height: Dp, crop: Boolean = false): SampledImageResult {
     val density = LocalDensity.current
     val widthPx = with(density) { width.roundToPx().coerceAtLeast(1) }
     val heightPx = with(density) { height.roundToPx().coerceAtLeast(1) }
-    val result = remember(bytes, widthPx, heightPx, crop) { mutableStateOf<ImageBitmap?>(null) }
+    val result = remember(bytes, widthPx, heightPx, crop) { mutableStateOf(SampledImageResult(loading = bytes != null)) }
     LaunchedEffect(result) {
-        if (bytes != null) result.value = decodeSampledImage(bytes, widthPx, heightPx, crop)
+        if (bytes != null) result.value = SampledImageResult(decodeSampledImage(bytes, widthPx, heightPx, crop))
     }
     return result.value
 }

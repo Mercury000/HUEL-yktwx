@@ -26,6 +26,7 @@ import com.mercury.yktwx.FeeViewModel
 import com.mercury.yktwx.CardPasswordViewModel
 import com.mercury.yktwx.CardServiceViewModel
 import com.mercury.yktwx.MyViewModel
+import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.DormUiState
@@ -93,6 +94,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val cardModel: CardServiceViewModel = viewModel()
         val passwordModel: CardPasswordViewModel = viewModel()
         val myModel: MyViewModel = viewModel()
+        val avatarModel: AvatarViewModel = viewModel()
         val dormModel: HallViewModel = viewModel()
         val context = LocalContext.current
         LaunchedEffect(state.restoringLogin, state.needsLogin, state.username, state.preview) {
@@ -104,6 +106,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                 passwordModel.accountChanged(owner.orEmpty())
                 billViewModel.accountChanged(owner)
                 myModel.accountChanged(owner.orEmpty(), state.preview)
+                avatarModel.accountChanged(owner.orEmpty(), state.preview)
                 dormModel.accountChanged(owner.orEmpty(), state.preview)
             }
         }
@@ -194,7 +197,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                                 MainContent(
                                     settings, state,
                                     if (interactive) billState else BillUiState(),
-                                    viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel,
+                                    viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
                                     isActive = interactive,
                                 )
                             }
@@ -240,6 +243,7 @@ private fun MainContent(
     passwordModel: CardPasswordViewModel,
     myModel: MyViewModel,
     dormModel: HallViewModel,
+    avatarModel: AvatarViewModel,
     isActive: Boolean,
 ) {
     val context = LocalContext.current
@@ -249,8 +253,14 @@ private fun MainContent(
     val cardState by cardModel.state.collectAsStateWithLifecycle()
     val passwordState by passwordModel.state.collectAsStateWithLifecycle()
     val collectedMyState by myModel.state.collectAsStateWithLifecycle()
+    val avatarState by avatarModel.state.collectAsStateWithLifecycle()
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
-    val myState = if (state.needsLogin) MyUiState() else collectedMyState
+    val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
+    val avatarPending = !state.needsLogin && (avatarState.owner != state.username || avatarState.preview != state.preview || avatarState.restoring)
+    val avatarImage = avatarState.image.takeIf { customAvatar }
+    val myState = if (state.needsLogin) MyUiState() else if (customAvatar)
+        collectedMyState.copy(avatar = avatarState.bytes, avatarError = null)
+        else if (avatarPending) collectedMyState.copy(avatar = null) else collectedMyState
     val dormState = if (state.needsLogin) DormUiState() else collectedDormState
     var feeProject by remember { mutableStateOf<FeeProject?>(null) }
     var feeOpening by remember { mutableStateOf<FeeProject?>(null) }
@@ -546,6 +556,8 @@ private fun MainContent(
                                 )
                                 3 -> MyPage(
                                     state = myState, payment = state, settings = settings, bottomPadding = bottom,
+                                    customAvatar = customAvatar,
+                                    avatarImage = avatarImage, avatarPending = avatarPending,
                                     isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
                                     onActivate = myModel::onActivate,
                                     onRefresh = { myModel.refresh(); viewModel.refreshAccount(manual = true) },
@@ -606,7 +618,9 @@ private fun MainContent(
         BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
             IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
                 when (screen) {
-                    Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh)
+                    Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh,
+                        onAvatar = if (isActive && layers.lastOrNull() == Screen.Profile) avatarModel::open else null,
+                        customAvatar = customAvatar, avatarImage = avatarImage, avatarPending = avatarPending)
                     Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
                         rechargeLoading = rechargeState.loading && !rechargeState.visible,
                         onRefresh = { viewModel.refreshAccount(manual = true) })
@@ -624,6 +638,9 @@ private fun MainContent(
             }
         }
     }
+    AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
+        active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
+            avatarState.owner == state.username && avatarState.preview == state.preview)
 }
 
 @Composable

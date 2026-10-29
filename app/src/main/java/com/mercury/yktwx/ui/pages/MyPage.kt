@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
@@ -46,6 +47,8 @@ internal fun MyPage(
     onRecharge: () -> Unit, rechargeLoading: Boolean,
     onCardAction: (CampusCardAction) -> Unit, manageLoading: Boolean, passwordLoading: Boolean,
     onSettings: () -> Unit, onAbout: () -> Unit,
+    customAvatar: Boolean = false,
+    avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false,
 ) {
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     val balancePending = payment.balanceLoading || payment.accountLoading
@@ -76,7 +79,7 @@ internal fun MyPage(
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && (initialError != null || state.loading &&
                         state.profile == null && state.homeIdentity == null && state.summary == null && state.counts == null))
-                        MyUiState(loading = true) else state
+                        MyUiState(loading = true, avatar = state.avatar) else state
                     val identityPending = !state.profileLoaded && state.profile == null && state.homeIdentity == null && state.profileError == null
                     val studyPending = identityPending || !state.homeIdentityLoaded && state.homeIdentity == null &&
                         state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
@@ -95,7 +98,9 @@ internal fun MyPage(
                                     state.summaryError != null || state.countsError != null || payment.accountError != null) {
                                 Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        key(payment.username, state.profile?.sno) { ProfileAvatar(state.avatar, 66.dp) }
+                                        key(payment.username, state.profile?.sno.takeUnless { customAvatar }) {
+                                            ProfileAvatar(state.avatar, 66.dp, customAvatar, avatarImage, avatarPending)
+                                        }
                                         Spacer(Modifier.width(14.dp))
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                             if (identityPending) {
@@ -253,24 +258,29 @@ internal fun cardStatus(problem: PaymentCodeProblem?, hasAccount: Boolean, busy:
 }
 
 @Composable
-internal fun ProfileAvatar(bytes: ByteArray?, size: Dp) {
+internal fun ProfileAvatar(bytes: ByteArray?, size: Dp, custom: Boolean = false,
+    prepared: android.graphics.Bitmap? = null, pending: Boolean = false) {
     // A refreshed response often supplies an equivalent byte array. Keep its decode identity.
     var source by remember { mutableStateOf(bytes) }
     if (!source.contentEquals(bytes)) source = bytes
-    val bitmap = rememberSampledImage(source, size, size, crop = true)
+    val decoded = if (prepared != null) remember(prepared) { SampledImageResult(prepared.asImageBitmap()) }
+        else rememberSampledImageResult(source, size, size, crop = true)
+    val bitmap = decoded.image
     var previousBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     val displayed = if (source == null) null else bitmap ?: previousBitmap
     SideEffect { if (bitmap != null || source == null) previousBitmap = bitmap }
     Box(Modifier.size(size).clip(RoundedCornerShape(size * .28f)).background(MiuixTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
         ContentFade(displayed, animate = previousBitmap != null) { image ->
-            if (image != null) Image(image, "校园系统头像", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = MiuixTheme.colorScheme.primary)
+            if (image != null) Image(image, if (custom) "自定义头像" else "校园系统头像", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            else if (!pending && !decoded.loading) Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = MiuixTheme.colorScheme.primary)
         }
     }
 }
 
 @Composable
-internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit) {
+internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit,
+    onAvatar: (() -> Unit)? = null, customAvatar: Boolean = false,
+    avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false) {
     val initialError = rememberInitialReadError(state.profile != null, state.profileError, !state.loading)
     val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
     val error = rememberPageNetworkError(state.profileError ?: state.avatarError, state.loading, state.profile != null)
@@ -279,9 +289,16 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
                 loading = state.loading && state.profile != null, errorTag = "read-notice") {
             Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("头像", Modifier.weight(1f), fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    key(state.profile?.sno) { ProfileAvatar(state.avatar, 48.dp) }
+                Surface(onClick = { onAvatar?.invoke() }, enabled = onAvatar != null, color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth().semantics { if (onAvatar != null) contentDescription = "更换头像" }) {
+                    Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("头像", Modifier.weight(1f), fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        key(state.profile?.sno.takeUnless { customAvatar }) {
+                            ProfileAvatar(state.avatar, 48.dp, customAvatar, avatarImage, avatarPending)
+                        }
+                        if (onAvatar != null) Icon(MiuixIcons.ChevronForward, null,
+                            Modifier.padding(start = 8.dp).size(16.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
                 }
                 ProfileField("学工号", state.profile?.sno, pending)
                 ProfileField("姓名", state.profile?.name, pending)
