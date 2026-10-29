@@ -36,6 +36,8 @@ import com.mercury.yktwx.data.DormMeterSlot
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
@@ -189,7 +191,7 @@ private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: (
     Column(modifier.clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(if (temporary) AppIcons.Bill else AppIcons.Hall, null, Modifier.size(17.dp), tint = accent)
+            Icon(if (temporary) AppIcons.Bill else MiuixIcons.GridView, null, Modifier.size(17.dp), tint = accent)
             Text(if (temporary) "临时缴费" else "房间管理", fontSize = 13.sp, lineHeight = 18.sp, color = ink)
         }
         Text(if (temporary) "无需绑定" else "常用房间", fontSize = 10.sp, lineHeight = 14.sp,

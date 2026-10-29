@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.LocalDate
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -63,22 +64,72 @@ class ExperienceUiTest {
         compose.mainClock.autoAdvance = true
     }
 
-    @Test fun searchHasAnExplicitActionAndActiveConditionsCanBeRemovedIndividually() {
+    @Test fun searchDebouncesInputKeepsEditingAndConditionsCanBeRemovedIndividually() {
         var state by mutableStateOf(PreviewData.billState().copy(typeId = "4", amountFromCents = 100))
-        var query = ""
-        content { bill(state, onSearch = { query = it; state = state.copy(info = it) }, onFilter = { type, from, to ->
+        var dark by mutableStateOf(false)
+        val searches = mutableListOf<String>()
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
+        AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+        bill(state, onSearch = { searches += it; state = state.copy(info = it) }, onFilter = { type, from, to ->
             state = state.copy(typeId = type, amountFromCents = from, amountToCents = to)
-        }) }
+        }) } } }
+        compose.mainClock.autoAdvance = false
         val field = compose.onNodeWithTag("bill-search")
-        field.performTextInput("餐厅")
-        compose.onNodeWithContentDescription("提交搜索").performClick()
-        assertEquals("餐厅", query)
+        field.performTextInput("餐")
+        compose.mainClock.advanceTimeBy(200)
+        assertTrue(searches.isEmpty())
+        field.performTextInput("厅 ")
+        compose.mainClock.advanceTimeByFrame()
+        field.performTextInputSelection(androidx.compose.ui.text.TextRange(1))
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(androidx.compose.ui.text.TextRange(1), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        compose.mainClock.advanceTimeBy(200)
+        assertTrue(searches.isEmpty())
+        compose.mainClock.advanceTimeBy(200)
+        compose.waitForIdle()
+        assertEquals(listOf("餐厅"), searches)
+        field.assertIsFocused().assertTextContains("餐厅 ")
+        assertEquals(androidx.compose.ui.text.TextRange(1), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        compose.onNodeWithContentDescription("提交搜索").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
+        capture("bill-conditions")
+        compose.runOnIdle { state = state.copy(items = emptyList()) }
+        capture("bill-search-empty")
+        compose.runOnIdle { dark = true }
+        capture("bill-search-empty-dark")
+        compose.onNodeWithText("清除条件").assertDoesNotExist()
         compose.onNodeWithContentDescription("移除条件：≥ ¥ 1").performClick()
         assertNull(state.amountFromCents)
         assertEquals("4", state.typeId)
         compose.onNodeWithContentDescription("移除条件：搜索：餐厅").performClick()
-        assertEquals("", query)
-        capture("bill-conditions")
+        assertEquals("", searches.last())
+        assertEquals("", field.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test fun clearingAndImeSearchNeverReplayThePendingDraftAndLeavingCancelsIt() {
+        var state by mutableStateOf(PreviewData.billState().copy(info = "原搜索"))
+        var active by mutableStateOf(true)
+        val searches = mutableListOf<String>()
+        content { BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, {},
+            { _, _, _ -> }, { searches += it; state = state.copy(info = it) }, {}, {}, isActive = active) }
+        compose.mainClock.autoAdvance = false
+        val field = compose.onNodeWithTag("bill-search")
+        field.performTextReplacement("尚未提交")
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithContentDescription("清除搜索").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(listOf(""), searches)
+        field.assertIsFocused()
+        field.performTextInput("餐厅")
+        field.performImeAction()
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(listOf("", "餐厅"), searches)
+        field.assertIsNotFocused()
+        field.performTextReplacement("取消中的输入")
+        compose.mainClock.advanceTimeBy(100)
+        compose.runOnIdle { active = false }
+        compose.mainClock.advanceTimeBy(600)
+        assertEquals(listOf("", "餐厅"), searches)
     }
 
     @Test fun detailAndStatisticsKeepSeparateReadingPositions() {
