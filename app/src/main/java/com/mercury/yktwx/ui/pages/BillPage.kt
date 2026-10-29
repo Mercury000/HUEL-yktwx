@@ -84,6 +84,12 @@ fun BillPage(
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
         (state.stats.period.trendSupported && state.stats.dailyLoaded)
+    val networkError = (if (state.statsVisible) FeedbackText.mergedNetworkError(
+        "趋势" to state.stats.dailyError, "分类" to state.stats.categoriesError, "排行" to state.stats.rankingError)
+        else FeedbackText.mergedNetworkError(
+            "明细" to FeedbackText.networkError(state.error, state.loadMoreError),
+            "概览" to FeedbackText.networkError(state.summaryError, state.countsError)))
+        .takeIf { if (state.statsVisible) statsHasContent else listHasContent }
     val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {
         rememberInitialReadError(if (state.statsVisible) statsHasContent else listHasContent,
@@ -160,7 +166,7 @@ fun BillPage(
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scrollBehavior,
                 ) {
-                InitialReadTransition(initialError) { displayedError ->
+                InitialReadTransition(initialError, networkError) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && (initialError != null ||
@@ -197,6 +203,7 @@ fun BillPage(
                                 BillErrorCard("登录已失效，请重新登录")
                             }
                         } else {
+                            if (networkError != null) item(key = "network-error") { PageNetworkNotice(networkError) }
                             item(key = "date") {
                                 BillDateSelector(
                                     filter = state.dateFilter,

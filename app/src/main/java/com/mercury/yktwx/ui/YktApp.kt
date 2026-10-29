@@ -74,6 +74,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References }
 private enum class AuthPage { Restoring, Login, Main }
+private enum class ReadPage { Payment, Hall, Bill, My, Profile, Account }
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel) {
@@ -270,6 +271,55 @@ private fun MainContent(
     LaunchedEffect(viewModel, paymentPageSelected, paymentPageCovered, accountPageSelected) {
         viewModel.setPageVisible(paymentPageSelected && !paymentPageCovered, preserveDisplay = paymentPageCovered)
         viewModel.setAccountPageVisible(accountPageSelected)
+    }
+    LaunchedEffect(isActive, layers.lastOrNull()) {
+        if (isActive && layers.lastOrNull() == Screen.Profile) myModel.onActivate()
+    }
+    val availability by rememberNetworkReadAvailability(state.preview)
+    val readPage = when {
+        !isActive || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
+            rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
+        layers.lastOrNull() == Screen.Profile -> ReadPage.Profile
+        layers.lastOrNull() == Screen.Account -> ReadPage.Account
+        layers.isNotEmpty() -> null
+        else -> ReadPage.entries[pagerState.currentPage]
+    }
+    val myNetworkError = FeedbackText.networkError(myState.profileError, myState.homeIdentityError,
+        myState.avatarError, myState.summaryError, myState.countsError)
+    val readLoading = when (readPage) {
+        ReadPage.Payment -> state.busy
+        ReadPage.Hall -> dormState.loading || dormState.managing
+        ReadPage.Bill -> if (billState.statsVisible) billState.stats.loading else billState.loading || billState.refreshing
+        ReadPage.My -> myState.loading || state.accountLoading || state.busy
+        ReadPage.Profile -> myState.loading
+        ReadPage.Account -> state.accountLoading || state.busy
+        null -> false
+    }
+    val networkError = when (readPage) {
+        ReadPage.Payment -> FeedbackText.networkError(state.error)
+        ReadPage.Hall -> FeedbackText.networkError(dormState.error, dormState.networkError,
+            *dormState.rooms.flatMap { room -> room.meters.map { it.error } }.toTypedArray())
+        ReadPage.Bill -> if (billState.statsVisible) FeedbackText.networkError(billState.stats.error,
+            billState.stats.dailyError, billState.stats.categoriesError, billState.stats.rankingError)
+            else FeedbackText.networkError(billState.error, billState.summaryError, billState.countsError, billState.loadMoreError)
+        ReadPage.My -> FeedbackText.networkError(myNetworkError, state.accountError)
+        ReadPage.Profile -> FeedbackText.networkError(myState.profileError, myState.avatarError)
+        ReadPage.Account -> FeedbackText.networkError(state.accountError)
+        null -> null
+    }
+    ReadRecoveryEffect(availability, readPage, readLoading, networkError) {
+        when (readPage) {
+            ReadPage.Payment -> viewModel.refresh()
+            ReadPage.Hall -> dormModel.refresh()
+            ReadPage.Bill -> billViewModel.refresh()
+            ReadPage.My -> {
+                if (myNetworkError != null) myModel.refresh()
+                if (FeedbackText.networkError(state.accountError) != null) viewModel.refreshAccount()
+            }
+            ReadPage.Profile -> myModel.refresh()
+            ReadPage.Account -> viewModel.refreshAccount()
+            null -> Unit
+        }
     }
     DisposableEffect(viewModel) {
         onDispose { viewModel.setPageVisible(false); viewModel.setAccountPageVisible(false) }

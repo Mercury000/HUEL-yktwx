@@ -34,9 +34,23 @@ internal object FeedbackText {
     }
     fun inline(message: String): String = message.replace(Regex("[\\r\\n]+"), "，").trim()
     fun isNetwork(message: String) = listOf("网络连接失败", "网络异常", "网络不可用").any { it in message }
+    fun networkError(vararg messages: String?): String? = messages.firstOrNull { it != null && isNetwork(it) }
+    fun mergedNetworkError(vararg regions: Pair<String, String?>): String? {
+        val affected = regions.filter { (_, error) -> error != null && isNetwork(error) }.map { it.first }.distinct()
+        return affected.takeIf { it.size > 1 }?.joinToString("、")?.plus("更新失败，请下拉刷新")
+    }
 }
 
 private val LocalSkeletonActive = staticCompositionLocalOf { true }
+internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
+private val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
+private val LocalInitialReadFailure = staticCompositionLocalOf { false }
+
+/** One page-level inline error replaces repeated network feedback inside its regions. */
+@Composable
+internal fun PageNetworkNotice(error: String) {
+    InlineError(error, Modifier.testTag("page-network-error"))
+}
 
 /** Keep a failed first read visible during retries; only actual content replaces it. */
 @Composable
@@ -52,6 +66,7 @@ internal fun rememberInitialReadError(hasContent: Boolean, error: String?, settl
 /** Delay only the skeleton's paint, preserving its real measurements and immediate results. */
 @Composable
 internal fun delayedSkeletonModifier(): Modifier {
+    if (!LocalSkeletonDelayEnabled.current) return Modifier
     val opacity = remember { Animatable(0f) }
     val active = LocalSkeletonActive.current
     LaunchedEffect(active) {
@@ -65,12 +80,16 @@ internal fun delayedSkeletonModifier(): Modifier {
 
 /** Both outgoing skeleton and incoming failure share the viewport during the crossfade. */
 @Composable
-internal fun InitialReadTransition(error: String?, content: @Composable (displayedError: String?) -> Unit) {
+internal fun InitialReadTransition(error: String?, networkError: String? = null,
+    content: @Composable (displayedError: String?) -> Unit) {
     val displayedError = rememberWhileShown(error != null, error.orEmpty())
     AnimatedContent(targetState = error != null, modifier = Modifier.fillMaxSize(),
         transitionSpec = { (fadeIn(tween(150)) togetherWith fadeOut(tween(150))).using(null) },
         label = "InitialReadFailureTransition") { showFailure ->
-        CompositionLocalProvider(LocalSkeletonActive provides (error == null)) {
+        CompositionLocalProvider(LocalSkeletonActive provides (error == null),
+            LocalSkeletonDelayEnabled provides true,
+            LocalPageNetworkError provides networkError.takeIf { !showFailure && error == null },
+            LocalInitialReadFailure provides showFailure) {
             content(displayedError.takeIf { showFailure })
         }
     }
@@ -79,6 +98,16 @@ internal fun InitialReadTransition(error: String?, content: @Composable (display
 /** First-read and region failures share one icon and one line, without an extra action. */
 @Composable
 internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullToRefresh: Boolean = true) {
+    if (LocalPageNetworkError.current != null && FeedbackText.isNetwork(error)) {
+        // An unread value remains unknown, rather than becoming zero or a confirmed empty result.
+        Text("—", modifier.fillMaxWidth().padding(vertical = 16.dp), fontSize = 14.sp,
+            textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        return
+    }
+    if (!LocalInitialReadFailure.current && FeedbackText.isNetwork(error)) {
+        InlineError(FeedbackText.read(error), modifier.testTag("read-unavailable"))
+        return
+    }
     Column(modifier.fillMaxWidth().testTag("read-unavailable")
         .padding(horizontal = 8.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -93,14 +122,10 @@ internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullT
     }
 }
 
-/** Low-weight feedback belongs at the bottom of the affected content region. */
+/** Region feedback uses the existing inline style; page-wide network errors are shown once. */
 @Composable
 internal fun ReadNotice(error: String?, cached: Boolean = false, modifier: Modifier = Modifier) {
     if (error.isNullOrBlank()) return
-    Row(modifier.fillMaxWidth().testTag("read-notice").padding(top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(MiuixIcons.Info, null, Modifier.size(16.dp), tint = MiuixTheme.colorScheme.error)
-        Text(FeedbackText.read(error, cached), Modifier.weight(1f), fontSize = 13.sp, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-    }
+    if (LocalPageNetworkError.current != null && FeedbackText.isNetwork(error)) return
+    InlineError(FeedbackText.read(error, cached), modifier.testTag("read-notice").padding(top = 8.dp))
 }

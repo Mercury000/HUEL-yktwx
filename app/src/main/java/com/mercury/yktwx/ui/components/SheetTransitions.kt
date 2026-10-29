@@ -12,6 +12,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,5 +84,9 @@ internal fun <T : Enum<T>> SheetPageContent(targetPage: T, modifier: Modifier = 
                 (fadeOut(tween(180)) +
                     slideOutHorizontally(tween(SheetPageDuration, easing = FastOutSlowInEasing)) { -direction * distance }))
                 .using(SizeTransform { _, _ -> tween(SheetPageDuration, easing = FastOutSlowInEasing) })
-        }, label = "SheetPage") { page -> content(page, page == targetPage) }
+        }, label = "SheetPage") { page ->
+        CompositionLocalProvider(LocalSkeletonDelayEnabled provides false) {
+            content(page, page == targetPage)
+        }
+    }
 }

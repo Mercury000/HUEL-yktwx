@@ -204,6 +204,37 @@ class HallViewModelTest {
         assertEquals(FeeProject.Wenbei, model.state.value.selectedRoom!!.project)
     }
 
+    @Test fun failedBoundMeterRefreshKeepsVerifiedSiblingUntilRecoveryButClearsItForANewRoom() {
+        fees.paired = true
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A照明")
+        open()
+        val previous = model.state.value.selectedRoom!!
+        assertEquals(2, previous.meters.size)
+        fees.failDetails = true
+        model.refresh()
+        await { !model.state.value.loading }
+        val failed = model.state.value.selectedRoom!!
+        assertEquals(2, failed.meters.size)
+        previous.meters.forEach { old ->
+            val retained = failed.meters.single { it.kind == old.kind }
+            assertSame(old.query, retained.query)
+            assertNotNull(retained.error)
+            assertFalse(retained.updating)
+        }
+        assertEquals(previous.updatedAtMillis, failed.updatedAtMillis)
+        fees.failDetails = false
+        model.refresh()
+        await { !model.state.value.loading }
+        assertEquals(2, model.state.value.selectedRoom!!.meters.size)
+        assertTrue(model.state.value.selectedRoom!!.meters.all { it.error == null })
+        fees.failDetails = true
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "B照明")
+        model.refresh()
+        await { !model.state.value.loading }
+        assertEquals(1, model.state.value.selectedRoom!!.meters.size)
+        assertNull(model.state.value.selectedRoom!!.meters.single().query)
+    }
+
     @Test fun fasterWenbeiReadCannotChooseTheRoomBeforeZhengdongBindingIsKnown() {
         fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
         fees.saved[FeeProject.Wenbei] = fees.room(FeeProject.Wenbei, "B")

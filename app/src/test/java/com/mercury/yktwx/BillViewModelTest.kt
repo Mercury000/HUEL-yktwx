@@ -223,6 +223,22 @@ class BillViewModelTest {
         assertEquals(1, model.state.value.stats.type)
         assertEquals(service.categories, model.state.value.stats.categories)
     }
+
+    @Test fun reactivatingFailedStatisticsRetriesWithinTheCacheWindow() {
+        loadExistingBills()
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        model.openStats()
+        await { !model.state.value.stats.loading }
+        assertNotNull(model.state.value.stats.dailyError)
+        service.queryFailures = emptyMap()
+        service.queryGates["trend"] = CompletableDeferred()
+        model.onActivate()
+        assertTrue(model.state.value.stats.loading)
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        assertNull(model.state.value.stats.dailyError)
+        assertTrue(model.state.value.stats.dailyLoaded)
+    }
     @Test fun failedPageStillAllowsIndependentSummaryToComplete() {
         service.failure = NetworkFailure()
         service.queryGates["summary"] = CompletableDeferred()
