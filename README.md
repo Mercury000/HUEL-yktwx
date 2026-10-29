@@ -24,6 +24,14 @@
 
 安装包见 [Releases](https://github.com/Mercury000/HUEL-yktwx/releases)。首次启动阅读并同意使用须知。
 
+## 界面预览
+
+| 付款 | 大厅 | 账单 | 我的 |
+| --- | --- | --- | --- |
+| <img src="docs/images/payment-light.png" width="200" alt="付款页面"> | <img src="docs/images/hall-light.png" width="200" alt="大厅页面"> | <img src="docs/images/bill-light.png" width="200" alt="账单页面"> | <img src="docs/images/mine-light.png" width="200" alt="我的页面"> |
+
+预览使用虚构账户与付款码。
+
 ## 构建
 
 使用 JDK 22、Android SDK Platform 37 和本版本的 Gradle Wrapper，在 `local.properties` 中配置 Android SDK 路径。

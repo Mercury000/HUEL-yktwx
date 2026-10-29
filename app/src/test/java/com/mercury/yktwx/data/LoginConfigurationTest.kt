@@ -13,7 +13,7 @@ class LoginConfigurationTest {
         val front = JSONObject().put("loginType", if (encoded) methods.toString() else methods)
         return JSONObject().put("getFrontConfig", front.toString())
     }
-    @Test fun liveWebsiteDoubleEncodedFormatMatchesPython() {
+    @Test fun liveWebsiteDoubleEncodedFormatIsParsed() {
         val data = data()
         // The previous implementation throws before any password request is made.
         assertThrows(JSONException::class.java) {
@@ -28,7 +28,7 @@ class LoginConfigurationTest {
         val value = data(); value.put("getFrontConfig", JSONObject(value.getString("getFrontConfig")))
         assertEquals("snoNew", LoginConfiguration.selectLoginType(value))
     }
-    @Test fun missingKeyboardTypeUsesPythonDefault() {
+    @Test fun missingKeyboardTypeUsesStandardDefault() {
         assertEquals("snoNew", LoginConfiguration.selectLoginType(data(method())))
     }
     @Test fun invalidConfigIsReportedWithoutServerContent() {
@@ -47,7 +47,7 @@ class LoginConfigurationTest {
     @Test fun captchaStopsInsteadOfSubmittingPassword() {
         assertThrows(CaptchaRequired::class.java) { LoginConfiguration.selectLoginType(data(method().put("openCaptcha", 1))) }
     }
-    @Test fun stringAndNullCaptchaMatchPythonBehavior() {
+    @Test fun stringAndNullCaptchaAllowPasswordLogin() {
         for (value in listOf("0", "", JSONObject.NULL)) {
             assertEquals("snoNew", LoginConfiguration.selectLoginType(data(method().put("openCaptcha", value))))
         }

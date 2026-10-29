@@ -108,7 +108,7 @@ class YktApiLoginTest {
         assertTrue(fake.calls.all { it.disconnected })
         assertTrue(fake.calls.all { it.url.protocol == "https" })
     }
-    @Test fun loginFormAndHeadersMatchWorkingPythonClient() = runBlocking {
+    @Test fun loginFormAndHeadersMatchWebsiteProtocol() = runBlocking {
         val fake = ScriptedApi(); fake.api.login(Credentials("123456", "Aa1@"))
         val post = fake.calls[2]
         assertEquals("POST", post.requestMethod)
