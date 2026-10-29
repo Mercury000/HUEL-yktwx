@@ -35,6 +35,7 @@ class BillViewModelTest {
         service.requestGate.complete(Unit)
         service.auxiliaryGate.complete(Unit)
         service.queryGates.values.forEach { it.complete(Unit) }
+        service.searchGates.values.forEach { it.cancel() }
         store.clear()
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -95,6 +96,27 @@ class BillViewModelTest {
         await { model.state.value.loaded && model.state.value.summary != null && model.state.value.counts != null }
         assertNull(model.state.value.summaryError)
         assertNull(model.state.value.countsError)
+    }
+
+    @Test fun newerSearchWinsWhenThePreviousRequestFinishesLater() {
+        loadExistingBills()
+        val previous = CompletableDeferred<BillPageData>()
+        val latest = CompletableDeferred<BillPageData>()
+        service.searchGates["餐"] = previous
+        service.searchGates["餐厅"] = latest
+        model.search("餐")
+        await { service.requests == 2 }
+        model.search("餐厅")
+        await { service.requests == 3 }
+        val latestRecord = record.copy(orderId = "latest-search")
+        latest.complete(BillPageData(listOf(latestRecord), 1, 1))
+        await { model.state.value.loaded }
+        previous.complete(BillPageData(listOf(record.copy(orderId = "outdated-search")), 1, 1))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("餐厅", model.state.value.info)
+        assertEquals(listOf(latestRecord), model.state.value.items)
+        assertEquals(BillListUpdate.Query, model.state.value.listUpdate)
+        assertTrue(model.state.value.animatedOrderIds.isEmpty())
     }
 
     @Test fun emptyBillListStaysRefreshingUntilRequestCompletes() {
@@ -454,6 +476,7 @@ class BillViewModelTest {
         val queries = Collections.synchronizedSet(mutableSetOf<String>())
         var queryFailures: Map<String, YktException> = emptyMap()
         val queryGates = mutableMapOf<String, CompletableDeferred<Unit>>()
+        val searchGates = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<BillPageData>>()
         private suspend fun query(name: String) {
             queries += name
             auxiliaryGate.await()
@@ -476,6 +499,7 @@ class BillViewModelTest {
             requestMonths += timeFrom
             requestRanges += timeFrom to timeTo
             requests++
+            info?.let { searchGates[it] }?.let { return it.await() }
             requestGate.await()
             failure?.let { throw it }
             return BillPageData(if (current == 1) items else nextItems, current, if (items.isEmpty()) 0 else pages)

@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -24,7 +23,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 @Composable
@@ -71,7 +73,6 @@ fun BillPage(
     onShowDetails: () -> Unit = {},
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
-    onClearQuery: () -> Unit = { onFiltersApplied(null, null, null); onSearch("") },
 ) {
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
@@ -101,7 +102,27 @@ fun BillPage(
     val focus = LocalFocusManager.current
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
     var showFilter by remember { mutableStateOf(false) }
-    var query by remember(state.info) { mutableStateOf(state.info) }
+    var query by remember { mutableStateOf(TextFieldValue(state.info, TextRange(state.info.length))) }
+    var submittedQuery by remember { mutableStateOf(state.info) }
+    val currentInfo by rememberUpdatedState(state.info)
+    val currentOnSearch by rememberUpdatedState(onSearch)
+    fun submitSearch(value: String) {
+        submittedQuery = value.trim()
+        if (submittedQuery != currentInfo) currentOnSearch(submittedQuery)
+    }
+    LaunchedEffect(state.info, state.needsLogin) {
+        // Acknowledging our search must preserve the draft, cursor and IME composition.
+        // External condition removal still updates the input immediately.
+        if (state.needsLogin || state.info != submittedQuery) {
+            query = TextFieldValue(state.info, TextRange(state.info.length))
+            submittedQuery = state.info
+        }
+    }
+    LaunchedEffect(query.text, query.composition, isActive, state.statsVisible, state.needsLogin) {
+        if (!isActive || state.statsVisible || state.needsLogin || query.composition != null || query.text.trim() == currentInfo) return@LaunchedEffect
+        if (query.text.isNotBlank()) delay(350)
+        submitSearch(query.text)
+    }
     val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
     val groups = remember(state.items) { state.items.groupByDay() }
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
@@ -218,9 +239,10 @@ fun BillPage(
                                                 Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                             }
                                             if (state.activeFilterCount > 0) {
-                                                Box(
+                                                Badge(
                                                     Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                                        .size(7.dp).background(MiuixTheme.colorScheme.primary, CircleShape),
+                                                        .size(7.dp),
+                                                    containerColor = MiuixTheme.colorScheme.primary,
                                                 )
                                             }
                                         }
@@ -256,26 +278,21 @@ fun BillPage(
                                         )
                                     },
                                     trailingIcon = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (query.trim().isNotEmpty() && query.trim() != state.info) {
-                                            IconButton(onClick = { dismissSearch(); onSearch(query) }) {
-                                                Icon(MiuixIcons.Search, "提交搜索", Modifier.size(20.dp))
-                                            }
-                                        }
-                                        if (query.isNotEmpty()) {
+                                        if (query.text.isNotEmpty()) {
                                             IconButton(onClick = {
-                                                query = ""
-                                                onSearch("")
+                                                query = TextFieldValue()
+                                                submitSearch("")
                                             }) {
-                                                Icon(MiuixIcons.Clear, contentDescription = "清除搜索")
+                                                Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
+                                                    modifier = Modifier.size(17.dp),
+                                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                             }
-                                        }
                                         }
                                     },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                     keyboardActions = KeyboardActions(onSearch = {
                                         dismissSearch()
-                                        onSearch(query)
+                                        submitSearch(query.text)
                                     }),
                                 )
                                 }
@@ -302,12 +319,7 @@ fun BillPage(
                                 }
                                 state.items.isEmpty() -> item(key = "empty") {
                                     if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
-                                        Card(Modifier.fillMaxWidth()) {
-                                            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("没有符合条件的账单", fontSize = 15.sp)
-                                                TextButton("清除条件", onClick = onClearQuery)
-                                            }
-                                        }
+                                        BillEmptyCard("没有符合条件的账单", "试试调整搜索或筛选条件。")
                                     } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
                                 }
                                 else -> {

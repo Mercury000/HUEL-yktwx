@@ -66,6 +66,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Contacts
+import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -538,7 +539,6 @@ private fun MainContent(
                                     onShowDetails = billViewModel::showDetails,
                                     onStatsTypeChange = billViewModel::selectStatsType,
                                     onRefreshStats = billViewModel::refreshStats,
-                                    onClearQuery = billViewModel::clearQuery,
                                     onOpenDetail = ::openBillDetail,
                                     isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
                                     showBack = false,
@@ -628,7 +628,7 @@ private fun MainContent(
 
 @Composable
 private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected: (Int) -> Unit) {
-    val icons = listOf(MiuixIcons.Scan, AppIcons.Hall, AppIcons.Bill, MiuixIcons.Contacts)
+    val icons = listOf(MiuixIcons.Scan, MiuixIcons.GridView, AppIcons.Bill, MiuixIcons.Contacts)
     val labels = listOf("付款", "大厅", "账单", "我的")
     val floating = settings.floatingBottomBar.value
     val blur = settings.blurBottomBar.value
