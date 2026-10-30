@@ -20,6 +20,7 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.rememberWhileShown
+import com.mercury.yktwx.ui.components.ReadLayout
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -45,6 +46,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
         onDismissRequest = { if (show) { password = ""; keyboard?.hide(); onDismiss() } }, renderInRootScaffold = true) {
         val display = rememberWhileShown(show, FeePasswordDisplay(amountCents, preparation?.accounts.orEmpty(), type, loading, error))
         val enabled = show && !display.loading
+        ReadLayout(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("¥ " + RechargeMoney.yuan(display.amountCents), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
@@ -62,6 +64,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
             if (!display.error.isNullOrBlank()) InlineError(display.error)
             Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }
+        }
         }
     }
 }

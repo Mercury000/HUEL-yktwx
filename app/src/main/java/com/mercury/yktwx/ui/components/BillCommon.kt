@@ -193,13 +193,12 @@ internal fun BillDateSelector(
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
+                    UpdatedText(
                         billDateLabel(filter),
                         modifier = Modifier.weight(1f, fill = false),
+                        numeric = false,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(6.dp))
                     Icon(

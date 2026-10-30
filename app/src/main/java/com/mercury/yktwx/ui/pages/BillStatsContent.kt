@@ -11,7 +11,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BillStatsState
@@ -46,7 +45,8 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
         Card(Modifier.fillMaxWidth().testTag("bill-stats-trend")) {
             Column(Modifier.padding(20.dp)) {
                 key(stats.period, stats.type) {
-                    ContentFade(stats, contentKey = { if (it.dailyLoaded) "content" else if (it.dailyError != null) "error" else "pending" }) { displayed ->
+                    ReadContent(stats, pending = { !it.dailyLoaded && it.dailyError == null },
+                        contentKey = { if (it.dailyLoaded) "content" else if (it.dailyError != null) "error" else "pending" }) { displayed ->
                         when {
                             displayed.dailyLoaded -> DailyBillChart(displayed.daily, displayed.period.mode)
                             displayed.dailyError != null -> ReadUnavailable(displayed.dailyError)
@@ -59,10 +59,12 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
         }
     }
     item(key = "category") {
+        ReadLayout(Modifier.fillMaxWidth()) {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-category")) {
             Column(Modifier.padding(20.dp)) {
                 key(stats.period, stats.type) {
-                    ContentFade(stats, contentKey = { if (it.categoriesLoaded) "content" else if (it.categoriesError != null) "error" else "pending" }) { displayed ->
+                    ReadContent(stats, pending = { !it.categoriesLoaded && it.categoriesError == null },
+                        contentKey = { if (it.categoriesLoaded) "content" else if (it.categoriesError != null) "error" else "pending" }) { displayed ->
                         when {
                             displayed.categoriesLoaded -> CategoryDonutChart(displayed.categories, displayed.type)
                             displayed.categoriesError != null -> ReadUnavailable(displayed.categoriesError)
@@ -72,6 +74,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                 }
                 if (stats.categoriesLoaded && stats.categoriesError != null) ReadNotice(stats.categoriesError, cached = true)
             }
+        }
         }
     }
     if (!stats.rankingLoaded && stats.rankingError == null) item(key = "ranking") {
@@ -111,19 +114,20 @@ private fun StatsOverview(stats: BillStatsState) {
     Card(Modifier.fillMaxWidth().testTag("bill-stats-overview").then(
         if (amountPending) Modifier.semantics { contentDescription = "正在加载统计" } else Modifier)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(heading, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            UpdatedText(heading, numeric = false, fontSize = 13.sp, lineHeight = 18.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            if (amountPending) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
+            ReadContent(amountPending to total, pending = { it.first }, contentKey = { it.first }) { (reading, amount) ->
+            if (reading) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
             else UpdatedText(
-                total?.let { money(it) } ?: "—", prefix = "¥ ", identity = listOf(stats.period, stats.type),
-                fontSize = 30.sp, lineHeight = 38.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                amount?.let(::money) ?: "—", prefix = "¥ ", identity = listOf(stats.period, stats.type),
+                fontSize = 30.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
             )
-            if (detailPending) DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .68f, lineHeight = 18.sp)
-            else Text(
-                detail,
-                fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            }
+            ReadText(
+                if (detailPending) null else detail, Modifier.fillMaxWidth(), fraction = .68f,
+                fontSize = 12.sp, lineHeight = 18.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
@@ -159,12 +163,12 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
                         BillIcon(record.icon, size = 34.dp, income = record.income)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
+                            UpdatedText(
                                 record.resume.ifBlank { record.payName.ifBlank { "校园卡交易" } },
-                                fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                numeric = false, fontSize = 14.sp,
                             )
-                            Text(
-                                billTimeLabel(record), fontSize = 11.sp,
+                            UpdatedText(
+                                billTimeLabel(record), numeric = false, fontSize = 11.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }

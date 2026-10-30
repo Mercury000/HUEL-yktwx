@@ -24,7 +24,6 @@ import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.icon.extended.Show
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -130,7 +129,7 @@ internal fun RemovableCondition(label: String, onRemove: () -> Unit) {
         modifier = Modifier.semantics { contentDescription = "移除条件：$label" }) {
         Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(label, Modifier.widthIn(max = 240.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            UpdatedText(label, Modifier.widthIn(max = 240.dp), numeric = false, fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.primary)
             Icon(MiuixIcons.Clear, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.primary)
         }

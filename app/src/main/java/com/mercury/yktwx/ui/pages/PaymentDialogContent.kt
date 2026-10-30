@@ -36,8 +36,11 @@ import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import com.mercury.yktwx.ui.components.ContentPlaceholder
 import com.mercury.yktwx.ui.components.DashboardPlaceholder
+import com.mercury.yktwx.ui.components.ReadContent
+import com.mercury.yktwx.ui.components.UpdatedText
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.LocalContentColor
 
 /** The amount and method form shared by hall fees and campus-card recharge. */
 @Composable
@@ -74,7 +77,7 @@ internal fun PaymentAmountForm(
     }
 }
 
-/** Bounds use secondary text in the existing row; the input keeps its familiar placeholder. */
+/** Server limits wrap at the same readable size as other secondary text. */
 @Composable
 private fun PaymentAmountHeader(config: RechargeConfiguration) {
     val limits = listOfNotNull(config.minimumCents?.let { "最低 ¥ ${RechargeMoney.label(it)}" },
@@ -94,18 +97,16 @@ private fun PaymentAmountHeader(config: RechargeConfiguration) {
         Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         if (limits.isNotEmpty()) BoxWithConstraints(Modifier.weight(1f).testTag("payment-amount-limits")
             .semantics { contentDescription = full }, contentAlignment = Alignment.CenterEnd) {
-            val width = with(density) { maxWidth.toPx().coerceAtLeast(1f) }
+            val width = with(density) { maxWidth.toPx() }
             val text = if (measurer.measure(AnnotatedString(full), TextStyle(fontSize = 12.sp)).size.width <= width) full else compact
-            val measured = measurer.measure(AnnotatedString(text), TextStyle(fontSize = 12.sp))
-            Text(text, fontSize = 12.sp * (width / measured.size.width.coerceAtLeast(1)).coerceAtMost(1f),
-                maxLines = 1, textAlign = TextAlign.End, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            UpdatedText(text, Modifier.fillMaxWidth(), numeric = false, fontSize = 12.sp,
+                textAlign = TextAlign.End, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
     }
 }
 
 @Composable
-internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: RechargeConfiguration? = null,
-    methods: List<String> = listOf("微信")) {
+internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: RechargeConfiguration? = null) {
     Column(modifier.fillMaxWidth().semantics { contentDescription = "正在读取充值信息" },
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
@@ -130,11 +131,20 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
             }
         }
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
-        PaymentControlPlaceholder { HallNeutralTabs(methods, 0) {} }
+        HallNeutralTabsPlaceholder()
         PaymentControlPlaceholder {
             Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("充值") }
         }
+    }
+}
+
+/** Boolean transition target keeps credentials, query payloads and orders out of animation state. */
+@Composable
+internal fun PaymentFormContent(pending: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    ReadContent(pending, Modifier.fillMaxWidth().testTag("payment-amount-form"), pending = { it }) { reading ->
+        if (reading) PaymentAmountPlaceholder()
+        else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
     }
 }
 
@@ -152,12 +162,12 @@ internal fun RecipientSelectionCard(recipient: RechargeRecipient, selected: Bool
     onClick: () -> Unit, enabled: Boolean = true) {
     PaymentSelectionCard(selected, onClick, Modifier.testTag("recharge-recipient-${recipient.targetId}"), enabled) { contentColor ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(recipient.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+            UpdatedText(recipient.name, numeric = false, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                 color = contentColor, modifier = Modifier.weight(1f))
             if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
         }
-        Text(recipient.sno.ifBlank { recipient.cardAccount }, fontSize = 14.sp, color = contentColor)
-        Text(recipient.accountName + " · " + recipient.targetId, fontSize = 13.sp,
+        UpdatedText(recipient.sno.ifBlank { recipient.cardAccount }, numeric = false, fontSize = 14.sp, color = contentColor)
+        UpdatedText(recipient.accountName + " · " + recipient.targetId, numeric = false, fontSize = 13.sp,
             color = contentColor.copy(alpha = .8f))
     }
 }
@@ -173,7 +183,7 @@ internal fun PaymentAmountInput(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val cents = RechargeMoney.cents(amount)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().testTag("payment-amount-input"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         config.amountsCents.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { preset ->
@@ -184,7 +194,8 @@ internal fun PaymentAmountInput(
                             keyboard?.hide()
                         }, modifier = Modifier.weight(1f), enabled = enabled,
                         colors = if (cents == preset) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors(),
-                    ) { Text("¥ " + RechargeMoney.label(preset)) }
+                    ) { UpdatedText(RechargeMoney.label(preset), prefix = "¥ ", textAlign = TextAlign.Center,
+                        color = LocalContentColor.current) }
                 }
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -31,7 +30,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.BillCategory
@@ -280,7 +278,8 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
     fun categoryColor(name: String) = palette[(assignedColors[name] ?: 0) % palette.size]
     val summary = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val grid = MiuixTheme.colorScheme.dividerLine
-    Column(modifier.fillMaxWidth().animateContentSize(tween(ContentMotion.Layout, easing = ContentMotion.Easing))) {
+    ReadLayout(modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("分类占比", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
@@ -338,9 +337,9 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
             ) {
                 Box(Modifier.size(8.dp).background(categoryColor(category.name), CircleShape))
                 Spacer(Modifier.width(8.dp))
-                Text(
+                UpdatedText(
                     category.name.ifBlank { "其他" }, modifier = Modifier.weight(1f),
-                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    numeric = false, fontSize = 13.sp,
                 )
                 UpdatedText(money(category.amountCents), prefix = "¥ ", identity = category.name, fontSize = 13.sp)
                 Text(
@@ -351,6 +350,7 @@ internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modif
         }
         if (categories.size > 6) TextButton(if (expanded) "收起分类" else "查看全部 ${categories.size} 项",
             onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth())
+    }
     }
 }
 

@@ -87,13 +87,14 @@ private fun RecipientRechargeSheet(
                         { onSelectRecipient(recipient) }, enabled)
                 }
                 val config = display.rechargeConfig
+                PaymentFormContent(config == null && display.loading) {
                 if (config != null) {
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, display.loading,
                         !display.preview && config.recipient === display.selectedRecipient, display.error, onContinueRecharge,
                         enabled = enabled)
                 } else {
-                    if (display.loading) PaymentAmountPlaceholder()
                     if (!display.error.isNullOrBlank()) InlineError(display.error)
+                }
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

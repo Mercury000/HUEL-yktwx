@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.BillRecord
@@ -74,16 +73,16 @@ private fun DetailHeader(record: BillRecord) {
         ) {
             BillIcon(record.icon, size = 56.dp, income = record.income)
             Spacer(Modifier.height(4.dp))
-            Text(
+            UpdatedText(
                 record.payName.ifBlank { "校园卡交易" },
-                fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                numeric = false, fontSize = 16.sp, fontWeight = FontWeight.Medium,
             )
-            Text(
+            UpdatedText(
                 record.turnoverType,
-                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                numeric = false, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            Text(
-                signedMoney(record),
+            UpdatedText(
+                money(record.amountCents), prefix = if (record.income) "+¥ " else "-¥ ",
                 modifier = Modifier.padding(top = 10.dp),
                 fontSize = 34.sp, fontWeight = FontWeight.SemiBold,
                 color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
@@ -132,9 +131,9 @@ private fun DetailRow(label: String, value: String) {
                 label, modifier = Modifier.width(88.dp),
                 fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            Text(
+            UpdatedText(
                 value, modifier = Modifier.weight(1f),
-                fontSize = 14.sp, textAlign = TextAlign.End, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                numeric = false, fontSize = 14.sp, textAlign = TextAlign.End,
             )
         }
         HorizontalDivider(Modifier.padding(start = 16.dp))
@@ -146,8 +145,9 @@ private fun DetailStacked(label: String, value: String, monospace: Boolean = fal
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         SelectionContainer {
-            Text(
+            UpdatedText(
                 value,
+                numeric = false,
                 fontSize = if (monospace) 13.sp else 14.sp,
                 fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
                 color = MiuixTheme.colorScheme.onSurface,

@@ -20,6 +20,7 @@ import com.mercury.yktwx.data.CampusCard
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.rememberWhileShown
+import com.mercury.yktwx.ui.components.ReadLayout
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 
@@ -52,6 +53,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
         val error = rememberWhileShown(state.visible,
             if (confirmation.length == 6 && newPassword.length == 6 && confirmation != newPassword)
                 "两次输入的新密码不一致" else display.error)
+        ReadLayout(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (display.cards.size > 1) display.cards.forEach { card ->
                 Button(onClick = { onSelectCard(card) }, enabled = enabled,
@@ -80,6 +82,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 Button(onClick = ::submit, enabled = valid, modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.submitting) "修改中…" else "确认修改") }
             }
+        }
         }
     }
 }

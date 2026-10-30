@@ -147,12 +147,13 @@ internal fun rememberInitialReadError(hasContent: Boolean, error: String?, settl
 
 /** Delay only the skeleton's paint, preserving its real measurements and immediate results. */
 @Composable
-internal fun delayedSkeletonModifier(): Modifier {
-    if (!LocalSkeletonDelayEnabled.current) return Modifier
+internal fun delayedSkeletonModifier(active: Boolean = true, enabled: Boolean = LocalSkeletonDelayEnabled.current): Modifier {
+    if (!enabled) return Modifier
     val opacity = remember { Animatable(0f) }
-    val active = LocalSkeletonActive.current
-    LaunchedEffect(active) {
-        if (active) {
+    val painting = LocalSkeletonActive.current && active
+    LaunchedEffect(painting) {
+        if (painting) {
+            opacity.snapTo(0f)
             delay(250)
             opacity.animateTo(1f, tween(ContentMotion.Fade))
         } else opacity.stop()
