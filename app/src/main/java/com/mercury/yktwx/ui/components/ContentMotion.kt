@@ -3,17 +3,24 @@ package com.mercury.yktwx.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.text.modifiers.TextAutoSizeLayoutScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
@@ -23,10 +30,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,6 +55,8 @@ internal object ContentMotion {
     val Easing = FastOutSlowInEasing
 }
 
+private val ReadNumberPattern = Regex("-?\\d+(?:\\.\\d+)?")
+
 /** First composition is static. Only a changed value under the same identity transitions. */
 @Composable
 internal fun UpdatedText(
@@ -53,47 +65,155 @@ internal fun UpdatedText(
     color: Color = MiuixTheme.colorScheme.onSurface, maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip, prefix: String = "", identity: Any? = Unit,
     numeric: Boolean = true, textAlign: TextAlign = TextAlign.Start,
+    fontFamily: FontFamily? = null, fitNumber: Boolean = true,
 ) {
     key(identity) {
-        Row(modifier.clearAndSetSemantics { this.text = AnnotatedString(prefix + text) },
-            horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start) {
-            if (prefix.isNotEmpty()) Text(prefix, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight, color = color)
-            val distance = with(LocalDensity.current) { 6.dp.roundToPx() }
-            AnimatedContent(targetState = text, transitionSpec = {
-                val before = Regex("-?\\d+(?:\\.\\d+)?").findAll(initialState).lastOrNull()?.value?.toBigDecimalOrNull()
-                val after = Regex("-?\\d+(?:\\.\\d+)?").findAll(targetState).lastOrNull()?.value?.toBigDecimalOrNull()
-                val direction = if (before != null && after != null && after < before) -1 else 1
-                val duration = if (numeric) ContentMotion.Number else ContentMotion.Fade
-                val enter = fadeIn(tween(duration, easing = ContentMotion.Easing)) +
-                    slideInVertically(tween(duration, easing = ContentMotion.Easing)) { if (numeric && before != null && after != null) distance * direction else 0 }
-                val exit = fadeOut(tween(duration, easing = ContentMotion.Easing)) +
-                    slideOutVertically(tween(duration, easing = ContentMotion.Easing)) { if (numeric && before != null && after != null) -distance * direction else 0 }
-                (enter togetherWith exit).using(null)
-            }, label = "UpdatedText") { displayed ->
-                Text(displayed, modifier = if (displayed != text) Modifier.clearAndSetSemantics {} else Modifier,
-                    fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight,
-                    color = color, maxLines = maxLines, overflow = overflow)
+        if (!numeric) {
+            ContentFade(text, modifier,
+                animateSize = maxLines > 1) { displayed ->
+                Text(prefix + displayed, modifier = if (displayed != text) Modifier.clearAndSetSemantics {} else Modifier,
+                    fontSize = fontSize, lineHeight = lineHeight,
+                    fontWeight = fontWeight, color = color, maxLines = maxLines,
+                    overflow = overflow, textAlign = textAlign, fontFamily = fontFamily)
+            }
+        } else {
+            val resize = maxLines > 1 && !LocalReadLayoutManaged.current
+            val preferredSize = fontSize.takeUnless { it == TextUnit.Unspecified } ?: MiuixTheme.textStyles.main.fontSize
+            val numberSize = remember(preferredSize) { WholeNumberAutoSize(preferredSize) }
+            Row(modifier.clearAndSetSemantics { this.text = AnnotatedString(prefix + text) },
+                horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start) {
+                if (prefix.isNotEmpty()) Text(prefix, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight, color = color)
+                val distance = with(LocalDensity.current) { 6.dp.roundToPx() }
+                AnimatedContent(targetState = text, modifier = Modifier.weight(1f, fill = false), transitionSpec = {
+                    val before = ReadNumberPattern.findAll(initialState).lastOrNull()?.value?.toBigDecimalOrNull()
+                    val after = ReadNumberPattern.findAll(targetState).lastOrNull()?.value?.toBigDecimalOrNull()
+                    val direction = if (before != null && after != null && after < before) -1 else 1
+                    val duration = ContentMotion.Number
+                    val enter = fadeIn(tween(duration, easing = ContentMotion.Easing)) +
+                        slideInVertically(tween(duration, easing = ContentMotion.Easing)) { if (before != null && after != null) distance * direction else 0 }
+                    val exit = fadeOut(tween(duration, easing = ContentMotion.Easing)) +
+                        slideOutVertically(tween(duration, easing = ContentMotion.Easing)) { if (before != null && after != null) -distance * direction else 0 }
+                    (enter togetherWith exit).using(if (resize) SizeTransform { _, _ ->
+                        tween(ContentMotion.Layout, easing = ContentMotion.Easing)
+                    } else null)
+                }, label = "UpdatedText") { displayed ->
+                    val fitting = fitNumber && displayed.matches(ReadNumberPattern)
+                    Text(displayed, modifier = if (displayed != text) Modifier.clearAndSetSemantics {} else Modifier,
+                        fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight,
+                        autoSize = if (fitting) numberSize else null,
+                        color = color, maxLines = if (fitting) 1 else maxLines, softWrap = !fitting,
+                        overflow = overflow, fontFamily = fontFamily,
+                        textAlign = textAlign)
+                }
             }
         }
     }
 }
 
+/** Keep signs and decimal digits together; fitting happens during text measurement, before paint. */
+private data class WholeNumberAutoSize(val preferredSize: TextUnit) : TextAutoSize {
+    override fun TextAutoSizeLayoutScope.getFontSize(constraints: Constraints, text: AnnotatedString): TextUnit {
+        if (!constraints.hasBoundedWidth || constraints.maxWidth == 0) return preferredSize
+        val natural = performLayout(Constraints(), text, preferredSize)
+        val availableWidth = (constraints.maxWidth - 1).coerceAtLeast(1).toFloat()
+        val ratio = (availableWidth / natural.size.width.coerceAtLeast(1)).coerceAtMost(1f)
+        val candidate = preferredSize * ratio
+        fun TextLayoutResult.fits() = lineCount == 1 && getLineEnd(0) == text.length &&
+            getLineRight(0) <= availableWidth && !didOverflowWidth
+        // Font hinting and font scale need not be proportional. Verify the final
+        // constraints, including the final character, rather than trusting the ratio.
+        if (performLayout(constraints, text, candidate).fits()) return candidate
+        var low = 0f
+        var high = ratio
+        repeat(10) {
+            val middle = (low + high) / 2
+            if (performLayout(constraints, text, preferredSize * middle).fits()) low = middle
+            else high = middle
+        }
+        val fitted = preferredSize * low
+        // Leave the layout cache at the chosen size and the actual constraints.
+        performLayout(constraints, text, fitted)
+        return fitted
+    }
+}
+
 /** Carries cache restoration through nested transitions without rebuilding the page. */
 internal val LocalReadSnapshotRestored = staticCompositionLocalOf { false }
+private val LocalReadLayoutManaged = staticCompositionLocalOf { false }
+private val LocalReadSkeletonManaged = staticCompositionLocalOf { false }
 
 private data class ContentFadeTarget<T>(val value: T, val restored: Boolean)
+
+/** In-place layout changes use the same duration as skeleton/content replacement. */
+@Composable
+internal fun Modifier.readContentSize(): Modifier {
+    val restored = LocalReadSnapshotRestored.current
+    var wasRestored by remember { mutableStateOf(restored) }
+    val restoring = restored && !wasRestored
+    SideEffect { wasRestored = restored }
+    return animateContentSize(if (restoring) snap() else tween(ContentMotion.Layout, easing = ContentMotion.Easing))
+}
+
+/** One ancestor owns geometry; children still fade without adding a second size animation. */
+@Composable
+internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val sized = if (LocalReadLayoutManaged.current) modifier else modifier.readContentSize()
+    Box(sized) {
+        CompositionLocalProvider(LocalReadLayoutManaged provides true) { content() }
+    }
+}
 
 /** Shared skeleton/empty/content transition; cached content does not replay entry on navigation. */
 @Composable
 internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it },
-    animate: Boolean = true, content: @Composable (T) -> Unit) {
-    AnimatedContent(targetState = ContentFadeTarget(state, LocalReadSnapshotRestored.current), modifier = modifier, transitionSpec = {
+    animate: Boolean = true, animateSize: Boolean = false, content: @Composable (T) -> Unit) {
+    val resize = animateSize && !LocalReadLayoutManaged.current
+    AnimatedContent(targetState = ContentFadeTarget(state, LocalReadSnapshotRestored.current),
+        modifier = modifier, transitionSpec = {
         // A newly restored snapshot replaces pending paint immediately. Keep the
         // composition alive so controls and their selection/scroll state survive.
         val restoring = targetState.restored && !initialState.restored
         (if (animate && !restoring) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
-        else EnterTransition.None togetherWith ExitTransition.None).using(null)
-    }, label = "ContentFade", contentKey = { contentKey(it.value) }, content = { content(it.value) })
+        else EnterTransition.None togetherWith ExitTransition.None).using(
+            if (animate && !restoring && resize) SizeTransform { _, _ ->
+                tween(ContentMotion.Layout, easing = ContentMotion.Easing)
+            } else null,
+        )
+    }, label = "ContentFade", contentKey = { contentKey(it.value) }) {
+        CompositionLocalProvider(LocalReadLayoutManaged provides (LocalReadLayoutManaged.current || resize)) { content(it.value) }
+    }
+}
+
+/** Keep pending paint alive outside the transition so outgoing skeletons never restart their delay. */
+@Composable
+internal fun <T> ReadContent(state: T, modifier: Modifier = Modifier,
+    pending: (T) -> Boolean, contentKey: (T) -> Any? = { it }, animateSize: Boolean = true,
+    content: @Composable (T) -> Unit) {
+    val skeletonPaint = delayedSkeletonModifier(active = pending(state), enabled = !LocalReadSkeletonManaged.current)
+    ContentFade(state, modifier, contentKey, animateSize = animateSize) { displayed ->
+        CompositionLocalProvider(LocalSkeletonDelayEnabled provides false,
+            LocalReadSkeletonManaged provides (LocalReadSkeletonManaged.current || pending(displayed))) {
+            val pendingContent = pending(displayed)
+            val paint = if (pendingContent) skeletonPaint else Modifier
+            // Outgoing paint participates in the fade but no longer announces loading.
+            val semantics = if (pendingContent && !pending(state)) Modifier.clearAndSetSemantics {} else Modifier
+            Box(paint.then(semantics)) { content(displayed) }
+        }
+    }
+}
+
+/** Unknown values keep one line; real text wraps at its final width using the shared motion. */
+@Composable
+internal fun ReadText(text: String?, modifier: Modifier = Modifier,
+    fontSize: TextUnit = TextUnit.Unspecified, lineHeight: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null, color: Color = MiuixTheme.colorScheme.onSurface,
+    textAlign: TextAlign = TextAlign.Start, fraction: Float = .6f) {
+    ReadContent(text, modifier, pending = { it == null }) { displayed ->
+        if (displayed == null) DashboardPlaceholder(fontSize, Modifier.fillMaxWidth(),
+            fraction = fraction, lineHeight = lineHeight)
+        else Text(displayed, Modifier.fillMaxWidth(), fontSize = fontSize, lineHeight = lineHeight,
+            fontWeight = fontWeight, color = color, textAlign = textAlign)
+    }
 }
 
 /** A short-lived insertion event, never an animation triggered by merely scrolling into view. */

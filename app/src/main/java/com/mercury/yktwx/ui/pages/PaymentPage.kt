@@ -169,9 +169,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                 Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(AppIcons.CardState, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        Text(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp), fontSize = 11.sp,
+                                        UpdatedText(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), numeric = false, fontSize = 11.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        Spacer(Modifier.weight(1f))
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -179,18 +178,21 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                             // height even while only a small spinner is shown.
                                             Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
-                                            if (state.busy && state.account == null) {
+                                            ReadContent((state.busy && state.account == null) to state.account?.balanceCents,
+                                                pending = { it.first }, contentKey = { it.first }) { (reading, balance) ->
+                                            if (reading) {
                                                 DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
                                                     lineHeight = 38.sp, sample = "¥ 0.00")
                                             } else {
                                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                 UpdatedText(
-                                                    state.account?.let { money(it.balanceCents) } ?: "—", prefix = "¥ ", identity = state.account?.account,
-                                                    modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                    balance?.let(::money) ?: "—", prefix = "¥ ", identity = state.account?.account,
+                                                    modifier = Modifier.weight(1f, fill = false),
                                                     fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                                                 )
                                                 BalanceReadIndicator(state.balanceLoading || state.accountLoading)
                                                 }
+                                            }
                                             }
                                         }
                                         CompactButton("充值", onClick = onRecharge,

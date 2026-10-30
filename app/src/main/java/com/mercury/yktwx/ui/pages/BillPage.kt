@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -397,25 +396,29 @@ private fun BillSummaryCard(state: BillUiState) {
         Column {
         Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(Modifier.weight(1f)) {
-                UpdatedText(expensesLabel, identity = state.dateFilter, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                UpdatedText(expensesLabel, numeric = false, fontSize = 13.sp, lineHeight = 18.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
-                if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
+                ReadContent(pending to state.summary?.expensesCents, pending = { it.first }, contentKey = { it.first }) { (reading, amount) ->
+                if (reading) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
                     lineHeight = 34.sp, sample = "¥ 0.00") else UpdatedText(
-                    state.summary?.let { money(it.expensesCents) } ?: "—", prefix = "¥ ", identity = state.dateFilter,
-                    fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
+                    amount?.let(::money) ?: "—", prefix = "¥ ", identity = state.dateFilter,
+                    fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold,
                 )
+                }
             }
             Column(Modifier.weight(1f)) {
-                UpdatedText(incomeLabel, identity = state.dateFilter, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                UpdatedText(incomeLabel, numeric = false, fontSize = 13.sp, lineHeight = 18.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
-                if (pending) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
+                ReadContent(pending to state.summary?.incomeCents, pending = { it.first }, contentKey = { it.first }) { (reading, amount) ->
+                if (reading) DashboardPlaceholder(26.sp, Modifier.fillMaxWidth(), fraction = .72f,
                     lineHeight = 34.sp, sample = "¥ 0.00") else UpdatedText(
-                    state.summary?.let { money(it.incomeCents) } ?: "—", prefix = "¥ ", identity = state.dateFilter,
-                    fontSize = 26.sp, lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
+                    amount?.let(::money) ?: "—", prefix = "¥ ", identity = state.dateFilter,
+                    fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold,
                     color = MiuixTheme.colorScheme.primary,
                 )
+                }
             }
         }
         val error = state.summaryError ?: state.countsError
@@ -435,15 +438,14 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
             BillIcon(record.icon, income = record.income)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
+                UpdatedText(
                     record.resume.ifBlank { record.payName.ifBlank { "校园卡交易" } },
-                    fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    numeric = false, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 )
                 Spacer(Modifier.height(3.dp))
-                Text(
+                UpdatedText(
                     listOf(record.turnoverType, billTimeLabel(record)).filter { it.isNotBlank() }.joinToString(" · "),
-                    fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    numeric = false, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -503,6 +505,7 @@ private fun BillFilterSheet(
         // Cover the main tab bar, not just the nested bill page.
         renderInRootScaffold = true,
     ) {
+        ReadLayout(Modifier.fillMaxWidth()) {
         Column(
             Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -558,6 +561,7 @@ private fun BillFilterSheet(
                     colors = ButtonDefaults.buttonColorsPrimary(),
                 ) { Text("应用") }
             }
+        }
         }
     }
 }

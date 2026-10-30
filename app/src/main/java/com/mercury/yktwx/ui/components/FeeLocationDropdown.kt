@@ -56,6 +56,8 @@ internal fun FeeLocationDropdownPlaceholder() {
 
 @Composable
 private fun FeeLocationField(content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth(), cornerRadius = 14.dp,
-        colors = CardDefaults.defaultColors(color = DashboardPalette.field)) { content() }
+    ReadLayout(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth(), cornerRadius = 14.dp,
+            colors = CardDefaults.defaultColors(color = DashboardPalette.field)) { content() }
+    }
 }

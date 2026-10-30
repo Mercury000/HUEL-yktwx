@@ -74,6 +74,7 @@ fun RechargeDialog(
                 val loading = rememberWhileShown(show && !isResult, state.loading)
                 val preview = rememberWhileShown(show && !isResult, UiPreview.enabled && state.preview)
                 val error = rememberWhileShown(show && !isResult, state.error)
+                PaymentFormContent(config == null && loading) {
                 if (config != null) {
                     if (UiPreview.enabled && preview) PreviewNotes.Recharge()
                     config.recipient?.let { recipient ->
@@ -81,8 +82,7 @@ fun RechargeDialog(
                     }
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, loading,
                         !preview && recipientSelected, error, onSubmit, enabled = enabled)
-                } else if (loading) {
-                    PaymentAmountPlaceholder(methods = listOf("微信"))
+                }
                 }
             }
         }

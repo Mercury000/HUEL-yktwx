@@ -23,7 +23,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,21 +104,18 @@ internal fun MyPage(
                                         }
                                         Spacer(Modifier.width(14.dp))
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                            if (identityPending) {
-                                                DashboardPlaceholder(22.sp, Modifier.fillMaxWidth(), lineHeight = 30.sp)
-                                                DashboardPlaceholder(12.sp, Modifier.fillMaxWidth(), fraction = .5f, lineHeight = 18.sp, sample = "0")
-                                            } else {
-                                                Text(state.homeIdentity?.name?.takeIf { it.isNotBlank() } ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户",
-                                                    fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                Text(state.homeIdentity?.sno ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
-                                                    fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                            }
+                                            ReadText(if (identityPending) null else state.homeIdentity?.name?.takeIf { it.isNotBlank() }
+                                                ?: state.profile?.name?.takeIf { it.isNotBlank() } ?: "校园账户",
+                                                Modifier.fillMaxWidth(), fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
+                                            ReadText(if (identityPending) null else state.homeIdentity?.sno
+                                                ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
+                                                Modifier.fillMaxWidth(), fontSize = 12.sp, lineHeight = 18.sp, fraction = .5f,
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                             val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
                                                 ?: state.profile?.professionName.orEmpty()
-                                            if (studyPending) DashboardPlaceholder(11.sp, Modifier.fillMaxWidth(), lineHeight = 16.sp)
-                                            else Text(study.ifBlank { "资料" }, modifier = if (study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier,
-                                                fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            ReadText(if (studyPending) null else study.ifBlank { "资料" },
+                                                modifier = Modifier.fillMaxWidth().then(if (!studyPending && study.isBlank()) Modifier.clearAndSetSemantics {} else Modifier),
+                                                fontSize = 11.sp, lineHeight = 16.sp,
                                                 color = if (study.isBlank()) Color.Transparent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         }
                                         Icon(MiuixIcons.ChevronForward, null, Modifier.size(18.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -161,12 +157,13 @@ internal fun MyPage(
                                             }
                                         }
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            ContentFade(payment, Modifier.weight(1f), contentKey = { (it.balanceLoading || it.accountLoading) && it.account == null }) { displayed ->
+                                            ReadContent(payment, Modifier.weight(1f), pending = { (it.balanceLoading || it.accountLoading) && it.account == null },
+                                                contentKey = { (it.balanceLoading || it.accountLoading) && it.account == null }) { displayed ->
                                             if ((displayed.balanceLoading || displayed.accountLoading) && displayed.account == null) {
                                                 DashboardPlaceholder(36.sp, Modifier.fillMaxWidth(), fraction = .58f,
                                                     lineHeight = 44.sp, sample = "¥ 0.00", color = foreground.copy(alpha = .18f))
                                             } else UpdatedText(displayed.account?.let { money(it.balanceCents) } ?: "—", Modifier.fillMaxWidth(), prefix = "¥ ", identity = displayed.account?.account,
-                                                    fontSize = 36.sp, lineHeight = 44.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                    fontSize = 36.sp, lineHeight = 44.sp,
                                                     fontWeight = FontWeight.SemiBold, color = foreground)
                                             }
                                             CompactButton("+ 充值", onClick = onRecharge, enabled = !rechargeLoading,
@@ -176,8 +173,8 @@ internal fun MyPage(
                                         Surface(onClick = onAccount, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
-                                                Text(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), fontSize = 11.sp,
-                                                    maxLines = 1, overflow = TextOverflow.Ellipsis, color = foreground.copy(alpha = .8f))
+                                                UpdatedText(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f),
+                                                    numeric = false, fontSize = 11.sp, color = foreground.copy(alpha = .8f))
                                                 Text("账户详情", fontSize = 11.sp, color = foreground)
                                                 Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = foreground)
                                             }
@@ -202,9 +199,8 @@ internal fun MyPage(
                                     }
                                     HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        if (countsPending) DashboardPlaceholder(11.sp, Modifier.weight(1f), lineHeight = 16.sp)
-                                        else UpdatedText(state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易", Modifier.weight(1f), identity = state.month,
-                                            fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        ReadText(if (countsPending) null else state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易",
+                                            Modifier.weight(1f), fontSize = 11.sp, lineHeight = 16.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
                                     ReadNotice(state.summaryError ?: state.countsError,
@@ -237,10 +233,10 @@ internal fun MyPage(
 private fun MyAmount(label: String, cents: Long?, modifier: Modifier, income: Boolean = false, pending: Boolean = false) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        ContentFade(pending to cents, contentKey = { it.first }) { (showPlaceholder, displayedCents) ->
+        ReadContent(pending to cents, pending = { it.first }, contentKey = { it.first }) { (showPlaceholder, displayedCents) ->
         if (showPlaceholder) DashboardPlaceholder(24.sp, Modifier.fillMaxWidth(), lineHeight = 32.sp, sample = "0")
         else UpdatedText(displayedCents?.let { money(it) } ?: "—", prefix = "¥ ", fontSize = 24.sp, lineHeight = 32.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.SemiBold,
             color = if (income) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurface)
         }
     }
@@ -292,6 +288,7 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
                 loading = state.loading && state.profile != null, errorTag = "read-notice") {
+            ReadLayout(Modifier.fillMaxWidth().testTag("profile-details-card")) {
             Card(Modifier.fillMaxWidth()) {
                 Surface(onClick = { onAvatar?.invoke() }, enabled = onAvatar != null, color = Color.Transparent,
                     modifier = Modifier.fillMaxWidth().semantics { if (onAvatar != null) contentDescription = "更换头像" }) {
@@ -310,6 +307,7 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
                 state.profile?.departmentName?.takeIf { it.isNotBlank() }?.let { ProfileField("部门", it) }
             }
             }
+            }
         }
     }
 }
@@ -325,11 +323,13 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
                 loading = reading && payment.account != null, errorTag = "read-notice") {
+            ReadLayout(Modifier.fillMaxWidth()) {
             Card(Modifier.fillMaxWidth()) {
                 val pending = payment.account == null && (balancePending || initialError != null)
                 ProfileField("账户", payment.account?.name, pending)
                 ProfileField("余额", payment.account?.let { "¥ ${money(it.balanceCents)}" }, pending)
                 ProfileField("校园卡状态", cardStatus(payment.accountCard, payment.account?.account, payment.cardStatusLoading))
+            }
             }
             }
         }
@@ -340,10 +340,16 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
 
 @Composable
 private fun ProfileField(label: String, value: String?, pending: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().testTag("profile-field-$label").padding(18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        if (pending) DashboardPlaceholder(14.sp, Modifier.weight(1f), fraction = .55f, lineHeight = 20.sp)
-        else UpdatedText(value?.takeIf { it.isNotBlank() } ?: "未提供", Modifier.weight(1f), fontSize = 14.sp, textAlign = TextAlign.End, numeric = label == "余额", identity = label)
+        if (label == "余额") {
+            ReadContent(pending to value, Modifier.weight(1f), pending = { it.first }, contentKey = { it.first }, animateSize = false) { (reading, amount) ->
+                if (reading) DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .55f, lineHeight = 20.sp)
+                else UpdatedText(amount?.takeIf { it.isNotBlank() } ?: "未提供", Modifier.fillMaxWidth(),
+                    fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.End, identity = label)
+            }
+        } else ReadText(if (pending) null else value?.takeIf { it.isNotBlank() } ?: "未提供",
+            Modifier.weight(1f), fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.End, fraction = .55f)
     }
 }
 

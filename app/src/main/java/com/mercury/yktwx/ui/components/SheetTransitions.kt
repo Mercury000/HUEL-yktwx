@@ -2,7 +2,6 @@ package com.mercury.yktwx.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -21,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,9 +47,8 @@ internal fun rememberOverlaySession(shown: Boolean): Any {
     return session
 }
 
-internal fun Modifier.sheetContentSize(): Modifier = animateContentSize(
-    animationSpec = tween(SheetPageDuration, easing = FastOutSlowInEasing),
-)
+@Composable
+internal fun Modifier.sheetContentSize(): Modifier = readContentSize()
 
 /** Invoke inside the sheet's title slot so the popup owns the transition. */
 @Composable
@@ -86,7 +85,9 @@ internal fun <T : Enum<T>> SheetPageContent(targetPage: T, modifier: Modifier = 
                 .using(SizeTransform { _, _ -> tween(SheetPageDuration, easing = FastOutSlowInEasing) })
         }, label = "SheetPage") { page ->
         CompositionLocalProvider(LocalSkeletonDelayEnabled provides false) {
-            content(page, page == targetPage)
+            // A server response can change rows within the same route (amounts, methods,
+            // room options). Keep the live form mounted while its measured height settles.
+            ReadLayout(Modifier.fillMaxWidth().testTag("sheet-read-layout")) { content(page, page == targetPage) }
         }
     }
 }

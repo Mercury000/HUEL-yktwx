@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.key
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +32,8 @@ import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.DormRoom
 import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.data.DormMeterSlot
+import com.mercury.yktwx.data.DormMeter
+import com.mercury.yktwx.data.FeeQuery
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -150,22 +151,54 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget:
                     DashboardLink("切换", onClick = onSwitch, enabled = !state.managing)
                 }
             }
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.rooms.isEmpty() && !state.roomsLoaded && state.error == null) {
-                    UtilityPlaceholder()
-                } else if (state.rooms.isEmpty() && state.error != null) {
-                    ReadUnavailable(state.error)
-                } else if (state.rooms.isEmpty()) {
-                    UnboundRoomContent(enabled = !state.managing && !state.loading,
-                        onAdd = onAdd, onTemporaryPay = onTemporaryPay)
-                } else state.selectedRoom?.let { room ->
-                    key(room.project, room.binding.selections) {
-                        DormRoomContent(room, opening, openingTarget, { onSwitch() }, onPay, state.error)
+            val display = remember(state) { utilityDisplay(state) }
+            ReadLayout(Modifier.fillMaxWidth()) {
+                ReadContent(display, Modifier.fillMaxWidth(),
+                    pending = { it.pending },
+                    contentKey = ::utilityContentKey) { displayed ->
+                    val interactive = utilityContentKey(displayed) == utilityContentKey(display)
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (displayed.pending) {
+                            UtilityPlaceholder()
+                        } else if (displayed.room == null && displayed.error != null) {
+                            ReadUnavailable(displayed.error)
+                        } else if (displayed.room == null) {
+                            UnboundRoomContent(enabled = interactive && !state.managing && !state.loading,
+                                onAdd = onAdd, onTemporaryPay = onTemporaryPay)
+                        } else displayed.room.let { room ->
+                            key(room.project, room.binding.selections) {
+                                DormRoomContent(room, opening, openingTarget, { onSwitch() }, onPay, displayed.error, interactive)
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Amount-only refreshes retain the existing panels and their numeric animation. */
+private data class UtilityDisplay(val room: DormRoom?, val pending: Boolean, val error: String?)
+
+/** Animated snapshots contain display readings, never the server payment query payload. */
+private fun utilityDisplay(state: DormUiState) = UtilityDisplay(state.selectedRoom?.let { room ->
+    DormRoom(room.project, room.binding, room.meters.map { meter ->
+        DormMeter(meter.kind, meter.room, meter.query?.let { FeeQuery(display = it.display) },
+            meter.error, meter.project, meter.updating)
+    }, room.updatedAtMillis, room.notice, pendingMeters = room.pendingMeters)
+}, state.rooms.isEmpty() && !state.roomsLoaded && state.error == null, state.error)
+
+/** Only a different room or visible panel structure replaces the body. Background refresh
+ * flags and normalized project/order metadata must never fade already painted cards. */
+private fun utilityContentKey(state: UtilityDisplay): Any = state.room?.let { room ->
+    val readySlots = room.meters.map { DormMeterSlot(it.kind, it.project ?: room.project) }.toSet()
+    val slots = (readySlots + room.pendingMeters).sortedWith(
+        compareBy<DormMeterSlot> { it.kind.ordinal }.thenBy { it.project.ordinal })
+    listOf(room.project, room.binding.selections, slots.map { listOf(it, it in readySlots) })
+} ?: when {
+    state.pending -> "pending"
+    state.error != null -> "error"
+    else -> "unbound"
 }
 
 @Composable
@@ -195,10 +228,10 @@ private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: (
             Text(if (temporary) "临时缴费" else "房间管理", fontSize = 13.sp, lineHeight = 18.sp, color = ink)
         }
         Text(if (temporary) "无需绑定" else "常用房间", fontSize = 10.sp, lineHeight = 14.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         UtilityValueRow {
             Text(if (temporary) "按次缴费" else "尚未添加", fontSize = 22.sp, lineHeight = 38.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = ink)
+                fontWeight = FontWeight.SemiBold, color = ink)
         }
         Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp), color = button, contentColor = accent) {
@@ -211,7 +244,7 @@ private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: (
 
 @Composable
 private fun UtilityValueRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.height(with(LocalDensity.current) { 38.sp.toDp() }),
+    Row(Modifier.fillMaxWidth().heightIn(min = with(LocalDensity.current) { 38.sp.toDp() }),
         verticalAlignment = Alignment.Bottom, content = content)
 }
 
@@ -219,9 +252,9 @@ private fun UtilityValueRow(content: @Composable RowScope.() -> Unit) {
 private fun UtilityPlaceholder() {
     Column(Modifier.fillMaxWidth().then(delayedSkeletonModifier()).semantics { contentDescription = "正在读取房间" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DashboardPlaceholder(15.sp, Modifier.fillMaxWidth(), lineHeight = 22.sp)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             repeat(2) {
-                Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(DashboardPalette.field).padding(14.dp),
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp)).background(DashboardPalette.field).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(Modifier.size(17.dp).background(MiuixTheme.colorScheme.onSurface.copy(alpha = .08f), CircleShape))
@@ -242,19 +275,18 @@ private fun UtilityPlaceholder() {
 
 @Composable
 private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
-    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: String? = null) {
+    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: String? = null, interactive: Boolean = true) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(room.hallLabel, Modifier.weight(1f), fontSize = 15.sp, lineHeight = 22.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 15.sp, lineHeight = 22.sp,
+            fontWeight = FontWeight.SemiBold)
         HallBadge("已绑定")
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val slots = (room.meters.map { DormMeterSlot(it.kind, it.project ?: room.project) } + room.pendingMeters)
             .distinct().sortedWith(compareBy<DormMeterSlot> { it.kind.ordinal }.thenBy { it.project.ordinal })
         slots.forEach { slot ->
             val meter = room.meters.firstOrNull { it.kind == slot.kind && (it.project ?: room.project) == slot.project }
-            ContentFade(meter, Modifier.weight(1f), contentKey = { it != null }) { meter ->
-            if (meter == null) PendingMeterPanel(slot, Modifier.fillMaxWidth()) else {
+            if (meter == null) PendingMeterPanel(slot, Modifier.weight(1f).fillMaxHeight()) else {
                 val project = slot.project
                 val water = project == FeeProject.FamilyWater
                 val family = project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
@@ -264,7 +296,8 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                 val accent = if (secondary) DashboardPalette.airAccent else DashboardPalette.lightingAccent
                 val panel = if (secondary) DashboardPalette.airPanel else DashboardPalette.lightingPanel
                 val button = if (secondary) DashboardPalette.airButton else DashboardPalette.lightingButton
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
+                Column(Modifier.weight(1f).fillMaxHeight().testTag("utility-panel-${project.name}-${slot.kind.name}")
+                    .clip(RoundedCornerShape(18.dp)).background(panel).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(if (water) AppIcons.Water else if (air) AppIcons.AirConditioning else AppIcons.Electricity,
@@ -273,24 +306,30 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                     }
                     val readings = meter.readings
                     val primary = readings.firstOrNull()
-                    Text(primary?.label ?: if (water) "剩余水量" else "剩余电量",
-                        fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    UtilityValueRow {
-                        UpdatedText(primary?.value ?: "—", identity = listOf(project, meter.room.selections), fontSize = 29.sp, lineHeight = 38.sp, maxLines = 1,
-                            modifier = Modifier.weight(1f, fill = false), overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold, color = ink)
-                        if (primary?.unit?.isNotEmpty() == true) Text(primary.unit,
-                            Modifier.padding(start = 3.dp, bottom = 4.dp), fontSize = 11.sp, lineHeight = 16.sp,
+                    Column(Modifier.weight(1f).fillMaxWidth().testTag("utility-readings-${project.name}-${slot.kind.name}"),
+                        verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)) {
+                        UpdatedText(primary?.label ?: if (water) "剩余水量" else "剩余电量",
+                            numeric = false, fontSize = 10.sp, lineHeight = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    }
-                    readings.drop(1).takeIf { it.isNotEmpty() }?.let { extra ->
-                        Text(extra.joinToString(" · ") { "${it.label} ${it.value}${it.unit}" }, fontSize = 11.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        if (primary != null && !primary.value.matches(Regex("-?\\d+(?:\\.\\d+)?"))) {
+                            UpdatedText(primary.value, numeric = false, fontSize = 15.sp, lineHeight = 22.sp, color = ink)
+                        } else UtilityValueRow {
+                            UpdatedText(primary?.value ?: "—", identity = listOf(project, meter.room.selections), fontSize = 29.sp, lineHeight = 38.sp,
+                                modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                                fontWeight = FontWeight.SemiBold, color = ink, fitNumber = true)
+                            if (primary?.unit?.isNotEmpty() == true) Text(primary.unit,
+                                Modifier.padding(start = 3.dp).alignByBaseline(), fontSize = 11.sp, lineHeight = 16.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                        readings.drop(1).map { "${it.label.trim()} ${it.value.trim()}${it.unit.trim()}".trim() }
+                            .filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let { extra ->
+                            UpdatedText(extra.joinToString(" · "), numeric = false, fontSize = 11.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
                     }
                     Surface(
                         onClick = { onPay(project, meter.room) },
-                        enabled = !feeEntryOpening(opening, openingTarget, project, meter.room),
+                        enabled = interactive && !feeEntryOpening(opening, openingTarget, project, meter.room),
                         modifier = Modifier.fillMaxWidth().then(
                             if (room.meters.size == 1) Modifier.testTag("utility-single-recharge") else Modifier),
                         shape = RoundedCornerShape(12.dp),
@@ -306,14 +345,13 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                     }
                 }
             }
-            }
         }
     }
     ReadNotice(readError ?: room.meters.firstNotNullOfOrNull { it.error },
         cached = room.meters.any { it.query != null })
     if (room.notice != null && readError == null && room.meters.none { it.error != null }) {
-        Text(room.notice, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        DashboardLink("核实房间", onClick = { onChoose(room.project) })
+        UpdatedText(room.notice, numeric = false, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        DashboardLink("核实房间", onClick = { onChoose(room.project) }, enabled = interactive)
     }
 }
 
@@ -333,8 +371,10 @@ private fun PendingMeterPanel(slot: DormMeterSlot, modifier: Modifier) {
             Text(if (family) if (water) "水费" else "电费" else slot.kind.label,
                 fontSize = 13.sp, lineHeight = 18.sp, color = ink)
         }
-        DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
-        UtilityValueRow { DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0") }
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)) {
+            DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
+            UtilityValueRow { DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0") }
+        }
         Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
         }
@@ -353,9 +393,14 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
             if (state.network == null && state.networkError != null) {
                 ReadUnavailable(state.networkError)
             } else Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!state.networkLoaded && state.network == null && state.networkError == null) DashboardPlaceholder(15.sp, Modifier.weight(1f), lineHeight = 22.sp)
-                else Text(state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—", Modifier.weight(1f),
-                    fontSize = 15.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val packageName = if (!state.networkLoaded && state.network == null) null
+                    else state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—"
+                ReadContent(packageName, Modifier.weight(1f), pending = { it == null }) { name ->
+                    if (name == null) DashboardPlaceholder(15.sp,
+                        Modifier.fillMaxWidth().testTag("network-package-placeholder"), lineHeight = 22.sp)
+                    else Text(name, Modifier.fillMaxWidth().testTag("network-package-name"),
+                        fontSize = 15.sp, lineHeight = 22.sp)
+                }
                 CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))
             }
             if (state.network != null) ReadNotice(state.networkError, cached = true)
@@ -380,7 +425,7 @@ internal val DormRoom.hallLabel: String get() {
 
 @Composable
 internal fun HallBadge(text: String, air: Boolean = false) {
-    Text(text, Modifier.clip(RoundedCornerShape(4.dp)).background(if (air) DashboardPalette.airPanel else DashboardPalette.field)
-        .padding(horizontal = 5.dp, vertical = 2.dp), fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1,
+    UpdatedText(text, Modifier.widthIn(max = 120.dp).clip(RoundedCornerShape(4.dp)).background(if (air) DashboardPalette.airPanel else DashboardPalette.field)
+        .padding(horizontal = 5.dp, vertical = 2.dp), numeric = false, fontSize = 10.sp, lineHeight = 14.sp,
         color = if (air) DashboardPalette.airAccent else MiuixTheme.colorScheme.onSurfaceVariantSummary)
 }

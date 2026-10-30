@@ -29,10 +29,19 @@ internal val FeeProject.hallTitle: String get() = when (this) {
 
 @Composable
 internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect,
-        colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
-            contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface))
+    ReadLayout(Modifier.fillMaxWidth()) {
+        TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect,
+            colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
+                contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface))
+    }
+}
+
+/** Match the native contour height and outer radius without creating hidden tabs or scroll state. */
+@Composable
+internal fun HallNeutralTabsPlaceholder() {
+    ContentPlaceholder(Modifier.fillMaxWidth().height(TabRowDefaults.TabRowWithContourHeight),
+        cornerRadius = TabRowDefaults.TabRowWithContourCornerRadius + 5.dp)
 }
 
 private enum class RoomSheetPage { Rooms, Temporary, Add }
@@ -77,19 +86,23 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                 }
                 if (page == RoomSheetPage.Rooms) {
                     if (!state.error.isNullOrBlank()) InlineError(state.error)
-                    if (state.rooms.isEmpty()) {
-                        if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
-                            fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                        else DashboardPlaceholder(14.sp, Modifier.fillMaxWidth().padding(vertical = 16.dp))
-                    }
-                    state.rooms.forEachIndexed { index, room ->
-                        PaymentSelectionCard(selected = index == state.selectedIndex, onClick = { onSelect(index) },
-                            enabled = enabled, modifier = Modifier.testTag("hall-room-$index")) { contentColor ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(room.hallLabel, Modifier.weight(1f), fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold, color = contentColor)
-                                DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
-                                    color = contentColor.copy(alpha = .82f))
+                    ReadContent(state.rooms.isEmpty() && !state.roomsLoaded, Modifier.fillMaxWidth(), pending = { it }) { reading ->
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            if (reading) DashboardPlaceholder(14.sp, Modifier.fillMaxWidth().padding(vertical = 16.dp))
+                            else if (state.rooms.isEmpty()) {
+                                if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
+                                    fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            }
+                            if (!reading) state.rooms.forEachIndexed { index, room ->
+                                PaymentSelectionCard(selected = index == state.selectedIndex, onClick = { onSelect(index) },
+                                    enabled = enabled, modifier = Modifier.testTag("hall-room-$index")) { contentColor ->
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 16.sp,
+                                            fontWeight = FontWeight.SemiBold, color = contentColor)
+                                        DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
+                                            color = contentColor.copy(alpha = .82f))
+                                    }
+                                }
                             }
                         }
                     }
