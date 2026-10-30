@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
@@ -30,11 +32,14 @@ internal fun CodeArtwork(code: String, format: BarcodeFormat, width: Int, height
         bitmap = withContext(Dispatchers.Default) {
             val hints = mapOf(EncodeHintType.MARGIN to if (format == BarcodeFormat.QR_CODE) 4 else 12)
             val matrix = MultiFormatWriter().encode(code, format, width, height, hints)
-            val pixels = IntArray(width * height) { index -> if (matrix[index % width, index / width]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
+            val pixels = IntArray(width * height) { index ->
+                if (matrix[index % width, index / width]) android.graphics.Color.BLACK else android.graphics.Color.TRANSPARENT
+            }
             android.graphics.Bitmap.createBitmap(pixels, width, height, android.graphics.Bitmap.Config.ARGB_8888)
         }
     }
-    Box(modifier.background(Color.White), contentAlignment = Alignment.Center) {
+    val shape = RoundedCornerShape(if (format == BarcodeFormat.QR_CODE) 16.dp else 6.dp)
+    Box(modifier.background(Color.White, shape), contentAlignment = Alignment.Center) {
         bitmap?.let { Image(it.asImageBitmap(), contentDescription = description, modifier = Modifier.fillMaxSize(), filterQuality = FilterQuality.None) }
     }
 }
