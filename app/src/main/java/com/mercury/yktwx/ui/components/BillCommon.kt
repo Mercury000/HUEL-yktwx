@@ -157,7 +157,7 @@ internal fun BillIcon(icon: String, modifier: Modifier = Modifier, size: Dp = 40
 
 @Composable
 internal fun BillFilterPill(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    Surface(
+    ActionSurface(
         onClick = onClick, enabled = enabled,
         shape = RoundedCornerShape(50),
         color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
@@ -187,7 +187,8 @@ internal fun BillDateSelector(
             Modifier.weight(1f).heightIn(min = 44.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(onClick = { showSheet = true }, enabled = isActive, color = Color.Transparent) {
+            ActionSurface(onClick = { showSheet = true }, enabled = isActive,
+                feedbackStyle = PressFeedbackStyle.Content) {
                 Row(
                     Modifier.padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.Start,
@@ -503,10 +504,11 @@ private fun BillRangeDateField(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    Surface(
+    ActionSurface(
         onClick = onClick,
         modifier = modifier,
         color = Color.Transparent,
+        feedbackStyle = PressFeedbackStyle.Content,
     ) {
         Column(Modifier.padding(vertical = 6.dp)) {
             Text(

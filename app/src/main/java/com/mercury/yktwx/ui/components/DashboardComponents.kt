@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +104,7 @@ internal fun CompactButton(text: String, onClick: () -> Unit, modifier: Modifier
     TextButton(text, onClick = onClick, modifier = modifier, enabled = enabled,
         minHeight = 32.dp, cornerRadius = 12.dp, insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         textStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium),
+        indication = rememberPressFeedback(color = textColor),
         colors = ButtonDefaults.textButtonColors(color = color, textColor = textColor))
 }
 
@@ -110,7 +112,8 @@ internal fun CompactButton(text: String, onClick: () -> Unit, modifier: Modifier
 internal fun DashboardLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     enabled: Boolean = true, leading: ImageVector? = null, arrow: Boolean = true,
     color: Color = MiuixTheme.colorScheme.primary, trailingArrowAtEnd: Boolean = false) {
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier, color = Color.Transparent) {
+    ActionSurface(onClick = onClick, enabled = enabled, modifier = modifier,
+        feedbackStyle = PressFeedbackStyle.Content) {
         Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (leading != null) Icon(leading, null, Modifier.size(16.dp), tint = color)
@@ -124,8 +127,9 @@ internal fun DashboardLink(text: String, onClick: () -> Unit, modifier: Modifier
 /** Compact condition label with one removal action and the standard Surface touch target. */
 @Composable
 internal fun RemovableCondition(label: String, onRemove: () -> Unit) {
-    Surface(onClick = onRemove, color = MiuixTheme.colorScheme.primary.copy(alpha = .08f),
+    ActionSurface(onClick = onRemove, color = MiuixTheme.colorScheme.primary.copy(alpha = .08f),
         shape = RoundedCornerShape(10.dp),
+        feedbackColor = MiuixTheme.colorScheme.primary,
         modifier = Modifier.semantics { contentDescription = "移除条件：$label" }) {
         Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -138,8 +142,9 @@ internal fun RemovableCondition(label: String, onRemove: () -> Unit) {
 
 /** A small visibility icon with the same expanded touch target as other compact actions. */
 @Composable
-internal fun VisibilityToggle(visible: Boolean, subject: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(onClick = onClick, modifier = modifier.size(24.dp), color = Color.Transparent) {
+internal fun VisibilityToggle(visible: Boolean, subject: String, onClick: () -> Unit, modifier: Modifier = Modifier,
+    enabled: Boolean = true) {
+    ActionSurface(onClick = onClick, enabled = enabled, modifier = modifier.size(24.dp), shape = CircleShape) {
         Box(contentAlignment = Alignment.Center) {
             Icon(if (visible) MiuixIcons.Hide else MiuixIcons.Show,
                 contentDescription = if (visible) "隐藏$subject" else "显示$subject",
@@ -160,8 +165,10 @@ internal fun DashboardPreference(title: String, onClick: () -> Unit, summary: St
         paragraph = styles.paragraph.copy(fontSize = 14.sp),
         headline1 = styles.headline1.copy(fontSize = 14.sp),
     )) {
-        ArrowPreference(title = title, summary = summary, onClick = onClick, enabled = enabled,
-            startAction = startAction?.let { action -> { Box(Modifier.padding(end = 10.dp)) { action() } } },
-            endActions = endActions, insideMargin = PaddingValues(horizontal = 20.dp, vertical = if (summary == null) 8.dp else 14.dp))
+        AppPressFeedbackHost {
+            ArrowPreference(title = title, summary = summary, onClick = onClick, enabled = enabled,
+                startAction = startAction?.let { action -> { Box(Modifier.padding(end = 10.dp)) { action() } } },
+                endActions = endActions, insideMargin = PaddingValues(horizontal = 20.dp, vertical = if (summary == null) 8.dp else 14.dp))
+        }
     }
 }

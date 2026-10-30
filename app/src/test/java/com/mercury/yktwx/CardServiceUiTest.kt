@@ -328,7 +328,7 @@ class CardServiceUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {}, {
                     refreshes++
-                    current.value = current.value.copy(captcha = RecipientCaptcha("fresh-key-$refreshes", image), recipients = emptyList(), selectedRecipient = null)
+                    current.value = current.value.copy(loading = true, captcha = null, recipients = emptyList(), selectedRecipient = null)
                 }, {}, { _, _, _ -> current.value = current.value.copy(recipients = listOf(recipient), captcha = null) }, {}, {}) } }
             }
         }
@@ -336,11 +336,30 @@ class CardServiceUiTest {
         val fields = compose.onAllNodes(hasSetTextAction())
         fields.onFirst().performTextInput("202600000002")
         fields.onLast().performTextInput("abcde")
-        val picBounds = compose.onNodeWithContentDescription("图形验证码").fetchSemanticsNode().boundsInRoot
+        val picture = compose.onNodeWithContentDescription("图形验证码")
+        val picBounds = picture.fetchSemanticsNode().boundsInRoot
         val inputBounds = fields.onLast().fetchSemanticsNode().boundsInRoot
         assertTrue(picBounds.right < inputBounds.left)
-        compose.onNodeWithContentDescription("图形验证码").performClick()
+        val density = compose.activity.resources.displayMetrics.density
+        assertEquals("Captcha must retain its original width", 112f * density, picBounds.width, 1f)
+        assertEquals("Captcha must retain its original height", 56f * density, picBounds.height, 1f)
+        val pixels = picture.captureToImage().asAndroidBitmap()
+        compose.mainClock.autoAdvance = false
+        picture.performTouchInput { down(center) }
+        repeat(20) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertTrue("Pressing must not tint the captcha or add a border", pixels.sameAs(picture.captureToImage().asAndroidBitmap()))
+        picture.performTouchInput { cancel() }
+        repeat(20) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertEquals("Cancelling must not refresh", 0, refreshes)
+        compose.mainClock.autoAdvance = true
+        picture.performClick()
         assertEquals(1, refreshes)
+        compose.onNode(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo,
+            androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate)).assertIsDisplayed()
+        screenshot("campus-card-captcha-refreshing")
+        compose.runOnIdle {
+            current.value = current.value.copy(loading = false, captcha = RecipientCaptcha("fresh-key-$refreshes", image))
+        }
         fields.onLast().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
         fields.onLast().performTextInput("fresh")
         screenshot("campus-card-query-dialog")

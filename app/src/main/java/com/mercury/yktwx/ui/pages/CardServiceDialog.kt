@@ -112,7 +112,8 @@ private fun RecipientRechargeSheet(
                     modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
                 val bitmap = rememberWhileShown(show, rememberSampledImage(state.captcha?.image, 112.dp, 56.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.width(112.dp).height(56.dp).clickable(enabled = enabled, role = Role.Button,
+                    Box(Modifier.width(112.dp).height(56.dp).clickable(
+                        interactionSource = null, indication = null, enabled = enabled, role = Role.Button,
                         onClickLabel = "更换验证码", onClick = { captchaCode = ""; onRefreshCaptcha() }), contentAlignment = Alignment.Center) {
                         if (bitmap != null) Image(bitmap, contentDescription = "图形验证码", modifier = Modifier.fillMaxSize())
                         else if (display.loading) CircularProgressIndicator(Modifier.size(24.dp))

@@ -3,8 +3,6 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.semantics.Role
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import com.mercury.yktwx.ui.PaymentCodePresentationEffect
 import androidx.compose.foundation.background
@@ -137,7 +135,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                     Box(Modifier.fillMaxWidth().height(88.dp), contentAlignment = Alignment.Center) {
                                                         displayCode?.let { code ->
                                                             key(code) {
-                                                                CodeArtwork(code, BarcodeFormat.CODE_128, 1440, 330, Modifier.fillMaxSize().clickable(enabled = isActive, role = Role.Button, onClickLabel = "放大条形码") { enlarged = BarcodeFormat.CODE_128 }, "付款条形码")
+                                                                CodeArtwork(code, BarcodeFormat.CODE_128, 1440, 330, Modifier.fillMaxSize().paymentCodeClickable(enabled = isActive, onClickLabel = "放大条形码") { enlarged = BarcodeFormat.CODE_128 }, "付款条形码")
                                                             }
                                                         }
                                                     }
@@ -145,7 +143,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                                         val code = displayCode
                                                         if (code != null) {
                                                             key(code) {
-                                                                CodeArtwork(code, BarcodeFormat.QR_CODE, 900, 900, Modifier.fillMaxSize().clickable(enabled = isActive, role = Role.Button, onClickLabel = "放大二维码") { enlarged = BarcodeFormat.QR_CODE }, "付款二维码")
+                                                                CodeArtwork(code, BarcodeFormat.QR_CODE, 900, 900, Modifier.fillMaxSize().paymentCodeClickable(enabled = isActive, onClickLabel = "放大二维码") { enlarged = BarcodeFormat.QR_CODE }, "付款二维码")
                                                             }
                                                         } else {
                                                             Text(state.error ?: "付款码暂不可用，请下拉刷新",

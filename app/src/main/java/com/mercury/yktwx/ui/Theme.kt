@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import com.mercury.yktwx.ui.components.InputFocusDismissalHost
+import com.mercury.yktwx.ui.components.AppPressFeedbackHost
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -46,6 +47,8 @@ fun AppTheme(
         }
     }
     CompositionLocalProvider(LocalConfiguration provides providedConfig) {
-        MiuixTheme(controller = controller) { InputFocusDismissalHost(content) }
+        MiuixTheme(controller = controller) {
+            AppPressFeedbackHost { InputFocusDismissalHost(content) }
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +34,8 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) 
         TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect,
             colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
                 contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface))
+                selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface),
+            indication = rememberPressFeedback(shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
     }
 }
 
