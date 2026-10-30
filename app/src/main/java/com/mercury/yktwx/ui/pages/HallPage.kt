@@ -233,7 +233,7 @@ private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: (
             Text(if (temporary) "按次缴费" else "尚未添加", fontSize = 22.sp, lineHeight = 38.sp,
                 fontWeight = FontWeight.SemiBold, color = ink)
         }
-        Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+        ActionSurface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp), color = button, contentColor = accent) {
             Text(if (temporary) "去缴费" else "添加房间",
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), fontSize = 13.sp, lineHeight = 18.sp,
@@ -327,7 +327,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                         }
                     }
-                    Surface(
+                    ActionSurface(
                         onClick = { onPay(project, meter.room) },
                         enabled = interactive && !feeEntryOpening(opening, openingTarget, project, meter.room),
                         modifier = Modifier.fillMaxWidth().then(

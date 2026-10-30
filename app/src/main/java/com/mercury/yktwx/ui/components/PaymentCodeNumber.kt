@@ -29,7 +29,7 @@ internal fun PaymentCodeNumber(code: String?, isActive: Boolean, modifier: Modif
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(text, fontSize = fontSize, lineHeight = 20.sp, maxLines = 1, textAlign = TextAlign.Center,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            if (code != null) VisibilityToggle(visible, "完整付款码号", { if (isActive) visible = !visible })
+            if (code != null) VisibilityToggle(visible, "完整付款码号", { if (isActive) visible = !visible }, enabled = isActive)
         }
     }
 }

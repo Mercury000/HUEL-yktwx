@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -97,7 +98,9 @@ internal fun MyPage(
                                 (state.loading || balancePending || cardPending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
                                 failed = state.profileError != null || state.homeIdentityError != null || state.avatarError != null ||
                                     state.summaryError != null || state.countsError != null || payment.accountError != null || payment.cardStatusError != null) {
-                                Surface(onClick = onProfile, color = Color.Transparent, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
+                                ActionSurface(onClick = onProfile, shape = RoundedCornerShape(20.dp),
+                                    feedbackStyle = PressFeedbackStyle.Group,
+                                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         key(payment.username, state.profile?.sno.takeUnless { customAvatar }) {
                                             ProfileAvatar(state.avatar, 66.dp, customAvatar, avatarImage, avatarPending)
@@ -170,7 +173,9 @@ internal fun MyPage(
                                                 color = foreground, textColor = primary)
                                         }
                                         HorizontalDivider(color = MiuixTheme.colorScheme.onPrimary.copy(alpha = .16f))
-                                        Surface(onClick = onAccount, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
+                                        ActionSurface(onClick = onAccount, shape = RoundedCornerShape(12.dp),
+                                            feedbackStyle = PressFeedbackStyle.Group, feedbackColor = foreground,
+                                            modifier = Modifier.fillMaxWidth()) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
                                                 UpdatedText(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f),
@@ -290,7 +295,7 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
                 loading = state.loading && state.profile != null, errorTag = "read-notice") {
             ReadLayout(Modifier.fillMaxWidth().testTag("profile-details-card")) {
             Card(Modifier.fillMaxWidth()) {
-                Surface(onClick = { onAvatar?.invoke() }, enabled = onAvatar != null, color = Color.Transparent,
+                ActionSurface(onClick = { onAvatar?.invoke() }, enabled = onAvatar != null, shape = RectangleShape,
                     modifier = Modifier.fillMaxWidth().semantics { if (onAvatar != null) contentDescription = "更换头像" }) {
                     Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("头像", Modifier.weight(1f), fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

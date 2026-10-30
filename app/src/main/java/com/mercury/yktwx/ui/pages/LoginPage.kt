@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.ui.components.InlineError
+import com.mercury.yktwx.ui.components.ActionSurface
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import com.mercury.yktwx.data.UsageNotice
@@ -119,7 +120,7 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
         withLink(LinkAnnotation.Clickable("usage-notice", TextLinkStyles(SpanStyle(color = linkColor)),
             linkInteractionListener = { if (enabled) onRead() })) { append("《${UsageNotice.Title}》") }
     } }
-    Surface(onClick = onToggle, enabled = enabled, color = Color.Transparent, modifier = Modifier.fillMaxWidth().testTag("usage-consent-row")) {
+    ActionSurface(onClick = onToggle, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("usage-consent-row")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(if (accepted) ToggleableState.On else ToggleableState.Off, onClick = onToggle,
                 enabled = enabled, modifier = Modifier.testTag("usage-consent-checkbox"))

@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -148,7 +149,7 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
                 fontWeight = FontWeight.SemiBold,
             )
             ranking.forEachIndexed { index, record ->
-                Surface(onClick = { onOpenDetail(record) }, modifier = Modifier.fillMaxWidth(), color = Color.Transparent) {
+                ActionSurface(onClick = { onOpenDetail(record) }, shape = RectangleShape, modifier = Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
