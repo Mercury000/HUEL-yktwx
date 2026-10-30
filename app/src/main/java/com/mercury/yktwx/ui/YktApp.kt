@@ -193,7 +193,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                         CircularProgressIndicator()
                     }
                     AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
-                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) }, consent = consent)
+                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) }, consent = consent, onInputEdited = viewModel::loginInputEdited)
                     AuthPage.Main -> {
                         // Keep only shell identity for the outgoing animation.
                         // Latest logged-out state has already removed payment codes.
@@ -598,13 +598,13 @@ private fun MainContent(
                     CardServiceDialog(
                         cardState, cardModel::dismiss, cardModel::selectCard, cardModel::changeCard,
                         cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
-                        cardModel::selectRecipient, cardModel::continueRecharge, cardModel::retryRecipientConfig,
+                        cardModel::selectRecipient, cardModel::continueRecharge, cardModel::retryRecipientConfig, cardModel::inputEdited,
                     )
-                    CardPasswordDialog(passwordState, passwordModel::dismiss, passwordModel::selectCard, passwordModel::submit)
+                    CardPasswordDialog(passwordState, passwordModel::dismiss, passwordModel::selectCard, passwordModel::submit, passwordModel::inputEdited)
                     // Keep recharge under the root Scaffold so its overlay has a popup host.
                     RechargeDialog(
                         rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
-                        onCheck = rechargeModel::checkResult,
+                        onCheck = rechargeModel::checkResult, onInputEdited = rechargeModel::inputEdited,
                         onFinish = {
                             rechargeModel.finish()
                         },
@@ -622,7 +622,7 @@ private fun MainContent(
                             if (feeTarget == null) feeModel.selectFamilyProject(it)
                         }, onMeterKind = feeModel::selectDormMeterKind,
                         bindingProjects = dormState.bindingProjects,
-                        onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment,
+                        onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment, onInputEdited = feeModel::inputEdited,
                         onContinuePayment = feeModel::continuePayment,
                         onCheck = feeModel::checkResult,
                         onFinish = {

@@ -158,4 +158,13 @@ class CardPasswordApiTest {
         rejection { change(api(config = config)) }
         assertTrue(calls.none { it.requestMethod == "POST" || it.url.path.endsWith("keyboard") })
     }
+
+    @Test fun passwordErrorScopeUsesResponseCodeAndPreservesOfficialText() {
+        val password = rejection { change(api("{\"code\":200,\"data\":{\"retcode\":\"60005\",\"errmsg\":\"untranslated error\"}}")) }
+        assertEquals("untranslated error", password.message)
+        assertEquals(setOf(FormField.OldPassword), inputErrorFields(password))
+        val other = rejection { change(api("{\"code\":200,\"data\":{\"retcode\":\"60050\",\"errmsg\":\"密码服务异常\"}}")) }
+        assertTrue(inputErrorFields(other).isEmpty())
+    }
+
 }

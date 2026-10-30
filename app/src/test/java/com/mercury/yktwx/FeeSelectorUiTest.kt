@@ -190,8 +190,8 @@ class FeeSelectorUiTest {
         input.performImeAction()
         compose.onNodeWithText("单次最高 ¥ 500").assertIsDisplayed()
         val hint = compose.onNodeWithText("单次最高 ¥ 500").fetchSemanticsNode().boundsInRoot
-        assertTrue(hint.top > compose.onNodeWithText("支付方式").fetchSemanticsNode().boundsInRoot.bottom)
-        assertTrue(hint.bottom < compose.onNodeWithText("充值").fetchSemanticsNode().boundsInRoot.top)
+        assertTrue(hint.top > input.fetchSemanticsNode().boundsInRoot.bottom)
+        assertTrue(hint.bottom < compose.onNodeWithText("支付方式").fetchSemanticsNode().boundsInRoot.top)
         capture("payment-amount-limit")
         val bottom = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().bottom
         compose.mainClock.autoAdvance = false

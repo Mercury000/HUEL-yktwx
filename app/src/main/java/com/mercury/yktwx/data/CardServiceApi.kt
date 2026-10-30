@@ -85,12 +85,18 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val unknown = "修改结果未确认，请先在官网核实，勿重复提交"
         if (response.status in listOf(401, 403) || outer?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038))
             throw AuthenticationRequired(msg ?: errmsg ?: "登录已失效，请重新登录")
-        if (response.status !in 200..299 || outer?.optInt("code") != 200 || outer.opt("success") == false)
+        if (response.status !in 200..299 || outer?.optInt("code") != 200 || outer.opt("success") == false) {
+            if (outer?.optInt("code") == 60005) throw InputRejected(msg ?: errmsg ?: unknown, setOf(FormField.OldPassword))
             throw YktException(msg ?: errmsg ?: unknown)
+        }
         if (data == null) throw YktException(msg ?: unknown)
         val retcode = data.rechargeText("retcode")
         if (retcode.isBlank()) throw YktException(errmsg ?: msg ?: unknown)
-        if (retcode != "0") throw YktException(errmsg ?: msg ?: "修改查询密码失败")
+        if (retcode != "0") {
+            val reason = errmsg ?: msg ?: "修改查询密码失败"
+            if (retcode == "60005") throw InputRejected(reason, setOf(FormField.OldPassword))
+            throw YktException(reason)
+        }
         val echoed = data.rechargeText("account")
         if (echoed.isNotBlank() && echoed != current.account)
             throw YktException("修改结果未确认，请先在官网核实，勿重复提交")
@@ -149,6 +155,7 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val code = body.optInt("code", -1)
         if (code in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
         val retcode = data?.rechargeText("retcode").orEmpty()
+        val rejectionFields = if (code == 60005 || retcode == "60005") setOf(FormField.Password) else emptySet()
         val acceptedRetcodes = listOf("0", if (desiredLost) "60007" else "60008")
         val contradictoryAcceptance = retcode in acceptedRetcodes &&
             (code != 200 || body.opt("success") == false || response.status !in 200..299)
@@ -157,13 +164,13 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         if (code != 200) {
             if ((body.opt("success") == false || code >= 0 && code !in 500..599 || response.status in 400..499) &&
                 body.opt("success") != true && code !in 500..599)
-                throw CardOperationRejected(message ?: "Error")
+                throw CardOperationRejected(message ?: "Error", rejectionFields)
             throw CardOperationUnconfirmed(message ?: "操作响应未确认")
         }
         // Outer success describes the envelope; a non-success inner retcode is a business rejection.
         if ((retcode.isNotEmpty() && retcode !in acceptedRetcodes) ||
             (body.opt("success") == false && retcode.isEmpty()))
-            throw CardOperationRejected(message ?: "Error")
+            throw CardOperationRejected(message ?: "Error", rejectionFields)
         if (retcode !in acceptedRetcodes || body.opt("success") == false)
             throw CardOperationUnconfirmed(message ?: "操作响应未确认")
         // The official endpoint need not echo the account. Reject a conflicting echo, not its absence.
@@ -192,7 +199,7 @@ class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = {
         val response = http.request("/berserker-app/ykt/tsm/idtypeQueryCard", token, mapOf("idtype" to type.key, "id" to id,
             "scene" to "recharge", "captcha_header_key" to captcha.key, "captcha_header_code" to code.trim()))
         val raw = runCatching { JSONObject(response.body) }.getOrNull()
-        if (response.status == 200 && raw?.optInt("code") in listOf(8002, 8003)) throw RecipientLookupRejected("验证码有误，请重新输入")
+        if (response.status == 200 && raw?.optInt("code") in listOf(8002, 8003)) throw RecipientLookupRejected("验证码有误，请重新输入", setOf(FormField.Captcha))
         val data = http.json(response).optJSONObject("data") ?: throw RecipientLookupRejected("未查询到收款账户")
         if (data.rechargeText("retcode") != "0") throw RecipientLookupRejected(if (data.rechargeText("retcode") == "60003") "账户信息不存在，请检查学工号或证件号" else "查询失败，请核实收款人信息")
         val (_, ecard, _) = settings(token)

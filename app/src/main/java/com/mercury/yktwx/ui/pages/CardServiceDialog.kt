@@ -21,10 +21,11 @@ import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.CardServiceUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.components.trackInputFocus
-import com.mercury.yktwx.ui.components.InlineError
+import com.mercury.yktwx.ui.components.AnimatedInlineError
+import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetPageContent
-import com.mercury.yktwx.ui.components.sheetContentSize
+import com.mercury.yktwx.ui.components.ReadLayout
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import com.mercury.yktwx.ui.components.rememberSampledImage
@@ -47,11 +48,12 @@ fun CardServiceDialog(
     onSelectRecipient: (RechargeRecipient) -> Unit,
     onContinueRecharge: (Long) -> Unit,
     onRetryRecharge: () -> Unit = {},
+    onInputEdited: (FormField) -> Unit = {},
 ) {
     // Keep each overlay mounted while its own closing animation runs.
-    CardStateDialog(state, onDismiss, onSelectCard, onChangeCard)
+    CardStateDialog(state, onDismiss, onSelectCard, onChangeCard, onInputEdited)
     RecipientRechargeSheet(state, onDismiss, onRefreshCaptcha, onRecipientEdited, onQueryRecipient,
-        onSelectRecipient, onContinueRecharge, onRetryRecharge)
+        onSelectRecipient, onContinueRecharge, onRetryRecharge, onInputEdited)
 }
 
 @Composable
@@ -59,7 +61,7 @@ private fun RecipientRechargeSheet(
     state: CardServiceUiState, onDismiss: () -> Unit, onRefreshCaptcha: () -> Unit,
     onRecipientEdited: () -> Unit, onQueryRecipient: (RecipientQueryType, String, String) -> Unit,
     onSelectRecipient: (RechargeRecipient) -> Unit, onContinueRecharge: (Long) -> Unit,
-    onRetryRecharge: () -> Unit,
+    onRetryRecharge: () -> Unit, onInputEdited: (FormField) -> Unit,
 ) {
     val show = state.visible && state.action == CampusCardAction.OthersRecharge
     val session = rememberOverlaySession(show)
@@ -91,22 +93,22 @@ private fun RecipientRechargeSheet(
                 if (config != null) {
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, display.loading,
                         !display.preview && config.recipient === display.selectedRecipient, display.error, onContinueRecharge,
-                        enabled = enabled)
+                        enabled = enabled, onInputEdited = onInputEdited)
                 } else {
-                    if (!display.error.isNullOrBlank()) InlineError(display.error)
+                    AnimatedInlineError(display.error)
                 }
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     RecipientQueryType.entries.forEach { type ->
-                        Button(onClick = { if (queryType != type) { queryType = type; identifier = ""; captchaCode = ""; onRecipientEdited() } },
+                        Button(onClick = { if (queryType != type) { queryType = type; identifier = ""; captchaCode = ""; onRecipientEdited(); onInputEdited(FormField.Captcha) } },
                             enabled = enabled, modifier = Modifier.weight(1f),
                             colors = if (queryType == type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(type.label) }
                     }
                 }
                 TextField(value = identifier, onValueChange = {
-                    identifier = it.filter { c -> c in '0'..'9' || (queryType == RecipientQueryType.Identity && c in "Xx") }.take(32)
-                    onRecipientEdited()
+                    val next = it.filter { c -> c in '0'..'9' || (queryType == RecipientQueryType.Identity && c in "Xx") }.take(32)
+                    if (next != identifier) { identifier = next; onRecipientEdited() }
                 }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
                     modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
@@ -120,13 +122,14 @@ private fun RecipientRechargeSheet(
                         else if (UiPreview.enabled && display.preview) PreviewNotes.Captcha()
                         else Text("点击重试", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
-                    TextField(value = captchaCode, onValueChange = { captchaCode = it.take(16) }, label = "验证码", singleLine = true,
+                    TextField(value = captchaCode, onValueChange = { val next = it.take(16); if (next != captchaCode) { captchaCode = next; onInputEdited(FormField.Captcha) } }, label = "验证码", singleLine = true,
                         enabled = enabled, modifier = Modifier.trackInputFocus(enabled).weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
-                if (!display.error.isNullOrBlank()) InlineError(display.error)
-                Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
-                    enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "查询中…" else "查询") }
+                InlineErrorGroup(display.error, 16.dp) {
+                    Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
+                        enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "查询中…" else "查询") }
+                }
             }
         } }
         }
@@ -134,7 +137,7 @@ private fun RecipientRechargeSheet(
 }
 
 @Composable
-private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit) {
+private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit, onInputEdited: (FormField) -> Unit) {
     val show = state.visible && state.action != CampusCardAction.OthersRecharge
     val display = rememberWhileShown(show, state.copy(captcha = null))
     var password by remember(show, display.selectedCard) { mutableStateOf("") }
@@ -145,7 +148,8 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
         title = if (card != null || display.action == CampusCardAction.Unlost) "确认" + display.operation.label else "挂失 / 解挂",
         summary = if (card != null && !display.loading && !display.needsPassword && !card.lost) "挂失后校园卡将暂停使用" else null,
         onDismissRequest = onDismiss, defaultWindowInsetsPadding = true, renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().imePadding().sheetContentSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        ReadLayout(Modifier.fillMaxWidth().imePadding()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (initialLoading) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(28.dp))
             }
@@ -157,20 +161,25 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
             }
             if (card != null && display.needsPassword) {
                 TextField(value = password,
-                    onValueChange = { password = it.filter { c -> c in '0'..'9' }.take(6) }, label = "校园卡查询密码", singleLine = true,
+                    onValueChange = {
+                        val next = it.filter { c -> c in '0'..'9' }.take(6)
+                        if (next != password) { password = next; onInputEdited(FormField.Password) }
+                    }, label = "校园卡查询密码", singleLine = true,
                     enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.trackInputFocus(show && !display.loading).fillMaxWidth())
             } else {
                 if (!display.loading && card == null && display.error == null) Text(
                     if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
             }
-            if (!display.error.isNullOrBlank()) InlineError(display.error)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
-                Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
-                    enabled = show && card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
-                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "处理中…" else "确定") }
+            InlineErrorGroup(display.error, 16.dp) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
+                    Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },
+                        enabled = show && card != null && !display.loading && !display.preview && (!display.needsPassword || password.length == 6),
+                        modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "处理中…" else "确定") }
+                }
             }
+        }
         }
     }
 }

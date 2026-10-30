@@ -726,4 +726,33 @@ class FeeViewModelTest {
         assertEquals(0, fees.resultQueries)
     }
 
+
+    @Test fun passwordEditClearsRejectionWhileKeepingTheSamePaymentAttempt() {
+        openPassword()
+        val before = model.state.value
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Password, "official rejection")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.Amount)
+        assertNotNull(model.state.value.error)
+        model.inputEdited(FormField.Password)
+        assertNull(model.state.value.error)
+        assertSame(before.order, model.state.value.order)
+        assertSame(before.preparation, model.state.value.preparation)
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals(1, fees.payments)
+        assertEquals(1, fees.creations)
+        assertEquals(0, fees.resultQueries)
+    }
+    @Test fun paymentAccountEditAlsoInvalidatesThePreviousPasswordRejection() {
+        openPassword()
+        fees.failure = FeePaymentRejected(FeeRejectionReason.Password, "official rejection")
+        model.payAccount("demo-type", "123456")
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.PaymentAccount)
+        assertNull(model.state.value.error)
+        assertEquals(FeeStage.Password, model.state.value.stage)
+        assertEquals(1, fees.payments)
+    }
+
 }

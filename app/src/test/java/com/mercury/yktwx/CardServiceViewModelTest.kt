@@ -547,4 +547,46 @@ class CardServiceViewModelTest {
         assertOneResult("解挂成功")
     }
 
+
+    @Test fun editingARejectedCardPasswordDoesNotRepeatTheWrite() {
+        service.needsPassword = true
+        openCards()
+        service.writeFailure = CardOperationRejected("official rejection", setOf(FormField.Password))
+        model.changeCard("123456")
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.Captcha)
+        assertNotNull(model.state.value.error)
+        model.inputEdited(FormField.Password)
+        assertNull(model.state.value.error)
+        assertEquals(1, service.writes)
+        assertTrue(model.state.value.visible)
+    }
+    @Test fun captchaRejectionClearsWithoutRefreshingOrLosingLookupState() {
+        model.open(CampusCardAction.OthersRecharge, vault.username, false)
+        await { !model.state.value.loading }
+        service.queryFailure = RecipientLookupRejected("captcha rejected", setOf(FormField.Captcha))
+        model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "wrong")
+        await { !model.state.value.loading && model.state.value.error != null }
+        val captcha = model.state.value.captcha
+        val reads = service.captchas
+        model.inputEdited(FormField.Recipient)
+        assertNotNull(model.state.value.error)
+        model.inputEdited(FormField.Captcha)
+        assertNull(model.state.value.error)
+        assertSame(captcha, model.state.value.captcha)
+        assertEquals(reads, service.captchas)
+        assertEquals(1, service.queries)
+    }
+    @Test fun recipientEditingDoesNotEraseAuthenticationOrServiceFailures() {
+        model.open(CampusCardAction.OthersRecharge, vault.username, false)
+        await { !model.state.value.loading }
+        service.queryFailure = AuthenticationRequired()
+        model.queryRecipient(RecipientQueryType.StudentNumber, "202600000002", "wrong")
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.clearRecipient()
+        model.inputEdited(FormField.Captcha)
+        assertEquals(service.queryFailure!!.message, model.state.value.error)
+        assertEquals(1, service.queries)
+    }
+
 }

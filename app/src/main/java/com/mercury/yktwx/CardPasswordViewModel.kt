@@ -23,6 +23,7 @@ data class CardPasswordUiState(
     val selectedCard: CampusCard? = null,
     val error: String? = null,
     val preview: Boolean = false,
+    val errorFields: Set<FormField> = emptySet(),
 ) {
     override fun toString() = "CardPasswordUiState([redacted])"
 }
@@ -64,19 +65,24 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
     fun selectCard(card: CampusCard) {
         val s = mutable.value
         if (!s.visible || s.loading || card !in s.cards || card.frozen || card.status != 0) return
-        mutable.value = s.copy(selectedCard = card, error = null)
+        mutable.value = s.copy(selectedCard = card, error = null, errorFields = emptySet())
+    }
+    fun inputEdited(field: FormField) {
+        val s = mutable.value
+        if (s.visible && !s.loading && field in s.errorFields)
+            mutable.value = s.copy(error = null, errorFields = emptySet())
     }
     fun submit(oldPassword: String, newPassword: String, confirmation: String) {
         val s = mutable.value
         val card = s.selectedCard ?: return
         if (!s.visible || s.preview || s.loading || task?.isActive == true) return
         if (listOf(oldPassword, newPassword, confirmation).any { !it.matches(Regex("[0-9]{6}")) }) {
-            mutable.value = s.copy(error = "请输入 6 位数字查询密码"); return
+            mutable.value = s.copy(error = "请输入 6 位数字查询密码", errorFields = setOf(FormField.OldPassword, FormField.NewPassword, FormField.Confirmation)); return
         }
-        if (newPassword != confirmation) { mutable.value = s.copy(error = "两次输入的新密码不一致"); return }
+        if (newPassword != confirmation) { mutable.value = s.copy(error = "两次输入的新密码不一致", errorFields = setOf(FormField.NewPassword, FormField.Confirmation)); return }
         val current = attempt
         val username = owner
-        mutable.value = s.copy(loading = true, submitting = true, error = null)
+        mutable.value = s.copy(loading = true, submitting = true, error = null, errorFields = emptySet())
         task = viewModelScope.launch {
             try {
                 repository.modifyCardPassword(username, card, oldPassword, newPassword, confirmation)
@@ -86,7 +92,7 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (current == attempt) mutable.value = mutable.value.copy(loading = false, submitting = false, error = safeError(e))
+                if (current == attempt) mutable.value = mutable.value.copy(loading = false, submitting = false, error = safeError(e), errorFields = inputErrorFields(e))
             }
         }
     }

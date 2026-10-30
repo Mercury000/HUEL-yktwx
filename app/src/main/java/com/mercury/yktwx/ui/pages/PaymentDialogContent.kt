@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
+import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +33,8 @@ import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.data.RechargeRecipient
 import com.mercury.yktwx.ui.components.AmountTextField
 import com.mercury.yktwx.ui.components.trackInputFocus
-import com.mercury.yktwx.ui.components.InlineError
+import com.mercury.yktwx.ui.components.AnimatedInlineError
+import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.components.PaymentSelectionCard
 import com.mercury.yktwx.ui.components.ContentPlaceholder
 import com.mercury.yktwx.ui.components.DashboardPlaceholder
@@ -51,6 +53,7 @@ internal fun PaymentAmountForm(
     loading: Boolean, canSubmit: Boolean, error: String?, onSubmit: (Long) -> Unit,
     onRetry: (() -> Unit)? = null,
     enabled: Boolean = true,
+    onInputEdited: (FormField) -> Unit = {},
 ) {
     val cents = RechargeMoney.cents(amount)
     val amountError = config.amountError(cents)
@@ -61,20 +64,24 @@ internal fun PaymentAmountForm(
     val validationMessage = amountError.takeIf { amount.isNotBlank() && validate && !focused }
     val keyboard = LocalSoftwareKeyboardController.current
     PaymentAmountHeader(config)
-    PaymentAmountInput(config, amount, { validate = false; onAmountChange(it) }, enabled = enabled && !loading,
+    PaymentAmountInput(config, amount, {
+        if (it != amount) { validate = false; onAmountChange(it); onInputEdited(FormField.Amount) }
+    }, enabled = enabled && !loading,
         onFocus = { next ->
             if (focused && !next && hasFocused) validate = true
             if (next) hasFocused = true
             focused = next
         })
-    Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    HallNeutralTabs(methods, selectedMethod) { if (enabled && !loading) onMethod(it) }
-    val feedback = validationMessage ?: error
-    if (!feedback.isNullOrBlank()) InlineError(feedback)
-    Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
-        enabled = enabled && canSubmit && !loading && valid,
-        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-        Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
+    InlineErrorGroup(validationMessage ?: error, 16.dp) {
+        Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        HallNeutralTabs(methods, selectedMethod) {
+            if (enabled && !loading && it != selectedMethod) { onMethod(it); onInputEdited(FormField.PaymentMethod) }
+        }
+        Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
+            enabled = enabled && canSubmit && !loading && valid,
+            modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+            Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
+        }
     }
 }
 
@@ -273,10 +280,8 @@ internal fun PaymentResultContent(
             fontWeight = if (failed) FontWeight.Normal else FontWeight.SemiBold,
             textAlign = TextAlign.Center,
         )
-        if (queryError) {
-            Spacer(Modifier.height(16.dp))
-            if (!detail.isNullOrBlank()) InlineError(detail)
-        } else if (!busy && !failed && phase != RechargePhase.Paid && detail != null) {
+        AnimatedInlineError(detail.takeIf { queryError }, topSpacing = 16.dp)
+        if (!queryError && !busy && !failed && phase != RechargePhase.Paid && detail != null) {
             Spacer(Modifier.height(12.dp))
             Text(
                 detail,

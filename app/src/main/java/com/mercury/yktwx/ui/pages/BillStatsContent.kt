@@ -23,12 +23,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit, onOpenDetail: (BillRecord) -> Unit) {
     item(key = "tabs") {
+        Column {
         TabRow(
             tabs = listOf("支出", "收入"),
             selectedTabIndex = if (stats.type == 2) 0 else 1,
             onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
             modifier = Modifier.fillMaxWidth(),
         )
+        ReadNotice(stats.error.takeIf { stats.loaded }, cached = true, topSpacing = 20.dp)
+        }
     }
     if (stats.error != null) {
         if (!stats.loaded) {
@@ -36,9 +39,6 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                 BillErrorCard(stats.error)
             }
             return
-        }
-        item(key = "inline-error") {
-            ReadNotice(stats.error, cached = true)
         }
     }
     item(key = "overview") { StatsOverview(stats) }
@@ -55,7 +55,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                         }
                     }
                 }
-                if (stats.dailyLoaded && stats.dailyError != null) ReadNotice(stats.dailyError, cached = true)
+                ReadNotice(stats.dailyError.takeIf { stats.dailyLoaded }, cached = true)
             }
         }
     }
@@ -73,7 +73,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                         }
                     }
                 }
-                if (stats.categoriesLoaded && stats.categoriesError != null) ReadNotice(stats.categoriesError, cached = true)
+                ReadNotice(stats.categoriesError.takeIf { stats.categoriesLoaded }, cached = true)
             }
         }
         }
@@ -83,10 +83,9 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) item(key = "ranking") {
         Column {
             if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
-            stats.rankingError?.let {
-                if (stats.ranking.isNotEmpty()) ReadNotice(it, cached = true)
-                else Card(Modifier.fillMaxWidth()) { ReadUnavailable(it) }
-            }
+            ReadNotice(stats.rankingError.takeIf { stats.ranking.isNotEmpty() }, cached = true)
+            if (stats.ranking.isEmpty() && stats.rankingError != null)
+                Card(Modifier.fillMaxWidth()) { ReadUnavailable(stats.rankingError) }
         }
     }
 }

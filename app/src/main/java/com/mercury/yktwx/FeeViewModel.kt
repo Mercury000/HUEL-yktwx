@@ -47,6 +47,7 @@ class FeeUiState(
     val paymentRetry: FeePaymentRetry? = null,
     val switchingProject: FeeProject? = null,
     val switchingMeterKind: DormMeterKind? = null,
+    val errorFields: Set<FormField> = emptySet(),
 ) {
     val canContinuePayment get() = !preview && !loading && switchingProject == null && switchingMeterKind == null &&
         stage == FeeStage.Result &&
@@ -502,13 +503,19 @@ class FeeViewModel internal constructor(
         }
     }
 
+    fun inputEdited(field: FormField) {
+        val s = mutable.value
+        if (!s.loading && !s.selecting && !s.roomBusy &&
+            s.stage in setOf(FeeStage.Query, FeeStage.Password) && field in s.errorFields)
+            mutable.value = copy(s, error = null)
+    }
     fun createWithMethod(amount: Long, methodCode: String) {
         if (methodCode !in setOf("ACCOUNTTSM", "TSM")) return
         val s = mutable.value; val config = s.config ?: return; val q = s.query ?: return
         if (s.preview || s.loading || s.roomBusy || s.roomDialog != null || s.selecting ||
             s.switchingProject != null || s.switchingMeterKind != null ||
             !q.canPay || s.stage != FeeStage.Query || task?.isActive == true) return
-        config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it); return }
+        config.amountRules.amountError(amount)?.let { mutable.value=copy(s,error=it,errorFields=setOf(FormField.Amount)); return }
         val generation=attempt
         accountPaymentSubmitted = false
         val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount)
@@ -596,7 +603,7 @@ class FeeViewModel internal constructor(
                     if (e.reason == FeeRejectionReason.Password) {
                         // Correct the password within this attempt. The dialog already cleared it;
                         // the next explicit submit still checks the order and server expiry.
-                        mutable.value = copy(s, loading = false, error = e.message)
+                        mutable.value = copy(s, loading = false, error = e.message, errorFields = setOf(FormField.Password, FormField.PaymentAccount))
                     } else result(RechargePhase.Failed, e.message, retryable = true)
                 }
             }
@@ -712,6 +719,7 @@ class FeeViewModel internal constructor(
         config: FeeConfiguration? = s.config,
         loading: Boolean = s.loading,
         error: String? = s.error,
+        errorFields: Set<FormField> = if (error != null && error == s.error) s.errorFields else emptySet(),
         levels: List<FeeLevel> = s.levels,
         options: Map<Int, List<FeeOption>> = s.options,
         selections: Map<String, String> = s.selections,
@@ -735,5 +743,5 @@ class FeeViewModel internal constructor(
     ) = FeeUiState(config, loading, error, levels, options, selections, names, query, order,
         method, preparation, stage, resultPhase, s.preview, hiddenLevels, selecting,
         roomBinding, roomBindingKnown, roomBusy, roomDialog, roomNotice, paymentRetry,
-        switchingProject, switchingMeterKind)
+        switchingProject, switchingMeterKind, errorFields)
 }

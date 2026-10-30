@@ -56,28 +56,29 @@ internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (()
                             fontSize = 14.sp, lineHeight = 23.sp)
                     }
                 }
-                error?.let { InlineError(it) }
-                if (onAgree != null) {
-                    val measurer = rememberTextMeasurer()
-                    val style = MiuixTheme.textStyles.button
-                    val width = measurer.measure(AnnotatedString("同意并继续"), style).size.width
-                    val density = LocalDensity.current
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val sideBySide = with(density) { ((maxWidth - 12.dp) / 2 - 32.dp).toPx() >= width }
-                        val confirm: @Composable (Modifier) -> Unit = { modifier ->
-                            TextButton(if (saving) "保存中" else "同意并继续",
-                                { if (show && readToEnd && !saving) currentAgree?.invoke() }, modifier,
-                                enabled = show && readToEnd && !saving, colors = ButtonDefaults.textButtonColorsPrimary())
+                InlineErrorGroup(error, 18.dp) {
+                    if (onAgree != null) {
+                        val measurer = rememberTextMeasurer()
+                        val style = MiuixTheme.textStyles.button
+                        val width = measurer.measure(AnnotatedString("同意并继续"), style).size.width
+                        val density = LocalDensity.current
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val sideBySide = with(density) { ((maxWidth - 12.dp) / 2 - 32.dp).toPx() >= width }
+                            val confirm: @Composable (Modifier) -> Unit = { modifier ->
+                                TextButton(if (saving) "保存中" else "同意并继续",
+                                    { if (show && readToEnd && !saving) currentAgree?.invoke() }, modifier,
+                                    enabled = show && readToEnd && !saving, colors = ButtonDefaults.textButtonColorsPrimary())
+                            }
+                            if (sideBySide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                TextButton("不同意", onDismiss, Modifier.weight(1f), enabled = show && !saving)
+                                confirm(Modifier.weight(1f))
+                            } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                confirm(Modifier.fillMaxWidth())
+                                TextButton("不同意", onDismiss, Modifier.fillMaxWidth(), enabled = show && !saving)
+                            }
                         }
-                        if (sideBySide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TextButton("不同意", onDismiss, Modifier.weight(1f), enabled = show && !saving)
-                            confirm(Modifier.weight(1f))
-                        } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            confirm(Modifier.fillMaxWidth())
-                            TextButton("不同意", onDismiss, Modifier.fillMaxWidth(), enabled = show && !saving)
-                        }
-                    }
-                } else TextButton("关闭", onDismiss, Modifier.fillMaxWidth(), enabled = show)
+                    } else TextButton("关闭", onDismiss, Modifier.fillMaxWidth(), enabled = show)
+                }
             }
         }
     }

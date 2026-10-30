@@ -87,29 +87,30 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                     if (enabled) session.page = if (it == 1) RoomSheetPage.Temporary else RoomSheetPage.Rooms
                 }
                 if (page == RoomSheetPage.Rooms) {
-                    if (!state.error.isNullOrBlank()) InlineError(state.error)
-                    ReadContent(state.rooms.isEmpty() && !state.roomsLoaded, Modifier.fillMaxWidth(), pending = { it }) { reading ->
-                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            if (reading) DashboardPlaceholder(14.sp, Modifier.fillMaxWidth().padding(vertical = 16.dp))
-                            else if (state.rooms.isEmpty()) {
-                                if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
-                                    fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            }
-                            if (!reading) state.rooms.forEachIndexed { index, room ->
-                                PaymentSelectionCard(selected = index == state.selectedIndex, onClick = { onSelect(index) },
-                                    enabled = enabled, modifier = Modifier.testTag("hall-room-$index")) { contentColor ->
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 16.sp,
-                                            fontWeight = FontWeight.SemiBold, color = contentColor)
-                                        DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
-                                            color = contentColor.copy(alpha = .82f))
+                    InlineErrorGroup(state.error, 14.dp) {
+                        ReadContent(state.rooms.isEmpty() && !state.roomsLoaded, Modifier.fillMaxWidth(), pending = { it }) { reading ->
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                if (reading) DashboardPlaceholder(14.sp, Modifier.fillMaxWidth().padding(vertical = 16.dp))
+                                else if (state.rooms.isEmpty()) {
+                                    if (state.roomsLoaded) Text("暂无绑定房间", Modifier.padding(vertical = 16.dp),
+                                        fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                }
+                                if (!reading) state.rooms.forEachIndexed { index, room ->
+                                    PaymentSelectionCard(selected = index == state.selectedIndex, onClick = { onSelect(index) },
+                                        enabled = enabled, modifier = Modifier.testTag("hall-room-$index")) { contentColor ->
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 16.sp,
+                                                fontWeight = FontWeight.SemiBold, color = contentColor)
+                                            DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
+                                                color = contentColor.copy(alpha = .82f))
+                                        }
                                     }
                                 }
                             }
                         }
+                        Button(onClick = { session.page = RoomSheetPage.Add }, enabled = enabled && !state.loading && state.bindingProjects.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("新增绑定") }
                     }
-                    Button(onClick = { session.page = RoomSheetPage.Add }, enabled = enabled && !state.loading && state.bindingProjects.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text("新增绑定") }
                 } else {
                     val projects = if (adding) state.bindingProjects else FeeProject.entries.filterNot { it.network }.toSet()
                     val rows = listOf(FeeProject.Zhengdong, FeeProject.Wenbei, FeeProject.FamilyElectric, FeeProject.Commercial)

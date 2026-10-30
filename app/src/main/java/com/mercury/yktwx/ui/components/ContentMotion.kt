@@ -149,25 +149,30 @@ internal val LocalReadSnapshotRestored = staticCompositionLocalOf { false }
 internal val LocalReadMotionEnabled = staticCompositionLocalOf { true }
 private val LocalReadLayoutManaged = staticCompositionLocalOf { false }
 private val LocalReadSkeletonManaged = staticCompositionLocalOf { false }
+internal class ReadLayoutMotion { var feedbackTransitions by mutableIntStateOf(0) }
+internal val LocalReadLayoutMotion = staticCompositionLocalOf<ReadLayoutMotion?> { null }
 
 private data class ContentFadeTarget<T>(val value: T, val restored: Boolean)
 
 /** In-place layout changes use the same duration as skeleton/content replacement. */
 @Composable
-internal fun Modifier.readContentSize(): Modifier {
+internal fun Modifier.readContentSize(animate: Boolean = true): Modifier {
     val restored = LocalReadSnapshotRestored.current
     var wasRestored by remember { mutableStateOf(restored) }
     val restoring = restored && !wasRestored
     SideEffect { wasRestored = restored }
-    return animateContentSize(if (restoring) snap() else tween(ContentMotion.Layout, easing = ContentMotion.Easing))
+    return animateContentSize(if (restoring || !animate) snap() else tween(ContentMotion.Layout, easing = ContentMotion.Easing))
 }
 
 /** One ancestor owns geometry; children still fade without adding a second size animation. */
 @Composable
 internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val sized = if (LocalReadLayoutManaged.current || !LocalReadMotionEnabled.current) modifier else modifier.readContentSize()
+    val owner = LocalReadLayoutMotion.current ?: remember { ReadLayoutMotion() }
+    // While a notice expands, use its measured frames directly instead of chasing them
+    // with another height animation. Other response-driven layout changes still animate.
+    val sized = if (LocalReadLayoutManaged.current || !LocalReadMotionEnabled.current) modifier else modifier.readContentSize(animate = owner.feedbackTransitions == 0)
     Box(sized) {
-        CompositionLocalProvider(LocalReadLayoutManaged provides true) { content() }
+        CompositionLocalProvider(LocalReadLayoutManaged provides true, LocalReadLayoutMotion provides owner) { content() }
     }
 }
 

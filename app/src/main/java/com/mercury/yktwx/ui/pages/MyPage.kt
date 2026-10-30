@@ -94,6 +94,7 @@ internal fun MyPage(
                             item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
                         } else {
                         item {
+                            Column {
                             PageReadNotice(networkError, 10.dp, loading =
                                 (state.loading || balancePending || cardPending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
                                 failed = state.profileError != null || state.homeIdentityError != null || state.avatarError != null ||
@@ -125,10 +126,11 @@ internal fun MyPage(
                                     }
                                 }
                             }
+                            val identityError = state.profileError ?: state.homeIdentityError ?: state.avatarError
+                            ReadNotice(identityError?.takeUnless { networkError != null && FeedbackText.isNetwork(it) },
+                                cached = state.profile != null || state.homeIdentity != null, topSpacing = 18.dp)
+                            }
                         }
-                        val identityError = state.profileError ?: state.homeIdentityError ?: state.avatarError
-                        if (identityError != null && (networkError == null || !FeedbackText.isNetwork(identityError))) item { ReadNotice(identityError,
-                            cached = state.profile != null || state.homeIdentity != null) }
                         item {
                             if (balanceError != null) {
                                 Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp) {
@@ -203,13 +205,15 @@ internal fun MyPage(
                                         key(state.month) { MyAmount("收入", state.summary?.incomeCents, Modifier.weight(1f), income = true, pending = summaryPending) }
                                     }
                                     HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
+                                    Column {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         ReadText(if (countsPending) null else state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易",
                                             Modifier.weight(1f), fontSize = 11.sp, lineHeight = 16.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
                                     ReadNotice(state.summaryError ?: state.countsError,
-                                        cached = state.summary != null || state.counts != null)
+                                        cached = state.summary != null || state.counts != null, topSpacing = 16.dp)
+                                    }
                                 }
                             }
                         }

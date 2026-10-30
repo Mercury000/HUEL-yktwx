@@ -276,6 +276,8 @@ private fun UtilityPlaceholder() {
 @Composable
 private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
     onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: String? = null, interactive: Boolean = true) {
+    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 15.sp, lineHeight = 22.sp,
             fontWeight = FontWeight.SemiBold)
@@ -347,11 +349,15 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
             }
         }
     }
+    }
     ReadNotice(readError ?: room.meters.firstNotNullOfOrNull { it.error },
-        cached = room.meters.any { it.query != null })
+        cached = room.meters.any { it.query != null }, topSpacing = 20.dp)
     if (room.notice != null && readError == null && room.meters.none { it.error != null }) {
-        UpdatedText(room.notice, numeric = false, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            UpdatedText(room.notice, numeric = false, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         DashboardLink("核实房间", onClick = { onChoose(room.project) }, enabled = interactive)
+        }
+    }
     }
 }
 
@@ -390,6 +396,7 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 Text("校园网", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
                 state.network?.display?.firstOrNull { "状态" in it.first }?.second?.let { HallBadge(it, air = true) }
             }
+            Column {
             if (state.network == null && state.networkError != null) {
                 ReadUnavailable(state.networkError)
             } else Row(verticalAlignment = Alignment.CenterVertically) {
@@ -403,7 +410,8 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 }
                 CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))
             }
-            if (state.network != null) ReadNotice(state.networkError, cached = true)
+            ReadNotice(state.networkError.takeIf { state.network != null }, cached = true, topSpacing = 24.dp)
+            }
         }
     }
 }

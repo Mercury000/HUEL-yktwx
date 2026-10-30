@@ -298,15 +298,11 @@ fun BillPage(
                                 // A cached query is checked below the stable overview and search field.
                                 PageReadNotice(null, 0.dp, loading = state.listOnlyRead && state.listLoading && state.listAvailable,
                                     failed = state.error != null, topSpacing = 12.dp) {}
+                                ReadNotice(state.error.takeIf { state.items.isNotEmpty() }, cached = true, topSpacing = 20.dp)
                                 }
                             }
                             if (state.activeFilterCount > 0 || state.info.isNotBlank()) item(key = "conditions") {
                                 BillQueryConditions(state, onFiltersApplied, onSearch)
-                            }
-                            if (state.error != null && state.items.isNotEmpty()) {
-                                item(key = "inline-error") {
-                                    ReadNotice(state.error, cached = true)
-                                }
                             }
                             when {
                                 // Precomposed tabs and the credential check precede loading=true.
@@ -423,7 +419,7 @@ private fun BillSummaryCard(state: BillUiState) {
             }
         }
         val error = state.summaryError ?: state.countsError
-        if (error != null) ReadNotice(error, cached = state.summary != null || state.counts != null,
+        ReadNotice(error, cached = state.summary != null || state.counts != null,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp))
         }
     }
@@ -533,34 +529,35 @@ private fun BillFilterSheet(
                 AmountTextField(max, { max = it; error = null }, "最高", Modifier.weight(1f), enabled = show,
                     wholeDigits = 9, useLabelAsPlaceholder = false)
             }
-            if (!error.isNullOrBlank()) InlineError(error)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton("重置", enabled = show, onClick = {
-                    typeId = null
-                    min = ""
-                    max = ""
-                    error = null
-                })
-                Spacer(Modifier.weight(1f))
-                Button(
-                    enabled = show,
-                    onClick = {
-                        val from = min.centsOrNull()
-                        val to = max.centsOrNull()
-                        if (min.isNotBlank() && from == null || max.isNotBlank() && to == null) {
-                            error = "请输入有效金额"
-                        } else if (from != null && to != null && from > to) {
-                            error = "最低金额不能高于最高金额"
-                        } else {
-                            onApply(typeId, from, to)
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) { Text("应用") }
+            InlineErrorGroup(error, 18.dp) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton("重置", enabled = show, onClick = {
+                        typeId = null
+                        min = ""
+                        max = ""
+                        error = null
+                    })
+                    Spacer(Modifier.weight(1f))
+                    Button(
+                        enabled = show,
+                        onClick = {
+                            val from = min.centsOrNull()
+                            val to = max.centsOrNull()
+                            if (min.isNotBlank() && from == null || max.isNotBlank() && to == null) {
+                                error = "请输入有效金额"
+                            } else if (from != null && to != null && from > to) {
+                                error = "最低金额不能高于最高金额"
+                            } else {
+                                onApply(typeId, from, to)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text("应用") }
+                }
             }
         }
         }

@@ -3,11 +3,11 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.RechargeUiState
@@ -19,7 +19,6 @@ import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private enum class RechargeSheetPage { Amount, Result }
 
@@ -34,6 +33,7 @@ fun RechargeDialog(
     onSubmit: (Long) -> Unit,
     onFinish: () -> Unit,
     onCheck: (() -> Unit)? = null,
+    onInputEdited: (FormField) -> Unit = {},
 ) {
     val isResult = state.pending != null
     val loadingConfig = state.loading && !isResult && state.config == null
@@ -81,7 +81,7 @@ fun RechargeDialog(
                         RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, enabled && !loading)
                     }
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, loading,
-                        !preview && recipientSelected, error, onSubmit, enabled = enabled)
+                        !preview && recipientSelected, error, onSubmit, enabled = enabled, onInputEdited = onInputEdited)
                 }
                 }
             }

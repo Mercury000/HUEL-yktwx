@@ -419,4 +419,23 @@ class RechargeViewModelTest {
         assertEquals(1, service.launches)
     }
 
+
+    @Test fun amountEditClearsOnlyAmountRejectionsAndDoesNotCreateAnOrder() {
+        open()
+        model.submit(50_001)
+        assertNotNull(model.state.value.error)
+        model.inputEdited(FormField.PaymentMethod)
+        assertNotNull(model.state.value.error)
+        model.inputEdited(FormField.Amount)
+        assertNull(model.state.value.error)
+        assertTrue(model.state.value.errorFields.isEmpty())
+        assertEquals(0, service.creations)
+        service.creationFailure = NetworkFailure()
+        model.submit(1000)
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.Amount)
+        assertEquals(service.creationFailure!!.message, model.state.value.error)
+        assertEquals(1, service.creations)
+    }
+
 }
