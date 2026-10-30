@@ -38,6 +38,7 @@ import com.mercury.yktwx.ui.components.ContentPlaceholder
 import com.mercury.yktwx.ui.components.DashboardPlaceholder
 import com.mercury.yktwx.ui.components.ReadContent
 import com.mercury.yktwx.ui.components.UpdatedText
+import com.mercury.yktwx.ui.components.LocalReadMotionEnabled
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.LocalContentColor
@@ -92,13 +93,16 @@ private fun PaymentAmountHeader(config: RechargeConfiguration) {
     }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val fullWidth = remember(full, measurer, density.fontScale, density.density) {
+        measurer.measure(AnnotatedString(full), TextStyle(fontSize = 12.sp)).size.width
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("充值金额", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         if (limits.isNotEmpty()) BoxWithConstraints(Modifier.weight(1f).testTag("payment-amount-limits")
             .semantics { contentDescription = full }, contentAlignment = Alignment.CenterEnd) {
             val width = with(density) { maxWidth.toPx() }
-            val text = if (measurer.measure(AnnotatedString(full), TextStyle(fontSize = 12.sp)).size.width <= width) full else compact
+            val text = if (fullWidth <= width) full else compact
             UpdatedText(text, Modifier.fillMaxWidth(), numeric = false, fontSize = 12.sp,
                 textAlign = TextAlign.End, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
@@ -116,9 +120,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { amount ->
                         PaymentControlPlaceholder(Modifier.weight(1f)) {
-                            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                                Text("¥ " + RechargeMoney.label(amount))
-                            }
+                            PaymentButtonGeometry("¥ " + RechargeMoney.label(amount))
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -132,10 +134,16 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
         }
         DashboardPlaceholder(14.sp, Modifier.fillMaxWidth(), fraction = .28f)
         HallNeutralTabsPlaceholder()
-        PaymentControlPlaceholder {
-            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColorsPrimary()) { Text("充值") }
-        }
+        PaymentControlPlaceholder { PaymentButtonGeometry("充值") }
+    }
+}
+
+/** Hidden button templates use the library's real defaults without gesture or popup state. */
+@Composable
+internal fun PaymentButtonGeometry(label: String) {
+    Box(Modifier.fillMaxWidth().defaultMinSize(minWidth = ButtonDefaults.MinWidth, minHeight = ButtonDefaults.MinHeight)
+        .padding(ButtonDefaults.InsideMargin), contentAlignment = Alignment.Center) {
+        Text(label, textAlign = TextAlign.Center)
     }
 }
 
@@ -152,7 +160,9 @@ internal fun PaymentFormContent(pending: Boolean, content: @Composable ColumnSco
 @Composable
 internal fun PaymentControlPlaceholder(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().drawWithContent {}.clearAndSetSemantics {}) { content() }
+        Box(Modifier.fillMaxWidth().drawWithContent {}.clearAndSetSemantics {}) {
+            CompositionLocalProvider(LocalReadMotionEnabled provides false) { content() }
+        }
         ContentPlaceholder(Modifier.matchParentSize(), cornerRadius = 16.dp)
     }
 }

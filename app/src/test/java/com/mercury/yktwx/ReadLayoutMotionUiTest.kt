@@ -279,6 +279,51 @@ class ReadLayoutMotionUiTest {
         }
     }
 
+    @Test fun waterElectricDrawerKeepsRoomAndAmountControlsDuringOpeningQueryCompletion() {
+        val room = ready.rooms.first()
+        val config = FeeConfiguration(room.project,
+            RechargeConfiguration("electric", "demo", listOf(1000, 5000, 10000), 1, 50000, true, false))
+        val levels = room.binding.selections.keys.mapIndexed { index, key -> FeeLevel(key, index + 1, key) }
+        val current = mutableStateOf(FeeUiState(loading = true))
+        val visible = mutableStateOf(false)
+        content { HallFeeDialog(current.value, visible.value, room.project, room.binding,
+            onDismiss = {}, onSelect = { _, _ -> }, onRetry = {}, onCreate = { _, _ -> }, onMethod = {},
+            onPayAccount = { _, _ -> }, onCancelPayment = {}, onFinish = {}, onContinuePayment = {},
+            onRoomAction = {}, onConfirmRoomAction = {}, onDismissRoomDialog = {}, onConsumeRoomNotice = {}) }
+        compose.runOnIdle { visible.value = true }
+        var headingId: Int? = null
+        var inputId: Int? = null
+        val tops = mutableListOf<Float>()
+        repeat(40) { frame ->
+            if (frame == 6) compose.runOnIdle { current.value = FeeUiState(config = config, levels = levels, loading = true) }
+            if (frame == 9) compose.runOnIdle { current.value = FeeUiState(config = config, levels = levels,
+                selections = room.binding.selections, names = room.binding.names,
+                query = FeeQuery(display = listOf("剩余电量" to "86.4 度"), thirdParty = "{}")) }
+            frames()
+            if (frame < 9) compose.onNodeWithTag("payment-amount-input").assertDoesNotExist()
+            val headings = compose.onAllNodes(hasText(room.binding.dialogLabel) and
+                SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true).fetchSemanticsNodes()
+            assertTrue("Opening must never duplicate the room heading", headings.size <= 1)
+            headings.singleOrNull()?.let {
+                headingId?.let { previous -> assertEquals("Room lookup must not recreate the heading", previous, it.id) }
+                headingId = it.id
+            }
+            val inputs = compose.onAllNodesWithTag("payment-amount-input").fetchSemanticsNodes()
+            inputs.singleOrNull()?.let {
+                inputId?.let { previous -> assertEquals("The verified query must reuse existing amount controls", previous, it.id) }
+                inputId = it.id
+            }
+            compose.onAllNodesWithTag("hall-payment-content").fetchSemanticsNodes().singleOrNull()?.let {
+                if (it.boundsInRoot.height > 0) tops += it.boundsInRoot.top
+            }
+        }
+        assertNotNull(headingId)
+        assertNotNull(inputId)
+        assertTrue("The opening must move upwards without jumping back: $tops",
+            tops.zipWithNext().all { (before, after) -> after <= before + 1f })
+        compose.onNodeWithText("剩余电量  86.4 度", useUnmergedTree = true).assertExists()
+    }
+
     @Test fun sameRoomRefreshKeepsSummaryPaintUntilSettledAndFailureClearsOldReadings() {
         val room = ready.rooms.first()
         val config = FeeConfiguration(room.project,

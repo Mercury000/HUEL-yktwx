@@ -175,7 +175,13 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         { targetSelected = !targetSelected }, active && !state.loading && !state.selecting,
                     )
                     val codes = if (form.project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
-                    PaymentFormContent(form.loading && config == null) {
+                    // A fixed room is verified across several requests. Configuration can
+                    // arrive halfway through the sheet's entrance: keep the geometry template
+                    // until that first lookup settles, then retain the mounted form on refresh.
+                    var presented by remember(session, form.project, fixedTarget) { mutableStateOf(false) }
+                    val showForm = config != null && (!form.queryPending || presented)
+                    SideEffect { if (showForm) presented = true }
+                    PaymentFormContent(form.loading && !showForm) {
                         if (config != null) PaymentAmountForm(config.amountRules, amount, { amount = it },
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
                             { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
@@ -246,9 +252,7 @@ private fun HallFeeTargetPlaceholder(showRoomBinding: Boolean) {
                 Text("绑定此房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
             }
         }
-        PaymentControlPlaceholder {
-            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("选择房间") }
-        }
+        PaymentControlPlaceholder { PaymentButtonGeometry("选择房间") }
     }
 }
 

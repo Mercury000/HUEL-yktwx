@@ -67,6 +67,12 @@ internal fun UpdatedText(
     numeric: Boolean = true, textAlign: TextAlign = TextAlign.Start,
     fontFamily: FontFamily? = null, fitNumber: Boolean = true,
 ) {
+    if (!LocalReadMotionEnabled.current) {
+        Text(prefix + text, modifier, fontSize = fontSize, lineHeight = lineHeight,
+            fontWeight = fontWeight, color = color, maxLines = maxLines, overflow = overflow,
+            textAlign = textAlign, fontFamily = fontFamily)
+        return
+    }
     key(identity) {
         if (!numeric) {
             ContentFade(text, modifier,
@@ -139,6 +145,8 @@ private data class WholeNumberAutoSize(val preferredSize: TextUnit) : TextAutoSi
 
 /** Carries cache restoration through nested transitions without rebuilding the page. */
 internal val LocalReadSnapshotRestored = staticCompositionLocalOf { false }
+/** Hidden geometry templates need text metrics, never transitions or number fitting. */
+internal val LocalReadMotionEnabled = staticCompositionLocalOf { true }
 private val LocalReadLayoutManaged = staticCompositionLocalOf { false }
 private val LocalReadSkeletonManaged = staticCompositionLocalOf { false }
 
@@ -157,7 +165,7 @@ internal fun Modifier.readContentSize(): Modifier {
 /** One ancestor owns geometry; children still fade without adding a second size animation. */
 @Composable
 internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val sized = if (LocalReadLayoutManaged.current) modifier else modifier.readContentSize()
+    val sized = if (LocalReadLayoutManaged.current || !LocalReadMotionEnabled.current) modifier else modifier.readContentSize()
     Box(sized) {
         CompositionLocalProvider(LocalReadLayoutManaged provides true) { content() }
     }
