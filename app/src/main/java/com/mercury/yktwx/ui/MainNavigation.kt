@@ -46,7 +46,7 @@ internal fun MainNavigationScaffold(
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     if (shouldShowMainNavigationRail(settings)) {
         Row(Modifier.fillMaxSize()) {
-            MainNavigationRail(selected, width >= 1200.dp, onSelected)
+            MainNavigationRail(settings, selected, width >= 1200.dp, onSelected)
             Scaffold(Modifier.weight(1f).fillMaxHeight(), content = content)
         }
     } else {
@@ -55,11 +55,13 @@ internal fun MainNavigationScaffold(
 }
 
 @Composable
-private fun MainNavigationRail(selected: Int, expanded: Boolean, onSelected: (Int) -> Unit) {
+private fun MainNavigationRail(settings: ThemeSettings, selected: Int, expanded: Boolean, onSelected: (Int) -> Unit) {
+    // Keep the user's choice when rotation temporarily replaces the rail with a bottom bar.
+    val initiallyExpanded = remember { settings.getNavigationRailExpanded(expanded) }
     val state = rememberNavigationRailState(
-        initialValue = if (expanded) NavigationRailValue.Expanded else NavigationRailValue.Collapsed,
+        initialValue = if (initiallyExpanded) NavigationRailValue.Expanded else NavigationRailValue.Collapsed,
     )
-    LaunchedEffect(expanded) { if (expanded) state.expand() else state.collapse() }
+    LaunchedEffect(state.currentValue) { settings.setNavigationRailExpanded(state.isExpanded) }
     NavigationRail(state = state, modifier = Modifier.fillMaxHeight().testTag("main-navigation-rail")) {
         mainNavigationIcons.forEachIndexed { index, icon ->
             NavigationRailItem(selected = selected == index, onClick = { onSelected(index) },

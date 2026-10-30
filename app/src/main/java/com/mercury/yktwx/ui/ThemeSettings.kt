@@ -16,6 +16,8 @@ class ThemeSettings(context: Context) {
     val predictiveBackDistance = mutableStateOf(prefs.getInt("predictive_back_distance", 50).coerceIn(0, 100))
     val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
+    fun getNavigationRailExpanded(default: Boolean): Boolean = prefs.getBoolean("navigation_rail_expanded", default)
+    fun setNavigationRailExpanded(v: Boolean) { prefs.edit().putBoolean("navigation_rail_expanded", v).apply() }
     fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }
     fun setAccent(v: Int) { accentMode.value = v; prefs.edit().putInt("accent_mode", v).apply() }
     fun setFloating(v: Boolean) { floatingBottomBar.value = v; prefs.edit().putBoolean("floating_bottom_bar", v).apply() }
