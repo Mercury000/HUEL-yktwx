@@ -488,10 +488,11 @@ private fun MainContent(
     if (!settings.predictiveBack.value) BackHandler(enabled = isActive && layers.isNotEmpty()) { close() }
 
     val useRail = shouldShowMainNavigationRail(settings)
+    val blurRootForBack = !useRail && (settings.predictiveBack.value || settings.floatingBottomBar.value)
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
         topBarBlurEnabled = false,
-        captureForEffects = (!useRail && motion.isBoundaryEngaged(0, layers.size)) ||
+        captureForEffects = (blurRootForBack && motion.isBoundaryEngaged(0, layers.size)) ||
             (settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1),
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -631,8 +632,8 @@ private fun MainContent(
             intensity = motion[0].backdropIntensity.value,
             visible = motion[0].backdropIntensity.value > EFFECT_VISIBILITY_THRESHOLD,
             modifier = Modifier.fillMaxSize(),
-            // The pager's blur snapshot excludes the rail. Dim the whole live page instead.
-            blurEnabled = !useRail,
+            // The pager's snapshot excludes navigation. Dim the live page when needed.
+            blurEnabled = blurRootForBack,
         )
         BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
             IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
