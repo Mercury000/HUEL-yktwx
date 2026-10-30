@@ -54,6 +54,7 @@ internal fun PaymentAmountForm(
     onRetry: (() -> Unit)? = null,
     enabled: Boolean = true,
     onInputEdited: (FormField) -> Unit = {},
+    submitting: Boolean = false,
 ) {
     val cents = RechargeMoney.cents(amount)
     val amountError = config.amountError(cents)
@@ -80,7 +81,8 @@ internal fun PaymentAmountForm(
         Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
             enabled = enabled && canSubmit && !loading && valid,
             modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-            Text(if (loading) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
+            Text(if (loading && submitting) "正在发起…"
+                else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
         }
     }
 }
@@ -239,6 +241,7 @@ internal fun PaymentResultContent(
     onContinuePayment: (FeeMethod) -> Unit = {},
     enabled: Boolean = true,
     onCheck: (() -> Unit)? = null,
+    loadingTitle: String? = null,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -246,7 +249,7 @@ internal fun PaymentResultContent(
     val methods = retryMethods.distinctBy { it.id to it.code }
     val canContinue = phase == RechargePhase.Failed && !busy && methods.isNotEmpty()
     var selectedMethod by remember(phase, detail, retryMethods) { mutableStateOf<FeeMethod?>(null) }
-    val title = when (phase) {
+    val title = loadingTitle.takeIf { loading } ?: when (phase) {
         RechargePhase.Paid -> subject + "成功"
         RechargePhase.Failed -> subject + "失败"
         RechargePhase.TimedOut -> "支付超时"

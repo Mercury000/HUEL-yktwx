@@ -93,7 +93,8 @@ private fun RecipientRechargeSheet(
                 if (config != null) {
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, display.loading,
                         !display.preview && config.recipient === display.selectedRecipient, display.error, onContinueRecharge,
-                        enabled = enabled, onInputEdited = onInputEdited)
+                        enabled = enabled, onInputEdited = onInputEdited,
+                        submitting = display.loading && display.selectedRecipient != null)
                 } else {
                     AnimatedInlineError(display.error)
                 }
@@ -126,9 +127,10 @@ private fun RecipientRechargeSheet(
                         enabled = enabled, modifier = Modifier.trackInputFocus(enabled).weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
                 InlineErrorGroup(display.error, 16.dp) {
+                    val querying = display.loading && state.captcha != null
                     Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
                         enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
-                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "查询中…" else "查询") }
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (querying) "查询中…" else "查询") }
                 }
             }
         } }
