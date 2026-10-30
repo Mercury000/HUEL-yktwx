@@ -176,15 +176,22 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         else if (pageVisible && initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
         else if (accountPageVisible) refreshAccount()
     }
-    /** A modal keeps a valid backdrop stable; offscreen pages discard it. Neither auto-refreshes. */
+    /** A modal keeps the payment page live behind it; an offscreen page discards its code. */
     fun setPageVisible(visible: Boolean, preserveDisplay: Boolean = false) {
         val covered = !visible && preserveDisplay
         if (pageVisible == visible && pageCovered == covered) return
+        val wasDisplayed = paymentDisplayVisible()
         pageVisible = visible
         pageCovered = covered
-        if (!visible) pausePaymentDisplay(preserveDisplay = covered)
-        else if (UiPreview.enabled && preview) mutable.value = PreviewData.paymentState(previewLost)
-        else if (foreground && initialized) resumePaymentDisplay()
+        if (!paymentDisplayVisible()) pausePaymentDisplay()
+        else if (covered) {
+            // The code and its expiry keep advancing behind a root overlay, but
+            // turning the phone must not trigger payment-success detection there.
+            setPaymentMotionActive(false)
+            if (!wasDisplayed && foreground && initialized) resumePaymentDisplay()
+        }
+        else if (!wasDisplayed && UiPreview.enabled && preview) mutable.value = PreviewData.paymentState(previewLost)
+        else if (foreground && initialized && (!wasDisplayed || mutable.value.code == null)) resumePaymentDisplay()
     }
     fun onBackground() {
         foreground = false
@@ -205,7 +212,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             requestVersion++; request?.cancel(); ticker?.cancel()
             mutable.value = mutable.value.copy(busy = false, refreshing = false, balanceLoading = false)
         }
-        if (pageVisible) refresh() else if (accountPageVisible) refreshAccount()
+        if (paymentDisplayVisible()) refresh() else if (accountPageVisible) refreshAccount()
     }
 
     fun refreshAccount(manual: Boolean = false) {
@@ -269,28 +276,13 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         accountRequest?.cancel(); accountRequest = null
         mutable.value = mutable.value.copy(accountLoading = false, cardStatusLoading = false)
     }
-    private fun pausePaymentDisplay(preserveDisplay: Boolean = false) {
+    private fun paymentDisplayVisible() = pageVisible || pageCovered
+    private fun pausePaymentDisplay() {
         setPaymentMotionActive(false)
         mutableSuccess.value = null
         requestVersion++
         ticker?.cancel(); request?.cancel()
         val old = mutable.value
-        if (preserveDisplay) {
-            mutable.value = old.copy(balanceLoading = false)
-            // One expiry wakeup replaces per-second updates; never leave an expired code visible.
-            if (!preview && old.code != null) {
-                val version = requestVersion
-                ticker = viewModelScope.launch {
-                    delay((codeExpiresAt - SystemClock.elapsedRealtime()).coerceAtLeast(0))
-                    if (version == requestVersion && foreground && pageCovered) {
-                        codeExpiresAt = 0L
-                        mutable.value = mutable.value.copy(code = null, secondsLeft = 0, busy = false,
-                            refreshing = false, error = "付款码已过期，关闭弹窗后刷新")
-                    }
-                }
-            }
-            return
-        }
         codeExpiresAt = 0L
         mutable.value = PaymentUiState(
             old.needsLogin, logoutJob?.isActive == true, old.error, old.username,
@@ -355,8 +347,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         }
     }
     fun refresh(manual: Boolean = false) {
-        if (!manual && !pageVisible) {
-            if (pageCovered) resumeNeedsRefresh = true
+        if (!manual && !paymentDisplayVisible()) {
+            resumeNeedsRefresh = true
             return
         }
         if (preview || mutable.value.restoringLogin || mutable.value.busy || mutable.value.needsLogin) return
@@ -432,7 +424,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private fun show(batch: PaymentBatch, username: String, version: Long) {
         if (version != requestVersion) return
         accountReadAt = SystemClock.elapsedRealtime()
-        if (!foreground || !pageVisible) {
+        if (!foreground || !paymentDisplayVisible()) {
             mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)
             return
         }
@@ -444,7 +436,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private fun startTicker(version: Long) {
         ticker?.cancel()
         ticker = viewModelScope.launch {
-            while (foreground && pageVisible && version == requestVersion) {
+            while (foreground && paymentDisplayVisible() && version == requestVersion) {
                 val remaining = codeExpiresAt - SystemClock.elapsedRealtime()
                 if (remaining <= 0) {
                     refresh(); return@launch
