@@ -35,8 +35,12 @@ fun RechargeDialog(
     onCheck: (() -> Unit)? = null,
     onInputEdited: (FormField) -> Unit = {},
 ) {
-    val isResult = state.pending != null
-    val loadingConfig = state.loading && !isResult && state.config == null
+    val hasAttempt = state.pending != null
+    // Keep the amount page mounted while the cashier request is in flight. The
+    // existing sheet-page transition then moves directly to either WeChat or
+    // the official rejection, instead of animating a second state inside it.
+    val isResult = hasAttempt && state.phase != RechargePhase.Creating
+    val loadingConfig = state.loading && !hasAttempt && state.config == null
     val show = state.visible || loadingConfig
     val session = rememberOverlaySession(show)
     var amount by remember(session, state.config) { mutableStateOf("") }
@@ -47,7 +51,7 @@ fun RechargeDialog(
     OverlayBottomSheet(
         show = show,
         startAction = { key(session) { SheetTitle(title) } },
-        onDismissRequest = { if (isResult) onFinish() else onDismiss() },
+        onDismissRequest = { if (hasAttempt) onFinish() else onDismiss() },
         renderInRootScaffold = true,
         // The result has its own spacing; avoid adding the sheet's defaults again.
         insideMargin = DpSize(0.dp, 0.dp),

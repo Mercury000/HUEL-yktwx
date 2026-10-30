@@ -554,10 +554,10 @@ class FeeViewModel internal constructor(
             method = method, preparation = null, paymentRetry = null)
         try {
             if (method.wechat) {
-                mutable.value = copy(mutable.value, stage = FeeStage.Result, resultPhase = RechargePhase.Creating)
                 val launch = repository.launchFeeWechat(pending, method)
                 if (generation != attempt) return
-                mutable.value = copy(mutable.value, loading = false, resultPhase = RechargePhase.AwaitingPayment)
+                mutable.value = copy(mutable.value, loading = false, stage = FeeStage.Result,
+                    resultPhase = RechargePhase.AwaitingPayment)
                 if (paymentReturn.canLaunch) launches.send(launch) else requestError("未能打开微信")
             } else {
                 val preparation = repository.prepareFeeAccount(pending, method)
