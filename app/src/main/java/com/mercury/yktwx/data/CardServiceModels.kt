@@ -17,13 +17,13 @@ class RecipientCaptcha(val key: String, val image: ByteArray) {
 class RechargeRecipient(val cardAccount: String, val targetId: String, val name: String, val sno: String, val accountName: String) {
     override fun toString() = "RechargeRecipient([redacted])"
 }
-class CardOperationRejected(message: String) : YktException(message)
+class CardOperationRejected(message: String, override val fields: Set<FormField> = emptySet()) : YktException(message), ScopedInputError
 /** No state-changing request was started; the user can retry after correcting the error. */
 internal class CardOperationNotStarted(message: String) : YktException(message)
 /** A write may have run or was accepted, but its final state could not be established. */
 internal class CardOperationUnconfirmed(message: String) : YktException(message)
 
-class RecipientLookupRejected(message: String) : YktException(message)
+class RecipientLookupRejected(message: String, override val fields: Set<FormField> = setOf(FormField.Recipient)) : YktException(message), ScopedInputError
 interface CardService {
     suspend fun passwordConfiguration(token: String): CardPasswordConfiguration = throw YktException("请在官网修改查询密码")
     suspend fun modifyCardPassword(token: String, card: CampusCard, oldPassword: String, newPassword: String, confirmation: String): Unit =

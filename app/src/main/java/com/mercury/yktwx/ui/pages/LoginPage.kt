@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -34,8 +35,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
-import com.mercury.yktwx.ui.components.InlineError
 import com.mercury.yktwx.ui.components.ActionSurface
+import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import com.mercury.yktwx.data.UsageNotice
@@ -51,11 +52,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Authentication is a separate screen, not one page of the main tab pager. */
 @Composable
 fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
-    LoginPage(state, null, onLogin)
+    LoginPage(state, null, onLogin = onLogin)
 }
 
 @Composable
-fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onLogin: (String, String) -> Unit) {
+fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (FormField) -> Unit = {}, onLogin: (String, String) -> Unit) {
     var noticeVisible by remember(consent) { mutableStateOf(false) }
     var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -96,7 +97,7 @@ fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onLogin: (String, S
                 Modifier.widthIn(max = 440.dp).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(28.dp),
             ) {
-                LoginForm(state, onLogin, consent?.accepted != false,
+                LoginForm(state, onLogin, consent?.accepted != false, onInputEdited,
                     consentRow = {
                         if (consent != null) ConsentRow(consent.accepted, enabled = !state.busy && !saving,
                             onToggle = { if (consent.accepted) consent.revoke() else readNotice() }, onRead = ::readNotice)
@@ -131,7 +132,7 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
 }
 
 @Composable
-private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean,
+private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
     consentRow: (@Composable () -> Unit)? = null) {
     var username by remember { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
@@ -154,9 +155,12 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("登录校园一卡通", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
         Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        TextField(value = username, onValueChange = { username = it.filter { c -> c in '0'..'9' }.take(24) }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
+        TextField(value = username, onValueChange = {
+            val next = it.filter { c -> c in '0'..'9' }.take(24)
+            if (next != username) { username = next; onInputEdited(FormField.Username) }
+        }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Username })
-        TextField(value = password, onValueChange = { password = it }, label = "密码", singleLine = true, enabled = !state.busy,
+        TextField(value = password, onValueChange = { if (it != password) { password = it; onInputEdited(FormField.Password) } }, label = "密码", singleLine = true, enabled = !state.busy,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onDone = { submit() }),
@@ -167,10 +171,11 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
             }, modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Password })
-        if (!state.error.isNullOrBlank()) InlineError(state.error)
-        consentRow?.invoke()
-        Button(onClick = { submit() }, enabled = agreed && !state.busy && !state.restoringLogin && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-            Text(if (state.busy) "正在登录…" else "登录")
+        InlineErrorGroup(state.error, 18.dp) {
+            consentRow?.invoke()
+            Button(onClick = { submit() }, enabled = agreed && !state.busy && !state.restoringLogin && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+                Text(if (state.busy) "正在登录…" else "登录")
+            }
         }
     }
 }

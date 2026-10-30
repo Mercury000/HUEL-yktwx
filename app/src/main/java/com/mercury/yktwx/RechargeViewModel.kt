@@ -24,6 +24,7 @@ class RechargeUiState(
     val phase: RechargePhase = RechargePhase.Amount,
     val error: String? = null,
     val preview: Boolean = false,
+    val errorFields: Set<FormField> = emptySet(),
 ) {
     override fun toString() = "RechargeUiState([redacted])"
 }
@@ -80,11 +81,16 @@ class RechargeViewModel internal constructor(
         mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
     }
 
+    fun inputEdited(field: FormField) {
+        val s = mutable.value
+        if (s.visible && !s.loading && s.pending == null && field in s.errorFields)
+            update(error = null)
+    }
     fun submit(amountCents: Long) {
         val state = mutable.value
         if (state.preview || state.loading || state.pending != null || task?.isActive == true) return
         val config = state.config ?: return
-        config.amountError(amountCents)?.let { update(error = it); return }
+        config.amountError(amountCents)?.let { update(error = it, errorFields = setOf(FormField.Amount)); return }
         if (!repository.ownsAccount(owner)) { update(error = "账户已切换，请重新打开充值"); return }
         val current = attempt
         val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, recipient = config.recipient)
@@ -220,8 +226,9 @@ class RechargeViewModel internal constructor(
         visible: Boolean = mutable.value.visible, loading: Boolean = mutable.value.loading,
         phase: RechargePhase = mutable.value.phase, error: String? = mutable.value.error,
         pending: PendingRecharge? = mutable.value.pending,
+        errorFields: Set<FormField> = if (error != null && error == mutable.value.error) mutable.value.errorFields else emptySet(),
     ) {
         val state = mutable.value
-        mutable.value = RechargeUiState(visible, loading, state.config, pending, phase, error, preview = state.preview)
+        mutable.value = RechargeUiState(visible, loading, state.config, pending, phase, error, preview = state.preview, errorFields = errorFields)
     }
 }

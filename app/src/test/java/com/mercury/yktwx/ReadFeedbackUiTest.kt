@@ -272,7 +272,9 @@ class ReadFeedbackUiTest {
         compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account, accountError = networkError) }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithTag("read-notice").assert(hasAnySibling(hasTestTag("my-balance-card")))
+        compose.onNodeWithTag("read-notice").assert(!hasAnyAncestor(hasTestTag("my-balance-card")))
+        assertTrue(compose.onNodeWithTag("read-notice").fetchSemanticsNode().boundsInRoot.top >=
+            compose.onNodeWithTag("my-balance-card").fetchSemanticsNode().boundsInRoot.bottom)
         compose.onNodeWithText("¥ ${money(account.balanceCents)}").assertIsDisplayed()
         capture("my-balance-cache-failure")
     }

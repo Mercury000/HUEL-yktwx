@@ -894,4 +894,32 @@ class PaymentViewModelTest {
         override fun clearSession() { token = null }
         override fun clear() { value = null; token = null }
     }
+
+    @Test fun credentialRejectionClearsOnRelatedEditWithoutAuthenticatingAgain() {
+        loginFailure = InvalidCredentials()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.login("456", "wrong")
+        await { !model.state.value.busy && model.state.value.error != null }
+        model.loginInputEdited(FormField.Amount)
+        assertNotNull(model.state.value.error)
+        model.loginInputEdited(FormField.Password)
+        assertNull(model.state.value.error)
+        assertTrue(model.state.value.errorFields.isEmpty())
+        assertTrue(model.state.value.needsLogin)
+        assertEquals(1, logins)
+        assertEquals(0, payments)
+    }
+    @Test fun captchaRequirementSurvivesUsernameAndPasswordEdits() {
+        loginFailure = CaptchaRequired()
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.login("456", "wrong")
+        await { !model.state.value.busy && model.state.value.error != null }
+        model.loginInputEdited(FormField.Username)
+        model.loginInputEdited(FormField.Password)
+        assertEquals(loginFailure!!.message, model.state.value.error)
+        assertEquals(1, logins)
+    }
+
 }

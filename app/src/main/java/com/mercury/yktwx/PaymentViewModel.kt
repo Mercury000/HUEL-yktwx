@@ -40,6 +40,7 @@ data class PaymentUiState(
     val accountCard: CampusCard? = null,
     val cardStatusLoading: Boolean = false,
     val cardStatusError: String? = null,
+    val errorFields: Set<FormField> = emptySet(),
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
@@ -314,6 +315,11 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             }
         }
     }
+    fun loginInputEdited(field: FormField) {
+        val s = mutable.value
+        if (s.needsLogin && !s.busy && field in s.errorFields)
+            mutable.value = s.copy(error = null, errorFields = emptySet())
+    }
     fun login(username: String, password: String) {
         if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
         cancelAccountRead()
@@ -340,7 +346,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 // Old credentials are not proof that this submitted login succeeded.
                 mutable.value = PaymentUiState(needsLogin = true, username = username,
-                    error = e.message ?: "登录失败，请重试")
+                    error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
                 mutable.value = PaymentUiState(needsLogin = true, username = old.username,

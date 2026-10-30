@@ -3,12 +3,8 @@ package com.mercury.yktwx.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -101,17 +97,12 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     }
     // Cached failures are already present on entry; only a new visibility change animates.
     val showing = error != null || reading || finishing
-    val visible = remember { MutableTransitionState(showing) }
-    visible.targetState = showing
     val displayedError = rememberWhileShown(error != null, error.orEmpty())
     Column(Modifier.fillMaxWidth()) {
-        AnimatedVisibility(visibleState = visible,
-            enter = fadeIn(tween(ContentMotion.Fade)) + expandVertically(tween(ContentMotion.Layout), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(ContentMotion.Fade)) + shrinkVertically(tween(ContentMotion.Layout), shrinkTowards = Alignment.Top)) {
-            Box(Modifier.fillMaxWidth().padding(top = topSpacing, bottom = spacing)
-                .animateContentSize(tween(ContentMotion.Layout))) {
+        FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = spacing) {
+            Box(Modifier.fillMaxWidth().readContentSize()) {
                 if (error != null || displayedError.isNotEmpty() && !reading && !finishing) {
-                    InlineError(displayedError, Modifier.testTag(errorTag))
+                    ContentFade(displayedError) { InlineError(it, Modifier.testTag(errorTag)) }
                     if (reading) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
                 } else ReadProgress(Modifier, completion.value)
             }
@@ -209,8 +200,8 @@ internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullT
 
 /** Region feedback uses the existing inline style; page-wide network errors are shown once. */
 @Composable
-internal fun ReadNotice(error: String?, cached: Boolean = false, modifier: Modifier = Modifier) {
-    if (error.isNullOrBlank()) return
-    if (LocalPageNetworkError.current != null && FeedbackText.isNetwork(error)) return
-    InlineError(FeedbackText.read(error, cached), modifier.testTag("read-notice").padding(top = 8.dp))
+internal fun ReadNotice(error: String?, cached: Boolean = false, modifier: Modifier = Modifier,
+    topSpacing: Dp = 8.dp, bottomSpacing: Dp = 0.dp) {
+    val displayed = error?.takeUnless { it.isBlank() || LocalPageNetworkError.current != null && FeedbackText.isNetwork(it) }
+    AnimatedInlineError(displayed?.let { FeedbackText.read(it, cached) }, modifier.testTag("read-notice"), topSpacing = topSpacing, bottomSpacing = bottomSpacing)
 }

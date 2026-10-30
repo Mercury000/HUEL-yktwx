@@ -183,4 +183,29 @@ class CardPasswordViewModelTest {
         catch (_: AuthenticationRequired) { }
         assertEquals(0, logins); assertNull(vault.credentials())
     }
+
+    @Test fun onlyTheRejectedPasswordFieldInvalidatesTheServerError() {
+        open()
+        failure = InputRejected("official rejection", setOf(FormField.OldPassword))
+        submit()
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.NewPassword)
+        assertEquals("official rejection", model.state.value.error)
+        model.inputEdited(FormField.OldPassword)
+        assertNull(model.state.value.error)
+        assertEquals(1, writes)
+        assertTrue(model.state.value.visible)
+    }
+    @Test fun editingDoesNotDismissAnUnconfirmedPasswordWrite() {
+        open()
+        failure = YktException("修改结果未确认，请先核实")
+        submit()
+        await { !model.state.value.loading && model.state.value.error != null }
+        model.inputEdited(FormField.OldPassword)
+        model.inputEdited(FormField.NewPassword)
+        model.inputEdited(FormField.Confirmation)
+        assertEquals(failure!!.message, model.state.value.error)
+        assertEquals(1, writes)
+    }
+
 }

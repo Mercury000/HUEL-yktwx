@@ -66,6 +66,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     onProject: (FeeProject) -> Unit = {}, onMeterKind: (DormMeterKind) -> Unit = {},
     bindingProjects: Set<FeeProject> = emptySet(),
     onCheck: (() -> Unit)? = null,
+    onInputEdited: (FormField) -> Unit = {},
 ) {
     val session = rememberOverlaySession(visible)
     val form = rememberWhileShown(visible && state.stage == FeeStage.Query,
@@ -136,7 +137,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             if (reading) {
                                 HallFeeTargetPlaceholder(showRoomBinding = !saveOnly && displayProject in bindingProjects)
                             } else if (config == null) {
-                                if (!form.error.isNullOrBlank()) InlineError(form.error)
+                                AnimatedInlineError(form.error)
                             } else {
                                 val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
                                     state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
@@ -150,22 +151,23 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                         if (projects[index] != displayProject) onProject(projects[index])
                                     }
                                 }
-                                if (!form.error.isNullOrBlank()) InlineError(form.error)
-                                if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
-                                        onClick = { saveCommon = !saveCommon }, enabled = targetEnabled && ready)
-                                    Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
-                                }
-                                Button(onClick = {
-                                    if (targetEnabled && ready) {
-                                        if ((saveOnly || saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
-                                            bindingPending = true; onRoomAction()
-                                        } else if (saveOnly) onDismiss() else amountStep = true
+                                InlineErrorGroup(form.error, 16.dp) {
+                                    if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
+                                            onClick = { saveCommon = !saveCommon }, enabled = targetEnabled && ready)
+                                        Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                                     }
-                                }, enabled = targetEnabled && ready && state.currentRoom != null &&
-                                    (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (form.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
-                                if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                    Button(onClick = {
+                                        if (targetEnabled && ready) {
+                                            if ((saveOnly || saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
+                                                bindingPending = true; onRoomAction()
+                                            } else if (saveOnly) onDismiss() else amountStep = true
+                                        }
+                                    }, enabled = targetEnabled && ready && state.currentRoom != null &&
+                                        (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (form.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
+                                    if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                }
                             }
                         }
                     }
@@ -186,8 +188,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
                             { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
                             active && ready && targetSelected && !state.preview, form.error, { onCreate(it, methodCode) }, onRetry,
-                            enabled = active)
-                        else InlineError(form.error)
+                            enabled = active, onInputEdited = onInputEdited)
+                        else AnimatedInlineError(form.error)
                     }
                 }
                 HallFeePage.Result -> {
@@ -218,7 +220,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     }
     FeePasswordDialog(show = visible && state.stage == FeeStage.Password,
         amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
-        onDismiss = onCancelPayment, onPay = onPayAccount)
+        onDismiss = onCancelPayment, onPay = onPayAccount, onInputEdited = onInputEdited)
     val dialog = state.roomDialog
     val confirmingRoom = visible && dialog != null
     val replacing = rememberWhileShown(confirmingRoom, dialog?.previous != null)

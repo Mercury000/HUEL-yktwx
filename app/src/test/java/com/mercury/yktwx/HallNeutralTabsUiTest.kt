@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.mercury.yktwx.data.FormField
 import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.components.DashboardPalette
@@ -155,10 +156,11 @@ class HallNeutralTabsUiTest {
         var amount by mutableStateOf("")
         var selected by mutableIntStateOf(0)
         var busy by mutableStateOf(false)
+        val edits = mutableListOf<FormField>()
         content {
             Column(Modifier.fillMaxWidth().testTag("form"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 PaymentAmountForm(config, amount, { amount = it }, listOf("一卡通", "微信"), selected,
-                    { selected = it }, busy, true, null, {})
+                    { selected = it }, busy, true, null, {}, onInputEdited = { edits += it })
             }
         }
         val input = compose.onNode(hasSetTextAction())
@@ -177,10 +179,13 @@ class HallNeutralTabsUiTest {
         }
         frames(24)
         wechat.assertIsSelected()
+        assertEquals(3, edits.count { it == FormField.PaymentMethod })
         wechat.performClick()
         compose.runOnIdle { busy = true }
         card.performClick()
         frames(24)
+        assertEquals("A repeated or blocked selection must not count as editing",
+            3, edits.count { it == FormField.PaymentMethod })
         assertEquals(1, selected)
         assertEquals("37.25", amount)
     }
