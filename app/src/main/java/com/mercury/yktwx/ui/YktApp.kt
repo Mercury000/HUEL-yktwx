@@ -10,7 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -43,12 +42,10 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mercury.yktwx.BillViewModel
 import com.mercury.yktwx.PaymentViewModel
@@ -57,7 +54,6 @@ import com.mercury.yktwx.BillUiState
 import com.mercury.yktwx.R
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.components.*
-import com.mercury.yktwx.ui.components.liquid.IosLiquidGlassNavigationBar
 import com.mercury.yktwx.ui.nav.*
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.coroutines.coroutineScope
@@ -65,9 +61,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.Scan
-import top.yukonga.miuix.kmp.icon.extended.Contacts
-import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -494,22 +487,30 @@ private fun MainContent(
     }
     if (!settings.predictiveBack.value) BackHandler(enabled = isActive && layers.isNotEmpty()) { close() }
 
+    val useRail = shouldShowMainNavigationRail(settings)
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
         topBarBlurEnabled = false,
-        captureForEffects = motion.isBoundaryEngaged(0, layers.size) ||
+        captureForEffects = (!useRail && motion.isBoundaryEngaged(0, layers.size)) ||
             (settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1),
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().graphicsLayer {
                 val depth = motion[0].coveredDepth.value.coerceIn(0f, 1f)
-                translationX = -size.width * depth * BACKGROUND_PARALLAX
-                scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
-                scaleY = scaleX
+                if (useRail) {
+                    // The rail and pager form one main page, as in KernelSU's MainScreen entry.
+                    translationX = -size.width * depth * 0.25f
+                    alpha = 1f - 0.1f * depth
+                    scaleX = 1f
+                    scaleY = 1f
+                } else {
+                    translationX = -size.width * depth * BACKGROUND_PARALLAX
+                    scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
+                    scaleY = scaleX
+                    alpha = 1f
+                }
             }) {
-                Scaffold(
-                    bottomBar = { BottomNavigation(settings, tabs.selectedPage, tabs::animateToPage) },
-                ) { padding ->
+                MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                     val bottom = padding.calculateBottomPadding() + 28.dp
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -630,6 +631,8 @@ private fun MainContent(
             intensity = motion[0].backdropIntensity.value,
             visible = motion[0].backdropIntensity.value > EFFECT_VISIBILITY_THRESHOLD,
             modifier = Modifier.fillMaxSize(),
+            // The pager's blur snapshot excludes the rail. Dim the whole live page instead.
+            blurEnabled = !useRail,
         )
         BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
             IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
@@ -657,34 +660,6 @@ private fun MainContent(
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
             avatarState.owner == state.username && avatarState.preview == state.preview)
-}
-
-@Composable
-private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected: (Int) -> Unit) {
-    val icons = listOf(MiuixIcons.Scan, MiuixIcons.GridView, AppIcons.Bill, MiuixIcons.Contacts)
-    val labels = listOf("付款", "大厅", "账单", "我的")
-    val floating = settings.floatingBottomBar.value
-    val blur = settings.blurBottomBar.value
-    if (floating && settings.floatingBottomBarStyle.value == 1) {
-        IosLiquidGlassNavigationBar(
-            items = icons.mapIndexed { index, icon -> NavigationItem(label = labels[index], icon = icon) },
-            selectedIndex = selected, onItemClick = onSelected,
-            backdrop = LocalBarBlurBackdrop.current, modifier = Modifier.zIndex(2f),
-        )
-    } else {
-        val modifier = Modifier.barBlurBackground(
-            if (floating) RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) else RectangleShape,
-        ).zIndex(2f)
-        if (floating) FloatingNavigationBar(modifier = modifier, color = if (blur) Color.Transparent else MiuixTheme.colorScheme.surfaceContainer) {
-            icons.forEachIndexed { index, icon ->
-                FloatingNavigationBarItem(selected = selected == index, onClick = { onSelected(index) }, icon = icon, label = labels[index])
-            }
-        } else NavigationBar(modifier = modifier, color = if (blur) Color.Transparent else MiuixTheme.colorScheme.surface, showDivider = true) {
-            icons.forEachIndexed { index, icon ->
-                NavigationBarItem(selected = selected == index, onClick = { onSelected(index) }, icon = icon, label = labels[index])
-            }
-        }
-    }
 }
 
 @Composable
