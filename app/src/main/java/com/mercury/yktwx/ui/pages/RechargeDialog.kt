@@ -81,7 +81,8 @@ fun RechargeDialog(
                         RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, enabled && !loading)
                     }
                     PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, loading,
-                        !preview && recipientSelected, error, onSubmit, enabled = enabled, onInputEdited = onInputEdited)
+                        !preview && recipientSelected, error, onSubmit, enabled = enabled, onInputEdited = onInputEdited,
+                        submitting = state.pending != null && state.phase == RechargePhase.Creating)
                 }
                 }
             }

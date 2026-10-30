@@ -356,6 +356,8 @@ class CardServiceUiTest {
         assertEquals(1, refreshes)
         compose.onNode(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo,
             androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate)).assertIsDisplayed()
+        compose.onNodeWithText("查询").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("查询中…").assertDoesNotExist()
         screenshot("campus-card-captcha-refreshing")
         compose.runOnIdle {
             current.value = current.value.copy(loading = false, captcha = RecipientCaptcha("fresh-key-$refreshes", image))

@@ -188,7 +188,9 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                             codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
                             { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
                             active && ready && targetSelected && !state.preview, form.error, { onCreate(it, methodCode) }, onRetry,
-                            enabled = active, onInputEdited = onInputEdited)
+                            enabled = active, onInputEdited = onInputEdited,
+                            submitting = state.loading && state.order != null &&
+                                state.resultPhase == RechargePhase.Creating)
                         else AnimatedInlineError(form.error)
                     }
                 }
@@ -211,6 +213,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
                             { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
                             subject = "充值", retryMethods = result.methods, enabled = resultActive, onCheck = onCheck,
+                            loadingTitle = "准备中".takeIf { choosingMethod && result.loading },
                             onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
                     }
                 }

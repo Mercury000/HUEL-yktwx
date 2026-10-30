@@ -386,6 +386,7 @@ class FeeSelectorUiTest {
             stages.forEach { next ->
                 compose.runOnIdle { current = next }
                 compose.mainClock.advanceTimeBy(1500)
+                compose.onNodeWithText("正在发起…").assertDoesNotExist()
                 val actualTarget = compose.onNodeWithTag("hall-payment-target").fetchSemanticsNode().boundsInRoot
                 val actualSheet = compose.onNodeWithTag("hall-payment-content").fetchSemanticsNode().boundsInRoot
                 assertEquals("${service.id} target height", targetBounds.height, actualTarget.height, 1f)

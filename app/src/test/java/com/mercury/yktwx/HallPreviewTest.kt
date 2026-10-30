@@ -382,6 +382,14 @@ class HallPreviewTest {
         compose.onNodeWithText("微信支付").assertIsDisplayed().assertIsNotSelected()
         compose.onNodeWithText("继续支付").assertIsNotEnabled()
         capture("22-payment-method")
+        val initialQuery = state.query
+        val initialOrder = state.order
+        compose.runOnIdle { state = FeeUiState(config = config, loading = true, preview = true,
+            stage = FeeStage.Methods, query = initialQuery, order = initialOrder) }
+        compose.onNodeWithText("准备中").assertIsDisplayed()
+        compose.onNodeWithText("正在发起充值").assertDoesNotExist()
+        compose.runOnIdle { state = FeeUiState(config = config, preview = true,
+            stage = FeeStage.Methods, query = initialQuery, order = initialOrder) }
         val available = state.order!!.methods.last()
         compose.runOnIdle { state = FeeUiState(config = config, preview = true, stage = FeeStage.Methods,
             error = "所选支付方式不可用，请重新选择", order = FeeOrder(pending, listOf(available))) }
