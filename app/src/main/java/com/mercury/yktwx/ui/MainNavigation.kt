@@ -1,5 +1,11 @@
 package com.mercury.yktwx.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -41,6 +47,7 @@ internal fun MainNavigationScaffold(
     settings: ThemeSettings,
     selected: Int,
     onSelected: (Int) -> Unit,
+    floatingBarVisible: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
@@ -50,7 +57,19 @@ internal fun MainNavigationScaffold(
             Scaffold(Modifier.weight(1f).fillMaxHeight(), content = content)
         }
     } else {
-        Scaffold(bottomBar = { BottomNavigation(settings, selected, onSelected) }, content = content)
+        Scaffold(bottomBar = {
+            if (settings.floatingBottomBar.value) {
+                AnimatedVisibility(
+                    visible = floatingBarVisible,
+                    enter = slideInVertically(tween(260)) { it } + fadeIn(tween(180)),
+                    exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(140)),
+                ) {
+                    BottomNavigation(settings, selected, onSelected)
+                }
+            } else {
+                BottomNavigation(settings, selected, onSelected)
+            }
+        }, content = content)
     }
 }
 

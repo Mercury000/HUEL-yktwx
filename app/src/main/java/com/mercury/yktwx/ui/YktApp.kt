@@ -511,7 +511,11 @@ private fun MainContent(
                     alpha = 1f
                 }
             }) {
-                MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage) { padding ->
+                MainNavigationScaffold(
+                    settings, tabs.selectedPage, tabs::animateToPage,
+                    floatingBarVisible = layers.isEmpty() && !motion[0].predictiveActive &&
+                        motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD,
+                ) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                     val bottom = padding.calculateBottomPadding() + 28.dp
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {

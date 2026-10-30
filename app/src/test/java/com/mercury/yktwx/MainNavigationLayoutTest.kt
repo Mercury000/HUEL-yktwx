@@ -51,7 +51,7 @@ class MainNavigationLayoutTest {
                 AppTheme(ColorSchemeMode.Light) {
                     density = LocalDensity.current.density
                     var selected by remember { mutableIntStateOf(0) }
-                    MainNavigationScaffold(settings, selected, { selected = it }, page)
+                    MainNavigationScaffold(settings, selected, { selected = it }, content = page)
                 }
             }
         }
