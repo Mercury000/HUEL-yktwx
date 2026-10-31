@@ -492,8 +492,7 @@ private fun MainContent(
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
         topBarBlurEnabled = false,
-        captureForEffects = (blurRootForBack && motion.isBoundaryEngaged(0, layers.size)) ||
-            (settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1),
+        captureForEffects = blurRootForBack && motion.isBoundaryEngaged(0, layers.size),
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().graphicsLayer {

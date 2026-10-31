@@ -100,7 +100,8 @@ private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected:
                     NavigationItem(label = mainNavigationLabels[index], icon = icon)
                 },
                 selectedIndex = selected, onItemClick = onSelected,
-                backdrop = LocalBarBlurBackdrop.current, modifier = Modifier.zIndex(2f),
+                // Return effects may capture the background even when bar blur is disabled.
+                backdrop = if (blur) LocalBarBlurBackdrop.current else null, modifier = Modifier.zIndex(2f),
             )
         } else {
             val modifier = Modifier.barBlurBackground(
