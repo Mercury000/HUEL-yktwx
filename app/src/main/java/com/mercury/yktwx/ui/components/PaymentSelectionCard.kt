@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -21,10 +22,21 @@ internal fun PaymentSelectionCard(
     enabled: Boolean = true,
     content: @Composable ColumnScope.(Color) -> Unit,
 ) {
-    val contentColor = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface
+    val dark = isSystemInDarkTheme()
+    val contentColor = when {
+        dark && !enabled -> MiuixTheme.colorScheme.disabledOnSecondaryVariant
+        selected -> MiuixTheme.colorScheme.onPrimary
+        dark -> MiuixTheme.colorScheme.onSecondaryVariant
+        else -> MiuixTheme.colorScheme.onSurface
+    }
     ActionSurface(
         onClick = onClick, enabled = enabled,
-        color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
+        color = when {
+            dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
+            selected -> MiuixTheme.colorScheme.primary
+            dark -> MiuixTheme.colorScheme.secondaryVariant
+            else -> MiuixTheme.colorScheme.surfaceContainerHigh
+        },
         contentColor = contentColor,
         shape = RoundedCornerShape(16.dp),
         modifier = modifier.fillMaxWidth().semantics {

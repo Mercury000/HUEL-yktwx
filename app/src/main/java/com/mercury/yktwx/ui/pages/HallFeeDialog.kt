@@ -294,7 +294,8 @@ private fun HallFeeSummary(state: HallFeeFormDisplay, modifier: Modifier = Modif
                     }
                     else shown.filter { "套餐" in it.first || "状态" in it.first }.forEach { (name, value) ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                            UpdatedText(name, Modifier.widthIn(max = 88.dp), numeric = false, fontSize = 13.sp, color = contentColor.copy(alpha = .75f))
+                            UpdatedText(name, Modifier.widthIn(max = 88.dp), numeric = false, fontSize = 13.sp,
+                                color = if (androidx.compose.foundation.isSystemInDarkTheme()) contentColor else contentColor.copy(alpha = .75f))
                             UpdatedText(value, Modifier.weight(1f), numeric = false, fontSize = 14.sp, color = contentColor, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                         }
                     }
@@ -305,7 +306,7 @@ private fun HallFeeSummary(state: HallFeeFormDisplay, modifier: Modifier = Modif
                     }
                     else shown.forEach { (label, value) ->
                         UpdatedText(if (value.startsWith(label)) value else "$label  $value", numeric = false, fontSize = 13.sp,
-                            color = contentColor.copy(alpha = .8f))
+                            color = if (androidx.compose.foundation.isSystemInDarkTheme()) contentColor else contentColor.copy(alpha = .8f))
                     }
                 }
             }

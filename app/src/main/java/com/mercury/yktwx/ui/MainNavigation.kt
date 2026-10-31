@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.zIndex
 import com.mercury.yktwx.ui.components.AppIcons
 import com.mercury.yktwx.ui.components.LocalBarBlurBackdrop
 import com.mercury.yktwx.ui.components.barBlurBackground
+import com.mercury.yktwx.ui.components.floatingBarColor
 import com.mercury.yktwx.ui.components.liquid.IosLiquidGlassNavigationBar
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -106,9 +108,10 @@ private fun BottomNavigation(settings: ThemeSettings, selected: Int, onSelected:
         } else {
             val modifier = Modifier.barBlurBackground(
                 if (floating) RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) else RectangleShape,
+                backgroundColor = if (floating && isSystemInDarkTheme()) floatingBarColor() else MiuixTheme.colorScheme.surface,
             ).zIndex(2f)
             if (floating) FloatingNavigationBar(modifier = modifier,
-                color = if (blur) Color.Transparent else MiuixTheme.colorScheme.surfaceContainer) {
+                color = if (blur) Color.Transparent else floatingBarColor()) {
                 mainNavigationIcons.forEachIndexed { index, icon ->
                     FloatingNavigationBarItem(selected = selected == index, onClick = { onSelected(index) },
                         icon = icon, label = mainNavigationLabels[index])

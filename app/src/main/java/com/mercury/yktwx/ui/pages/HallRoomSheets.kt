@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -32,7 +33,7 @@ internal val FeeProject.hallTitle: String get() = when (this) {
 internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     ReadLayout(Modifier.fillMaxWidth()) {
         TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect,
-            colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
+            colors = if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
                 contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface),
             indication = rememberPressFeedback(shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
@@ -102,7 +103,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                                             UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 16.sp,
                                                 fontWeight = FontWeight.SemiBold, color = contentColor)
                                             DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
-                                                color = contentColor.copy(alpha = .82f))
+                                                color = if (isSystemInDarkTheme()) contentColor else contentColor.copy(alpha = .82f))
                                         }
                                     }
                                 }

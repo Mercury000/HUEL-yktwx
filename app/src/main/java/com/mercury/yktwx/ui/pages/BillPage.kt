@@ -205,8 +205,10 @@ fun BillPage(
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
                                     onTabSelected = { if (it == 0) onShowDetails() else onOpenStats() },
                                     minWidth = 85.dp, maxWidth = 85.dp, height = 38.dp, cornerRadius = 12.dp, itemSpacing = 0.dp,
-                                    colors = TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
-                                        contentColor = DashboardPalette.muted, selectedBackgroundColor = DashboardPalette.card,
+                                    colors = TabRowDefaults.tabRowColors(
+                                        backgroundColor = if (androidx.compose.foundation.isSystemInDarkTheme()) DashboardPalette.card else DashboardPalette.field,
+                                        contentColor = DashboardPalette.muted,
+                                        selectedBackgroundColor = if (androidx.compose.foundation.isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryVariant else DashboardPalette.card,
                                         selectedContentColor = DashboardPalette.ink))
                             }
                         }

@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,7 +44,8 @@ internal fun InlineError(
         .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(MiuixIcons.Info, null, Modifier.size(18.dp), tint = MiuixTheme.colorScheme.error)
+        Icon(MiuixIcons.Info, null, Modifier.size(18.dp), tint = if (isSystemInDarkTheme())
+            MiuixTheme.colorScheme.onErrorContainer else MiuixTheme.colorScheme.error)
         Text(FeedbackText.inline(message), Modifier.weight(1f), fontSize = 13.sp, lineHeight = 18.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onErrorContainer)
     }

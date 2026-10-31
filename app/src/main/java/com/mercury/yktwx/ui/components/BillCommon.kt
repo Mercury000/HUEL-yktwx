@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -145,8 +146,18 @@ private fun billIcon(icon: String): ImageVector = when (icon) {
 
 @Composable
 internal fun BillIcon(icon: String, modifier: Modifier = Modifier, size: Dp = 40.dp, income: Boolean = false) {
-    val background = if (income) MiuixTheme.colorScheme.primaryContainer else MiuixTheme.colorScheme.surfaceContainerHigh
-    val tint = if (income) MiuixTheme.colorScheme.onPrimaryContainer else MiuixTheme.colorScheme.onSurface
+    val dark = isSystemInDarkTheme()
+    // surfaceContainerHigh equals the surrounding card in normal dark mode.
+    val background = when {
+        income -> MiuixTheme.colorScheme.primaryContainer
+        dark -> MiuixTheme.colorScheme.secondaryVariant
+        else -> MiuixTheme.colorScheme.surfaceContainerHigh
+    }
+    val tint = when {
+        income -> MiuixTheme.colorScheme.onPrimaryContainer
+        dark -> MiuixTheme.colorScheme.onSecondaryVariant
+        else -> MiuixTheme.colorScheme.onSurface
+    }
     Box(
         modifier = modifier.size(size).background(background, RoundedCornerShape(size * 0.3f)),
         contentAlignment = Alignment.Center,
@@ -157,11 +168,22 @@ internal fun BillIcon(icon: String, modifier: Modifier = Modifier, size: Dp = 40
 
 @Composable
 internal fun BillFilterPill(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val dark = isSystemInDarkTheme()
     ActionSurface(
         onClick = onClick, enabled = enabled,
         shape = RoundedCornerShape(50),
-        color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+        color = when {
+            dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
+            selected -> MiuixTheme.colorScheme.primary
+            dark -> MiuixTheme.colorScheme.secondaryVariant
+            else -> MiuixTheme.colorScheme.surfaceContainerHigh
+        },
+        contentColor = when {
+            dark && !enabled -> MiuixTheme.colorScheme.disabledOnSecondaryVariant
+            selected -> MiuixTheme.colorScheme.onPrimary
+            dark -> MiuixTheme.colorScheme.onSecondaryVariant
+            else -> MiuixTheme.colorScheme.onSurface
+        },
     ) {
         Text(
             text,

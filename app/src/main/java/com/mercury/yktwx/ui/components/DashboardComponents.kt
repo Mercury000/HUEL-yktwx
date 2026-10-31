@@ -30,20 +30,32 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.lerp
 
-/** Colors from the approved dashboard mockups; preserve the active accent for Monet. */
+/** Preserve the light dashboard design; adapt its accents on Miuix dark surfaces. */
 internal object DashboardPalette {
-    val ink: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFE9EDF4) else Color(0xFF202329)
-    val muted: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF9AA8BA) else Color(0xFF929CA9)
+    val ink: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface else Color(0xFF202329)
+    val muted: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurfaceVariantSummary else Color(0xFF929CA9)
     val card: Color @Composable get() = CardDefaults.defaultColors().color
-    val field: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF2A2A2A) else Color(0xFFF0F0F0)
-    val lightingInk: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFA5BDEC) else Color(0xFF354E78)
-    val lightingAccent: Color @Composable get() = lerp(MiuixTheme.colorScheme.primary, lightingInk, .45f)
-    val lightingPanel: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF202A3A) else Color(0xFFF4F7FD)
-    val lightingButton: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF2B3D57) else Color(0xFFE6EDFB)
-    val airInk: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF9FC4CB) else Color(0xFF466C78)
-    val airAccent: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFA6C8CE) else Color(0xFF799FA8)
-    val airPanel: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF222F33) else Color(0xFFF2F7F8)
-    val airButton: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF2F454A) else Color(0xFFE4EEF0)
+    val iconAccent: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.primary, MiuixTheme.colorScheme.onSurface, .20f) else MiuixTheme.colorScheme.primary
+    val iconPanel: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.secondaryVariant, MiuixTheme.colorScheme.primary, .12f)
+        else MiuixTheme.colorScheme.primary.copy(alpha = .05f)
+    val field: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryContainer else Color(0xFFF0F0F0)
+    val lightingInk: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface else Color(0xFF354E78)
+    val lightingAccent: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.onSurface, MiuixTheme.colorScheme.primary, .25f)
+        else lerp(MiuixTheme.colorScheme.primary, lightingInk, .45f)
+    val lightingPanel: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(card, MiuixTheme.colorScheme.primary, .07f) else Color(0xFFF4F7FD)
+    val lightingButton: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.secondaryVariant, MiuixTheme.colorScheme.primary, .12f) else Color(0xFFE6EDFB)
+    val airInk: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface else Color(0xFF466C78)
+    val airAccent: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.onSurface, Color(0xFF799FA8), .35f) else Color(0xFF799FA8)
+    val airPanel: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(card, Color(0xFF466C78), .12f) else Color(0xFFF2F7F8)
+    val airButton: Color @Composable get() = if (isSystemInDarkTheme())
+        lerp(MiuixTheme.colorScheme.secondaryVariant, Color(0xFF466C78), .22f) else Color(0xFFE4EEF0)
 }
 
 /** Dashboard composition uses the official bar, buttons and surfaces with explicit dimensions. */
@@ -99,8 +111,10 @@ internal fun ContentPlaceholder(modifier: Modifier = Modifier, cornerRadius: Dp 
 
 @Composable
 internal fun CompactButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
-    enabled: Boolean = true, color: Color = MiuixTheme.colorScheme.primary.copy(alpha = .08f),
-    textColor: Color = MiuixTheme.colorScheme.primary) {
+    enabled: Boolean = true, color: Color = if (isSystemInDarkTheme())
+        MiuixTheme.colorScheme.secondaryVariant else MiuixTheme.colorScheme.primary.copy(alpha = .08f),
+    textColor: Color = if (isSystemInDarkTheme())
+        MiuixTheme.colorScheme.onSecondaryVariant else MiuixTheme.colorScheme.primary) {
     TextButton(text, onClick = onClick, modifier = modifier, enabled = enabled,
         minHeight = 32.dp, cornerRadius = 12.dp, insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         textStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium),
@@ -127,15 +141,17 @@ internal fun DashboardLink(text: String, onClick: () -> Unit, modifier: Modifier
 /** Compact condition label with one removal action and the standard Surface touch target. */
 @Composable
 internal fun RemovableCondition(label: String, onRemove: () -> Unit) {
-    ActionSurface(onClick = onRemove, color = MiuixTheme.colorScheme.primary.copy(alpha = .08f),
+    val dark = isSystemInDarkTheme()
+    val contentColor = if (dark) MiuixTheme.colorScheme.onSecondaryVariant else MiuixTheme.colorScheme.primary
+    ActionSurface(onClick = onRemove, color = if (dark) MiuixTheme.colorScheme.secondaryVariant else MiuixTheme.colorScheme.primary.copy(alpha = .08f),
         shape = RoundedCornerShape(10.dp),
-        feedbackColor = MiuixTheme.colorScheme.primary,
+        feedbackColor = contentColor,
         modifier = Modifier.semantics { contentDescription = "移除条件：$label" }) {
         Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             UpdatedText(label, Modifier.widthIn(max = 240.dp), numeric = false, fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.primary)
-            Icon(MiuixIcons.Clear, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.primary)
+                color = contentColor)
+            Icon(MiuixIcons.Clear, null, Modifier.size(14.dp), tint = contentColor)
         }
     }
 }
