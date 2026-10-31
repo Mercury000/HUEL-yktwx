@@ -187,7 +187,7 @@ internal fun RecipientSelectionCard(recipient: RechargeRecipient, selected: Bool
         }
         UpdatedText(recipient.sno.ifBlank { recipient.cardAccount }, numeric = false, fontSize = 14.sp, color = contentColor)
         UpdatedText(recipient.accountName + " · " + recipient.targetId, numeric = false, fontSize = 13.sp,
-            color = contentColor.copy(alpha = .8f))
+            color = if (androidx.compose.foundation.isSystemInDarkTheme()) contentColor else contentColor.copy(alpha = .8f))
     }
 }
 
@@ -332,18 +332,21 @@ internal fun PaymentResultContent(
 
 @Composable
 private fun ResultMark(phase: RechargePhase, color: Color) {
+    val darkFailure = androidx.compose.foundation.isSystemInDarkTheme() && phase == RechargePhase.Failed
+    val foreground = if (darkFailure) MiuixTheme.colorScheme.onErrorContainer else color
+    val background = if (darkFailure) MiuixTheme.colorScheme.errorContainer else color.copy(alpha = 0.10f)
     Canvas(Modifier.size(76.dp)) {
-        drawCircle(color.copy(alpha = 0.10f))
+        drawCircle(background)
         val stroke = 4.dp.toPx()
         fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(
-            color, Offset(size.width * x1, size.height * y1), Offset(size.width * x2, size.height * y2),
+            foreground, Offset(size.width * x1, size.height * y1), Offset(size.width * x2, size.height * y2),
             strokeWidth = stroke, cap = StrokeCap.Round,
         )
         when (phase) {
             RechargePhase.Paid -> { line(.28f, .50f, .44f, .65f); line(.44f, .65f, .73f, .35f) }
             RechargePhase.Failed -> { line(.34f, .34f, .66f, .66f); line(.66f, .34f, .34f, .66f) }
             else -> {
-                drawCircle(color, radius = size.width * .25f, style = Stroke(stroke))
+                drawCircle(foreground, radius = size.width * .25f, style = Stroke(stroke))
                 line(.50f, .34f, .50f, .50f); line(.50f, .50f, .62f, .57f)
             }
         }

@@ -5,6 +5,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -89,7 +90,8 @@ internal fun AvatarEditor(model: AvatarViewModel, state: AvatarUiState, official
                         val bitmap = remember(draft) { draft.asImageBitmap() }
                         val limit = minOf(320.dp, LocalWindowInfo.current.containerDpSize.height * .42f)
                         Box(Modifier.widthIn(max = limit).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(percent = 28))
-                            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+                            .background(if (isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryVariant
+                                else MiuixTheme.colorScheme.surfaceContainerHigh)
                             .testTag("avatar-crop").semantics { contentDescription = "头像裁剪预览" }
                             .pointerInput(draft, enabled) {
                                 if (enabled) detectTransformGestures { centroid, pan, zoom, _ ->

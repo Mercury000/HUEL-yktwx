@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,6 +51,7 @@ internal fun MyPage(
     customAvatar: Boolean = false,
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false,
 ) {
+    val dark = isSystemInDarkTheme()
     LaunchedEffect(isActive) { if (isActive) onActivate() }
     val balancePending = payment.balanceLoading || payment.accountLoading
     val cardPending = payment.cardStatusLoading
@@ -141,19 +143,21 @@ internal fun MyPage(
                             } else Column {
                                 val primary = MiuixTheme.colorScheme.primary
                                 val foreground = MiuixTheme.colorScheme.onPrimary
+                                val gradientEnd = if (dark) androidx.compose.ui.graphics.lerp(primary, MiuixTheme.colorScheme.surface, .10f)
+                                    else androidx.compose.ui.graphics.lerp(primary, Color.White, .12f)
                                 Card(Modifier.fillMaxWidth().testTag("my-balance-card"), cornerRadius = 24.dp, colors = CardDefaults.defaultColors(color = primary)) {
                                     Column(Modifier.fillMaxWidth().drawBehind {
-                                        drawRect(Brush.linearGradient(listOf(primary, androidx.compose.ui.graphics.lerp(primary, Color.White, .12f))))
+                                        drawRect(Brush.linearGradient(listOf(primary, gradientEnd)))
                                         drawCircle(foreground.copy(alpha = .045f), radius = size.width * .46f,
                                             center = Offset(size.width * .96f, size.height * .32f), style = Stroke(size.width * .08f))
                                     }.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Text("校园卡余额", fontSize = 12.sp, color = foreground.copy(alpha = .8f))
+                                            Text("校园卡余额", fontSize = 12.sp, color = if (dark) foreground else foreground.copy(alpha = .8f))
                                             Spacer(Modifier.weight(1f))
                                             val card = payment.accountCard?.takeIf { it.account == payment.account?.account }
                                             val restricted = !cardPending && card?.let { it.lost || it.frozen } == true
-                                            val statusBackground = if (restricted) Color(0xFFFFE0AE) else foreground.copy(alpha = .14f)
-                                            val statusForeground = if (restricted) Color(0xFF804900) else foreground
+                                            val statusBackground = if (restricted) { if (dark) Color(0xFF3B3022) else Color(0xFFFFE0AE) } else foreground.copy(alpha = .14f)
+                                            val statusForeground = if (restricted) { if (dark) Color(0xFFE7B775) else Color(0xFF804900) } else foreground
                                             Row(Modifier.clip(CircleShape).background(statusBackground).padding(horizontal = 9.dp, vertical = 5.dp),
                                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Box(Modifier.size(4.dp).background(statusForeground, CircleShape))
@@ -179,9 +183,9 @@ internal fun MyPage(
                                             feedbackStyle = PressFeedbackStyle.Group, feedbackColor = foreground,
                                             modifier = Modifier.fillMaxWidth()) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = foreground.copy(alpha = .8f))
+                                                Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = if (dark) foreground else foreground.copy(alpha = .8f))
                                                 UpdatedText(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f),
-                                                    numeric = false, fontSize = 11.sp, color = foreground.copy(alpha = .8f))
+                                                    numeric = false, fontSize = 11.sp, color = if (dark) foreground else foreground.copy(alpha = .8f))
                                                 Text("账户详情", fontSize = 11.sp, color = foreground)
                                                 Icon(MiuixIcons.ChevronForward, null, Modifier.size(13.dp), tint = foreground)
                                             }
@@ -201,10 +205,10 @@ internal fun MyPage(
                                     }
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                                         key(state.month) { MyAmount("支出", state.summary?.expensesCents, Modifier.weight(1f), pending = summaryPending) }
-                                        Box(Modifier.width(1.dp).height(46.dp).background(MiuixTheme.colorScheme.onSurface.copy(alpha = .06f)))
+                                        Box(Modifier.width(1.dp).height(46.dp).background(if (dark) MiuixTheme.colorScheme.dividerLine else MiuixTheme.colorScheme.onSurface.copy(alpha = .06f)))
                                         key(state.month) { MyAmount("收入", state.summary?.incomeCents, Modifier.weight(1f), income = true, pending = summaryPending) }
                                     }
-                                    HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
+                                    HorizontalDivider(color = if (dark) MiuixTheme.colorScheme.dividerLine else MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                     Column {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         ReadText(if (countsPending) null else state.counts?.let { "本月共 ${it.income + it.expenses} 笔交易" } ?: "当月全部交易",
@@ -222,7 +226,7 @@ internal fun MyPage(
                                 Text("校园卡管理", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                                 DashboardPreference(title = "挂失 / 解挂", startAction = { ProfileServiceIcon(MiuixIcons.BankCards) },
                                     enabled = !manageLoading, onClick = { onCardAction(CampusCardAction.ManageState) })
-                                HorizontalDivider(Modifier.padding(start = 62.dp), color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
+                                HorizontalDivider(Modifier.padding(start = 62.dp), color = if (dark) MiuixTheme.colorScheme.dividerLine else MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
                                 DashboardPreference(title = "修改查询密码", startAction = { ProfileServiceIcon(MiuixIcons.Lock) },
                                     enabled = !passwordLoading, onClick = { onCardAction(CampusCardAction.ChangePassword) })
                             }
@@ -253,8 +257,9 @@ private fun MyAmount(label: String, cents: Long?, modifier: Modifier, income: Bo
 
 @Composable
 private fun ProfileServiceIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Box(Modifier.size(32.dp).clip(RoundedCornerShape(11.dp)).background(MiuixTheme.colorScheme.primary.copy(alpha = .05f)),
-        contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(19.dp), tint = MiuixTheme.colorScheme.primary.copy(alpha = .7f)) }
+    val dark = isSystemInDarkTheme()
+    Box(Modifier.size(32.dp).clip(RoundedCornerShape(11.dp)).background(DashboardPalette.iconPanel),
+        contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(19.dp), tint = if (dark) DashboardPalette.iconAccent else MiuixTheme.colorScheme.primary.copy(alpha = .7f)) }
 }
 
 internal fun cardStatus(card: CampusCard?, account: String?, busy: Boolean): String = when {
@@ -281,7 +286,7 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp, custom: Boolean = false,
     Box(Modifier.size(size).clip(RoundedCornerShape(size * .28f)).background(MiuixTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
         ContentFade(displayed, animate = previousBitmap != null) { image ->
             if (image != null) Image(image, if (custom) "自定义头像" else "校园系统头像", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else if (!pending && !decoded.loading) Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = MiuixTheme.colorScheme.primary)
+            else if (!pending && !decoded.loading) Icon(MiuixIcons.Contacts, "头像", Modifier.size(size * .55f), tint = DashboardPalette.iconAccent)
         }
     }
 }

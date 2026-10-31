@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -121,7 +122,8 @@ private fun ReadProgress(modifier: Modifier, completion: Float) {
 }
 
 @Composable
-private fun readProgressColors() = ProgressIndicatorDefaults.progressIndicatorColors(
+private fun readProgressColors() = if (isSystemInDarkTheme()) ProgressIndicatorDefaults.progressIndicatorColors()
+    else ProgressIndicatorDefaults.progressIndicatorColors(
     foregroundColor = MiuixTheme.colorScheme.primary.copy(alpha = .5f),
     backgroundColor = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
 
@@ -174,6 +176,7 @@ internal fun InitialReadTransition(error: String?, networkError: String? = null,
 /** First-read and region failures share one icon and one line, without an extra action. */
 @Composable
 internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullToRefresh: Boolean = true) {
+    val dark = isSystemInDarkTheme()
     if (LocalPageNetworkError.current != null && FeedbackText.isNetwork(error)) {
         // An unread value remains unknown, rather than becoming zero or a confirmed empty result.
         Text("—", modifier.fillMaxWidth().padding(vertical = 16.dp), fontSize = 14.sp,
@@ -187,9 +190,9 @@ internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullT
     Column(modifier.fillMaxWidth().testTag("read-unavailable")
         .padding(horizontal = 8.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(48.dp).background(MiuixTheme.colorScheme.error.copy(alpha = .06f), RoundedCornerShape(16.dp)),
+        Box(Modifier.size(48.dp).background(if (dark) MiuixTheme.colorScheme.errorContainer else MiuixTheme.colorScheme.error.copy(alpha = .06f), RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center) {
-            Icon(MiuixIcons.Info, null, Modifier.size(26.dp), tint = MiuixTheme.colorScheme.error)
+            Icon(MiuixIcons.Info, null, Modifier.size(26.dp), tint = if (dark) MiuixTheme.colorScheme.onErrorContainer else MiuixTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
         Text(if (pullToRefresh) FeedbackText.read(error) else FeedbackText.inline(error),

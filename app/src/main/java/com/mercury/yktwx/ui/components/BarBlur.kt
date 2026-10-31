@@ -1,12 +1,14 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
@@ -25,6 +27,11 @@ internal val LocalTopBarBlurEnabled = staticCompositionLocalOf { false }
 
 /** The glass sampling layer shared by every blurred bar inside the host. */
 internal val LocalBarBlurBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
+/** Floating navigation can overlap cards, so its dark foundation needs a higher surface. */
+@Composable
+internal fun floatingBarColor(): Color = if (isSystemInDarkTheme())
+    MiuixTheme.colorScheme.surfaceContainerHighest else MiuixTheme.colorScheme.surfaceContainer
 
 /**
  * Hosts the [LayerBackdrop] the blurred bars sample from. The record layer is whatever
@@ -103,10 +110,11 @@ internal fun BlurredBar(
 internal fun Modifier.barBlurBackground(
     shape: Shape,
     topGradient: Boolean = false,
+    backgroundColor: Color = MiuixTheme.colorScheme.surface,
 ): Modifier {
     val backdrop = LocalBarBlurBackdrop.current
     val blurEnabled = if (topGradient) LocalTopBarBlurEnabled.current else LocalBottomBarBlurEnabled.current
-    val surfaceColor = MiuixTheme.colorScheme.surface
+    val surfaceColor = backgroundColor
     val contentColor = MiuixTheme.colorScheme.onSurface
     return if (blurEnabled && backdrop != null) {
         if (topGradient) {
