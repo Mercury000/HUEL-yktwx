@@ -5,6 +5,7 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.net.URL
 import java.security.cert.Certificate
 import javax.net.ssl.HttpsURLConnection
@@ -12,10 +13,14 @@ import javax.net.ssl.HttpsURLConnection
 class PersonalProfileTest {
     private class FakeHttps(url: URL, val bytes: ByteArray, private val type: String = "application/json", private val status: Int = 200) : HttpsURLConnection(url) {
         var closed = false
+        var responseFailure: IOException? = null
         override fun connect() = Unit
         override fun disconnect() { closed = true }
         override fun usingProxy() = false
-        override fun getResponseCode() = status
+        override fun getResponseCode(): Int {
+            responseFailure?.let { throw it }
+            return status
+        }
         override fun getContentType() = type
         override fun getInputStream() = ByteArrayInputStream(bytes)
         override fun getErrorStream() = ByteArrayInputStream(bytes)
@@ -90,6 +95,23 @@ class PersonalProfileTest {
             assertNull("Rejected avatar: $it", ProfileApi.avatarPath(it))
         }
     }
+    @Test fun avatarTransportFailureKeepsItsNetworkCategoryAndClosesTheConnection() = runBlocking {
+        val connection = FakeHttps(URL("https://yktwx2.huel.edu.cn/minio/demo.png"), byteArrayOf(), "image/png")
+        connection.responseFailure = IOException("服务暂时无法访问")
+        val api = ProfileApi { connection }
+        val failure = runCatching { api.avatar("/minio/demo.png") }.exceptionOrNull()
+        assertTrue(failure is NetworkFailure)
+        assertEquals(ReadFailureKind.Network, failure!!.readFailureKind())
+        assertTrue(connection.closed)
+    }
+
+    @Test fun avatarConnectionFailureKeepsItsNetworkCategory() = runBlocking {
+        val api = ProfileApi { throw IOException("无法建立连接") }
+        val failure = runCatching { api.avatar("/minio/demo.png") }.exceptionOrNull()
+        assertTrue(failure is NetworkFailure)
+        assertEquals(ReadFailureKind.Network, failure!!.readFailureKind())
+    }
+
     @Test fun avatarIsPublicInMemoryAndRejectsRedirectsOrOversizedResponses() = runBlocking {
         val calls = mutableListOf<FakeHttps>()
         var bytes = byteArrayOf(1, 2, 3)

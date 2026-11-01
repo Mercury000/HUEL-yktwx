@@ -62,7 +62,8 @@ internal fun meterReading(label: String, value: String): DormMeterReading {
 }
 
 class DormMeter(val kind: DormMeterKind, val room: FeeRoomBinding, val query: FeeQuery?, val error: String? = null,
-    val project: FeeProject? = null, val updating: Boolean = false) {
+    val project: FeeProject? = null, val updating: Boolean = false,
+    val errorKind: ReadFailureKind? = null) {
     internal val readings get() = query?.display.orEmpty().map { (label, value) -> meterReading(label, value) }
 
     override fun toString() = "DormMeter([redacted])"
@@ -91,7 +92,7 @@ internal fun mergeFamilyRooms(rooms: List<DormRoom>): List<DormRoom> {
     val sources = rooms.filter { it.project in family }.flatMap { it.bindings }.sortedBy { it.project.ordinal }
     for (household in sources.groupBy { familyHouseholdKey(it.currentBinding) }.values) {
         val candidates = household.flatMap { source ->
-            source.meters.map { DormMeter(it.kind, it.room, it.query, it.error, it.project ?: source.project, it.updating) }
+            source.meters.map { DormMeter(it.kind, it.room, it.query, it.error, it.project ?: source.project, it.updating, it.errorKind) }
         }
         val meters = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater).mapNotNull { project ->
             val matches = candidates.filter { it.project == project }
@@ -160,7 +161,8 @@ internal class DormMeterDiscovery(private val service: FeeService) {
             catch (e: AuthenticationRequired) { throw e }
             catch (e: InvalidCredentials) { throw e }
             catch (e: CaptchaRequired) { throw e }
-            catch (e: Exception) { DormMeter(kind, room, null, (e as? YktException)?.message ?: "读取电量失败", config.project) }
+            catch (e: Exception) { DormMeter(kind, room, null, (e as? YktException)?.message ?: "读取电量失败", config.project,
+                errorKind = e.readFailureKind()) }
         } }.awaitAll() }.toMutableList()
         if (config.project == FeeProject.FamilyWater || config.project == FeeProject.FamilyElectric) {
             val otherProject = if (config.project == FeeProject.FamilyWater) FeeProject.FamilyElectric else FeeProject.FamilyWater

@@ -412,10 +412,12 @@ class TransactionDataRefreshTest {
         await { count("config:${FeeProject.Zhengdong.id}") == 2 && !model.state.value.loading }
         assertEquals(networkReads, count("network"))
         assertEquals(error, model.state.value.networkError)
+        assertEquals(ReadFailureKind.Network, model.state.value.networkErrorKind)
         networkFails = false
         model.refresh()
         await { count("network") == networkReads + 1 && !model.state.value.loading }
         assertNull(model.state.value.networkError)
+        assertNull(model.state.value.networkErrorKind)
     }
 
     @Test fun selectiveHallRetryPreservesOtherProjectErrorsAndTheirNeedForRecovery() {
@@ -448,6 +450,7 @@ class TransactionDataRefreshTest {
         model.refreshStats()
         await { count("categories") == 3 && !model.state.value.stats.loading }
         assertNotNull(model.state.value.stats.categoriesError)
+        assertEquals(ReadFailureKind.Network, model.state.value.stats.categoriesErrorKind)
         trendUpdated = true; rankingUpdated = true
         await(advance = true) {
             count("categories") == 4 && model.state.value.stats.daily.isNotEmpty() &&
@@ -462,6 +465,7 @@ class TransactionDataRefreshTest {
         }
         shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
         assertEquals(5, count("categories"))
+        assertNull(model.state.value.stats.categoriesErrorKind)
         assertEquals(trendReads, count("trend")); assertEquals(rankingReads, count("ranking"))
         model.setPageVisible(false); model.setPageVisible(true)
         shadowOf(Looper.getMainLooper()).idle()
@@ -478,6 +482,7 @@ class TransactionDataRefreshTest {
         await { count("list") == 3 && !model.state.value.refreshing }
         assertNotNull(model.state.value.error)
         summaryUpdated = true; countsUpdated = true
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
         await(advance = true) {
             count("list") == 4 && model.state.value.summary?.incomeCents == 1000L &&
                 model.state.value.counts?.income == 1 && model.state.value.error != null
@@ -488,6 +493,7 @@ class TransactionDataRefreshTest {
         await(advance = true) { count("list") == 5 && model.state.value.error == null && !model.state.value.listLoading }
         shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
         assertEquals(5, count("list"))
+        assertNull(model.state.value.errorKind)
         assertEquals(summaryReads, count("summary")); assertEquals(countReads, count("count:1"))
         model.setPageVisible(false); model.setPageVisible(true)
         shadowOf(Looper.getMainLooper()).idle()
@@ -507,6 +513,7 @@ class TransactionDataRefreshTest {
         model.refresh()
         await { count("summary") == 3 && !model.state.value.loading }
         assertNotNull(model.state.value.summaryError)
+        assertEquals(ReadFailureKind.Network, model.state.value.summaryErrorKind)
         countsUpdated = true
         await(advance = true) { count("summary") == 4 && model.state.value.counts?.income == 1 &&
             model.state.value.summaryError != null && !model.state.value.loading }
@@ -517,6 +524,7 @@ class TransactionDataRefreshTest {
         await(advance = true) { count("summary") == 6 && model.state.value.summaryError == null }
         shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
         assertEquals(6, count("summary"))
+        assertNull(model.state.value.summaryErrorKind)
         assertEquals(countReads, count("count:1")); assertEquals(profileReads, count("profile"))
     }
 

@@ -33,6 +33,10 @@ data class BillStatsState(
     val categoriesError: String? = null,
     val rankingError: String? = null,
     val displayRestored: Boolean = false,
+    val errorKind: ReadFailureKind? = null,
+    val dailyErrorKind: ReadFailureKind? = null,
+    val categoriesErrorKind: ReadFailureKind? = null,
+    val rankingErrorKind: ReadFailureKind? = null,
 )
 
 enum class BillListUpdate { Initial, Restore, Refresh, Append, Query }
@@ -73,6 +77,10 @@ data class BillUiState(
     val animatedOrderIds: Set<String> = emptySet(),
     val displayRestored: Boolean = false,
     val listOnlyRead: Boolean = false,
+    val loadMoreErrorKind: ReadFailureKind? = null,
+    val errorKind: ReadFailureKind? = null,
+    val summaryErrorKind: ReadFailureKind? = null,
+    val countsErrorKind: ReadFailureKind? = null,
 ) {
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
@@ -238,9 +246,9 @@ class BillViewModel internal constructor(
         summaryReadAt = 0L; countsReadAt = 0L
         mutable.value = current.copy(
             dateFilter = filter, items = emptyList(), summary = null, counts = null, currentPage = 0, pages = 0,
-            loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
             listLoaded = false, listAvailable = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
-            summaryError = null, countsError = null,
+            summaryErrorKind = null, summaryError = null, countsErrorKind = null, countsError = null,
             displayRestored = false,
             stats = statisticsFor(filter, current.stats.type),
         )
@@ -262,7 +270,7 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
             items = emptyList(), currentPage = 0, pages = 0,
-            loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
             listLoaded = false, listAvailable = false, listLoading = false,
         )
         if (!preview && !mutable.value.needsLogin) loadListQuery(queryChanged = true)
@@ -274,7 +282,7 @@ class BillViewModel internal constructor(
         cancelListJobs()
         mutable.value = mutable.value.copy(
             info = value, items = emptyList(), currentPage = 0, pages = 0,
-            loaded = false, error = null, loadMoreError = null, loading = false, refreshing = false,
+            loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
             listLoaded = false, listAvailable = false, listLoading = false,
         )
         if (!preview && !mutable.value.needsLogin) loadListQuery(queryChanged = true)
@@ -285,7 +293,7 @@ class BillViewModel internal constructor(
         if (current.activeFilterCount == 0 && current.info.isBlank()) return
         cancelListJobs()
         mutable.value = current.copy(typeId = null, amountFromCents = null, amountToCents = null, info = "",
-            items = emptyList(), currentPage = 0, pages = 0, loaded = false, error = null, loadMoreError = null,
+            items = emptyList(), currentPage = 0, pages = 0, loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null,
             loading = false, refreshing = false, listLoaded = false, listAvailable = false, listLoading = false)
         if (!preview && !current.needsLogin) loadListQuery(queryChanged = true)
     }
@@ -300,7 +308,7 @@ class BillViewModel internal constructor(
         val amountFrom = current.amountFromCents
         val amountTo = current.amountToCents
         val info = current.info
-        mutable.value = current.copy(loadingMore = true, loadMoreError = null)
+        mutable.value = current.copy(loadingMore = true, loadMoreErrorKind = null, loadMoreError = null)
         loadMoreJob = viewModelScope.launch {
             try {
                 val page = withContext(Dispatchers.IO) {
@@ -321,20 +329,20 @@ class BillViewModel internal constructor(
                 mutable.value = latest.copy(
                     items = latest.items + newItems,
                     currentPage = loadedPage, pages = availablePages,
-                    loadingMore = false, loadMoreError = null, listUpdate = BillListUpdate.Append,
+                    loadingMore = false, loadMoreErrorKind = null, loadMoreError = null, listUpdate = BillListUpdate.Append,
                     listUpdateId = ++listUpdateId, animatedOrderIds = newItems.mapTo(mutableSetOf()) { it.stableId },
                 )
                 rememberList(lastLoadedAt)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
-                val auth = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                val auth = e.isAuthenticationFailure()
                 if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
-                    loadingMore = false, loadMoreError = e.message ?: "加载更多失败，请重试",
+                    loadingMore = false, loadMoreErrorKind = e.readFailureKind(), loadMoreError = e.message ?: "加载更多失败，请重试",
                 )
             } catch (_: Exception) {
-                mutable.value = mutable.value.copy(loadingMore = false, loadMoreError = "加载更多失败，请重试")
+                mutable.value = mutable.value.copy(loadingMore = false, loadMoreErrorKind = ReadFailureKind.Other, loadMoreError = "加载更多失败，请重试")
             }
         }
     }
@@ -443,7 +451,7 @@ class BillViewModel internal constructor(
                 counts = if (queryChanged) current.counts ?: snapshot.counts else snapshot.counts,
                 summaryLoaded = snapshot.summaryLoaded || queryChanged && current.summaryLoaded,
                 countsLoaded = snapshot.countsLoaded || queryChanged && current.countsLoaded,
-                summaryError = current.summaryError.takeIf { queryChanged }, countsError = current.countsError.takeIf { queryChanged },
+                summaryErrorKind = current.summaryErrorKind.takeIf { queryChanged }, summaryError = current.summaryError.takeIf { queryChanged }, countsErrorKind = current.countsErrorKind.takeIf { queryChanged }, countsError = current.countsError.takeIf { queryChanged },
                 listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet(),
                 displayRestored = true, listOnlyRead = false, paginationReady = fresh && snapshot.paginationReady)
             mutable.value = restored
@@ -481,8 +489,8 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             loading = !silent && !manualRefresh && !hasItems,
             refreshing = !silent && (manualRefresh || hasItems),
-            error = current.error.takeUnless { readList }, summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
-            loadMoreError = current.loadMoreError.takeUnless { readList },
+            errorKind = current.errorKind.takeUnless { readList }, error = current.error.takeUnless { readList }, summaryErrorKind = current.summaryErrorKind.takeUnless { readSummary }, summaryError = current.summaryError.takeUnless { readSummary }, countsErrorKind = current.countsErrorKind.takeUnless { readCounts }, countsError = current.countsError.takeUnless { readCounts },
+            loadMoreErrorKind = current.loadMoreErrorKind.takeUnless { readList }, loadMoreError = current.loadMoreError.takeUnless { readList },
             listLoading = readList, loadingMore = false,
             listOnlyRead = queryChanged && !readSummary && !readCounts,
         )
@@ -516,7 +524,7 @@ class BillViewModel internal constructor(
                                 val previousIds = it.items.mapTo(HashSet()) { r -> r.stableId }
                                 val update = if (queryChanged) BillListUpdate.Query else if (it.listAvailable) BillListUpdate.Refresh else BillListUpdate.Initial
                                 it.copy(items = page.items, currentPage = page.current, pages = page.pages,
-                                    listLoading = false, listLoaded = true, listAvailable = true, error = null, paginationReady = true,
+                                    listLoading = false, listLoaded = true, listAvailable = true, errorKind = null, error = null, paginationReady = true,
                                     listUpdate = update, listUpdateId = ++listUpdateId,
                                     animatedOrderIds = page.items.filter { r -> update != BillListUpdate.Query && (update == BillListUpdate.Initial || r.stableId !in previousIds) }.mapTo(mutableSetOf()) { r -> r.stableId })
                             }
@@ -524,10 +532,10 @@ class BillViewModel internal constructor(
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             currentCoroutineContext().ensureActive()
-                            if (isAuthenticationFailure(e)) throw e
+                            if (e.isAuthenticationFailure()) throw e
                             listRefresh.failed(read, listKey(current))
                             publish { it.copy(listLoading = false, listLoaded = true,
-                                error = (e as? YktException)?.message ?: "账单加载失败，请稍后重试") }
+                                errorKind = e.readFailureKind(), error = (e as? YktException)?.message ?: "账单加载失败，请稍后重试") }
                         }
                     }
                     if (readSummary) launch {
@@ -536,7 +544,7 @@ class BillViewModel internal constructor(
                         publish {
                             if (result.isSuccess) summaryReadAt = listRefresh.cacheReadAt(summaryKey(current), now(), listRefresh.affects(dateFilter))
                             it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
-                                summaryError = result.exceptionOrNull()?.let(::message))
+                                summaryErrorKind = result.exceptionOrNull()?.readFailureKind(), summaryError = result.exceptionOrNull()?.let(::message))
                         }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.summary(dateFilter.timeFrom, dateFilter.timeTo), it, DisplayCodecs.Summary) }
                     }
@@ -546,7 +554,7 @@ class BillViewModel internal constructor(
                         publish {
                             if (result.isSuccess) countsReadAt = listRefresh.cacheReadAt(countsKey(current), now(), listRefresh.affects(dateFilter))
                             it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
-                                countsError = result.exceptionOrNull()?.let(::message))
+                                countsErrorKind = result.exceptionOrNull()?.readFailureKind(), countsError = result.exceptionOrNull()?.let(::message))
                         }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.counts(dateFilter.timeFrom, dateFilter.timeTo), it, DisplayCodecs.Counts) }
                     }
@@ -568,17 +576,17 @@ class BillViewModel internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
-                val auth = isAuthenticationFailure(e)
+                val auth = e.isAuthenticationFailure()
                 if (auth) { clearAuthenticatedData(); return@launch }
                 listRefresh.failed(read, listKey(current))
                 mutable.value = mutable.value.copy(
                     needsLogin = false, loading = false, refreshing = false, listLoading = false,
-                    error = e.message ?: "账单加载失败，请稍后重试", loaded = true, listLoaded = true,
+                    errorKind = e.readFailureKind(), error = e.message ?: "账单加载失败，请稍后重试", loaded = true, listLoaded = true,
                 )
             } catch (_: Exception) {
                 listRefresh.failed(read, listKey(current))
                 mutable.value = mutable.value.copy(
-                    loading = false, refreshing = false, listLoading = false, error = "服务数据异常，请稍后刷新",
+                    loading = false, refreshing = false, listLoading = false, errorKind = ReadFailureKind.Other, error = "服务数据异常，请稍后刷新",
                 )
             } finally {
                 listRefresh.finished(read)
@@ -605,10 +613,10 @@ class BillViewModel internal constructor(
         val readCategories = !transactionRetry || statsRefresh.needsRead(categoriesKey)
         val readRanking = !transactionRetry || statsRefresh.needsRead(rankingKey)
         statsCache.invalidate(statsKey(stats.period, stats.type))
-        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, error = null,
-            dailyError = stats.dailyError.takeUnless { readDaily },
-            categoriesError = stats.categoriesError.takeUnless { readCategories },
-            rankingError = stats.rankingError.takeUnless { readRanking }))
+        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, errorKind = null, error = null,
+            dailyErrorKind = stats.dailyErrorKind.takeUnless { readDaily }, dailyError = stats.dailyError.takeUnless { readDaily },
+            categoriesErrorKind = stats.categoriesErrorKind.takeUnless { readCategories }, categoriesError = stats.categoriesError.takeUnless { readCategories },
+            rankingErrorKind = stats.rankingErrorKind.takeUnless { readRanking }, rankingError = stats.rankingError.takeUnless { readRanking }))
         statsJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
             if (!stats.loaded) {
@@ -633,21 +641,21 @@ class BillViewModel internal constructor(
                         }
                         statsRefresh.record(read, dailyKey, result)
                         publish { it.copy(daily = result.getOrNull() ?: it.daily,
-                            dailyLoaded = it.dailyLoaded || result.isSuccess, dailyError = result.exceptionOrNull()?.let(::message)) }
+                            dailyLoaded = it.dailyLoaded || result.isSuccess, dailyErrorKind = result.exceptionOrNull()?.readFailureKind(), dailyError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), it, DisplayCodecs.Daily) }
                     }
                     if (readCategories) launch {
                         val result = optionalData { repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo) }
                         statsRefresh.record(read, categoriesKey, result)
                         publish { it.copy(categories = result.getOrNull() ?: it.categories,
-                            categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesError = result.exceptionOrNull()?.let(::message)) }
+                            categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesErrorKind = result.exceptionOrNull()?.readFailureKind(), categoriesError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), it, DisplayCodecs.Categories) }
                     }
                     if (readRanking) launch {
                         val result = optionalData { repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5) }
                         statsRefresh.record(read, rankingKey, result)
                         publish { it.copy(ranking = result.getOrNull() ?: it.ranking,
-                            rankingLoaded = it.rankingLoaded || result.isSuccess, rankingError = result.exceptionOrNull()?.let(::message)) }
+                            rankingLoaded = it.rankingLoaded || result.isSuccess, rankingErrorKind = result.exceptionOrNull()?.readFailureKind(), rankingError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), it, DisplayCodecs.Records) }
                     }
                 }
@@ -657,14 +665,14 @@ class BillViewModel internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
-                val auth = isAuthenticationFailure(e)
+                val auth = e.isAuthenticationFailure()
                 if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
-                    stats = mutable.value.stats.copy(loading = false, error = e.message ?: "统计数据加载失败"),
+                    stats = mutable.value.stats.copy(loading = false, errorKind = e.readFailureKind(), error = e.message ?: "统计数据加载失败"),
                 )
             } catch (_: Exception) {
                 mutable.value = mutable.value.copy(
-                    stats = mutable.value.stats.copy(loading = false, error = "服务数据异常，请稍后重试"),
+                    stats = mutable.value.stats.copy(loading = false, errorKind = ReadFailureKind.Other, error = "服务数据异常，请稍后重试"),
                 )
             } finally {
                 statsRefresh.finished(read)
@@ -701,11 +709,10 @@ class BillViewModel internal constructor(
         throw e
     } catch (e: Exception) {
         currentCoroutineContext().ensureActive()
-        if (isAuthenticationFailure(e)) throw e
+        if (e.isAuthenticationFailure()) throw e
         Result.failure(e)
     }
 
-    private fun isAuthenticationFailure(e: Exception) = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
     private fun message(e: Throwable) = (e as? YktException)?.message ?: "读取失败，请稍后重试"
 
     private fun clearAuthenticatedData() {

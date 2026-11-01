@@ -30,7 +30,7 @@ class NetworkReadRecoveryTest {
         var error by mutableStateOf<String?>("网络连接失败")
         var retries = 0
         compose.setContent {
-            ReadRecoveryEffect(availability, "hall", loading, error) {
+            ReadRecoveryEffect(availability, "hall", loading, error != null) {
                 retries++; loading = true; error = null
             }
         }
@@ -47,7 +47,7 @@ class NetworkReadRecoveryTest {
         var loading by mutableStateOf(true)
         var error by mutableStateOf<String?>(null)
         var retries = 0
-        compose.setContent { ReadRecoveryEffect(availability, "my", loading, error) { retries++ } }
+        compose.setContent { ReadRecoveryEffect(availability, "my", loading, error != null) { retries++ } }
         compose.runOnIdle { availability = availability.update(online = true) }
         compose.runOnIdle { assertEquals(0, retries); error = "网络连接失败"; loading = false }
         compose.runOnIdle { assertEquals(1, retries); availability = availability.update(online = false) }
@@ -61,7 +61,7 @@ class NetworkReadRecoveryTest {
         var loading by mutableStateOf(true)
         var page by mutableStateOf<String?>("payment")
         var retries = 0
-        compose.setContent { ReadRecoveryEffect(availability, page, loading, "网络连接失败") { retries++ } }
+        compose.setContent { ReadRecoveryEffect(availability, page, loading, true) { retries++ } }
         compose.runOnIdle { availability = availability.update(foreground = true) }
         compose.runOnIdle { loading = false }
         compose.runOnIdle { assertEquals(0, retries); page = null; availability = availability.update(online = false) }
@@ -104,7 +104,7 @@ class NetworkReadRecoveryTest {
         var page by mutableStateOf<String?>("hall")
         var loading by mutableStateOf(true)
         var retries = 0
-        compose.setContent { ReadRecoveryEffect(availability, page, loading, "网络连接失败") { retries++ } }
+        compose.setContent { ReadRecoveryEffect(availability, page, loading, true) { retries++ } }
         compose.runOnIdle { availability = availability.update(online = true) }
         compose.runOnIdle { page = null }
         compose.runOnIdle { loading = false }

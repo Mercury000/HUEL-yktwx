@@ -43,7 +43,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     PaymentCodePresentationEffect(isActive && displayCode != null)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
     LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
-    val readError = state.error ?: "暂时无法确认卡状态".takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
+    val readError = readError(state.error, state.errorKind) ?: ReadError("暂时无法确认卡状态").takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
     val initialError = rememberInitialReadError(state.account != null || displayCode != null,
         readError, !state.busy)
     val showEnlarged = isActive && displayCode != null && enlarged != null
@@ -94,7 +94,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (showFailure) {
-                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
                         } else {
                         item {
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
@@ -253,7 +253,7 @@ private fun paymentContentHeight(width: Dp): Dp {
 @Composable
 private fun PaymentStatusContent(
     state: PaymentUiState,
-    readError: String?,
+    readError: ReadError?,
     onUnlost: () -> Unit,
     unlostLoading: Boolean,
     unlostEnabled: Boolean,
@@ -290,7 +290,7 @@ private fun PaymentStatusContent(
                 state.busy -> "确认完成前，暂不展示付款码"
                 lost -> "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用"
                 state.problem == PaymentCodeProblem.Frozen -> "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理"
-                else -> FeedbackText.read(readError.orEmpty())
+                else -> FeedbackText.read(readError ?: ReadError(""))
             }, modifier = Modifier.fillMaxWidth(), fontSize = 13.sp, lineHeight = 21.sp,
                 maxLines = if (!state.busy && !restricted) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center)

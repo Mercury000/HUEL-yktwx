@@ -52,7 +52,7 @@ class IconBoundaryAuditTest {
                             Card(Modifier.fillMaxWidth()) {
                                 if (unavailable) {
                                     Box(Modifier.fillMaxWidth().height(320.dp)) {
-                                        InitialReadTransition("网络连接失败") { ReadUnavailable(it.orEmpty()) }
+                                        InitialReadTransition(ReadError("网络连接失败", com.mercury.yktwx.data.ReadFailureKind.Network)) { ReadUnavailable(checkNotNull(it)) }
                                     }
                                 } else Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -114,7 +114,7 @@ class IconBoundaryAuditTest {
                                     Text("默认头像", fontSize = 13.sp)
                                 }
                                 InlineError("金额超出范围")
-                                ReadUnavailable("网络连接失败")
+                                ReadUnavailable(ReadError("网络连接失败", com.mercury.yktwx.data.ReadFailureKind.Network))
                             }
                         }
                     }

@@ -41,6 +41,9 @@ data class PaymentUiState(
     val cardStatusLoading: Boolean = false,
     val cardStatusError: String? = null,
     val errorFields: Set<FormField> = emptySet(),
+    val errorKind: ReadFailureKind? = null,
+    val accountErrorKind: ReadFailureKind? = null,
+    val cardStatusErrorKind: ReadFailureKind? = null,
 ) {
     override fun toString() = "PaymentUiState([redacted])"
 }
@@ -179,7 +182,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 else if (exists && foreground && accountPageVisible) refreshAccount()
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
-                mutable.value = PaymentUiState(error = "无法读取本机登录信息，请重新登录")
+                mutable.value = PaymentUiState(errorKind = ReadFailureKind.Other, error = "无法读取本机登录信息，请重新登录")
             }
         }
     }
@@ -259,8 +262,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val username = current.username
         val version = ++accountReadVersion
         val transactionRead = balanceRefresh.started()
-        mutable.value = current.copy(accountLoading = readBalance && !silent, accountError = null,
-            cardStatusLoading = readCard && !silent, cardStatusError = current.cardStatusError.takeUnless { readCard })
+        mutable.value = current.copy(accountLoading = readBalance && !silent, accountErrorKind = null, accountError = null,
+            cardStatusLoading = readCard && !silent, cardStatusErrorKind = current.cardStatusErrorKind.takeUnless { readCard }, cardStatusError = current.cardStatusError.takeUnless { readCard })
         accountRequest = viewModelScope.launch {
             fun isCurrent() = version == accountReadVersion && !mutable.value.needsLogin && mutable.value.username == username
             var balanceObtained = !readBalance
@@ -283,24 +286,24 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                     if (!isCurrent() || !repository.ownsAccount(username)) return@launch
                     if (card.account != account.account || card.status < 0) throw YktException("校园卡状态数据异常")
                     cardReadAt = SystemClock.elapsedRealtime()
-                    mutable.value = mutable.value.copy(accountCard = card, cardStatusLoading = false, cardStatusError = null)
+                    mutable.value = mutable.value.copy(accountCard = card, cardStatusLoading = false, cardStatusErrorKind = null, cardStatusError = null)
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (!isCurrent()) return@launch
-                val requiresLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                val requiresLogin = e.isAuthenticationFailure()
                 if (requiresLogin) {
                     requestVersion++; request?.cancel(); ticker?.cancel()
                     cancelPaymentDetection(); mutableSuccess.value = null
                     codeExpiresAt = 0L
                     mutable.value = PaymentUiState(needsLogin = true, username = username,
-                        error = "登录已失效，请重新登录")
+                        errorKind = ReadFailureKind.Authentication, error = "登录已失效，请重新登录")
                 } else if (balanceObtained) mutable.value = mutable.value.copy(accountCard = null,
-                    cardStatusError = (e as? YktException)?.message ?: "校园卡状态暂时无法加载")
+                    cardStatusErrorKind = e.readFailureKind(), cardStatusError = (e as? YktException)?.message ?: "校园卡状态暂时无法加载")
                 else {
                     current.account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
                     mutable.value = mutable.value.copy(accountLoading = false,
-                        accountError = (e as? YktException)?.message ?: "余额暂时无法加载")
+                        accountErrorKind = e.readFailureKind(), accountError = (e as? YktException)?.message ?: "余额暂时无法加载")
                 }
             } finally {
                 if (version == accountReadVersion) mutable.value = mutable.value.copy(accountLoading = false, cardStatusLoading = false)
@@ -324,13 +327,14 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         codeExpiresAt = 0L
         mutable.value = PaymentUiState(
             old.needsLogin, logoutJob?.isActive == true, old.error, old.username,
+            errorKind = old.errorKind,
             preview = preview, restoringLogin = old.restoringLogin,
             account = old.account.takeUnless { old.needsLogin },
             accountFromCache = old.accountFromCache,
             problem = old.problem.takeUnless { old.needsLogin },
-            accountLoading = old.accountLoading, accountError = old.accountError.takeUnless { old.needsLogin },
+            accountLoading = old.accountLoading, accountErrorKind = old.accountErrorKind.takeUnless { old.needsLogin }, accountError = old.accountError.takeUnless { old.needsLogin },
             accountCard = old.accountCard.takeUnless { old.needsLogin },
-            cardStatusLoading = old.cardStatusLoading, cardStatusError = old.cardStatusError.takeUnless { old.needsLogin },
+            cardStatusLoading = old.cardStatusLoading, cardStatusErrorKind = old.cardStatusErrorKind.takeUnless { old.needsLogin }, cardStatusError = old.cardStatusError.takeUnless { old.needsLogin },
         )
     }
     private fun resumePaymentDisplay() {
@@ -348,7 +352,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     fun loginInputEdited(field: FormField) {
         val s = mutable.value
         if (s.needsLogin && !s.busy && field in s.errorFields)
-            mutable.value = s.copy(error = null, errorFields = emptySet())
+            mutable.value = s.copy(errorKind = null, error = null, errorFields = emptySet())
     }
     fun login(username: String, password: String) {
         if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
@@ -371,18 +375,18 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
-                mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, error = e.message, problem = e.problem)
+                mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
                 recordBalance(username.trim(), e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
                 if (version != requestVersion) return@launch
                 // Old credentials are not proof that this submitted login succeeded.
                 mutable.value = PaymentUiState(needsLogin = true, username = username,
-                    error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
+                    errorKind = e.readFailureKind(), error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
                 mutable.value = PaymentUiState(needsLogin = true, username = old.username,
-                    error = "登录失败，请稍后重试")
+                    errorKind = ReadFailureKind.Other, error = "登录失败，请稍后重试")
             }
         }
     }
@@ -424,27 +428,28 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             catch (e: CancellationException) { throw e }
             catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
-                mutable.value = PaymentUiState(needsLogin = false, username = username, account = e.account, error = e.message, problem = e.problem)
+                mutable.value = PaymentUiState(needsLogin = false, username = username, account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
                 recordBalance(username, e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             }
             catch (e: YktException) {
                 if (version != requestVersion) return@launch
-                val requireLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                val requireLogin = e.isAuthenticationFailure()
                 if (!requireLogin && !accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
                 mutable.value = PaymentUiState(
                     needsLogin = requireLogin,
-                    error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
+                    errorKind = e.readFailureKind(), error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
                     username = username, account = mutable.value.account.takeUnless { requireLogin },
                     accountFromCache = !requireLogin && mutable.value.accountFromCache,
+                    accountErrorKind = e.readFailureKind().takeUnless { requireLogin || accountObtained },
                     accountError = if (requireLogin || accountObtained) null else e.message,
                     problem = PaymentCodeProblem.StatusUnverified.takeUnless { requireLogin },
                 )
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
                 if (!accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
-                mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
-                    accountFromCache = mutable.value.accountFromCache, accountError = "余额暂时无法更新".takeUnless { accountObtained },
+                mutable.value = PaymentUiState(needsLogin = false, errorKind = ReadFailureKind.Other, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
+                    accountFromCache = mutable.value.accountFromCache, accountErrorKind = ReadFailureKind.Other, accountError = "余额暂时无法更新".takeUnless { accountObtained },
                     problem = PaymentCodeProblem.StatusUnverified)
             } finally {
                 balanceRefresh.finished(transactionRead)

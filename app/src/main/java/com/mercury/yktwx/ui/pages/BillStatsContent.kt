@@ -30,13 +30,13 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
             onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
             modifier = Modifier.fillMaxWidth(),
         )
-        ReadNotice(stats.error.takeIf { stats.loaded }, cached = true, topSpacing = 20.dp)
+        ReadNotice(readError(stats.error.takeIf { stats.loaded }, stats.errorKind), cached = true, topSpacing = 20.dp)
         }
     }
     if (stats.error != null) {
         if (!stats.loaded) {
             item(key = "error") {
-                BillErrorCard(stats.error)
+                BillErrorCard(checkNotNull(readError(stats.error, stats.errorKind)))
             }
             return
         }
@@ -50,12 +50,12 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                         contentKey = { if (it.dailyLoaded) "content" else if (it.dailyError != null) "error" else "pending" }) { displayed ->
                         when {
                             displayed.dailyLoaded -> DailyBillChart(displayed.daily, displayed.period.mode)
-                            displayed.dailyError != null -> ReadUnavailable(displayed.dailyError)
+                            displayed.dailyError != null -> ReadUnavailable(checkNotNull(readError(displayed.dailyError, displayed.dailyErrorKind)))
                             else -> DailyBillChartPlaceholder()
                         }
                     }
                 }
-                ReadNotice(stats.dailyError.takeIf { stats.dailyLoaded }, cached = true)
+                ReadNotice(readError(stats.dailyError.takeIf { stats.dailyLoaded }, stats.dailyErrorKind), cached = true)
             }
         }
     }
@@ -68,12 +68,12 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
                         contentKey = { if (it.categoriesLoaded) "content" else if (it.categoriesError != null) "error" else "pending" }) { displayed ->
                         when {
                             displayed.categoriesLoaded -> CategoryDonutChart(displayed.categories, displayed.type)
-                            displayed.categoriesError != null -> ReadUnavailable(displayed.categoriesError)
+                            displayed.categoriesError != null -> ReadUnavailable(checkNotNull(readError(displayed.categoriesError, displayed.categoriesErrorKind)))
                             else -> CategoryDonutChartPlaceholder()
                         }
                     }
                 }
-                ReadNotice(stats.categoriesError.takeIf { stats.categoriesLoaded }, cached = true)
+                ReadNotice(readError(stats.categoriesError.takeIf { stats.categoriesLoaded }, stats.categoriesErrorKind), cached = true)
             }
         }
         }
@@ -83,9 +83,9 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
     } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) item(key = "ranking") {
         Column {
             if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
-            ReadNotice(stats.rankingError.takeIf { stats.ranking.isNotEmpty() }, cached = true)
+            ReadNotice(readError(stats.rankingError.takeIf { stats.ranking.isNotEmpty() }, stats.rankingErrorKind), cached = true)
             if (stats.ranking.isEmpty() && stats.rankingError != null)
-                Card(Modifier.fillMaxWidth()) { ReadUnavailable(stats.rankingError) }
+                Card(Modifier.fillMaxWidth()) { ReadUnavailable(checkNotNull(readError(stats.rankingError, stats.rankingErrorKind))) }
         }
     }
 }

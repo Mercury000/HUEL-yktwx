@@ -572,7 +572,7 @@ private const val DISPLAY_YEAR_BUFFER = 5
 
 @Composable
 internal fun BillErrorCard(
-    message: String,
+    message: ReadError,
 ) {
     Card(Modifier.fillMaxWidth()) { ReadUnavailable(message) }
 }

@@ -89,8 +89,26 @@ class HallViewModelTest {
         assertSame(network, model.state.value.network)
         assertNotNull(model.state.value.error)
         assertNotNull(model.state.value.networkError)
+        assertEquals(ReadFailureKind.Network, model.state.value.networkErrorKind)
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
+        assertTrue(model.state.value.projectErrorKinds.values.all { it == ReadFailureKind.Network })
         assertTrue(model.state.value.roomsAvailable)
         assertTrue(fees.writes.isEmpty())
+    }
+
+    @Test fun mixedProjectFailuresKeepTheBusinessErrorAsTheVisibleBlockError() {
+        fees.configurationFailures = mapOf(FeeProject.Zhengdong to NetworkFailure("服务暂时无法访问"),
+            FeeProject.Wenbei to YktException("网络异常套餐不支持房间绑定"))
+        open()
+        assertEquals("网络异常套餐不支持房间绑定", model.state.value.error)
+        assertEquals(ReadFailureKind.Other, model.state.value.errorKind)
+        assertEquals(ReadFailureKind.Network, model.state.value.projectErrorKinds[FeeProject.Zhengdong])
+        assertEquals(ReadFailureKind.Other, model.state.value.projectErrorKinds[FeeProject.Wenbei])
+        fees.configurationFailures = emptyMap()
+        model.refresh()
+        await { !model.state.value.loading }
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.errorKind)
     }
 
     @Test fun failedMeterRefreshKeepsOnlyTheSameMetersLastReading() {
@@ -103,6 +121,7 @@ class HallViewModelTest {
         val meter = model.state.value.rooms.single().meters.single()
         assertSame(query, meter.query)
         assertNotNull(meter.error)
+        assertEquals(ReadFailureKind.Network, meter.errorKind)
         // A newly selected binding cannot inherit the old room's reading.
         fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "B")
         model.refresh()
@@ -411,12 +430,14 @@ class HallViewModelTest {
         assertNotNull(fees.saved[FeeProject.FamilyWater])
         assertEquals(listOf(FeeProject.FamilyWater), model.state.value.rooms.single().bindings.map { it.project })
         assertEquals("模拟解绑拒绝", model.state.value.error)
+        assertEquals(ReadFailureKind.Other, model.state.value.errorKind)
         assertEquals(listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater), fees.writes)
         fees.networkGate = CompletableDeferred()
         fees.networkEntered = false
         model.refresh()
         await { fees.networkEntered }
         assertNull("A new explicit refresh must clear last operation's error", model.state.value.error)
+        assertNull(model.state.value.errorKind)
         fees.networkGate!!.complete(Unit)
         await { !model.state.value.loading }
         assertNull(model.state.value.error)
@@ -457,6 +478,7 @@ class HallViewModelTest {
         val writes = mutableListOf<FeeProject>()
         var failWrite: FeeProject? = null
         var failConfigurations = false
+        var configurationFailures: Map<FeeProject, Exception> = emptyMap()
         var failDetails = false
         var networkGate: CompletableDeferred<Unit>? = null
         @Volatile var networkEntered = false
@@ -473,6 +495,7 @@ class HallViewModelTest {
             mapOf("campus" to "示例校区", "room" to name))!!
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             configReads.merge(project, 1, Int::plus)
+            configurationFailures[project]?.let { throw it }
             if (failConfigurations) throw NetworkFailure()
             if (project == FeeProject.Zhengdong && projectGate != null) {
                 blockedProjectEntered = true; projectGate!!.await()

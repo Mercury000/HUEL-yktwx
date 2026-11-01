@@ -34,6 +34,7 @@ import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.data.DormMeterSlot
 import com.mercury.yktwx.data.DormMeter
 import com.mercury.yktwx.data.FeeQuery
+import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -66,11 +67,12 @@ fun HallPage(
     LaunchedEffect(isActive) { if (!isActive) targets = false }
     val hasContent = dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null
     val initialError = rememberInitialReadError(hasContent,
-        dorm.error ?: dorm.networkError, !dorm.loading && dorm.loaded)
+        FeedbackText.firstError(readError(dorm.error, dorm.errorKind), readError(dorm.networkError, dorm.networkErrorKind)), !dorm.loading && dorm.loaded)
     val networkError = rememberPageNetworkError(FeedbackText.mergedNetworkError(
-        "水电费" to FeedbackText.networkError(dorm.error,
-            *dorm.rooms.flatMap { room -> room.meters.map { it.error } }.toTypedArray()),
-        "校园网" to dorm.networkError), dorm.loading, hasContent)
+        "水电费" to FeedbackText.networkError(readError(dorm.error, dorm.errorKind),
+            ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { ReadFailureKind.Network in dorm.projectErrorKinds.values },
+            *dorm.rooms.flatMap { room -> room.meters.map { readError(it.error, it.errorKind) } }.toTypedArray()),
+        "校园网" to readError(dorm.networkError, dorm.networkErrorKind)), dorm.loading, hasContent)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -102,7 +104,7 @@ fun HallPage(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     if (showFailure) {
-                        item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                        item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
                     } else {
                     item {
                         PageReadNotice(networkError, 14.dp,
@@ -177,15 +179,15 @@ private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget:
 }
 
 /** Amount-only refreshes retain the existing panels and their numeric animation. */
-private data class UtilityDisplay(val room: DormRoom?, val pending: Boolean, val error: String?)
+private data class UtilityDisplay(val room: DormRoom?, val pending: Boolean, val error: ReadError?)
 
 /** Animated snapshots contain display readings, never the server payment query payload. */
 private fun utilityDisplay(state: DormUiState) = UtilityDisplay(state.selectedRoom?.let { room ->
     DormRoom(room.project, room.binding, room.meters.map { meter ->
         DormMeter(meter.kind, meter.room, meter.query?.let { FeeQuery(display = it.display) },
-            meter.error, meter.project, meter.updating)
+            meter.error, meter.project, meter.updating, meter.errorKind)
     }, room.updatedAtMillis, room.notice, pendingMeters = room.pendingMeters)
-}, state.rooms.isEmpty() && !state.roomsLoaded && state.error == null, state.error)
+}, state.rooms.isEmpty() && !state.roomsLoaded && state.error == null, readError(state.error, state.errorKind))
 
 /** Only a different room or visible panel structure replaces the body. Background refresh
  * flags and normalized project/order metadata must never fade already painted cards. */
@@ -274,7 +276,7 @@ private fun UtilityPlaceholder() {
 
 @Composable
 private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
-    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: String? = null, interactive: Boolean = true) {
+    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: ReadError? = null, interactive: Boolean = true) {
     Column {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -349,7 +351,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
         }
     }
     }
-    ReadNotice(readError ?: room.meters.firstNotNullOfOrNull { it.error },
+    ReadNotice(FeedbackText.firstError(readError, *room.meters.map { readError(it.error, it.errorKind) }.toTypedArray()),
         cached = room.meters.any { it.query != null }, topSpacing = 20.dp)
     if (room.notice != null && readError == null && room.meters.none { it.error != null }) {
         Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -408,7 +410,7 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
             }
             Column {
             if (state.network == null && state.networkError != null) {
-                ReadUnavailable(state.networkError)
+                ReadUnavailable(checkNotNull(readError(state.networkError, state.networkErrorKind)))
             } else Row(verticalAlignment = Alignment.CenterVertically) {
                 val packageName = if (!state.networkLoaded && state.network == null) null
                     else state.network?.display?.firstOrNull { "套餐" in it.first }?.second ?: "—"
@@ -420,7 +422,7 @@ private fun NetworkCard(state: DormUiState, opening: FeeProject?, onOpen: () -> 
                 }
                 CompactButton("充值", onClick = onOpen, enabled = opening != FeeProject.Network, modifier = Modifier.testTag("network-recharge"))
             }
-            ReadNotice(state.networkError.takeIf { state.network != null }, cached = true, topSpacing = 24.dp)
+            ReadNotice(readError(state.networkError.takeIf { state.network != null }, state.networkErrorKind), cached = true, topSpacing = 24.dp)
             }
         }
     }
