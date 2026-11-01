@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import android.widget.Toast
 import android.content.Intent
@@ -31,6 +32,8 @@ import com.mercury.yktwx.MyViewModel
 import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
+import com.mercury.yktwx.AppUpdateViewModel
+import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.FeeRoomBinding
 import com.mercury.yktwx.data.PaymentCodeProblem
@@ -259,6 +262,8 @@ private fun MainContent(
 ) {
     val context = LocalContext.current
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
+    val updateModel: AppUpdateViewModel = viewModel()
+    val updateState by updateModel.state.collectAsStateWithLifecycle()
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
     val cardState by cardModel.state.collectAsStateWithLifecycle()
@@ -413,6 +418,19 @@ private fun MainContent(
         }
     }
     val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
+    // Offer automatic updates on informational pages, after active forms and navigation settle.
+    val updatePromptAllowed = isActive && !pagerState.isScrollInProgress && motion.none {
+        it.predictiveActive || it.coveredDepth.isRunning || it.progress.isRunning
+    } && !dormPaymentVisible && !rechargeState.visible && !cardState.visible && !passwordState.visible &&
+        !rechargeState.loading && !cardState.loading && !passwordState.loading && feeOpening == null &&
+        paymentSuccess == null && !avatarState.visible &&
+        (layers.lastOrNull() in listOf(Screen.Settings, Screen.About) || layers.isEmpty() && pagerState.currentPage == 3)
+    AppUpdateEffect(updateModel, settings.automaticUpdates.value,
+        allowed = isActive && !state.needsLogin && !state.preview && !LocalInspectionMode.current,
+        safeToPrompt = updatePromptAllowed)
+    LaunchedEffect(updatePromptAllowed, updateState.release, updateState.checking) {
+        updateModel.presentIfAllowed(updatePromptAllowed)
+    }
     val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
     fun open(screen: Screen) {
         if (isActive && layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
@@ -676,12 +694,15 @@ private fun MainContent(
                         onBack = { close() },
                         onTheme = { open(Screen.Theme) },
                         onLogout = { if (isActive) onLogout() },
+                        updateState = updateState,
+                        onCheckUpdates = updateModel::checkManually,
                     )
                 }
             }
         }
     }
     }
+    AppUpdateDialog(updateState, updateModel::dismiss)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
             avatarState.owner == state.username && avatarState.preview == state.preview)
@@ -694,6 +715,8 @@ private fun SecondaryPage(
     onBack: () -> Unit,
     onTheme: () -> Unit,
     onLogout: () -> Unit,
+    updateState: AppUpdateUiState,
+    onCheckUpdates: () -> Unit,
 ) {
     var showLogout by remember { mutableStateOf(false) }
     val title = when (screen) {
@@ -732,6 +755,12 @@ private fun SecondaryPage(
                                     checked = settings.preventScreenshots.value,
                                     onCheckedChange = settings::setPreventScreenshots,
                                 )
+                            }
+                        }
+                        item {
+                            Box(Modifier.padding(top = 16.dp)) {
+                                UpdateSettingsCard(updateState, settings.automaticUpdates.value,
+                                    settings::setAutomaticUpdates, onCheckUpdates)
                             }
                         }
                         item {

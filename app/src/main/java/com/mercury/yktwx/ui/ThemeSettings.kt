@@ -16,6 +16,7 @@ class ThemeSettings(context: Context) {
     val predictiveBackDistance = mutableStateOf(prefs.getInt("predictive_back_distance", 50).coerceIn(0, 100))
     val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
+    val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
     fun getNavigationRailExpanded(default: Boolean): Boolean = prefs.getBoolean("navigation_rail_expanded", default)
     fun setNavigationRailExpanded(v: Boolean) { prefs.edit().putBoolean("navigation_rail_expanded", v).apply() }
     fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }
@@ -28,4 +29,5 @@ class ThemeSettings(context: Context) {
     fun setDistance(v: Int) { predictiveBackDistance.value = v.coerceIn(0, 100); prefs.edit().putInt("predictive_back_distance", predictiveBackDistance.value).apply() }
     fun setPaymentMotionDetection(v: Boolean) { paymentMotionDetection.value = v; prefs.edit().putBoolean("payment_motion_detection", v).apply() }
     fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
+    fun setAutomaticUpdates(v: Boolean) { automaticUpdates.value = v; prefs.edit().putBoolean("automatic_updates", v).apply() }
 }
