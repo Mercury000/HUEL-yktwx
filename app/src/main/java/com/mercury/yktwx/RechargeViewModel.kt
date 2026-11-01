@@ -182,7 +182,8 @@ class RechargeViewModel internal constructor(
         val previous = mutable.value
         update(visible = true, loading = false, phase = phase, error = error)
         if (phase == RechargePhase.Paid && previous.phase != RechargePhase.Paid && !previous.preview && repository.ownsAccount(owner))
-            updates.trySend(TransactionUpdate(owner, balance = previous.pending?.recipient == null))
+            updates.trySend(TransactionUpdate(owner, balance = previous.pending?.recipient == null,
+                income = true.takeIf { previous.pending?.recipient == null }))
     }
     private fun requestError(message: String) {
         paymentReturn.reset()

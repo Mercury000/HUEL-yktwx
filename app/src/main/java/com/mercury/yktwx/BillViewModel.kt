@@ -82,6 +82,7 @@ class BillViewModel internal constructor(
     app: Application,
     private val repository: AccountRepository,
     private val now: () -> Long = ReadCachePolicy::now,
+    retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
 ) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(BillUiState())
@@ -103,6 +104,45 @@ class BillViewModel internal constructor(
     private val statsCache = RecentReadCache<String, BillStatsState>()
     private val listCache = RecentReadCache<String, CachedList>()
     private var listUpdateId = 0L
+    private var pageVisible = false
+    private val pendingStatsTypes = mutableSetOf<Int>()
+    private fun summaryKey(state: BillUiState = mutable.value) = DisplayKeys.summary(state.dateFilter.timeFrom, state.dateFilter.timeTo)
+    private fun countsKey(state: BillUiState = mutable.value) = DisplayKeys.counts(state.dateFilter.timeFrom, state.dateFilter.timeTo)
+    private fun listPending(state: BillUiState = mutable.value): Boolean = !state.needsLogin && listRefresh.affects(state.dateFilter) &&
+        (listRefresh.pending(listKey(state)) || state.error != null ||
+            listRefresh.pending(summaryKey(state)) || state.summaryError != null ||
+            listRefresh.pending(countsKey(state)) || state.countsError != null)
+    private fun statsPending(stats: BillStatsState = mutable.value.stats): Boolean = !mutable.value.needsLogin && stats.type in pendingStatsTypes && statsRefresh.affects(stats.period) &&
+        (statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "categories")) || stats.categoriesError != null ||
+            statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "ranking")) || stats.rankingError != null ||
+            stats.period.trendSupported && (statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "daily")) || stats.dailyError != null))
+    private val listRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
+        needsRefresh = { listPending() }, isReading = { loadJob?.isActive == true || loadMoreJob?.isActive == true || loginCheck?.isActive == true },
+        retry = { load(transactionRetry = true, silent = true) })
+    private val statsRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
+        needsRefresh = { statsPending() }, isReading = { statsJob?.isActive == true },
+        retry = { loadStats(transactionRetry = true, silent = true) })
+
+    fun setPageVisible(visible: Boolean) {
+        pageVisible = visible
+        updateReadVisibility()
+        if (visible) onActivate()
+        else {
+            loginCheck?.cancel(); loginCheck = null
+            if (listPending()) {
+                cancelListJobs()
+                mutable.value = mutable.value.copy(loading = false, refreshing = false, listLoading = false)
+            }
+            if (statsPending()) {
+                statsJob?.cancel()
+                mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(loading = false))
+            }
+        }
+    }
+    private fun updateReadVisibility() {
+        listRefresh.setVisible(pageVisible && !preview && !mutable.value.statsVisible)
+        statsRefresh.setVisible(pageVisible && !preview && mutable.value.statsVisible)
+    }
 
     fun initialize(uiPreview: Boolean = false) {
         if (initialized) return
@@ -135,6 +175,7 @@ class BillViewModel internal constructor(
         lastLoadedAt = 0L
         summaryReadAt = 0L; countsReadAt = 0L
         statsCache.clear(); listCache.clear()
+        listRefresh.clear(); statsRefresh.clear(); pendingStatsTypes.clear()
         mutable.value = if (UiPreview.enabled && preview && username != null) PreviewData.billState()
             else BillUiState(needsLogin = username == null)
         if (!preview && username != null) {
@@ -144,7 +185,14 @@ class BillViewModel internal constructor(
     }
 
     /** A completed transaction makes both date views stale without discarding visible content. */
-    fun invalidate() {
+    fun invalidate(income: Boolean? = null) {
+        val period = mutable.value.dateFilter
+        pendingStatsTypes.removeAll { type ->
+            listOf("categories", "ranking").plus(if (period.trendSupported) listOf("daily") else emptyList())
+                .none { statsRefresh.pending(DisplayKeys.stats(period, type, it)) }
+        }
+        pendingStatsTypes += when (income) { true -> listOf(1); false -> listOf(2); null -> listOf(1, 2) }
+        listRefresh.invalidate(); statsRefresh.invalidate()
         cancelListJobs(); statsJob?.cancel(); loginCheck?.cancel(); loginCheck = null
         lastLoadedAt = 0L; statsCache.invalidate(); listCache.invalidate()
         summaryReadAt = 0L; countsReadAt = 0L
@@ -155,8 +203,10 @@ class BillViewModel internal constructor(
     fun onActivate() {
         if (mutable.value.statsVisible) { openStats(); return }
         if (!initialized || preview || loginCheck?.isActive == true || loadJob?.isActive == true) return
+        val activatedVisiblePage = pageVisible
         loginCheck = viewModelScope.launch {
             val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
+            if (activatedVisiblePage && !pageVisible || mutable.value.statsVisible) return@launch
             val current = mutable.value
             if (!exists) {
                 clearAuthenticatedData()
@@ -164,13 +214,13 @@ class BillViewModel internal constructor(
             }
             mutable.value = current.copy(needsLogin = false)
             if (!current.loaded || current.error != null || current.summaryError != null || current.countsError != null ||
-                !ReadCachePolicy.isFresh(lastLoadedAt, now()) || !overviewIsFresh()) loadListQuery()
+                listPending() || !ReadCachePolicy.isFresh(lastLoadedAt, now()) || !overviewIsFresh()) loadListQuery()
         }
     }
 
     fun refresh() {
         if (mutable.value.statsVisible) { refreshStats(); return }
-        if (mutable.value.loading || mutable.value.refreshing) return
+        if (loadJob?.isActive == true || mutable.value.loading || mutable.value.refreshing) return
         if (UiPreview.enabled && preview) {
             mutable.value = PreviewData.billState(mutable.value.dateFilter, mutable.value.stats.type)
             lastLoadedAt = now()
@@ -294,12 +344,14 @@ class BillViewModel internal constructor(
         val current = mutable.value
         val samePeriod = current.stats.period == current.dateFilter
         mutable.value = current.copy(statsVisible = true, stats = if (samePeriod) current.stats else statisticsFor(current.dateFilter, current.stats.type))
+        updateReadVisibility()
         if (samePeriod && current.stats.loading) return
         loadStatsIfNeeded()
     }
 
     fun showDetails() {
         mutable.value = mutable.value.copy(statsVisible = false)
+        updateReadVisibility()
         onActivate()
     }
 
@@ -308,6 +360,7 @@ class BillViewModel internal constructor(
         val current = mutable.value
         val period = BillDateFilter.currentMonth()
         mutable.value = if (UiPreview.enabled && preview) PreviewData.billState(period) else BillUiState(needsLogin = current.needsLogin, types = current.types, dateFilter = period)
+        updateReadVisibility()
         if (!preview && !current.needsLogin) loadListQuery()
     }
 
@@ -320,7 +373,7 @@ class BillViewModel internal constructor(
     }
 
     fun refreshStats() {
-        if (mutable.value.stats.loading) return
+        if (statsJob?.isActive == true || mutable.value.stats.loading) return
         loadStats()
     }
 
@@ -344,9 +397,9 @@ class BillViewModel internal constructor(
 
     private fun loadStatsIfNeeded() {
         val stats = mutable.value.stats
-        if (stats.loading) return
+        if (statsJob?.isActive == true || stats.loading) return
         val readAt = statsCache[statsKey(stats.period, stats.type)]?.readAt ?: 0
-        if (!statsReadSucceeded(stats) || !ReadCachePolicy.isFresh(readAt, now())) loadStats()
+        if (statsPending(stats) || !statsReadSucceeded(stats) || !ReadCachePolicy.isFresh(readAt, now())) loadStats()
     }
 
     private fun rememberStats(readAt: Long) {
@@ -377,7 +430,7 @@ class BillViewModel internal constructor(
         val current = mutable.value
         val cached = listCache[listKey(current)]
         if (cached != null) {
-            val fresh = ReadCachePolicy.isFresh(cached.readAt, now())
+            val fresh = !listPending(current) && ReadCachePolicy.isFresh(cached.readAt, now())
             val snapshot = cached.value.state
             summaryReadAt = if (queryChanged && current.summary != null) summaryReadAt
                 else cached.value.summaryReadAt.takeIf { cached.readAt != 0L } ?: 0
@@ -401,11 +454,13 @@ class BillViewModel internal constructor(
         load(queryChanged = queryChanged)
     }
 
-    private fun load(manualRefresh: Boolean = false, queryChanged: Boolean = false) {
+    private fun load(manualRefresh: Boolean = false, queryChanged: Boolean = false,
+        transactionRetry: Boolean = false, silent: Boolean = false) {
         val current = mutable.value
         if (current.needsLogin && !manualRefresh) return
         loadJob?.cancel()
         loadMoreJob?.cancel()
+        val read = listRefresh.started()
         listCache.invalidate(listKey(current))
         lastLoadedAt = 0L
         val dateFilter = current.dateFilter
@@ -414,19 +469,22 @@ class BillViewModel internal constructor(
         val amountTo = current.amountToCents
         val info = current.info
         val hasItems = current.items.isNotEmpty()
-        val readSummary = !queryChanged || !current.summaryLoaded || current.summary == null || current.summaryError != null ||
-            !ReadCachePolicy.isFresh(summaryReadAt, now())
-        val readCounts = !queryChanged || !current.countsLoaded || current.counts == null || current.countsError != null ||
-            !ReadCachePolicy.isFresh(countsReadAt, now())
+        val readList = !transactionRetry || listRefresh.pending(listKey(current)) || current.error != null
+        val readSummary = if (transactionRetry) listRefresh.pending(summaryKey(current)) || current.summaryError != null else
+            !queryChanged || listPending(current) && listRefresh.pending(summaryKey(current)) || !current.summaryLoaded ||
+                current.summary == null || current.summaryError != null || !ReadCachePolicy.isFresh(summaryReadAt, now())
+        val readCounts = if (transactionRetry) listRefresh.pending(countsKey(current)) || current.countsError != null else
+            !queryChanged || listPending(current) && listRefresh.pending(countsKey(current)) || !current.countsLoaded ||
+                current.counts == null || current.countsError != null || !ReadCachePolicy.isFresh(countsReadAt, now())
         if (readSummary) summaryReadAt = 0L
         if (readCounts) countsReadAt = 0L
         // PullToRefresh needs the busy state before any suspension, including the credential check.
         mutable.value = current.copy(
-            loading = !manualRefresh && !hasItems,
-            refreshing = manualRefresh || hasItems,
-            error = null, summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
-            loadMoreError = null,
-            listLoading = true, loadingMore = false,
+            loading = !silent && !manualRefresh && !hasItems,
+            refreshing = !silent && (manualRefresh || hasItems),
+            error = current.error.takeUnless { readList }, summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
+            loadMoreError = current.loadMoreError.takeUnless { readList },
+            listLoading = readList, loadingMore = false,
             listOnlyRead = queryChanged && !readSummary && !readCounts,
         )
         loadJob = viewModelScope.launch {
@@ -435,7 +493,7 @@ class BillViewModel internal constructor(
             if (!mutable.value.listAvailable && mutable.value.items.isEmpty()) restoreListDisplay(username, current)
             fun publish(change: (BillUiState) -> BillUiState) {
                 val latest = mutable.value
-                if (latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
+                if (listRefresh.accepts(read) && latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
                     latest.amountToCents == amountTo && latest.info == info) mutable.value = change(latest)
             }
             try {
@@ -448,12 +506,13 @@ class BillViewModel internal constructor(
                     mutable.value = mutable.value.copy(needsLogin = false)
                 }
                 coroutineScope {
-                    launch {
+                    if (readList) launch {
                         try {
                             val result = repository.bills(1, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
                                 typeId, amountFrom, amountTo, info.ifBlank { null })
                             val page = result.copy(items = result.items.distinctBy { it.stableId })
                             currentCoroutineContext().ensureActive()
+                            listRefresh.observe(read, listKey(current), page.items)
                             publish {
                                 val previousIds = it.items.mapTo(HashSet()) { r -> r.stableId }
                                 val update = if (queryChanged) BillListUpdate.Query else if (it.listAvailable) BillListUpdate.Refresh else BillListUpdate.Initial
@@ -473,8 +532,9 @@ class BillViewModel internal constructor(
                     }
                     if (readSummary) launch {
                         val result = optionalData { repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo) }
+                        result.getOrNull()?.let { listRefresh.observe(read, summaryKey(current), it) }
                         publish {
-                            if (result.isSuccess) summaryReadAt = now()
+                            if (result.isSuccess) summaryReadAt = if (listPending(current) && listRefresh.pending(summaryKey(current))) 0L else now()
                             it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
                                 summaryError = result.exceptionOrNull()?.let(::message))
                         }
@@ -482,8 +542,9 @@ class BillViewModel internal constructor(
                     }
                     if (readCounts) launch {
                         val result = optionalData { repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo) }
+                        result.getOrNull()?.let { listRefresh.observe(read, countsKey(current), it) }
                         publish {
-                            if (result.isSuccess) countsReadAt = now()
+                            if (result.isSuccess) countsReadAt = if (listPending(current) && listRefresh.pending(countsKey(current))) 0L else now()
                             it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
                                 countsError = result.exceptionOrNull()?.let(::message))
                         }
@@ -501,7 +562,7 @@ class BillViewModel internal constructor(
                 val latest = mutable.value
                 if (latest.dateFilter == dateFilter && latest.typeId == typeId && latest.amountFromCents == amountFrom &&
                     latest.amountToCents == amountTo && latest.info == info && listReadSucceeded(latest)) {
-                    lastLoadedAt = now()
+                    lastLoadedAt = if (listPending(latest)) 0L else now()
                     rememberList(lastLoadedAt)
                 }
             } catch (e: CancellationException) {
@@ -517,11 +578,13 @@ class BillViewModel internal constructor(
                 mutable.value = mutable.value.copy(
                     loading = false, refreshing = false, listLoading = false, error = "服务数据异常，请稍后刷新",
                 )
+            } finally {
+                listRefresh.finished(read)
             }
         }
     }
 
-    private fun loadStats() {
+    private fun loadStats(transactionRetry: Boolean = false, silent: Boolean = false) {
         if (UiPreview.enabled && preview) {
             mutable.value = mutable.value.copy(
                 stats = PreviewData.billStats(mutable.value.stats.period, mutable.value.stats.type),
@@ -532,9 +595,18 @@ class BillViewModel internal constructor(
         if (mutable.value.needsLogin) return
         statsJob?.cancel()
         val stats = mutable.value.stats
+        val read = statsRefresh.started()
+        val dailyKey = DisplayKeys.stats(stats.period, stats.type, "daily")
+        val categoriesKey = DisplayKeys.stats(stats.period, stats.type, "categories")
+        val rankingKey = DisplayKeys.stats(stats.period, stats.type, "ranking")
+        val readDaily = !transactionRetry || statsRefresh.pending(dailyKey) || stats.dailyError != null
+        val readCategories = !transactionRetry || statsRefresh.pending(categoriesKey) || stats.categoriesError != null
+        val readRanking = !transactionRetry || statsRefresh.pending(rankingKey) || stats.rankingError != null
         statsCache.invalidate(statsKey(stats.period, stats.type))
-        mutable.value = mutable.value.copy(stats = stats.copy(loading = true, error = null,
-            dailyError = null, categoriesError = null, rankingError = null))
+        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, error = null,
+            dailyError = stats.dailyError.takeUnless { readDaily },
+            categoriesError = stats.categoriesError.takeUnless { readCategories },
+            rankingError = stats.rankingError.takeUnless { readRanking }))
         statsJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
             if (!stats.loaded) {
@@ -548,27 +620,30 @@ class BillViewModel internal constructor(
             }
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
-                if (latest.stats.period == stats.period && latest.stats.type == stats.type)
+                if (statsRefresh.accepts(read) && latest.stats.period == stats.period && latest.stats.type == stats.type)
                     mutable.value = latest.copy(stats = change(latest.stats))
             }
             try {
                 coroutineScope {
-                    launch {
+                    if (readDaily) launch {
                         val result = optionalData {
                             if (stats.period.trendSupported) repository.billTrend(stats.type, stats.period) else emptyList()
                         }
+                        result.getOrNull()?.let { statsRefresh.observe(read, dailyKey, it) }
                         publish { it.copy(daily = result.getOrNull() ?: it.daily,
                             dailyLoaded = it.dailyLoaded || result.isSuccess, dailyError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), it, DisplayCodecs.Daily) }
                     }
-                    launch {
+                    if (readCategories) launch {
                         val result = optionalData { repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo) }
+                        result.getOrNull()?.let { statsRefresh.observe(read, categoriesKey, it) }
                         publish { it.copy(categories = result.getOrNull() ?: it.categories,
                             categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), it, DisplayCodecs.Categories) }
                     }
-                    launch {
+                    if (readRanking) launch {
                         val result = optionalData { repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5) }
+                        result.getOrNull()?.let { statsRefresh.observe(read, rankingKey, it) }
                         publish { it.copy(ranking = result.getOrNull() ?: it.ranking,
                             rankingLoaded = it.rankingLoaded || result.isSuccess, rankingError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), it, DisplayCodecs.Records) }
@@ -576,7 +651,7 @@ class BillViewModel internal constructor(
                 }
                 currentCoroutineContext().ensureActive()
                 publish { it.copy(loading = false, loaded = true) }
-                rememberStats(if (statsReadSucceeded(mutable.value.stats)) now() else 0)
+                rememberStats(if (statsReadSucceeded(mutable.value.stats) && !statsPending()) now() else 0)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: YktException) {
@@ -589,6 +664,8 @@ class BillViewModel internal constructor(
                 mutable.value = mutable.value.copy(
                     stats = mutable.value.stats.copy(loading = false, error = "服务数据异常，请稍后重试"),
                 )
+            } finally {
+                statsRefresh.finished(read)
             }
         }
     }
@@ -634,6 +711,7 @@ class BillViewModel internal constructor(
         cancelListJobs(); statsJob?.cancel()
         lastLoadedAt = 0L; statsCache.clear(); listCache.clear()
         summaryReadAt = 0L; countsReadAt = 0L
+        listRefresh.clear(); statsRefresh.clear(); pendingStatsTypes.clear()
         val current = mutable.value
         mutable.value = BillUiState(needsLogin = true, dateFilter = current.dateFilter,
             typeId = current.typeId, amountFromCents = current.amountFromCents, amountToCents = current.amountToCents,
@@ -642,6 +720,7 @@ class BillViewModel internal constructor(
     }
 
     private fun cancelListJobs() {
+        listRefresh.pause()
         loadJob?.cancel(); loadMoreJob?.cancel()
         preparedDisplayKey = null
     }

@@ -32,7 +32,8 @@ data class MyUiState(
     val displayRestored: Boolean = false,
 ) { override fun toString() = "MyUiState([redacted])" }
 
-class MyViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
+class MyViewModel internal constructor(app: Application, private val repository: AccountRepository,
+    retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(MyUiState())
     val state = mutable.asStateFlow()
@@ -43,10 +44,20 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private var displayTask: Job? = null
     private var displayPreparedMonth: YearMonth? = null
     private var refreshedAt = 0L
+    private fun period() = BillDateFilter.month(YearMonth.now())
+    private fun summaryKey() = DisplayKeys.summary(period().timeFrom, period().timeTo)
+    private fun countsKey() = DisplayKeys.counts(period().timeFrom, period().timeTo)
+    private fun transactionPending(): Boolean = !preview && !mutable.value.needsLogin && transactionRefresh.affects(period()) &&
+        (transactionRefresh.pending(summaryKey()) || mutable.value.summaryError != null ||
+            transactionRefresh.pending(countsKey()) || mutable.value.countsError != null)
+    private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
+        needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
+        retry = { refreshData(metricsOnly = true, silent = true) })
     fun accountChanged(username: String, uiPreview: Boolean = false) {
         val enabledPreview = UiPreview.enabled && uiPreview
         if (owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
+        transactionRefresh.clear()
         owner = username; preview = enabledPreview
         displayPreparedMonth = null
         mutable.value = MyUiState()
@@ -59,28 +70,53 @@ class MyViewModel internal constructor(app: Application, private val repository:
         }
     }
     fun invalidate() {
+        transactionRefresh.invalidate()
         generation++; task?.cancel(); task = null; refreshedAt = 0L
         mutable.value = mutable.value.copy(loading = false)
     }
 
+    fun setPageVisible(visible: Boolean) {
+        transactionRefresh.setVisible(visible && !preview && owner.isNotBlank())
+        if (visible) onActivate()
+        else if (transactionPending()) {
+            generation++; task?.cancel(); task = null
+            mutable.value = mutable.value.copy(loading = false)
+        }
+    }
+
     fun onActivate() {
         val current = mutable.value
+        if (transactionPending()) {
+            refreshData(metricsOnly = current.profileLoaded && current.homeIdentityLoaded && current.profileError == null &&
+                current.homeIdentityError == null && current.avatarError == null)
+            return
+        }
         if (!ReadCachePolicy.isFresh(refreshedAt) || current.month != YearMonth.now() ||
             current.profileError != null || current.homeIdentityError != null || current.avatarError != null ||
             current.summaryError != null || current.countsError != null) refresh()
     }
-    fun refresh() {
+    fun refresh() = refreshData()
+
+    private fun refreshData(metricsOnly: Boolean = false, silent: Boolean = false) {
         if (owner.isBlank() || preview || task?.isActive == true) return
         val attempt = generation
         val username = owner
         val month = YearMonth.now()
         val current = mutable.value
+        val read = transactionRefresh.started()
+        val summaryKey = DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString())
+        val countsKey = DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString())
+        val readSummary = !metricsOnly || transactionRefresh.pending(summaryKey) || current.summaryError != null || current.summary == null
+        val readCounts = !metricsOnly || transactionRefresh.pending(countsKey) || current.countsError != null || current.counts == null
         val sameMonth = current.month == month
         mutable.value = current.copy(
-            month = month, loading = true, needsLogin = false,
+            month = month, loading = !silent, needsLogin = false,
             summary = current.summary.takeIf { sameMonth }, counts = current.counts.takeIf { sameMonth },
-            profileError = null, homeIdentityError = null, avatarError = null, summaryError = null, countsError = null,
-            profileLoaded = current.profile != null, homeIdentityLoaded = current.homeIdentity != null,
+            profileError = current.profileError.takeIf { metricsOnly }, homeIdentityError = current.homeIdentityError.takeIf { metricsOnly },
+            avatarError = current.avatarError.takeIf { metricsOnly },
+            summaryError = current.summaryError.takeUnless { readSummary }, countsError = current.countsError.takeUnless { readCounts },
+            profileLoaded = if (metricsOnly) current.profileLoaded else current.profile != null,
+            homeIdentityLoaded = if (metricsOnly) current.homeIdentityLoaded else current.homeIdentity != null,
             summaryLoaded = sameMonth && current.summary != null, countsLoaded = sameMonth && current.counts != null)
         task = viewModelScope.launch {
             displayTask?.join()
@@ -93,7 +129,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                 if (attempt == generation) mutable.value = change(mutable.value)
             }
             coroutineScope {
-                launch identity@{
+                if (!metricsOnly) launch identity@{
                     val fresh = try { repository.personalProfile(username) }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
@@ -135,9 +171,10 @@ class MyViewModel internal constructor(app: Application, private val repository:
                         }
                     }
                 }
-                launch {
+                if (readSummary) launch {
                     try {
                         val summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
+                        transactionRefresh.observe(read, summaryKey, summary)
                         publish { it.copy(summary = summary, summaryError = null, summaryLoaded = true) }
                         repository.saveDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), summary, DisplayCodecs.Summary)
                     }
@@ -145,9 +182,10 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     catch (e: Exception) { publish { it.copy(summaryError = message(e), summaryLoaded = true,
                         needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
                 }
-                launch {
+                if (readCounts) launch {
                     try {
                         val counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
+                        transactionRefresh.observe(read, countsKey, counts)
                         publish { it.copy(counts = counts, countsError = null, countsLoaded = true) }
                         repository.saveDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), counts, DisplayCodecs.Counts)
                     }
@@ -159,7 +197,8 @@ class MyViewModel internal constructor(app: Application, private val repository:
             if (attempt != generation) return@launch
             publish { it.copy(loading = false, loaded = true) }
             if (mutable.value.profileError == null && mutable.value.homeIdentityError == null && mutable.value.summaryError == null && mutable.value.countsError == null)
-                refreshedAt = ReadCachePolicy.now()
+                refreshedAt = if (transactionPending()) 0L else ReadCachePolicy.now()
+            transactionRefresh.finished(read)
         }
     }
     /** Prepare local display only; activation still owns every network read and freshness check. */

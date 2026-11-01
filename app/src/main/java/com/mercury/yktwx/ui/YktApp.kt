@@ -293,26 +293,24 @@ private fun MainContent(
         viewModel.setPageVisible(paymentPageSelected && !paymentPageCovered, preserveDisplay = paymentPageCovered)
         viewModel.setAccountPageVisible(accountPageSelected)
     }
-    LaunchedEffect(isActive, layers.lastOrNull()) {
-        if (isActive && layers.lastOrNull() == Screen.Profile) myModel.onActivate()
-    }
     val availability by rememberNetworkReadAvailability(state.preview)
     val readPage = when {
-        !isActive || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
+        !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
         layers.lastOrNull() == Screen.Profile -> ReadPage.Profile
         layers.lastOrNull() == Screen.Account -> ReadPage.Account
         layers.isNotEmpty() -> null
         else -> ReadPage.entries[pagerState.currentPage]
     }
+    val activeReadPage = readPage.takeIf { availability.foreground && availability.online }
     val currentOwner by rememberUpdatedState(state.username.takeUnless { state.needsLogin })
-    val currentReadPage by rememberUpdatedState(readPage)
+    val currentReadPage by rememberUpdatedState(activeReadPage)
     LaunchedEffect(rechargeModel, feeModel, viewModel) {
         merge(rechargeModel.transactionUpdates, feeModel.transactionUpdates, viewModel.transactionUpdates).collect { update ->
             if (update.username != currentOwner) return@collect
             if (update.balance) viewModel.invalidateBalance()
-            billViewModel.invalidate(); myModel.invalidate()
-            if (update.hall) dormModel.invalidate()
+            billViewModel.invalidate(update.income); myModel.invalidate()
+            if (update.hall) dormModel.invalidateTransaction(update.project)
             when (currentReadPage) {
                 ReadPage.Bill -> billViewModel.onActivate()
                 ReadPage.My, ReadPage.Profile -> myModel.onActivate()
@@ -321,14 +319,27 @@ private fun MainContent(
             }
         }
     }
+    LaunchedEffect(viewModel, billViewModel, myModel) {
+        viewModel.balanceChanges.collect { change ->
+            if (change.username != currentOwner) return@collect
+            billViewModel.invalidate(change.increased); myModel.invalidate()
+            when (currentReadPage) {
+                ReadPage.Bill -> billViewModel.onActivate()
+                ReadPage.My -> myModel.onActivate()
+                else -> Unit
+            }
+        }
+    }
     // When an overlay closes, apply any invalidation deferred while it covered the page.
-    LaunchedEffect(readPage) {
-        when (readPage) {
-            ReadPage.My -> { myModel.onActivate(); viewModel.refreshAccount() }
+    LaunchedEffect(activeReadPage, billState.statsVisible, state.username) {
+        viewModel.setReadPageVisible(activeReadPage in setOf(ReadPage.Payment, ReadPage.My, ReadPage.Account))
+        billViewModel.setPageVisible(activeReadPage == ReadPage.Bill)
+        myModel.setPageVisible(activeReadPage == ReadPage.My)
+        dormModel.setPageVisible(activeReadPage == ReadPage.Hall)
+        when (activeReadPage) {
+            ReadPage.My -> viewModel.refreshAccount()
             ReadPage.Profile -> myModel.onActivate()
             ReadPage.Account -> viewModel.refreshAccount()
-            ReadPage.Bill -> billViewModel.onActivate()
-            ReadPage.Hall -> dormModel.onActivate()
             else -> Unit
         }
     }
@@ -369,8 +380,11 @@ private fun MainContent(
             null -> Unit
         }
     }
-    DisposableEffect(viewModel) {
-        onDispose { viewModel.setPageVisible(false); viewModel.setAccountPageVisible(false) }
+    DisposableEffect(viewModel, billViewModel, myModel, dormModel) {
+        onDispose {
+            viewModel.setReadPageVisible(false); viewModel.setPageVisible(false); viewModel.setAccountPageVisible(false)
+            billViewModel.setPageVisible(false); myModel.setPageVisible(false); dormModel.setPageVisible(false)
+        }
     }
     val feeActive = isActive && dormPaymentVisible
     DisposableEffect(feeActive) {
