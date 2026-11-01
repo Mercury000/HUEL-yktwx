@@ -41,12 +41,20 @@ class TransactionNavigationTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
-    private fun await(condition: () -> Boolean) {
-        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); condition() }
+    private fun await(advanceTime: Boolean = false, condition: () -> Boolean) {
+        compose.waitUntil(5_000) {
+            if (advanceTime) shadowOf(Looper.getMainLooper()).idleFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+            else shadowOf(Looper.getMainLooper()).idle()
+            condition()
+        }
         compose.waitForIdle()
     }
 
-    @Test fun confirmedRechargeRefreshesBalanceBeforeClosingAndBackRefreshesMyAndInvalidatesBills() {
+    @Test fun confirmedRechargeDefersBalanceUntilBackAndThenRefreshesMyAndBills() = rechargeScenario(finish = false)
+
+    @Test fun finishRefreshesBalanceAndDelayedBillsAppearWithoutPullToRefresh() = rechargeScenario(finish = true, delayedBills = true)
+
+    private fun rechargeScenario(finish: Boolean, delayedBills: Boolean = false) {
         val app = compose.activity.application
         val connectivity = compose.activity.getSystemService(android.net.ConnectivityManager::class.java)
         shadowOf(connectivity).setActiveNetworkInfo(org.robolectric.shadows.ShadowNetworkInfo.newInstance(
@@ -55,6 +63,9 @@ class TransactionNavigationTest {
         shadowOf(capabilities).addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
         shadowOf(connectivity).setNetworkCapabilities(connectivity.activeNetwork, capabilities)
         fun account() = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", if (paid) 7496 else 6496)
+        var ledgerReady = !delayedBills
+        val record = BillRecord("fake-order", "示例充值", "微信", "充值", "", "1", "1", 1000, 7496, 0,
+            "2026-10-31 10:00:00", "2026-10-31 10:00:00", "fake-account", "", "", "", "fake-order", "")
         val vault = object : Vault {
             override fun credentials() = Credentials("fake-user", "fake-password")
             override fun session() = Session("fake-token", Long.MAX_VALUE)
@@ -71,12 +82,12 @@ class TransactionNavigationTest {
             }
             override suspend fun paymentAccount(token: String): PaymentAccount { balances++; return account() }
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
-                summaries++; return BillSummary(if (paid) 1000 else 0, 0)
+                summaries++; return BillSummary(if (paid && ledgerReady) 1000 else 0, 0)
             }
-            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = if (paid) 1 else 0
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = if (paid && ledgerReady) 1 else 0
             override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
                 typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
-                pages++; return BillPageData(emptyList(), current, 1)
+                pages++; return BillPageData(if (paid && ledgerReady) listOf(record) else emptyList(), current, 1)
             }
             override suspend fun billTypes(token: String) = listOf(BillType("1", "充值"))
         }
@@ -124,19 +135,29 @@ class TransactionNavigationTest {
         compose.runOnIdle { recharge.checkResult() }
         await { recharge.state.value.loading }
         compose.runOnIdle { resultGate.complete(Unit) }
-        await { recharge.state.value.phase == RechargePhase.Paid && payment.state.value.account?.balanceCents == 7496L }
+        await { recharge.state.value.phase == RechargePhase.Paid }
         compose.onNodeWithText("充值成功").assertIsDisplayed()
-        assertEquals(balanceReads + 1, balances)
+        assertEquals(balanceReads, balances)
+        assertEquals(6496L, payment.state.value.account?.balanceCents)
         assertEquals(summaryReads, summaries)
         assertEquals(pageReads, pages)
         assertEquals(codeReads, codes)
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        await { !recharge.state.value.visible && mine.state.value.summary?.incomeCents == 1000L && !mine.state.value.loading }
+        if (finish) compose.onNodeWithText("完成").performClick()
+        else compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        await { !recharge.state.value.visible && payment.state.value.account?.balanceCents == 7496L && !mine.state.value.loading }
+        if (!delayedBills) await { mine.state.value.summary?.incomeCents == 1000L }
         compose.onNode(hasText("¥ 74.96") and hasAnyAncestor(hasTestTag("my-balance-card"))).assertIsDisplayed()
-        assertEquals(summaryReads + 1, summaries)
+        assertTrue(summaries >= summaryReads + 1)
         assertEquals(balanceReads + 1, balances)
         compose.onNode(hasText("账单") and hasClickAction()).performClick()
-        await { pages == pageReads + 1 && bills.state.value.loaded && !bills.state.value.loading }
+        await { pages >= pageReads + 1 && bills.state.value.loaded && !bills.state.value.loading }
+        if (delayedBills) {
+            assertTrue(bills.state.value.items.isEmpty())
+            ledgerReady = true
+            await(advanceTime = true) { bills.state.value.items.any { it.orderId == "fake-order" } && bills.state.value.summary?.incomeCents == 1000L }
+            compose.onNode(hasText("我的") and hasClickAction()).performClick()
+            await { mine.state.value.summary?.incomeCents == 1000L && !mine.state.value.loading }
+        }
         assertEquals(1000L, bills.state.value.summary?.incomeCents)
         assertEquals(codeReads, codes)
     }

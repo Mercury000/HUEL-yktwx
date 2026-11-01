@@ -45,7 +45,8 @@ data class PaymentUiState(
     override fun toString() = "PaymentUiState([redacted])"
 }
 
-class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
+class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository,
+    retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app))
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
@@ -72,6 +73,18 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     val paymentSuccess = mutableSuccess.asStateFlow()
     private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
     val transactionUpdates = updates.receiveAsFlow()
+    private val balanceNotifications = Channel<BalanceChange>(Channel.BUFFERED)
+    val balanceChanges = balanceNotifications.receiveAsFlow()
+    private data class Balance(val username: String, val account: String, val payacc: String,
+        val paytype: String, val cents: Long)
+    private var lastLiveBalance: Balance? = null
+    private var readPageVisible = true
+    private fun balanceKey(account: PaymentAccount) = "${account.account}:${account.payacc}:${account.paytype}"
+    private fun balancePending(): Boolean = mutable.value.account?.let { balanceRefresh.pending(balanceKey(it)) } ?: false
+    private val balanceRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
+        needsRefresh = { balancePending() },
+        isReading = { mutable.value.busy || accountRequest?.isActive == true },
+        retry = { refreshAccount(silent = true, balanceOnly = true) })
     private var motionActive = false
     private var balanceCheck: Job? = null
     private var detectionVersion = 0L
@@ -114,10 +127,10 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         paymentTurn = null
                         mutableSuccess.value = baseline.balanceCents - updated.balanceCents
                         // Preserve the confirmed balance even if the following barcode request fails.
-                        accountReadAt = SystemClock.elapsedRealtime()
+                        recordBalance(turn.username, updated, balanceRefresh.started(), notify = false)
                         mutable.value = mutable.value.copy(account = updated, accountFromCache = false)
                         viewModelScope.launch { repository.saveDisplay(turn.username, DisplayKeys.Account, updated, DisplayCodecs.Account) }
-                        updates.trySend(TransactionUpdate(turn.username, balance = false))
+                        updates.trySend(TransactionUpdate(turn.username, balance = false, income = false))
                         requestVersion++; request?.cancel(); ticker?.cancel()
                         mutable.value = mutable.value.copy(busy = false)
                         refresh()
@@ -172,6 +185,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun onForeground() {
         foreground = true
+        updateBalanceVisibility()
         if (UiPreview.enabled && preview && pageVisible) mutable.value = PreviewData.paymentState(previewLost)
         else if (pageVisible && initialized && !preview && !mutable.value.restoringLogin && !mutable.value.needsLogin && !mutable.value.busy) refresh()
         else if (accountPageVisible) refreshAccount()
@@ -183,6 +197,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val wasDisplayed = paymentDisplayVisible()
         pageVisible = visible
         pageCovered = covered
+        updateBalanceVisibility()
         if (!paymentDisplayVisible()) pausePaymentDisplay()
         else if (covered) {
             // The code and its expiry keep advancing behind a root overlay, but
@@ -191,10 +206,11 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             if (!wasDisplayed && foreground && initialized) resumePaymentDisplay()
         }
         else if (!wasDisplayed && UiPreview.enabled && preview) mutable.value = PreviewData.paymentState(previewLost)
-        else if (foreground && initialized && (!wasDisplayed || mutable.value.code == null)) resumePaymentDisplay()
+        else if (foreground && initialized && (!wasDisplayed || mutable.value.code == null || balancePending())) resumePaymentDisplay()
     }
     fun onBackground() {
         foreground = false
+        updateBalanceVisibility()
         cancelAccountRead()
         pausePaymentDisplay()
     }
@@ -202,9 +218,23 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     fun setAccountPageVisible(visible: Boolean) {
         if (accountPageVisible == visible) return
         accountPageVisible = visible
+        updateBalanceVisibility()
         if (visible) refreshAccount() else cancelAccountRead()
     }
+    /** The shell excludes transaction sheets, offscreen pages and background/offline reads. */
+    fun setReadPageVisible(visible: Boolean) {
+        if (readPageVisible == visible) return
+        readPageVisible = visible
+        updateBalanceVisibility()
+        if (!visible) cancelAccountRead()
+        else if (balancePending()) {
+            if (pageVisible) refresh() else if (accountPageVisible) refreshAccount()
+        }
+    }
+    private fun updateBalanceVisibility() = balanceRefresh.setVisible(
+        foreground && readPageVisible && !pageCovered && (pageVisible || accountPageVisible))
     fun invalidateBalance() {
+        balanceRefresh.invalidate()
         cancelAccountRead()
         accountReadAt = 0L
         resumeNeedsRefresh = true
@@ -212,22 +242,25 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             requestVersion++; request?.cancel(); ticker?.cancel()
             mutable.value = mutable.value.copy(busy = false, refreshing = false, balanceLoading = false)
         }
-        if (paymentDisplayVisible()) refresh() else if (accountPageVisible) refreshAccount()
+        if (foreground && readPageVisible && !pageCovered) {
+            if (pageVisible) refresh() else if (accountPageVisible) refreshAccount()
+        }
     }
 
-    fun refreshAccount(manual: Boolean = false) {
+    fun refreshAccount(manual: Boolean = false, silent: Boolean = false, balanceOnly: Boolean = false) {
         val current = mutable.value
-        if (!accountPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||
+        if (!(accountPageVisible || balanceOnly && pageVisible) || !readPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||
             current.busy || accountRequest?.isActive == true) return
-        val readBalance = manual || current.account == null || current.accountError != null ||
+        val readBalance = manual || balancePending() || current.account == null || current.accountError != null ||
             !ReadCachePolicy.isFresh(accountReadAt)
-        val readCard = manual || current.accountCard == null || current.accountCard.account != current.account?.account ||
-            current.cardStatusError != null || !ReadCachePolicy.isFresh(cardReadAt)
+        val readCard = !balanceOnly && (manual || current.accountCard == null || current.accountCard.account != current.account?.account ||
+            current.cardStatusError != null || !ReadCachePolicy.isFresh(cardReadAt))
         if (!readBalance && !readCard) return
         val username = current.username
         val version = ++accountReadVersion
-        mutable.value = current.copy(accountLoading = readBalance, accountError = null,
-            cardStatusLoading = readCard, cardStatusError = null)
+        val transactionRead = balanceRefresh.started()
+        mutable.value = current.copy(accountLoading = readBalance && !silent, accountError = null,
+            cardStatusLoading = readCard && !silent, cardStatusError = current.cardStatusError.takeUnless { readCard })
         accountRequest = viewModelScope.launch {
             fun isCurrent() = version == accountReadVersion && !mutable.value.needsLogin && mutable.value.username == username
             var balanceObtained = !readBalance
@@ -239,13 +272,13 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 val sameAccount = current.account?.let { it.account == account.account &&
                     it.payacc == account.payacc && it.paytype == account.paytype } == true
                 // A balance read does not verify card status or authorize displaying a code.
-                if (readBalance) accountReadAt = SystemClock.elapsedRealtime()
+                if (readBalance) recordBalance(username, account, transactionRead)
                 mutable.value = mutable.value.copy(account = account, accountFromCache = false, accountLoading = false,
                     accountCard = mutable.value.accountCard.takeIf { sameAccount },
-                    cardStatusLoading = readCard || !sameAccount,
+                    cardStatusLoading = !silent && (readCard || !sameAccount),
                     problem = if (sameAccount) mutable.value.problem else PaymentCodeProblem.StatusUnverified)
                 if (readBalance) repository.saveDisplay(username, DisplayKeys.Account, account, DisplayCodecs.Account)
-                if (readCard || !sameAccount) {
+                if (readCard || !sameAccount && !balanceOnly) {
                     val card = withContext(Dispatchers.IO) { repository.paymentCard(username, account.account) }
                     if (!isCurrent() || !repository.ownsAccount(username)) return@launch
                     if (card.account != account.account || card.status < 0) throw YktException("校园卡状态数据异常")
@@ -268,10 +301,12 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                     accountError = (e as? YktException)?.message ?: "余额暂时无法加载")
             } finally {
                 if (version == accountReadVersion) mutable.value = mutable.value.copy(accountLoading = false, cardStatusLoading = false)
+                balanceRefresh.finished(transactionRead)
             }
         }
     }
     private fun cancelAccountRead() {
+        balanceRefresh.pause()
         accountReadVersion++
         accountRequest?.cancel(); accountRequest = null
         mutable.value = mutable.value.copy(accountLoading = false, cardStatusLoading = false)
@@ -316,15 +351,17 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (mutable.value.busy || mutable.value.restoringLogin || logoutJob?.isActive == true) return
         cancelAccountRead()
         cancelPaymentDetection(); mutableSuccess.value = null
+        balanceRefresh.clear(); lastLiveBalance = null
         val old = mutable.value
         val version = ++requestVersion
+        val transactionRead = balanceRefresh.started()
         mutable.value = PaymentUiState(true, true, username = username)
         request = viewModelScope.launch {
             try {
                 val batch = withContext(Dispatchers.IO) { repository.login(username, password) }
                 if (version != requestVersion) return@launch
                 notifications.send("登录成功")
-                show(batch, username.trim(), version)
+                show(batch, username.trim(), version, transactionRead)
                 repository.saveDisplay(username.trim(), DisplayKeys.Account, batch.account, DisplayCodecs.Account)
             } catch (e: CancellationException) { throw e
             } catch (e: PaymentCodeUnavailable) {
@@ -332,7 +369,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
                 mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, error = e.message, problem = e.problem)
-                accountReadAt = SystemClock.elapsedRealtime()
+                recordBalance(username.trim(), e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
                 if (version != requestVersion) return@launch
@@ -358,6 +395,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         codeExpiresAt = 0L
         ticker?.cancel()
         val version = ++requestVersion
+        val transactionRead = balanceRefresh.started()
         val username = mutable.value.username
         val account = mutable.value.account
         mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account,
@@ -369,7 +407,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                     withContext(Dispatchers.Main.immediate) {
                         if (version == requestVersion && repository.ownsAccount(username) && !mutable.value.needsLogin) {
                             accountObtained = true
-                            accountReadAt = SystemClock.elapsedRealtime()
+                            recordBalance(username, fresh, transactionRead)
                             mutable.value = mutable.value.copy(account = fresh, accountFromCache = false, balanceLoading = false)
                             viewModelScope.launch {
                                 if (version == requestVersion) repository.saveDisplay(username, DisplayKeys.Account, fresh, DisplayCodecs.Account)
@@ -377,14 +415,14 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         }
                     }
                 } }
-                show(batch, username, version)
+                show(batch, username, version, transactionRead)
                 repository.saveDisplay(username, DisplayKeys.Account, batch.account, DisplayCodecs.Account)
             }
             catch (e: CancellationException) { throw e }
             catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
                 mutable.value = PaymentUiState(needsLogin = false, username = username, account = e.account, error = e.message, problem = e.problem)
-                accountReadAt = SystemClock.elapsedRealtime()
+                recordBalance(username, e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             }
             catch (e: YktException) {
@@ -403,6 +441,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
                     accountFromCache = mutable.value.accountFromCache, accountError = "余额暂时无法更新".takeUnless { accountObtained },
                     problem = PaymentCodeProblem.StatusUnverified)
+            } finally {
+                balanceRefresh.finished(transactionRead)
             }
         }
     }
@@ -421,9 +461,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             problem = PaymentCodeProblem.StatusUnverified.takeIf { accountPageVisible })
         if (accountPageVisible) refreshAccount(manual = true) else refresh()
     }
-    private fun show(batch: PaymentBatch, username: String, version: Long) {
+    private fun show(batch: PaymentBatch, username: String, version: Long, transactionRead: TransactionRefresh.Read) {
         if (version != requestVersion) return
-        accountReadAt = SystemClock.elapsedRealtime()
+        recordBalance(username, batch.account, transactionRead)
         if (!foreground || !paymentDisplayVisible()) {
             mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)
             return
@@ -454,6 +494,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     fun logout() {
         if (logoutJob?.isActive == true) return
         accountReadAt = 0L
+        balanceRefresh.clear(); lastLiveBalance = null
         cancelAccountRead()
         setPaymentMotionActive(false); mutableSuccess.value = null
         requestVersion++
@@ -468,5 +509,15 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             catch (_: Exception) { notifications.send("清除登录信息失败，请稍后重试") }
             finally { mutable.value = PaymentUiState() }
         }
+    }
+    private fun recordBalance(username: String, account: PaymentAccount, read: TransactionRefresh.Read, notify: Boolean = true) {
+        if (!balanceRefresh.accepts(read) || account.balanceCents < 0 || preview || !repository.ownsAccount(username)) return
+        val next = Balance(username, account.account, account.payacc, account.paytype, account.balanceCents)
+        val previous = lastLiveBalance
+        if (notify && previous != null && previous.copy(cents = next.cents) == next && previous.cents != next.cents)
+            balanceNotifications.trySend(BalanceChange(username, increased = next.cents > previous.cents))
+        lastLiveBalance = next
+        balanceRefresh.observe(read, balanceKey(account), account.balanceCents)
+        accountReadAt = if (balanceRefresh.pending(balanceKey(account))) 0L else SystemClock.elapsedRealtime()
     }
 }

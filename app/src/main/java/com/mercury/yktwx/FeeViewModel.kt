@@ -696,7 +696,7 @@ class FeeViewModel internal constructor(
             order = if (retry != null) null else s.order,
             method = if (retry != null) null else s.method, paymentRetry = retry)
         if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
-            updates.trySend(TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true))
+            updates.trySend(TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
     }
     private fun requestError(message: String) {
         checkDeadline?.cancel()
