@@ -80,7 +80,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var lastLiveBalance: Balance? = null
     private var readPageVisible = true
     private fun balanceKey(account: PaymentAccount) = "${account.account}:${account.payacc}:${account.paytype}"
-    private fun balancePending(): Boolean = mutable.value.account?.let { balanceRefresh.pending(balanceKey(it)) } ?: false
+    private fun balancePending(): Boolean = mutable.value.account?.let { balanceRefresh.needsTransactionRead(balanceKey(it)) } ?: false
     private val balanceRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { balancePending() },
         isReading = { mutable.value.busy || accountRequest?.isActive == true },
@@ -251,7 +251,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val current = mutable.value
         if (!(accountPageVisible || balanceOnly && pageVisible) || !readPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||
             current.busy || accountRequest?.isActive == true) return
-        val readBalance = manual || balancePending() || current.account == null || current.accountError != null ||
+        val readBalance = manual || current.account == null || balanceRefresh.needsRead(balanceKey(current.account)) ||
             !ReadCachePolicy.isFresh(accountReadAt)
         val readCard = !balanceOnly && (manual || current.accountCard == null || current.accountCard.account != current.account?.account ||
             current.cardStatusError != null || !ReadCachePolicy.isFresh(cardReadAt))
@@ -297,8 +297,11 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         error = "登录已失效，请重新登录")
                 } else if (balanceObtained) mutable.value = mutable.value.copy(accountCard = null,
                     cardStatusError = (e as? YktException)?.message ?: "校园卡状态暂时无法加载")
-                else mutable.value = mutable.value.copy(accountLoading = false,
-                    accountError = (e as? YktException)?.message ?: "余额暂时无法加载")
+                else {
+                    current.account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
+                    mutable.value = mutable.value.copy(accountLoading = false,
+                        accountError = (e as? YktException)?.message ?: "余额暂时无法加载")
+                }
             } finally {
                 if (version == accountReadVersion) mutable.value = mutable.value.copy(accountLoading = false, cardStatusLoading = false)
                 balanceRefresh.finished(transactionRead)
@@ -428,6 +431,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             catch (e: YktException) {
                 if (version != requestVersion) return@launch
                 val requireLogin = e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
+                if (!requireLogin && !accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
                 mutable.value = PaymentUiState(
                     needsLogin = requireLogin,
                     error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
@@ -438,6 +442,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 )
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
+                if (!accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
                 mutable.value = PaymentUiState(needsLogin = false, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
                     accountFromCache = mutable.value.accountFromCache, accountError = "余额暂时无法更新".takeUnless { accountObtained },
                     problem = PaymentCodeProblem.StatusUnverified)
@@ -518,6 +523,6 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             balanceNotifications.trySend(BalanceChange(username, increased = next.cents > previous.cents))
         lastLiveBalance = next
         balanceRefresh.observe(read, balanceKey(account), account.balanceCents)
-        accountReadAt = if (balanceRefresh.pending(balanceKey(account))) 0L else SystemClock.elapsedRealtime()
+        accountReadAt = balanceRefresh.cacheReadAt(balanceKey(account), SystemClock.elapsedRealtime())
     }
 }

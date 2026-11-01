@@ -109,13 +109,12 @@ class BillViewModel internal constructor(
     private fun summaryKey(state: BillUiState = mutable.value) = DisplayKeys.summary(state.dateFilter.timeFrom, state.dateFilter.timeTo)
     private fun countsKey(state: BillUiState = mutable.value) = DisplayKeys.counts(state.dateFilter.timeFrom, state.dateFilter.timeTo)
     private fun listPending(state: BillUiState = mutable.value): Boolean = !state.needsLogin && listRefresh.affects(state.dateFilter) &&
-        (listRefresh.pending(listKey(state)) || state.error != null ||
-            listRefresh.pending(summaryKey(state)) || state.summaryError != null ||
-            listRefresh.pending(countsKey(state)) || state.countsError != null)
+        listOf(listKey(state), summaryKey(state), countsKey(state)).any(listRefresh::needsRead)
     private fun statsPending(stats: BillStatsState = mutable.value.stats): Boolean = !mutable.value.needsLogin && stats.type in pendingStatsTypes && statsRefresh.affects(stats.period) &&
-        (statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "categories")) || stats.categoriesError != null ||
-            statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "ranking")) || stats.rankingError != null ||
-            stats.period.trendSupported && (statsRefresh.pending(DisplayKeys.stats(stats.period, stats.type, "daily")) || stats.dailyError != null))
+        statsKeys(stats).any(statsRefresh::needsRead)
+    private fun statsKeys(stats: BillStatsState) = listOf("categories", "ranking")
+        .plus(if (stats.period.trendSupported) listOf("daily") else emptyList())
+        .map { DisplayKeys.stats(stats.period, stats.type, it) }
     private val listRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { listPending() }, isReading = { loadJob?.isActive == true || loadMoreJob?.isActive == true || loginCheck?.isActive == true },
         retry = { load(transactionRetry = true, silent = true) })
@@ -189,7 +188,7 @@ class BillViewModel internal constructor(
         val period = mutable.value.dateFilter
         pendingStatsTypes.removeAll { type ->
             listOf("categories", "ranking").plus(if (period.trendSupported) listOf("daily") else emptyList())
-                .none { statsRefresh.pending(DisplayKeys.stats(period, type, it)) }
+                .none { statsRefresh.needsRead(DisplayKeys.stats(period, type, it)) }
         }
         pendingStatsTypes += when (income) { true -> listOf(1); false -> listOf(2); null -> listOf(1, 2) }
         listRefresh.invalidate(); statsRefresh.invalidate()
@@ -469,11 +468,11 @@ class BillViewModel internal constructor(
         val amountTo = current.amountToCents
         val info = current.info
         val hasItems = current.items.isNotEmpty()
-        val readList = !transactionRetry || listRefresh.pending(listKey(current)) || current.error != null
-        val readSummary = if (transactionRetry) listRefresh.pending(summaryKey(current)) || current.summaryError != null else
+        val readList = !transactionRetry || listRefresh.needsRead(listKey(current))
+        val readSummary = if (transactionRetry) listRefresh.needsRead(summaryKey(current)) else
             !queryChanged || listPending(current) && listRefresh.pending(summaryKey(current)) || !current.summaryLoaded ||
                 current.summary == null || current.summaryError != null || !ReadCachePolicy.isFresh(summaryReadAt, now())
-        val readCounts = if (transactionRetry) listRefresh.pending(countsKey(current)) || current.countsError != null else
+        val readCounts = if (transactionRetry) listRefresh.needsRead(countsKey(current)) else
             !queryChanged || listPending(current) && listRefresh.pending(countsKey(current)) || !current.countsLoaded ||
                 current.counts == null || current.countsError != null || !ReadCachePolicy.isFresh(countsReadAt, now())
         if (readSummary) summaryReadAt = 0L
@@ -526,15 +525,16 @@ class BillViewModel internal constructor(
                         catch (e: Exception) {
                             currentCoroutineContext().ensureActive()
                             if (isAuthenticationFailure(e)) throw e
+                            listRefresh.failed(read, listKey(current))
                             publish { it.copy(listLoading = false, listLoaded = true,
                                 error = (e as? YktException)?.message ?: "账单加载失败，请稍后重试") }
                         }
                     }
                     if (readSummary) launch {
                         val result = optionalData { repository.billSummary(dateFilter.timeFrom, dateFilter.timeTo) }
-                        result.getOrNull()?.let { listRefresh.observe(read, summaryKey(current), it) }
+                        listRefresh.record(read, summaryKey(current), result)
                         publish {
-                            if (result.isSuccess) summaryReadAt = if (listPending(current) && listRefresh.pending(summaryKey(current))) 0L else now()
+                            if (result.isSuccess) summaryReadAt = listRefresh.cacheReadAt(summaryKey(current), now(), listRefresh.affects(dateFilter))
                             it.copy(summary = result.getOrNull() ?: it.summary, summaryLoaded = true,
                                 summaryError = result.exceptionOrNull()?.let(::message))
                         }
@@ -542,9 +542,9 @@ class BillViewModel internal constructor(
                     }
                     if (readCounts) launch {
                         val result = optionalData { repository.billCounts(dateFilter.timeFrom, dateFilter.timeTo) }
-                        result.getOrNull()?.let { listRefresh.observe(read, countsKey(current), it) }
+                        listRefresh.record(read, countsKey(current), result)
                         publish {
-                            if (result.isSuccess) countsReadAt = if (listPending(current) && listRefresh.pending(countsKey(current))) 0L else now()
+                            if (result.isSuccess) countsReadAt = listRefresh.cacheReadAt(countsKey(current), now(), listRefresh.affects(dateFilter))
                             it.copy(counts = result.getOrNull() ?: it.counts, countsLoaded = true,
                                 countsError = result.exceptionOrNull()?.let(::message))
                         }
@@ -570,11 +570,13 @@ class BillViewModel internal constructor(
             } catch (e: YktException) {
                 val auth = isAuthenticationFailure(e)
                 if (auth) { clearAuthenticatedData(); return@launch }
+                listRefresh.failed(read, listKey(current))
                 mutable.value = mutable.value.copy(
                     needsLogin = false, loading = false, refreshing = false, listLoading = false,
                     error = e.message ?: "账单加载失败，请稍后重试", loaded = true, listLoaded = true,
                 )
             } catch (_: Exception) {
+                listRefresh.failed(read, listKey(current))
                 mutable.value = mutable.value.copy(
                     loading = false, refreshing = false, listLoading = false, error = "服务数据异常，请稍后刷新",
                 )
@@ -599,9 +601,9 @@ class BillViewModel internal constructor(
         val dailyKey = DisplayKeys.stats(stats.period, stats.type, "daily")
         val categoriesKey = DisplayKeys.stats(stats.period, stats.type, "categories")
         val rankingKey = DisplayKeys.stats(stats.period, stats.type, "ranking")
-        val readDaily = !transactionRetry || statsRefresh.pending(dailyKey) || stats.dailyError != null
-        val readCategories = !transactionRetry || statsRefresh.pending(categoriesKey) || stats.categoriesError != null
-        val readRanking = !transactionRetry || statsRefresh.pending(rankingKey) || stats.rankingError != null
+        val readDaily = !transactionRetry || statsRefresh.needsRead(dailyKey)
+        val readCategories = !transactionRetry || statsRefresh.needsRead(categoriesKey)
+        val readRanking = !transactionRetry || statsRefresh.needsRead(rankingKey)
         statsCache.invalidate(statsKey(stats.period, stats.type))
         mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, error = null,
             dailyError = stats.dailyError.takeUnless { readDaily },
@@ -629,21 +631,21 @@ class BillViewModel internal constructor(
                         val result = optionalData {
                             if (stats.period.trendSupported) repository.billTrend(stats.type, stats.period) else emptyList()
                         }
-                        result.getOrNull()?.let { statsRefresh.observe(read, dailyKey, it) }
+                        statsRefresh.record(read, dailyKey, result)
                         publish { it.copy(daily = result.getOrNull() ?: it.daily,
                             dailyLoaded = it.dailyLoaded || result.isSuccess, dailyError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), it, DisplayCodecs.Daily) }
                     }
                     if (readCategories) launch {
                         val result = optionalData { repository.billCategories(stats.type, stats.period.timeFrom, stats.period.timeTo) }
-                        result.getOrNull()?.let { statsRefresh.observe(read, categoriesKey, it) }
+                        statsRefresh.record(read, categoriesKey, result)
                         publish { it.copy(categories = result.getOrNull() ?: it.categories,
                             categoriesLoaded = it.categoriesLoaded || result.isSuccess, categoriesError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), it, DisplayCodecs.Categories) }
                     }
                     if (readRanking) launch {
                         val result = optionalData { repository.billRanking(stats.type, stats.period.timeFrom, stats.period.timeTo, 5) }
-                        result.getOrNull()?.let { statsRefresh.observe(read, rankingKey, it) }
+                        statsRefresh.record(read, rankingKey, result)
                         publish { it.copy(ranking = result.getOrNull() ?: it.ranking,
                             rankingLoaded = it.rankingLoaded || result.isSuccess, rankingError = result.exceptionOrNull()?.let(::message)) }
                         result.getOrNull()?.let { repository.saveDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), it, DisplayCodecs.Records) }

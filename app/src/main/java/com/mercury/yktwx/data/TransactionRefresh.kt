@@ -25,9 +25,13 @@ internal class TransactionRefresh(
     private var sequence = 0L
     private var invalidated = false
     private var transactionDate: LocalDate? = null
-    private val values = LinkedHashMap<String, Any>(16, .75f, true)
-    private val baselines = mutableMapOf<String, Any>()
-    private val updated = mutableSetOf<String>()
+    private data class Endpoint(
+        var value: Any? = null,
+        var baseline: Any? = null,
+        var updated: Boolean = false,
+        var failed: Boolean = false,
+    )
+    private val endpoints = LinkedHashMap<String, Endpoint>(16, .75f, true)
     private var retries = 0
     private var visible = false
     private var timer: Job? = null
@@ -39,9 +43,7 @@ internal class TransactionRefresh(
         sequence++
         invalidated = true
         transactionDate = date
-        baselines.clear()
-        baselines.putAll(values)
-        updated.clear()
+        endpoints.values.forEach { it.baseline = it.value; it.updated = false }
         retries = 0
         pause()
     }
@@ -51,7 +53,7 @@ internal class TransactionRefresh(
         sequence++
         invalidated = false
         transactionDate = null
-        values.clear(); baselines.clear(); updated.clear()
+        endpoints.clear()
         retries = 0
         pause()
     }
@@ -60,7 +62,16 @@ internal class TransactionRefresh(
         !it.isBefore(period.start) && !it.isAfter(period.end)
     } == true
 
-    fun pending(key: String): Boolean = invalidated && key !in updated
+    fun pending(key: String): Boolean = invalidated && endpoints[key]?.updated != true
+
+    /** A read failure does not undo observed progress, but still requires recovery. */
+    fun needsRead(key: String): Boolean = pending(key) || endpoints[key]?.failed == true
+
+    fun needsTransactionRead(key: String): Boolean = invalidated && needsRead(key)
+
+    /** Unaffected periods can use successful reads even while another period is pending. */
+    fun cacheReadAt(key: String, readAt: Long, affected: Boolean = true): Long =
+        if (endpoints[key]?.failed == true || affected && pending(key)) 0L else readAt
 
     fun setVisible(value: Boolean) {
         visible = value
@@ -76,19 +87,36 @@ internal class TransactionRefresh(
 
     fun accepts(read: Read): Boolean = read.revision == revision && read.sequence == sequence
 
+    private fun endpoint(key: String): Endpoint {
+        val state = endpoints.getOrPut(key) { Endpoint() }
+        while (endpoints.size > MaxKeys) endpoints.remove(endpoints.keys.first())
+        return state
+    }
+
+    fun failed(read: Read, key: String) {
+        if (accepts(read)) endpoint(key).failed = true
+    }
+
+    /** Configuration-only success can clear a failure without claiming that readings changed. */
+    fun succeeded(read: Read, key: String) {
+        if (accepts(read)) endpoint(key).failed = false
+    }
+
+    fun <T : Any> record(read: Read, key: String, result: Result<T>) {
+        result.fold({ observe(read, key, it) }, { failed(read, key) })
+    }
+
     fun observe(read: Read, key: String, value: Any) {
         if (!accepts(read)) return
-        if (pending(key)) {
-            val baseline = baselines[key]
-            if (baseline != null && baseline != value) updated += key
+        val state = endpoint(key)
+        if (invalidated && !state.updated) {
+            val baseline = state.baseline
+            if (baseline != null && baseline != value) state.updated = true
             // Without a pre-transaction live value, the first response cannot prove progress.
-            else if (baseline == null) baselines[key] = value
+            else if (baseline == null) state.baseline = value
         }
-        values[key] = value
-        while (values.size > MaxKeys) {
-            val oldest = values.keys.first()
-            values.remove(oldest); baselines.remove(oldest); updated.remove(oldest)
-        }
+        state.value = value
+        state.failed = false
     }
 
     fun finished(read: Read) {

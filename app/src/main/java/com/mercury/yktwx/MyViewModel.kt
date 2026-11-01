@@ -48,8 +48,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private fun summaryKey() = DisplayKeys.summary(period().timeFrom, period().timeTo)
     private fun countsKey() = DisplayKeys.counts(period().timeFrom, period().timeTo)
     private fun transactionPending(): Boolean = !preview && !mutable.value.needsLogin && transactionRefresh.affects(period()) &&
-        (transactionRefresh.pending(summaryKey()) || mutable.value.summaryError != null ||
-            transactionRefresh.pending(countsKey()) || mutable.value.countsError != null)
+        listOf(summaryKey(), countsKey()).any(transactionRefresh::needsRead)
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
         retry = { refreshData(metricsOnly = true, silent = true) })
@@ -106,8 +105,8 @@ class MyViewModel internal constructor(app: Application, private val repository:
         val read = transactionRefresh.started()
         val summaryKey = DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString())
         val countsKey = DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString())
-        val readSummary = !metricsOnly || transactionRefresh.pending(summaryKey) || current.summaryError != null || current.summary == null
-        val readCounts = !metricsOnly || transactionRefresh.pending(countsKey) || current.countsError != null || current.counts == null
+        val readSummary = !metricsOnly || transactionRefresh.needsRead(summaryKey) || current.summary == null
+        val readCounts = !metricsOnly || transactionRefresh.needsRead(countsKey) || current.counts == null
         val sameMonth = current.month == month
         mutable.value = current.copy(
             month = month, loading = !silent, needsLogin = false,
@@ -179,8 +178,11 @@ class MyViewModel internal constructor(app: Application, private val repository:
                         repository.saveDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), summary, DisplayCodecs.Summary)
                     }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { publish { it.copy(summaryError = message(e), summaryLoaded = true,
-                        needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
+                    catch (e: Exception) {
+                        transactionRefresh.failed(read, summaryKey)
+                        publish { it.copy(summaryError = message(e), summaryLoaded = true,
+                            needsLogin = it.needsLogin || isAuthenticationFailure(e)) }
+                    }
                 }
                 if (readCounts) launch {
                     try {
@@ -190,8 +192,11 @@ class MyViewModel internal constructor(app: Application, private val repository:
                         repository.saveDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), counts, DisplayCodecs.Counts)
                     }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { publish { it.copy(countsError = message(e), countsLoaded = true,
-                        needsLogin = it.needsLogin || isAuthenticationFailure(e)) } }
+                    catch (e: Exception) {
+                        transactionRefresh.failed(read, countsKey)
+                        publish { it.copy(countsError = message(e), countsLoaded = true,
+                            needsLogin = it.needsLogin || isAuthenticationFailure(e)) }
+                    }
                 }
             }
             if (attempt != generation) return@launch

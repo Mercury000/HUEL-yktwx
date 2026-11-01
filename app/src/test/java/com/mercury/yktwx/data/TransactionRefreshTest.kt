@@ -11,6 +11,76 @@ import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TransactionRefreshTest {
+    @Test fun failedUpdatedEndpointsKeepProgressAndRecoverIndependently() = runTest {
+        val refresh = TransactionRefresh(this, needsRefresh = { false }, isReading = { false }, retry = {})
+        val baseline = refresh.started()
+        refresh.observe(baseline, "summary", 0)
+        refresh.observe(baseline, "counts", 0)
+        refresh.invalidate()
+        val changed = refresh.started()
+        refresh.observe(changed, "summary", 100)
+        refresh.observe(changed, "counts", 1)
+        val failure = refresh.started()
+        refresh.record<Int>(failure, "summary", Result.failure(IllegalStateException()))
+        refresh.failed(failure, "counts")
+        assertFalse(refresh.pending("summary"))
+        assertTrue(refresh.needsTransactionRead("summary"))
+        assertEquals(0L, refresh.cacheReadAt("summary", 1000L))
+
+        val recovery = refresh.started()
+        refresh.record(recovery, "summary", Result.success(100))
+        assertFalse(refresh.needsRead("summary"))
+        assertEquals(1000L, refresh.cacheReadAt("summary", 1000L))
+        assertTrue(refresh.needsRead("counts"))
+        refresh.failed(failure, "summary")
+        assertFalse(refresh.needsRead("summary"))
+
+        refresh.clear()
+        refresh.failed(recovery, "summary")
+        assertFalse(refresh.needsRead("summary"))
+        assertFalse(refresh.needsRead("counts"))
+    }
+
+    @Test fun clearingAFailureDoesNotConfirmAnUnchangedOrMissingBaseline() = runTest {
+        val refresh = TransactionRefresh(this, needsRefresh = { false }, isReading = { false }, retry = {})
+        val before = refresh.started()
+        refresh.failed(before, "balance")
+        assertTrue(refresh.needsRead("balance"))
+        assertFalse(refresh.needsTransactionRead("balance"))
+        refresh.invalidate()
+        val read = refresh.started()
+        refresh.succeeded(read, "balance")
+        assertTrue(refresh.pending("balance"))
+        refresh.observe(read, "balance", 100)
+        assertTrue(refresh.needsRead("balance"))
+        assertEquals(0L, refresh.cacheReadAt("balance", 1000L))
+        assertEquals(1000L, refresh.cacheReadAt("balance", 1000L, affected = false))
+        refresh.failed(read, "balance")
+        assertEquals(0L, refresh.cacheReadAt("balance", 1000L, affected = false))
+        refresh.observe(read, "balance", 200)
+        assertFalse(refresh.needsRead("balance"))
+    }
+
+    @Test fun recoveringAnUpdatedEndpointStopsRetriesWithoutRepeatingOtherEndpoints() = runTest {
+        var requests = 0
+        lateinit var refresh: TransactionRefresh
+        refresh = TransactionRefresh(this, needsRefresh = { refresh.needsTransactionRead("balance") },
+            isReading = { false }, retry = {
+                requests++
+                val read = refresh.started()
+                refresh.observe(read, "balance", 200)
+                refresh.finished(read)
+            })
+        refresh.observe(refresh.started(), "balance", 100)
+        refresh.invalidate(); refresh.setVisible(true)
+        refresh.observe(refresh.started(), "balance", 200)
+        val failure = refresh.started()
+        refresh.failed(failure, "balance"); refresh.finished(failure)
+        advanceUntilIdle()
+        assertEquals(1, requests)
+        assertFalse(refresh.needsRead("balance"))
+    }
+
     @Test fun unchangedResponsesExhaustPollingWithoutBecomingFreshEvenAfterSixtySeconds() = runTest {
         var requests = 0
         lateinit var refresh: TransactionRefresh

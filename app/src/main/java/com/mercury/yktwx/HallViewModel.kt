@@ -39,13 +39,7 @@ class HallViewModel internal constructor(
     private var lastSelectedTargets: Set<String> = emptySet()
     private val transactionProjects = mutableSetOf<FeeProject>()
     private fun transactionKey(project: FeeProject) = "hall:${project.id}"
-    private fun transactionProjectPending(project: FeeProject): Boolean {
-        if (transactionRefresh.pending(transactionKey(project))) return true
-        if (project.network) return mutable.value.networkError != null
-        return project in projectReadErrors || mutable.value.rooms.any { room ->
-            room.bindings.any { it.project == project && it.meters.any { meter -> meter.error != null } }
-        }
-    }
+    private fun transactionProjectPending(project: FeeProject) = transactionRefresh.needsRead(transactionKey(project))
     private fun transactionPending(): Boolean = !preview && !mutable.value.needsLogin &&
         transactionProjects.any(::transactionProjectPending)
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
@@ -258,6 +252,7 @@ class HallViewModel internal constructor(
                             repository.saveDisplay(username, DisplayKeys.Network, query, DisplayCodecs.Query)
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
+                            transactionRefresh.failed(read, transactionKey(project))
                             needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
                             networkError = (e as? YktException)?.message ?: "校园网读取失败"
                         }
@@ -294,19 +289,23 @@ class HallViewModel internal constructor(
                                         transactionRefresh.observe(read, transactionKey(project), room.meters.map {
                                             Triple(it.kind, it.room.selections, it.query!!.display)
                                         }.sortedBy { it.first.ordinal })
+                                    else if (room.meters.any { it.error != null }) transactionRefresh.failed(read, transactionKey(project))
                                     if (room.meters.any { it.query != null && it.error == null }) {
                                         repository.saveDisplay(username, DisplayKeys.room(project), rooms.getValue(project), DisplayCodecs.Room)
                                     }
                                 } else {
+                                    transactionRefresh.succeeded(read, transactionKey(project))
                                     rooms.remove(project)
                                     repository.removeDisplay(username, DisplayKeys.room(project))
                                 }
                             } else {
+                                transactionRefresh.succeeded(read, transactionKey(project))
                                 rooms.remove(project)
                                 repository.removeDisplay(username, DisplayKeys.room(project))
                             }
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
+                            transactionRefresh.failed(read, transactionKey(project))
                             needsLogin = needsLogin || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired
                             errors[project] = (e as? YktException)?.message ?: "读取失败，请重试"
                             val old = rooms[project]
