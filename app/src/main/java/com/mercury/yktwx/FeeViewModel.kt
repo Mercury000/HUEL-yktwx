@@ -412,25 +412,21 @@ class FeeViewModel internal constructor(
             !dialog.target.sameTarget(state.currentRoom) || dialog.action != state.roomAction) return
         val generation = attempt
         val target = if (dialog.action == FeeRoomAction.Save) dialog.target else null
+        val username = owner
         mutable.value = copy(state, roomBusy = true, roomDialog = null, error = null, roomNotice = null)
         launchTask {
-            var failure: Exception? = null
             try {
-                if (!state.preview) repository.setFeeRoom(owner, config.project, target)
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { failure = e }
-            if (generation != attempt) return@launchTask
-            // Even a lost write response must be reconciled by a read, never by replaying the write.
-            try {
-                val fresh = if (UiPreview.enabled && state.preview) target else repository.feeConfiguration(owner, config.project).let {
-                    if (!it.roomBindingEnabled || it.invalidRoomBinding) throw YktException("房间绑定状态无法确认")
-                    it.roomBinding
-                }
+                val confirmation = if (UiPreview.enabled && state.preview) null else confirmFeeRoomBinding(target,
+                    write = { repository.setFeeRoom(username, config.project, target) },
+                    read = { repository.feeConfiguration(username, config.project) },
+                    isCurrent = { generation == attempt })
                 if (generation != attempt) return@launchTask
-                val confirmed = if (target == null) fresh == null else target.sameTarget(fresh)
+                if (confirmation != null && !confirmation.bindingKnown) throw YktException("房间绑定状态无法确认")
+                val fresh = if (UiPreview.enabled && state.preview) target else confirmation?.binding
+                val confirmed = confirmation?.confirmed ?: true
                 roomUpdates.trySend(Unit)
                 mutable.value = copy(mutable.value, roomBusy = false, roomBinding = fresh, roomBindingKnown = true,
-                    error = if (confirmed) null else failure?.let(::message) ?: "房间绑定未更新，请稍后重试",
+                    error = if (confirmed) null else confirmation?.writeFailure?.let(::message) ?: "房间绑定未更新，请稍后重试",
                     roomNotice = if (confirmed) (if (target == null) "已解绑" else "已保存为我的房间") else null)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
