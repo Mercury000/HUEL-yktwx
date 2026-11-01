@@ -59,9 +59,65 @@ class AppUpdateViewModelTest {
         assertEquals(1, count)
         model("v4").configure(true, true, true); runCurrent()
         assertEquals(2, count)
-        time += UpdateCheckStore.DAY
+        time += UpdateCheckStore.DAY - 1
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(2, count)
+        time++
         restarted.configure(true, true, true); runCurrent()
         assertEquals(3, count)
+    }
+
+    @Test fun automaticFailureRetriesAfterOneHourAcrossRestartsAndSuccessRestoresDailyInterval() = runTest(dispatcher) {
+        var fail = true
+        val check: suspend () -> UpdateCheckResult = {
+            count++
+            if (fail) throw java.io.IOException("offline")
+            UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
+        }
+        model(check = check).configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        assertTrue(events.isEmpty())
+        time += UpdateCheckStore.HOUR - 1
+        val restarted = model(check = check)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        fail = false
+        time++
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(2, count)
+        assertTrue(events.isEmpty())
+        time += UpdateCheckStore.DAY - 1
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(2, count)
+        time++
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(3, count)
+    }
+
+    @Test fun failureCooldownStartsWhenTheRequestFailsAndRepeatedFailuresStayHourly() = runTest(dispatcher) {
+        val gate = CompletableDeferred<UpdateCheckResult>()
+        val first = model { count++; gate.await() }
+        first.configure(true, true, true); runCurrent()
+        time += UpdateCheckStore.HOUR / 2
+        gate.completeExceptionally(java.io.IOException("offline")); runCurrent()
+        assertTrue(events.isEmpty())
+        time += UpdateCheckStore.HOUR - 1
+        val restarted = model { count++; error("offline") }
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        time++
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(2, count)
+        time += UpdateCheckStore.HOUR
+        restarted.configure(true, true, false)
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(3, count)
+        assertTrue(events.isEmpty())
     }
 
     @Test fun manualTapJoinsAutomaticRequestAndReceivesItsError() = runTest(dispatcher) {

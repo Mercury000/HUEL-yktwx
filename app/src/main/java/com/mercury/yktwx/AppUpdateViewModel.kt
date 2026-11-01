@@ -77,13 +77,15 @@ internal class AppUpdateViewModel internal constructor(
         manualRequest = manual
         pendingPrompt = false
         val attempt = ++generation
-        store.checked(now())
+        // Reserve the short cooldown while a request is pending or cancelled.
+        store.checked(now(), successful = false)
         mutable.value = AppUpdateUiState(checking = manual)
         viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = checkUpdate()
                 currentCoroutineContext().ensureActive()
                 if (generation != attempt) return@launch
+                store.checked(now(), successful = true)
                 pendingPrompt = result.release != null && (manualRequest || automaticEnabled &&
                     store.canPrompt(result.release.versionCode, now()))
                 val message = if (!manualRequest) null else when (result.reason) {
@@ -98,6 +100,7 @@ internal class AppUpdateViewModel internal constructor(
                 throw cancelled
             } catch (error: Exception) {
                 if (generation == attempt) {
+                    store.checked(now(), successful = false)
                     mutable.value = AppUpdateUiState()
                     if (manualRequest) feedback.tryEmit(if (error is java.io.IOException) UpdateFeedback.Network else UpdateFeedback.Failed)
                 }
