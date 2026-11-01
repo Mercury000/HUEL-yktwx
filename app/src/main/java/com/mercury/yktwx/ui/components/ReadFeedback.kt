@@ -81,7 +81,7 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     topSpacing: Dp = 0.dp,
     content: @Composable () -> Unit) {
     val userRefresh = LocalUserRefresh.current
-    val reading = loading && !userRefresh
+    val reading = loading && !userRefresh && !LocalReadOffline.current
     var finishing by remember { mutableStateOf(false) }
     val completion = remember { Animatable(0f) }
     var wasReading by remember { mutableStateOf(reading) }
@@ -131,11 +131,12 @@ private fun readProgressColors() = if (isSystemInDarkTheme()) ProgressIndicatorD
 @Composable
 internal fun rememberInitialReadError(hasContent: Boolean, error: String?, settled: Boolean): String? {
     var failure by remember { mutableStateOf<String?>(null) }
+    val offline = LocalReadOffline.current
     SideEffect {
         if (hasContent) failure = null
-        else if (settled && error != null) failure = error
+        else if (!offline && settled && error != null) failure = error
     }
-    return if (hasContent) null else (error.takeIf { settled } ?: failure)
+    return if (hasContent) null else (error.takeIf { settled || offline } ?: failure ?: FeedbackText.Offline.takeIf { offline })
 }
 
 /** Delay only the skeleton's paint, preserving its real measurements and immediate results. */

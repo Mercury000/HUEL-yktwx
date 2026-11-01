@@ -70,7 +70,10 @@ class NetworkRecoveryNavigationTest {
 
     @Test fun hallRecoversInPlaceAndCachedMyPageRecoversOnReconnectAndForegroundWithoutFetchingPaymentCodes() {
         val app = compose.activity.application
-        var feeRetryGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        val feeReads = AtomicInteger()
+        val profileReads = AtomicInteger()
+        val ledgerReads = AtomicInteger()
+        val billReads = AtomicInteger()
         val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
         val vault = object : Vault {
             override fun credentials() = Credentials("fake-user", "fake-password")
@@ -90,21 +93,29 @@ class NetworkRecoveryNavigationTest {
             }
             override suspend fun paymentAccount(token: String): PaymentAccount { requireOnline(); return account }
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                ledgerReads.incrementAndGet()
                 requireOnline(); return BillSummary(0, 0)
             }
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
                 requireOnline(); return 0
             }
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
+                billReads.incrementAndGet(); requireOnline()
+                return BillPageData(emptyList(), current, 0)
+            }
+            override suspend fun billTypes(token: String) = emptyList<BillType>()
         }
         val profiles = object : ProfileService {
             override suspend fun profile(token: String): PersonalProfile {
+                profileReads.incrementAndGet()
                 requireOnline(); return PersonalProfile("示例姓名", "fake-user", "示例部门", "", null)
             }
             override suspend fun avatar(path: String): ByteArray? = null
         }
         val fees = object : FeeService by FeeApi({ error("Unexpected HTTP request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
-                feeRetryGate?.await()
+                feeReads.incrementAndGet()
                 requireOnline()
                 return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false),
                     roomBindingEnabled = !project.network)
@@ -129,23 +140,41 @@ class NetworkRecoveryNavigationTest {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
         }
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
-        await { hall.state.value.loaded && !hall.state.value.loading }
+        assertFalse(hall.state.value.loaded)
+        assertFalse(hall.state.value.loading)
         compose.onNode(visibleTag("read-unavailable")).assertIsDisplayed()
+        compose.onNode(hasContentDescription("正在读取房间") and SemanticsMatcher("Inside the visible page") {
+            it.boundsInRoot.left >= 0 && it.boundsInRoot.right > 0
+        }).assertDoesNotExist()
+        compose.onNode(visibleTag("network-package-placeholder")).assertDoesNotExist()
+        assertNull(hall.state.value.error)
+        compose.onNode(hasText("我的") and hasClickAction()).performClick()
+        compose.onNode(visibleTag("read-unavailable")).assertIsDisplayed()
+        assertNull(mine.state.value.profileError)
+        compose.onNode(hasText("账单") and hasClickAction()).performClick()
+        compose.onNode(visibleTag("read-unavailable")).assertIsDisplayed()
+        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
+        assertEquals(0, feeReads.get())
+        assertEquals(0, profileReads.get())
+        assertEquals(0, ledgerReads.get())
+        assertEquals(0, billReads.get())
         val originalPaymentReads = paymentReads.get()
         compose.runOnIdle { connection(true) }
         await { hall.state.value.network != null && hall.state.value.error == null && !hall.state.value.loading }
+        assertEquals(FeeProject.entries.size, feeReads.get())
         compose.onNode(visibleTag("read-unavailable")).assertDoesNotExist()
         assertEquals(originalPaymentReads, paymentReads.get())
 
-        // Reproduce Hall -> Payment -> Hall while still offline, with the retry held in flight.
+        // Offline re-entry preserves the notice without starting another automatic read.
         compose.runOnIdle { connection(false); hall.refresh() }
         await { hall.state.value.error != null && hall.state.value.networkError != null && !hall.state.value.loading }
         compose.onNode(visibleTag("page-network-error")).assertIsDisplayed()
         val failedTop = compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top
-        feeRetryGate = kotlinx.coroutines.CompletableDeferred()
+        val offlineReads = feeReads.get()
         compose.onNode(hasText("付款") and hasClickAction()).performClick()
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
-        await { hall.state.value.loading }
+        assertFalse(hall.state.value.loading)
+        assertEquals(offlineReads, feeReads.get())
         compose.mainClock.autoAdvance = false
         for (frame in 1..5) {
             compose.mainClock.advanceTimeBy(64)
@@ -153,8 +182,6 @@ class NetworkRecoveryNavigationTest {
             assertEquals("The offline re-entry must not collapse/reinsert the same notice", failedTop,
                 compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top, 1f)
         }
-        compose.runOnIdle { feeRetryGate!!.complete(Unit); feeRetryGate = null }
-        await { !hall.state.value.loading }
         compose.mainClock.advanceTimeBy(320)
         assertEquals(failedTop, compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.mainClock.autoAdvance = true

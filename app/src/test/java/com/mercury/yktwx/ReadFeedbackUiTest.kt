@@ -151,10 +151,10 @@ class ReadFeedbackUiTest {
                                 onRefreshDorm = { refreshes++ })
                             2 -> BillPage(BillUiState(loaded = true, error = networkError,
                                 summaryError = networkError, countsError = networkError), settings,
-                                {}, {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                                {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                             3 -> MyPage(MyUiState(loaded = true, profileError = networkError,
                                 homeIdentityError = networkError, summaryError = networkError, countsError = networkError),
-                                PaymentUiState(needsLogin = false), settings, 0.dp, false, {}, { refreshes++ },
+                                PaymentUiState(needsLogin = false), settings, 0.dp, false, { refreshes++ },
                                 {}, {}, {}, {}, false, {}, false, false, {}, {})
                         }
                     }
@@ -254,7 +254,7 @@ class ReadFeedbackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
-                    MyPage(PreviewData.myState(), payment, settings, 0.dp, false, {}, {},
+                    MyPage(PreviewData.myState(), payment, settings, 0.dp, false, {},
                         {}, {}, {}, {}, false, {}, false, false, {}, {})
                 }
             }
@@ -312,7 +312,7 @@ class ReadFeedbackUiTest {
             summaryError = networkError, countsError = networkError))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { BillPage(state, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false) }
+                AppTheme { BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false) }
             }
         }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
@@ -330,7 +330,7 @@ class ReadFeedbackUiTest {
                 AppTheme {
                     BillPage(PreviewData.billState().copy(error = networkError,
                         summaryError = networkError, countsError = networkError),
-                        settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                        settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                 }
             }
         }
@@ -344,7 +344,7 @@ class ReadFeedbackUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
                     BillPage(PreviewData.billState().copy(summaryError = networkError, countsError = networkError),
-                        settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                        settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                 }
             }
         }
@@ -378,7 +378,7 @@ class ReadFeedbackUiTest {
         val payment = PaymentUiState(needsLogin = false, accountError = networkError)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {}, {},
+                AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
                     false, {}, false, false, {}, {}) }
             }
         }
@@ -401,7 +401,7 @@ class ReadFeedbackUiTest {
         val payment = PreviewData.paymentState(false).copy(accountError = networkError)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {}, {},
+                AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
                     false, {}, false, false, {}, {}) }
             }
         }
@@ -492,8 +492,10 @@ class ReadFeedbackUiTest {
         var active by mutableStateOf(false)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { HallPage(settings, 0.dp, dorm = state, isActive = active,
-                    onActivate = { state = pending }) }
+                AppTheme {
+                    LaunchedEffect(active) { if (active) state = pending }
+                    HallPage(settings, 0.dp, dorm = state, isActive = active)
+                }
             }
         }
         fun cardTop() = compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.top
@@ -557,7 +559,7 @@ class ReadFeedbackUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true,
                 LocalDensity provides Density(density.density, 1.5f)) {
                 AppTheme(ColorSchemeMode.Dark) {
-                    BillPage(ready.copy(statsVisible = true, stats = stats), settings, {}, {}, {}, {}, {},
+                    BillPage(ready.copy(statsVisible = true, stats = stats), settings, {}, {}, {}, {},
                         { _, _, _ -> }, {}, {}, {}, showBack = false)
                 }
             }

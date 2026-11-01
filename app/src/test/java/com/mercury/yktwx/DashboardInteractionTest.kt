@@ -107,7 +107,7 @@ class DashboardInteractionTest {
         var refreshes = 0
         content {
             MyPage(MyUiState(loading = loading.value), PaymentUiState(), settings, 100.dp,
-                isActive = true, onActivate = {}, onRefresh = { refreshes++; loading.value = true },
+                isActive = true, onRefresh = { refreshes++; loading.value = true },
                 onProfile = {}, onAccount = {}, onBills = {}, onRecharge = {}, rechargeLoading = false,
                 onCardAction = {}, manageLoading = false, passwordLoading = false,
                 onSettings = {}, onAbout = {})
@@ -133,7 +133,7 @@ class DashboardInteractionTest {
         val actions = mutableListOf<CampusCardAction>()
         content {
             MyPage(MyUiState(loaded = true), PaymentUiState(), settings, 0.dp,
-                isActive = false, onActivate = {}, onRefresh = {},
+                isActive = false, onRefresh = {},
                 onProfile = {}, onAccount = {}, onBills = {}, onRecharge = {}, rechargeLoading = rechargeLoading,
                 onCardAction = { actions += it }, manageLoading = manageLoading,
                 passwordLoading = passwordLoading, onSettings = {}, onAbout = {})
@@ -214,7 +214,8 @@ class DashboardInteractionTest {
         var active by mutableStateOf(false)
         var activations = 0
         content {
-            BillPage(state, settings, {}, { activations++ }, {}, {}, {}, { _, _, _ -> }, {},
+            LaunchedEffect(active) { if (active) activations++ }
+            BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {},
                 onOpenStats = {}, onOpenDetail = {}, isActive = active, showBack = false)
         }
         fun assertInitialSkeleton() {
@@ -253,7 +254,7 @@ class DashboardInteractionTest {
         var dates = 0
         content {
             BillPage(BillUiState(loaded = true, amountFromCents = 1000), settings,
-                {}, {}, {}, {}, { dates++ }, { _, from, _ -> assertEquals(1000L, from); applied++ }, {},
+                {}, {}, {}, { dates++ }, { _, from, _ -> assertEquals(1000L, from); applied++ }, {},
                 onOpenStats = {}, onOpenDetail = {}, isActive = active, showBack = false)
         }
         compose.onNodeWithContentDescription("筛选账单").performClick()
@@ -292,7 +293,7 @@ class DashboardInteractionTest {
         val state = mutableStateOf(model.state.value.copy(loading = true))
         var refreshes = 0
         content {
-            BillPage(state.value, settings, {}, {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {},
+            BillPage(state.value, settings, {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {},
                 onOpenStats = {}, onOpenDetail = {}, showBack = false)
         }
         val list = compose.onNode(verticalList)
@@ -339,7 +340,7 @@ class DashboardInteractionTest {
         var expectedBackground = 0
         content {
             expectedBackground = MiuixTheme.colorScheme.secondaryContainer.toArgb()
-            BillPage(initial, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, { submitted = it },
+            BillPage(initial, settings, {}, {}, {}, {}, { _, _, _ -> }, { submitted = it },
                 onOpenStats = {}, onOpenDetail = {}, showBack = false)
         }
         val search = compose.onNodeWithTag("bill-search")

@@ -88,7 +88,7 @@ class EditingAndCodeDialogUiTest {
 
     @Test fun billFilterMovesFocusBothWaysWithoutDismissingKeyboardOrMovingTheSheet() {
         content { Scaffold {
-            BillPage(PreviewData.billState(), ThemeSettings(compose.activity.application), {}, {}, {}, {}, {},
+            BillPage(PreviewData.billState(), ThemeSettings(compose.activity.application), {}, {}, {}, {},
                 { _, _, _ -> }, {}, {}, {}, showBack = false)
         } }
         compose.onNodeWithContentDescription("筛选账单").performClick()
