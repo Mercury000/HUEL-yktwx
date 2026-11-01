@@ -70,7 +70,6 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References }
 private enum class AuthPage { Restoring, Login, Main }
-private enum class ReadPage { Payment, Hall, Bill, My, Profile, Account }
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null) {
@@ -305,29 +304,25 @@ private fun MainContent(
     val activeReadPage = readPage.takeIf { availability.foreground && availability.online }
     val currentOwner by rememberUpdatedState(state.username.takeUnless { state.needsLogin })
     val currentReadPage by rememberUpdatedState(activeReadPage)
-    LaunchedEffect(rechargeModel, feeModel, viewModel) {
-        merge(rechargeModel.transactionUpdates, feeModel.transactionUpdates, viewModel.transactionUpdates).collect { update ->
-            if (update.username != currentOwner) return@collect
-            if (update.balance) viewModel.invalidateBalance()
-            billViewModel.invalidate(update.income); myModel.invalidate()
-            if (update.hall) dormModel.invalidateTransaction(update.project)
-            when (currentReadPage) {
+    val transactionReads = remember(viewModel, billViewModel, myModel, dormModel) {
+        TransactionReadCoordinator(viewModel::invalidateBalance, billViewModel::invalidate,
+            myModel::invalidate, dormModel::invalidateTransaction) { page ->
+            when (page) {
                 ReadPage.Bill -> billViewModel.onActivate()
                 ReadPage.My, ReadPage.Profile -> myModel.onActivate()
-                ReadPage.Hall -> if (update.hall) dormModel.onActivate()
+                ReadPage.Hall -> dormModel.onActivate()
                 else -> Unit
             }
         }
     }
-    LaunchedEffect(viewModel, billViewModel, myModel) {
+    LaunchedEffect(rechargeModel, feeModel, viewModel, transactionReads) {
+        merge(rechargeModel.transactionUpdates, feeModel.transactionUpdates, viewModel.transactionUpdates).collect { update ->
+            transactionReads.onTransaction(update, currentOwner, currentReadPage)
+        }
+    }
+    LaunchedEffect(viewModel, transactionReads) {
         viewModel.balanceChanges.collect { change ->
-            if (change.username != currentOwner) return@collect
-            billViewModel.invalidate(change.increased); myModel.invalidate()
-            when (currentReadPage) {
-                ReadPage.Bill -> billViewModel.onActivate()
-                ReadPage.My -> myModel.onActivate()
-                else -> Unit
-            }
+            transactionReads.onBalanceChange(change, currentOwner, currentReadPage)
         }
     }
     // When an overlay closes, apply any invalidation deferred while it covered the page.
