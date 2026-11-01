@@ -281,14 +281,7 @@ fun BillPage(
                                     },
                                     trailingIcon = {
                                         if (query.text.isNotEmpty()) {
-                                            IconButton(onClick = {
-                                                query = TextFieldValue()
-                                                submitSearch("")
-                                            }) {
-                                                Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
-                                                    modifier = Modifier.size(17.dp),
-                                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                            }
+                                            Spacer(Modifier.size(IconButtonDefaults.MinWidth, IconButtonDefaults.MinHeight))
                                         }
                                     },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -297,6 +290,18 @@ fun BillPage(
                                         submitSearch(query.text)
                                     }),
                                 )
+                                // Keep this tap outside BasicTextField's focus/selection gesture path.
+                                // The empty trailing slot reserves the same space in the decoration.
+                                if (query.text.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        query = TextFieldValue()
+                                        submitSearch("")
+                                    }, modifier = Modifier.align(Alignment.CenterEnd)) {
+                                        Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
+                                            modifier = Modifier.size(17.dp),
+                                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                    }
+                                }
                                 }
                                 // A cached query is checked below the stable overview and search field.
                                 PageReadNotice(null, 0.dp, loading = state.listOnlyRead && state.listLoading && state.listAvailable,
