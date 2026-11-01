@@ -30,4 +30,16 @@
     <string name="about_references">References</string>
     <string name="payment_motion_detection">Turn-back Payment Detection</string>
     <string name="payment_motion_detection_summary">After turning the phone back, silently check the balance. Show payment success only when it decreases.</string>
+    <string name="automatic_updates">Automatically Check for Updates</string>
+    <string name="automatic_updates_summary">Check at most once a day while the app is open</string>
+    <string name="check_updates">Check for Updates</string>
+    <string name="update_current">You are up to date</string>
+    <string name="update_no_release">No published version is available</string>
+    <string name="update_incompatible">No update is available for this device</string>
+    <string name="update_failed">Could not check for updates. Please try again later.</string>
+    <string name="update_network_failed">Network connection failed. Please try again later.</string>
+    <string name="update_preview">Updates are not checked in UI preview</string>
+    <string name="update_found">New Version %1$s Available</string>
+    <string name="update_later">Later</string>
+    <string name="update_download">Go to Download</string>
 </resources>

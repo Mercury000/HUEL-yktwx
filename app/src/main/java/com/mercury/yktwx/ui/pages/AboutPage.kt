@@ -86,7 +86,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 // ---------------------------------------------------------------------------
 
 @Composable
-fun AboutPage(
+internal fun AboutPage(
     padding: PaddingValues,
     isActive: Boolean,
     onOpenReferences: () -> Unit,

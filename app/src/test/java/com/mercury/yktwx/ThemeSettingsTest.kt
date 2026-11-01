@@ -18,6 +18,16 @@ class ThemeSettingsTest {
 
     @Before fun reset() { prefs.edit().clear().commit() }
 
+    @Test fun automaticUpdatesDefaultOnAndCanBePersistentlyDisabled() {
+        val settings = ThemeSettings(context)
+        assertTrue(settings.automaticUpdates.value)
+        settings.setAutomaticUpdates(false)
+        assertFalse(settings.automaticUpdates.value)
+        assertFalse(ThemeSettings(context).automaticUpdates.value)
+        settings.setAutomaticUpdates(true)
+        assertTrue(ThemeSettings(context).automaticUpdates.value)
+    }
+
     @Test fun paymentMotionDetectionIsOffForNewAndExistingUsersWithoutThePreference() {
         assertFalse(ThemeSettings(context).paymentMotionDetection.value)
         prefs.edit().putInt("theme_mode", 2).putBoolean("prevent_screenshots", false).commit()

@@ -17,6 +17,7 @@
 - 个人资料、校园卡状态与应用设置。
 - 账单关键词搜索。
 - 本地自定义头像。
+- 自动与手动检查应用更新。
 - 宽屏侧栏与明暗主题。
 
 ## 安装与使用
@@ -48,6 +49,7 @@ macOS / Linux 使用 `./gradlew :app:assembleDebug`。依赖版本以本版本�
 - [开发说明](docs/development.md)
 - [项目架构](docs/architecture.md)
 - [一卡通接口](docs/api.md)
+- [应用更新](docs/app-updates.md)
 - [构建与发版](docs/releases.md)
 
 ## 许可证

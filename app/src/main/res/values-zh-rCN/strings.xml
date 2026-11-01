@@ -30,4 +30,16 @@
     <string name="about_references">引用</string>
     <string name="payment_motion_detection">转回检测支付</string>
     <string name="payment_motion_detection_summary">展示付款码后转回手机，静默查询余额；仅余额减少时提示支付成功</string>
+    <string name="automatic_updates">自动检查更新</string>
+    <string name="automatic_updates_summary">打开应用时检查，每天最多一次</string>
+    <string name="check_updates">检查更新</string>
+    <string name="update_current">已是最新版本</string>
+    <string name="update_no_release">暂无已发布版本</string>
+    <string name="update_incompatible">暂无适用于此设备的更新</string>
+    <string name="update_failed">检查更新失败，请稍后重试</string>
+    <string name="update_network_failed">网络连接失败，请稍后重试</string>
+    <string name="update_preview">界面预览不检查更新</string>
+    <string name="update_found">发现新版本 %1$s</string>
+    <string name="update_later">稍后</string>
+    <string name="update_download">前往下载</string>
 </resources>
