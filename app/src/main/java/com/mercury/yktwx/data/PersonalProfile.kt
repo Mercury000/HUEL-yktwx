@@ -38,20 +38,21 @@ class ProfileApi(private val openConnection: (URL) -> HttpsURLConnection = { it.
     }
     override suspend fun avatar(path: String): ByteArray? = withContext(Dispatchers.IO) {
         val safe = avatarPath(path) ?: return@withContext null
-        val connection = openConnection(URI(RechargeProtocol.SCHOOL + safe).toURL())
         try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false
-            connection.useCaches = false
-            connection.setRequestProperty("Accept", "image/*")
-            connection.setRequestProperty("Cache-Control", "no-store")
-            // The observed avatar is public on the school origin; never send credentials to an image URL.
-            if (connection.responseCode != 200 || connection.contentType?.substringBefore(';') !in setOf("image/png", "image/jpeg", "image/webp")) return@withContext null
-            val bytes = connection.inputStream.use { it.readNBytes(2_097_153) }
-            bytes.takeIf { it.size in 1..2_097_152 }
-        } catch (_: java.io.IOException) { null }
-        finally { connection.disconnect() }
+            val connection = openConnection(URI(RechargeProtocol.SCHOOL + safe).toURL())
+            try {
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 15_000
+                connection.instanceFollowRedirects = false
+                connection.useCaches = false
+                connection.setRequestProperty("Accept", "image/*")
+                connection.setRequestProperty("Cache-Control", "no-store")
+                // The observed avatar is public on the school origin; never send credentials to an image URL.
+                if (connection.responseCode != 200 || connection.contentType?.substringBefore(';') !in setOf("image/png", "image/jpeg", "image/webp")) return@withContext null
+                val bytes = connection.inputStream.use { it.readNBytes(2_097_153) }
+                bytes.takeIf { it.size in 1..2_097_152 }
+            } finally { connection.disconnect() }
+        } catch (_: java.io.IOException) { throw NetworkFailure() }
     }
     companion object {
         internal fun parseHomeIdentity(data: JSONObject, sno: String): HomeCardIdentity? {

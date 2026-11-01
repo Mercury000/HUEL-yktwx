@@ -68,6 +68,8 @@ class DormMetersTest {
         assertEquals("86.4", room.meters[0].readings.firstOrNull()?.value)
         assertNull(room.meters[1].readings.firstOrNull()?.value)
         assertNotNull(room.meters[1].error)
+        assertEquals(ReadFailureKind.Network, room.meters[1].errorKind)
+        assertNull(room.meters[0].errorKind)
     }
     @Test fun noBindingMakesNoQueriesAndStaleTargetCannotSelectNearbyRoom() = runBlocking {
         val fees = FakeFees()
@@ -199,6 +201,10 @@ class DormMetersTest {
         assertSame(staleWater, renamedMerged.bindings.last().binding)
         assertSame(water.binding, renamedMerged.meters.last().room)
         assertEquals(water.label, renamedWater.label)
+        val failedWater = DormRoom(water.project, water.binding, listOf(DormMeter(DormMeterKind.Other,
+            water.binding, null, "服务暂时无法访问", errorKind = ReadFailureKind.Network)), 0)
+        val failedMerged = mergeFamilyRooms(listOf(electric, failedWater)).single()
+        assertEquals(ReadFailureKind.Network, failedMerged.meters.last().errorKind)
     }
 
     @Test fun oneFamilyBindingDiscoversTheOtherServiceWithoutWritingABinding() = runBlocking {

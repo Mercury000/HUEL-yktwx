@@ -56,17 +56,18 @@ internal fun MyPage(
     val dark = isSystemInDarkTheme()
     val balancePending = payment.balanceLoading || payment.accountLoading
     val cardPending = payment.cardStatusLoading
-    val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
+    val balanceError = rememberInitialReadError(payment.account != null, readError(payment.accountError, payment.accountErrorKind), !balancePending)
     val hasContent = state.profile != null || state.homeIdentity != null ||
         state.summary != null || state.counts != null || payment.account != null
     val initialError = rememberInitialReadError(hasContent,
-        state.profileError ?: state.homeIdentityError ?: state.summaryError ?: state.countsError ?: payment.accountError,
+        FeedbackText.firstError(readError(state.profileError, state.profileErrorKind), readError(state.homeIdentityError, state.homeIdentityErrorKind),
+            readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind), readError(payment.accountError, payment.accountErrorKind)),
         state.loaded && !state.loading && !balancePending)
     val networkError = key(state.month) { rememberPageNetworkError(FeedbackText.mergedNetworkError(
-        "资料" to FeedbackText.networkError(state.profileError, state.homeIdentityError, state.avatarError),
-        "余额" to FeedbackText.networkError(payment.accountError, balanceError),
-        "卡状态" to FeedbackText.networkError(payment.cardStatusError),
-        "概览" to FeedbackText.networkError(state.summaryError, state.countsError)),
+        "资料" to FeedbackText.networkError(readError(state.profileError, state.profileErrorKind), readError(state.homeIdentityError, state.homeIdentityErrorKind), readError(state.avatarError, state.avatarErrorKind)),
+        "余额" to FeedbackText.networkError(readError(payment.accountError, payment.accountErrorKind), balanceError),
+        "卡状态" to readError(payment.cardStatusError, payment.cardStatusErrorKind),
+        "概览" to FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))),
         state.loading || balancePending || cardPending, hasContent) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
@@ -94,7 +95,7 @@ internal fun MyPage(
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (showFailure) {
-                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
                         } else {
                         item {
                             Column {
@@ -129,8 +130,9 @@ internal fun MyPage(
                                     }
                                 }
                             }
-                            val identityError = state.profileError ?: state.homeIdentityError ?: state.avatarError
-                            ReadNotice(identityError?.takeUnless { networkError != null && FeedbackText.isNetwork(it) },
+                            val identityError = FeedbackText.firstError(readError(state.profileError, state.profileErrorKind),
+                                readError(state.homeIdentityError, state.homeIdentityErrorKind), readError(state.avatarError, state.avatarErrorKind))
+                            ReadNotice(identityError,
                                 cached = state.profile != null || state.homeIdentity != null, topSpacing = 18.dp)
                             }
                         }
@@ -193,8 +195,8 @@ internal fun MyPage(
                                         }
                                     }
                                 }
-                                ReadNotice(payment.accountError, cached = payment.account != null)
-                                ReadNotice(payment.cardStatusError, cached = payment.accountCard != null)
+                                ReadNotice(readError(payment.accountError, payment.accountErrorKind), cached = payment.account != null)
+                                ReadNotice(readError(payment.cardStatusError, payment.cardStatusErrorKind), cached = payment.accountCard != null)
                             }
                         }
                         item {
@@ -216,7 +218,7 @@ internal fun MyPage(
                                             Modifier.weight(1f), fontSize = 11.sp, lineHeight = 16.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         DashboardLink("查看账单", onClick = onBills)
                                     }
-                                    ReadNotice(state.summaryError ?: state.countsError,
+                                    ReadNotice(FeedbackText.firstError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
                                         cached = state.summary != null || state.counts != null, topSpacing = 16.dp)
                                     }
                                 }
@@ -296,9 +298,9 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp, custom: Boolean = false,
 internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit,
     onAvatar: (() -> Unit)? = null, customAvatar: Boolean = false,
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false) {
-    val initialError = rememberInitialReadError(state.profile != null, state.profileError, !state.loading)
+    val initialError = rememberInitialReadError(state.profile != null, readError(state.profileError, state.profileErrorKind), !state.loading)
     val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
-    val error = rememberPageNetworkError(state.profileError ?: state.avatarError, state.loading, state.profile != null)
+    val error = rememberCachedReadError(FeedbackText.firstError(readError(state.profileError, state.profileErrorKind), readError(state.avatarError, state.avatarErrorKind)), state.loading, state.profile != null)
     ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError, state.displayRestored) {
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
@@ -332,8 +334,8 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
     rechargeLoading: Boolean = false, onRefresh: (() -> Unit)? = null) {
     val balancePending = payment.balanceLoading || payment.accountLoading
     val reading = balancePending || payment.cardStatusLoading
-    val initialError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)
-    val error = rememberPageNetworkError(payment.accountError ?: payment.cardStatusError, reading, payment.account != null)
+    val initialError = rememberInitialReadError(payment.account != null, readError(payment.accountError, payment.accountErrorKind), !balancePending)
+    val error = rememberCachedReadError(FeedbackText.firstError(readError(payment.accountError, payment.accountErrorKind), readError(payment.cardStatusError, payment.cardStatusErrorKind)), reading, payment.account != null)
     ProfileDetailScaffold("账户详情", settings, onBack, reading, onRefresh, initialError) {
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
@@ -370,7 +372,7 @@ private fun ProfileField(label: String, value: String?, pending: Boolean = false
 
 @Composable
 private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack: () -> Unit,
-    loading: Boolean = false, onRefresh: (() -> Unit)? = null, initialError: String? = null,
+    loading: Boolean = false, onRefresh: (() -> Unit)? = null, initialError: ReadError? = null,
     displayRestored: Boolean = false,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())

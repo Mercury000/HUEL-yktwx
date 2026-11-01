@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mercury.yktwx.data.ReadFailureKind
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
@@ -31,18 +32,24 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** Message and category travel together, including retained animation and retry snapshots. */
+internal data class ReadError(val message: String, val kind: ReadFailureKind = ReadFailureKind.Other)
+
+internal fun readError(message: String?, kind: ReadFailureKind?) = message?.let { ReadError(it, kind ?: ReadFailureKind.Other) }
+
 internal object FeedbackText {
     const val Offline = "网络连接失败"
-    fun read(error: String, cached: Boolean = false): String {
-        if ("登录" in error && ("失效" in error || "重新登录" in error)) return "登录已失效，请重新登录"
-        val reason = if (isNetwork(error)) "网络连接失败" else if (cached) "暂时无法更新" else "暂时无法加载"
+    fun read(error: ReadError, cached: Boolean = false): String {
+        if (error.kind == ReadFailureKind.Authentication) return "登录已失效，请重新登录"
+        val reason = if (error.kind == ReadFailureKind.Network) "网络连接失败" else if (cached) "暂时无法更新" else "暂时无法加载"
         return "$reason，" + if (cached) "显示上次数据" else "请下拉刷新"
     }
     fun inline(message: String): String = message.replace(Regex("[\\r\\n]+"), "，").trim()
-    fun isNetwork(message: String) = listOf("网络连接失败", "网络异常", "网络不可用").any { it in message }
-    fun networkError(vararg messages: String?): String? = messages.firstOrNull { it != null && isNetwork(it) }
-    fun mergedNetworkError(vararg regions: Pair<String, String?>): String? {
-        val affected = regions.filter { (_, error) -> error != null && isNetwork(error) }.map { it.first }.distinct()
+    fun firstError(vararg errors: ReadError?): ReadError? =
+        errors.firstOrNull { it != null && it.kind != ReadFailureKind.Network } ?: errors.firstOrNull { it != null }
+    fun networkError(vararg errors: ReadError?): ReadError? = errors.firstOrNull { it?.kind == ReadFailureKind.Network }
+    fun mergedNetworkError(vararg regions: Pair<String, ReadError?>): String? {
+        val affected = regions.filter { (_, error) -> error?.kind == ReadFailureKind.Network }.map { it.first }.distinct()
         return affected.takeIf { it.size > 1 }?.joinToString("、")?.plus("更新失败，请下拉刷新")
     }
 }
@@ -68,6 +75,14 @@ private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 @Composable
 internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasContent: Boolean): String? {
     var previous by remember { mutableStateOf<String?>(null) }
+    val displayed = if (!hasContent) null else if (refreshing && previous != null) previous else error
+    SideEffect { previous = displayed }
+    return displayed
+}
+
+@Composable
+internal fun rememberCachedReadError(error: ReadError?, refreshing: Boolean, hasContent: Boolean): ReadError? {
+    var previous by remember { mutableStateOf<ReadError?>(null) }
     val displayed = if (!hasContent) null else if (refreshing && previous != null) previous else error
     SideEffect { previous = displayed }
     return displayed
@@ -129,14 +144,14 @@ private fun readProgressColors() = if (isSystemInDarkTheme()) ProgressIndicatorD
 
 /** Keep a failed first read visible during retries; only actual content replaces it. */
 @Composable
-internal fun rememberInitialReadError(hasContent: Boolean, error: String?, settled: Boolean): String? {
-    var failure by remember { mutableStateOf<String?>(null) }
+internal fun rememberInitialReadError(hasContent: Boolean, error: ReadError?, settled: Boolean): ReadError? {
+    var failure by remember { mutableStateOf<ReadError?>(null) }
     val offline = LocalReadOffline.current
     SideEffect {
         if (hasContent) failure = null
         else if (!offline && settled && error != null) failure = error
     }
-    return if (hasContent) null else (error.takeIf { settled || offline } ?: failure ?: FeedbackText.Offline.takeIf { offline })
+    return if (hasContent) null else (error.takeIf { settled || offline } ?: failure ?: ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { offline })
 }
 
 /** Delay only the skeleton's paint, preserving its real measurements and immediate results. */
@@ -157,12 +172,12 @@ internal fun delayedSkeletonModifier(active: Boolean = true, enabled: Boolean = 
 
 /** Both outgoing skeleton and incoming failure share the viewport during the crossfade. */
 @Composable
-internal fun InitialReadTransition(error: String?, networkError: String? = null,
+internal fun InitialReadTransition(error: ReadError?, networkError: String? = null,
     displayRestored: Boolean = false,
-    content: @Composable (displayedError: String?) -> Unit) {
+    content: @Composable (displayedError: ReadError?) -> Unit) {
     // Cache restoration only changes the content transition, never the page's identity.
     CompositionLocalProvider(LocalReadSnapshotRestored provides displayRestored) {
-        val displayedError = rememberWhileShown(error != null, error.orEmpty())
+        val displayedError = rememberWhileShown(error != null, error)
         ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
             CompositionLocalProvider(LocalSkeletonActive provides (error == null),
                 LocalSkeletonDelayEnabled provides true,
@@ -176,15 +191,15 @@ internal fun InitialReadTransition(error: String?, networkError: String? = null,
 
 /** First-read and region failures share one icon and one line, without an extra action. */
 @Composable
-internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullToRefresh: Boolean = true) {
+internal fun ReadUnavailable(error: ReadError, modifier: Modifier = Modifier, pullToRefresh: Boolean = true) {
     val dark = isSystemInDarkTheme()
-    if (LocalPageNetworkError.current != null && FeedbackText.isNetwork(error)) {
+    if (LocalPageNetworkError.current != null && error.kind == ReadFailureKind.Network) {
         // An unread value remains unknown, rather than becoming zero or a confirmed empty result.
         Text("—", modifier.fillMaxWidth().padding(vertical = 16.dp), fontSize = 14.sp,
             textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         return
     }
-    if (!LocalInitialReadFailure.current && FeedbackText.isNetwork(error)) {
+    if (!LocalInitialReadFailure.current && error.kind == ReadFailureKind.Network) {
         InlineError(FeedbackText.read(error), modifier.testTag("read-unavailable"))
         return
     }
@@ -196,7 +211,7 @@ internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullT
             Icon(MiuixIcons.Info, null, Modifier.size(26.dp), tint = if (dark) MiuixTheme.colorScheme.onErrorContainer else MiuixTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
-        Text(if (pullToRefresh) FeedbackText.read(error) else FeedbackText.inline(error),
+        Text(if (pullToRefresh) FeedbackText.read(error) else FeedbackText.inline(error.message),
             fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
@@ -204,8 +219,8 @@ internal fun ReadUnavailable(error: String, modifier: Modifier = Modifier, pullT
 
 /** Region feedback uses the existing inline style; page-wide network errors are shown once. */
 @Composable
-internal fun ReadNotice(error: String?, cached: Boolean = false, modifier: Modifier = Modifier,
+internal fun ReadNotice(error: ReadError?, cached: Boolean = false, modifier: Modifier = Modifier,
     topSpacing: Dp = 8.dp, bottomSpacing: Dp = 0.dp) {
-    val displayed = error?.takeUnless { it.isBlank() || LocalPageNetworkError.current != null && FeedbackText.isNetwork(it) }
+    val displayed = error?.takeUnless { it.message.isBlank() || LocalPageNetworkError.current != null && it.kind == ReadFailureKind.Network }
     AnimatedInlineError(displayed?.let { FeedbackText.read(it, cached) }, modifier.testTag("read-notice"), topSpacing = topSpacing, bottomSpacing = bottomSpacing)
 }

@@ -1,5 +1,8 @@
 package com.mercury.yktwx.ui
 
+import com.mercury.yktwx.data.ReadFailureKind
+import com.mercury.yktwx.data.hasNetworkFailure
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
@@ -338,8 +341,11 @@ private fun MainContent(
             else -> Unit
         }
     }
-    val myNetworkError = FeedbackText.networkError(myState.profileError, myState.homeIdentityError,
-        myState.avatarError, myState.summaryError, myState.countsError)
+    val myNetworkFailed = hasNetworkFailure(myState.profileError to myState.profileErrorKind,
+        myState.homeIdentityError to myState.homeIdentityErrorKind, myState.avatarError to myState.avatarErrorKind,
+        myState.summaryError to myState.summaryErrorKind, myState.countsError to myState.countsErrorKind)
+    val accountNetworkFailed = hasNetworkFailure(state.accountError to state.accountErrorKind,
+        state.cardStatusError to state.cardStatusErrorKind)
     val readLoading = when (readPage) {
         ReadPage.Payment -> state.busy
         ReadPage.Hall -> dormState.loading || dormState.managing
@@ -349,26 +355,32 @@ private fun MainContent(
         ReadPage.Account -> state.accountLoading || state.balanceLoading || state.cardStatusLoading
         null -> false
     }
-    val networkError = when (readPage) {
-        ReadPage.Payment -> FeedbackText.networkError(state.error)
-        ReadPage.Hall -> FeedbackText.networkError(dormState.error, dormState.networkError,
-            *dormState.rooms.flatMap { room -> room.meters.map { it.error } }.toTypedArray())
-        ReadPage.Bill -> if (billState.statsVisible) FeedbackText.networkError(billState.stats.error,
-            billState.stats.dailyError, billState.stats.categoriesError, billState.stats.rankingError)
-            else FeedbackText.networkError(billState.error, billState.summaryError, billState.countsError, billState.loadMoreError)
-        ReadPage.My -> FeedbackText.networkError(myNetworkError, state.accountError, state.cardStatusError)
-        ReadPage.Profile -> FeedbackText.networkError(myState.profileError, myState.avatarError)
-        ReadPage.Account -> FeedbackText.networkError(state.accountError, state.cardStatusError)
-        null -> null
+    val networkFailed = when (readPage) {
+        ReadPage.Payment -> hasNetworkFailure(state.error to state.errorKind)
+        ReadPage.Hall -> dormState.projectErrorKinds.values.any { it == ReadFailureKind.Network } ||
+            hasNetworkFailure(dormState.networkError to dormState.networkErrorKind) ||
+            dormState.rooms.any { room -> room.meters.any { hasNetworkFailure(it.error to it.errorKind) } }
+        ReadPage.Bill -> if (billState.statsVisible) with(billState.stats) {
+            hasNetworkFailure(error to errorKind, dailyError to dailyErrorKind,
+                categoriesError to categoriesErrorKind, rankingError to rankingErrorKind)
+        } else with(billState) {
+            hasNetworkFailure(error to errorKind, summaryError to summaryErrorKind,
+                countsError to countsErrorKind, loadMoreError to loadMoreErrorKind)
+        }
+        ReadPage.My -> myNetworkFailed || accountNetworkFailed
+        ReadPage.Profile -> hasNetworkFailure(myState.profileError to myState.profileErrorKind,
+            myState.avatarError to myState.avatarErrorKind)
+        ReadPage.Account -> accountNetworkFailed
+        null -> false
     }
-    ReadRecoveryEffect(availability, readPage, readLoading, networkError) {
+    ReadRecoveryEffect(availability, readPage, readLoading, networkFailed) {
         when (readPage) {
             ReadPage.Payment -> viewModel.refresh()
             ReadPage.Hall -> dormModel.refresh()
             ReadPage.Bill -> billViewModel.refresh()
             ReadPage.My -> {
-                if (myNetworkError != null) myModel.refresh()
-                if (FeedbackText.networkError(state.accountError, state.cardStatusError) != null) viewModel.refreshAccount()
+                if (myNetworkFailed) myModel.refresh()
+                if (accountNetworkFailed) viewModel.refreshAccount()
             }
             ReadPage.Profile -> myModel.refresh()
             ReadPage.Account -> viewModel.refreshAccount()

@@ -112,7 +112,8 @@ internal class DormRoomLoader(private val service: FeeService) {
         DormMeter(kind, resolvedBinding(binding, query), query, query.tip, project)
     } catch (e: Exception) {
         propagate(e)
-        DormMeter(kind, binding, null, (e as? YktException)?.message ?: "读取电量失败", project)
+        DormMeter(kind, binding, null, (e as? YktException)?.message ?: "读取电量失败", project,
+            errorKind = e.readFailureKind())
     }
 
     private fun resolvedBinding(binding: FeeRoomBinding, query: FeeQuery): FeeRoomBinding {
@@ -135,6 +136,6 @@ internal class DormRoomLoader(private val service: FeeService) {
         catch (e: Exception) { propagate(e); Result.failure(e) }
 
     private fun propagate(e: Exception) {
-        if (e is CancellationException || e is AuthenticationRequired || e is InvalidCredentials || e is CaptchaRequired) throw e
+        if (e is CancellationException || e.isAuthenticationFailure()) throw e
     }
 }

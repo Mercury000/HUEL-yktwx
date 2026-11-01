@@ -84,10 +84,10 @@ internal fun rememberNetworkReadAvailability(preview: Boolean): State<NetworkRea
 /** A recovery event retries a failed read once; its own result cannot trigger another retry. */
 @Composable
 internal fun ReadRecoveryEffect(availability: NetworkReadAvailability, page: Any?, loading: Boolean,
-    networkError: String?, onRetry: () -> Unit) {
+    networkFailed: Boolean, onRetry: () -> Unit) {
     var handledId by remember { mutableLongStateOf(0) }
     val latestLoading by rememberUpdatedState(loading)
-    val latestError by rememberUpdatedState(networkError)
+    val latestFailure by rememberUpdatedState(networkFailed)
     val retry by rememberUpdatedState(onRetry)
     LaunchedEffect(availability.recoveryId, availability.online, availability.foreground, page) {
         if (page == null || !availability.online || !availability.foreground ||
@@ -100,7 +100,7 @@ internal fun ReadRecoveryEffect(availability: NetworkReadAvailability, page: Any
         }
         snapshotFlow { latestLoading }.first { !it }
         handledId = availability.recoveryId
-        if (latestError != null) retry()
+        if (latestFailure) retry()
     }
 }
 

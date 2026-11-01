@@ -44,7 +44,7 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadFeedbackUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    private val networkError = "网络连接失败，请检查网络后刷新"
+    private val networkError = "服务暂时无法访问"
     private val verticalList = hasScrollToIndexAction() and
         SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
 
@@ -57,13 +57,13 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun profileFirstFailureStaysVisibleDuringRetryAndReallyPullsToRefresh() {
-        var state by mutableStateOf(MyUiState(loaded = true, profileLoaded = true, profileError = networkError))
+        var state by mutableStateOf(MyUiState(loaded = true, profileLoaded = true, profileError = networkError, profileErrorKind = ReadFailureKind.Network))
         var refreshes = 0
         val settings = ThemeSettings(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
-                    PersonalProfilePage(state, settings, {}, { refreshes++; state = state.copy(loading = true, profileError = null) })
+                    PersonalProfilePage(state, settings, {}, { refreshes++; state = state.copy(loading = true, profileError = null, profileErrorKind = null) })
                 }
             }
         }
@@ -77,11 +77,45 @@ class ReadFeedbackUiTest {
         compose.onNodeWithText("未提供").assertDoesNotExist()
     }
 
+    @Test fun identicalMessagesWithDifferentKindsKeepTheBusinessNoticeDuringNetworkAggregation() {
+        val message = "网络异常，请重新登录后选择套餐"
+        val state = PreviewData.myState().copy(profileError = message, profileErrorKind = ReadFailureKind.Network,
+            avatarError = message, avatarErrorKind = ReadFailureKind.Other,
+            summaryError = message, summaryErrorKind = ReadFailureKind.Network)
+        val payment = PreviewData.paymentState(false).copy(accountError = message, accountErrorKind = ReadFailureKind.Network)
+        val settings = ThemeSettings(compose.activity.application)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { MyPage(state, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
+                    false, {}, false, false, {}, {}) }
+            }
+        }
+        compose.onNodeWithTag("page-network-error").assertIsDisplayed()
+        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
+        compose.onNodeWithText("暂时无法更新，显示上次数据").assertIsDisplayed()
+        compose.onNodeWithText("登录已失效，请重新登录").assertDoesNotExist()
+    }
+
+    @Test fun authenticationFirstFailureRetainsItsKindWhenRetryClearsBothFields() {
+        var state by mutableStateOf(MyUiState(loaded = true, profileError = "凭证过期",
+            profileErrorKind = ReadFailureKind.Authentication))
+        val settings = ThemeSettings(compose.activity.application)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { PersonalProfilePage(state, settings, {}, {}) }
+            }
+        }
+        compose.onNodeWithText("登录已失效，请重新登录").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(loading = true, profileError = null, profileErrorKind = null) }
+        compose.onNodeWithText("登录已失效，请重新登录").assertIsDisplayed()
+        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
+    }
+
     private fun transitionFixture(error: State<String?>) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.fillMaxSize().background(Color.White)) {
-                InitialReadTransition(error.value) { shownError ->
+                InitialReadTransition(readError(error.value, ReadFailureKind.Network)) { shownError ->
                     Box(Modifier.fillMaxSize()) {
                         if (shownError == null) ContentPlaceholder(Modifier.size(100.dp).testTag("skeleton"),
                             color = Color.Black)
@@ -144,16 +178,16 @@ class ReadFeedbackUiTest {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
                     key(page, dark) {
                         when (page) {
-                            0 -> PaymentPage(PaymentUiState(needsLogin = false, error = networkError),
+                            0 -> PaymentPage(PaymentUiState(needsLogin = false, error = networkError, errorKind = ReadFailureKind.Network),
                                 settings, 0.dp, { refreshes++ })
                             1 -> HallPage(settings, 0.dp, dorm = DormUiState(loaded = true,
-                                error = networkError, networkError = networkError, roomsAvailable = false),
+                                error = networkError, errorKind = ReadFailureKind.Network, networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false),
                                 onRefreshDorm = { refreshes++ })
-                            2 -> BillPage(BillUiState(loaded = true, error = networkError,
-                                summaryError = networkError, countsError = networkError), settings,
+                            2 -> BillPage(BillUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
+                                summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network), settings,
                                 {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
-                            3 -> MyPage(MyUiState(loaded = true, profileError = networkError,
-                                homeIdentityError = networkError, summaryError = networkError, countsError = networkError),
+                            3 -> MyPage(MyUiState(loaded = true, profileError = networkError, profileErrorKind = ReadFailureKind.Network,
+                                homeIdentityError = networkError, homeIdentityErrorKind = ReadFailureKind.Network, summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network),
                                 PaymentUiState(needsLogin = false), settings, 0.dp, false, { refreshes++ },
                                 {}, {}, {}, {}, false, {}, false, false, {}, {})
                         }
@@ -180,8 +214,8 @@ class ReadFeedbackUiTest {
 
     @Test fun failedRetryKeepsTheErrorUntilActualContentArrives() {
         val settings = ThemeSettings(compose.activity.application)
-        var state by mutableStateOf(DormUiState(loaded = true, error = networkError,
-            networkError = networkError, roomsAvailable = false))
+        var state by mutableStateOf(DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
+            networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { HallPage(settings, 0.dp, dorm = state) }
@@ -191,8 +225,8 @@ class ReadFeedbackUiTest {
         compose.runOnIdle { state = DormUiState(loading = true, loaded = true, roomsAvailable = false) }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
         compose.onNodeWithTag("hall-utility-card").assertDoesNotExist()
-        compose.runOnIdle { state = state.let { DormUiState(loaded = true, error = networkError,
-            networkError = networkError, roomsAvailable = false) } }
+        compose.runOnIdle { state = state.let { DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
+            networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false) } }
         compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
         compose.runOnIdle { state = PreviewData.hallState() }
         compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
@@ -204,8 +238,8 @@ class ReadFeedbackUiTest {
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
-            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project) }, room.updatedAtMillis)),
-            loaded = true, error = networkError, network = ready.network, networkError = networkError)
+            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project, errorKind = ReadFailureKind.Network) }, room.updatedAtMillis)),
+            loaded = true, error = networkError, errorKind = ReadFailureKind.Network, network = ready.network, networkError = networkError, networkErrorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = failed) } }
         }
@@ -220,7 +254,7 @@ class ReadFeedbackUiTest {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.hallState()
         var state by mutableStateOf(DormUiState(rooms = ready.rooms, loaded = true,
-            networkError = networkError, roomsAvailable = true))
+            networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = true))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = state) } }
         }
@@ -230,12 +264,12 @@ class ReadFeedbackUiTest {
         compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("hall-network-card")))
         capture("hall-network-first-failure")
         compose.runOnIdle { state = DormUiState(rooms = ready.rooms, loaded = true,
-            network = ready.network, networkError = networkError) }
+            network = ready.network, networkError = networkError, networkErrorKind = ReadFailureKind.Network) }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
         compose.onNodeWithTag("read-notice").assert(hasAnyAncestor(hasTestTag("hall-network-card")))
         capture("hall-network-cache-failure")
-        compose.runOnIdle { state = DormUiState(loaded = true, error = networkError,
+        compose.runOnIdle { state = DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
             network = ready.network, roomsAvailable = false) }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
@@ -260,7 +294,7 @@ class ReadFeedbackUiTest {
             }
         }
         compose.onNodeWithText("¥ —").assertDoesNotExist()
-        compose.runOnIdle { payment = payment.copy(accountLoading = false, accountError = networkError) }
+        compose.runOnIdle { payment = payment.copy(accountLoading = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network) }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
         compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("my-balance-card")))
@@ -269,7 +303,7 @@ class ReadFeedbackUiTest {
         compose.runOnIdle { payment = payment.copy(accountLoading = true, accountError = null) }
         compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
         val account = PreviewData.paymentState(false).account!!
-        compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account, accountError = networkError) }
+        compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account, accountError = networkError, accountErrorKind = ReadFailureKind.Network) }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
         compose.onNodeWithTag("read-notice").assert(!hasAnyAncestor(hasTestTag("my-balance-card")))
@@ -281,7 +315,7 @@ class ReadFeedbackUiTest {
 
     @Test fun accountDetailFirstFailureReallyPullsToRefreshAndRetainsTheFailureWhileReading() {
         val settings = ThemeSettings(compose.activity.application)
-        var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountError = networkError))
+        var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network))
         var refreshes = 0
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -308,8 +342,8 @@ class ReadFeedbackUiTest {
 
     @Test fun billFailedRetryDoesNotMistakeCompletedFailedListForAvailableContent() {
         val settings = ThemeSettings(compose.activity.application)
-        var state by mutableStateOf(BillUiState(loaded = true, error = networkError,
-            summaryError = networkError, countsError = networkError))
+        var state by mutableStateOf(BillUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
+            summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false) }
@@ -328,8 +362,8 @@ class ReadFeedbackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
-                    BillPage(PreviewData.billState().copy(error = networkError,
-                        summaryError = networkError, countsError = networkError),
+                    BillPage(PreviewData.billState().copy(error = networkError, errorKind = ReadFailureKind.Network,
+                        summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network),
                         settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                 }
             }
@@ -343,7 +377,7 @@ class ReadFeedbackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
-                    BillPage(PreviewData.billState().copy(summaryError = networkError, countsError = networkError),
+                    BillPage(PreviewData.billState().copy(summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network),
                         settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                 }
             }
@@ -359,7 +393,7 @@ class ReadFeedbackUiTest {
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
-            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project) }, room.updatedAtMillis)),
+            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project, errorKind = ReadFailureKind.Network) }, room.updatedAtMillis)),
             network = ready.network, loaded = true)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = failed) } }
@@ -374,8 +408,8 @@ class ReadFeedbackUiTest {
     @Test fun multipleFailedUnreadRegionsUseOneNamedErrorAndKeepValuesUnknown() {
         val settings = ThemeSettings(compose.activity.application)
         val my = PreviewData.myState().copy(summary = null, counts = null,
-            summaryError = networkError, countsError = networkError)
-        val payment = PaymentUiState(needsLogin = false, accountError = networkError)
+            summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network)
+        val payment = PaymentUiState(needsLogin = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
@@ -396,9 +430,9 @@ class ReadFeedbackUiTest {
 
     @Test fun cachedMyIdentityBalanceAndSummaryNetworkFailuresShareOneInlineError() {
         val settings = ThemeSettings(compose.activity.application)
-        val my = PreviewData.myState().copy(profileError = networkError, avatarError = networkError,
-            homeIdentityError = networkError, summaryError = networkError, countsError = networkError)
-        val payment = PreviewData.paymentState(false).copy(accountError = networkError)
+        val my = PreviewData.myState().copy(profileError = networkError, profileErrorKind = ReadFailureKind.Network, avatarError = networkError, avatarErrorKind = ReadFailureKind.Network,
+            homeIdentityError = networkError, homeIdentityErrorKind = ReadFailureKind.Network, summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network)
+        val payment = PreviewData.paymentState(false).copy(accountError = networkError, accountErrorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { MyPage(my, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
@@ -413,7 +447,7 @@ class ReadFeedbackUiTest {
 
     @Test fun paymentNetworkFailureKeepsBalanceAndUsesTheCenteredPaymentStatus() {
         val settings = ThemeSettings(compose.activity.application)
-        val payment = PreviewData.paymentState(false).copy(code = null, error = networkError)
+        val payment = PreviewData.paymentState(false).copy(code = null, error = networkError, errorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { PaymentPage(payment, settings, 0.dp, {}) }
@@ -437,7 +471,7 @@ class ReadFeedbackUiTest {
         val ready = PreviewData.hallState()
         var state by mutableStateOf(ready)
         val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
-            error = networkError, networkError = networkError)
+            error = networkError, errorKind = ReadFailureKind.Network, networkError = networkError, networkErrorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) { HallPage(settings, 0.dp, dorm = state) }
@@ -486,7 +520,7 @@ class ReadFeedbackUiTest {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.hallState()
         val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
-            error = networkError, networkError = networkError)
+            error = networkError, errorKind = ReadFailureKind.Network, networkError = networkError, networkErrorKind = ReadFailureKind.Network)
         val pending = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true, loading = true)
         var state by mutableStateOf(failed)
         var active by mutableStateOf(false)
@@ -536,9 +570,10 @@ class ReadFeedbackUiTest {
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
-            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project) }, room.updatedAtMillis)),
+            room.meters.map { DormMeter(it.kind, it.room, it.query, networkError, it.project, errorKind = ReadFailureKind.Network) }, room.updatedAtMillis)),
             network = ready.network, loaded = true,
-            error = "绑定已变化，请刷新后核实", networkError = networkError)
+            error = "网络异常套餐不允许解绑，请核实", errorKind = ReadFailureKind.Other,
+            networkError = networkError, networkErrorKind = ReadFailureKind.Network)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { HallPage(settings, 0.dp, dorm = failed) }
@@ -552,8 +587,8 @@ class ReadFeedbackUiTest {
     @Test fun cachedStatisticsNetworkFailuresShareOneInlineErrorInLargeDarkText() {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.billState()
-        val stats = PreviewData.billStats(ready.dateFilter, 2).copy(dailyError = networkError,
-            categoriesError = networkError, rankingError = networkError)
+        val stats = PreviewData.billStats(ready.dateFilter, 2).copy(dailyError = networkError, dailyErrorKind = ReadFailureKind.Network,
+            categoriesError = networkError, categoriesErrorKind = ReadFailureKind.Network, rankingError = networkError, rankingErrorKind = ReadFailureKind.Network)
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalInspectionMode provides true,

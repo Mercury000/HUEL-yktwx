@@ -32,12 +32,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class NetworkRecoveryNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     @Volatile private var online = false
+    @Volatile private var failureMessage = "网络连接失败，请检查网络后刷新"
     private val paymentReads = AtomicInteger()
     private lateinit var payment: PaymentViewModel
 
     @After fun cleanup() { if (::payment.isInitialized) payment.onBackground() }
 
-    private fun requireOnline() { if (!online) throw NetworkFailure() }
+    private fun requireOnline() { if (!online) throw NetworkFailure(failureMessage) }
     private fun await(condition: () -> Boolean) {
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); condition() }
         compose.waitForIdle()
@@ -195,6 +196,8 @@ class NetworkRecoveryNavigationTest {
         compose.runOnIdle { connection(false) }
         pullMyPage()
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
+        assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
+        assertEquals(ReadFailureKind.Network, payment.state.value.accountErrorKind)
         compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.onNodeWithText("¥ 64.96").assertIsDisplayed()
@@ -204,15 +207,23 @@ class NetworkRecoveryNavigationTest {
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
 
         // The service can also fail while Android still reports an online connection.
+        // Recovery must work even when the exception has no recognized network wording.
+        failureMessage = "服务暂时无法访问"
         online = false
         pullMyPage()
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
+        assertEquals(failureMessage, mine.state.value.profileError)
+        assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
+        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+        compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
         online = true
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         await { mine.state.value.profileError == null && payment.state.value.accountError == null &&
             !mine.state.value.loading && !payment.state.value.accountLoading }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        assertNull(mine.state.value.profileErrorKind)
+        assertNull(payment.state.value.accountErrorKind)
         assertEquals(paymentReadsBeforeMy, paymentReads.get())
         assertNull(payment.state.value.code)
     }

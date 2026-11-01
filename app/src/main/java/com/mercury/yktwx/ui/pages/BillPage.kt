@@ -36,6 +36,7 @@ import com.mercury.yktwx.BillUiState
 import com.mercury.yktwx.data.BillDateFilter
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.data.BillType
+import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -81,18 +82,19 @@ fun BillPage(
     val networkError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {
         rememberPageNetworkError(if (state.statsVisible) FeedbackText.mergedNetworkError(
-            "趋势" to state.stats.dailyError, "分类" to state.stats.categoriesError, "排行" to state.stats.rankingError)
+            "趋势" to readError(state.stats.dailyError, state.stats.dailyErrorKind), "分类" to readError(state.stats.categoriesError, state.stats.categoriesErrorKind), "排行" to readError(state.stats.rankingError, state.stats.rankingErrorKind))
             else FeedbackText.mergedNetworkError(
-                "明细" to FeedbackText.networkError(state.error, state.loadMoreError),
-                "概览" to FeedbackText.networkError(state.summaryError, state.countsError)),
+                "明细" to FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
+                "概览" to FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))),
             if (state.statsVisible) state.stats.loading else state.loading || state.refreshing,
             if (state.statsVisible) statsHasContent else listHasContent)
     }
     val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {
         rememberInitialReadError(if (state.statsVisible) statsHasContent else listHasContent,
-            if (state.statsVisible) state.stats.error ?: state.stats.categoriesError ?: state.stats.dailyError ?: state.stats.rankingError
-            else state.error ?: state.summaryError ?: state.countsError,
+            if (state.statsVisible) FeedbackText.firstError(readError(state.stats.error, state.stats.errorKind),
+                readError(state.stats.categoriesError, state.stats.categoriesErrorKind), readError(state.stats.dailyError, state.stats.dailyErrorKind), readError(state.stats.rankingError, state.stats.rankingErrorKind))
+            else FeedbackText.firstError(readError(state.error, state.errorKind), readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
             if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
     }
     val detailBar = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberTopAppBarState() }
@@ -212,10 +214,10 @@ fun BillPage(
                             }
                         }
                         if (showFailure && !state.needsLogin) {
-                            item { ReadUnavailable(displayedError.orEmpty(), Modifier.fillParentMaxHeight()) }
+                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
                         } else if (state.needsLogin) {
                             item(key = "login") {
-                                BillErrorCard("登录已失效，请重新登录")
+                                BillErrorCard(ReadError("登录已失效，请重新登录", ReadFailureKind.Authentication))
                             }
                         } else {
                             item(key = "date") {
@@ -299,7 +301,7 @@ fun BillPage(
                                 // A cached query is checked below the stable overview and search field.
                                 PageReadNotice(null, 0.dp, loading = state.listOnlyRead && state.listLoading && state.listAvailable,
                                     failed = state.error != null, topSpacing = 12.dp) {}
-                                ReadNotice(state.error.takeIf { state.items.isNotEmpty() }, cached = true, topSpacing = 20.dp)
+                                ReadNotice(readError(state.error.takeIf { state.items.isNotEmpty() }, state.errorKind), cached = true, topSpacing = 20.dp)
                                 }
                             }
                             if (state.activeFilterCount > 0 || state.info.isNotBlank()) item(key = "conditions") {
@@ -311,7 +313,7 @@ fun BillPage(
                                 state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
                                     item(key = "loading") { BillLoadingCard() }
                                 state.error != null && state.items.isEmpty() -> item(key = "error") {
-                                    BillErrorCard(state.error)
+                                    BillErrorCard(checkNotNull(readError(state.error, state.errorKind)))
                                 }
                                 state.items.isEmpty() -> item(key = "empty") {
                                     if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
@@ -419,7 +421,7 @@ private fun BillSummaryCard(state: BillUiState) {
                 }
             }
         }
-        val error = state.summaryError ?: state.countsError
+        val error = FeedbackText.firstError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))
         ReadNotice(error, cached = state.summary != null || state.counts != null,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp))
         }
@@ -463,7 +465,7 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
         state.items.isNotEmpty() -> "end"
         else -> "empty"
     }
-    ContentFade(mode to state.loadMoreError, Modifier.fillMaxWidth().heightIn(min = 56.dp), contentKey = { it.first }) { (displayed, error) ->
+    ContentFade(mode to readError(state.loadMoreError, state.loadMoreErrorKind), Modifier.fillMaxWidth().heightIn(min = 56.dp), contentKey = { it.first }) { (displayed, error) ->
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically) {
             when (displayed) {
@@ -472,7 +474,7 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
                     Spacer(Modifier.width(10.dp))
                     Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
-                "error" -> InlineError(if (FeedbackText.isNetwork(error.orEmpty()))
+                "error" -> InlineError(if (error?.kind == ReadFailureKind.Network)
                     "网络连接失败，更多账单未加载，请再次上拉" else "更多账单加载失败，请再次上拉")
                 "more" -> Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 "end" -> Text("没有更多了", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

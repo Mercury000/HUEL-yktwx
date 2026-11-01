@@ -363,6 +363,25 @@ class PaymentViewModelTest {
         assertNull(model.state.value.code)
         assertEquals(0, logins)
     }
+    @Test fun leavingPaymentAndBackgroundRetainTheReadFailureKindAlongWithItsMessage() {
+        paymentFailure = NetworkFailure("服务暂时无法访问")
+        model.initialize()
+        await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { !model.state.value.busy && model.state.value.error != null }
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
+        val message = model.state.value.error
+        val reads = payments
+        model.setPageVisible(false)
+        assertEquals(message, model.state.value.error)
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
+        model.onBackground()
+        assertEquals(message, model.state.value.error)
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
+        assertTrue(hasNetworkFailure(model.state.value.error to model.state.value.errorKind))
+        assertEquals(reads, payments)
+    }
+
     @Test fun hiddenPaymentPageStopsTicksAndRequestsUntilItBecomesVisible() {
         codeAvailable = true
         model.initialize()
