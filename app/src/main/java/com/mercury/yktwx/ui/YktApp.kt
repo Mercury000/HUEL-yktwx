@@ -498,6 +498,7 @@ private fun MainContent(
 
     val useRail = shouldShowMainNavigationRail(settings)
     val blurRootForBack = !useRail && (settings.predictiveBack.value || settings.floatingBottomBar.value)
+    CompositionLocalProvider(LocalReadOffline provides !availability.online) {
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
         topBarBlurEnabled = false,
@@ -557,7 +558,7 @@ private fun MainContent(
                                     onOpenFee = { openFee(it) },
                                     dorm = dormState,
                                     isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
-                                    onActivate = dormModel::onActivate, onRefreshDorm = dormModel::refresh,
+                                    onRefreshDorm = dormModel::refresh,
                                     onOpenDormFee = { project, target -> openFee(project, target) },
                                     onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
                                     onAddRoom = { openFee(it, saveOnly = true) },
@@ -569,7 +570,6 @@ private fun MainContent(
                                     state = billState,
                                     settings = settings,
                                     onBack = { tabs.animateToPage(0) },
-                                    onActivate = billViewModel::onActivate,
                                     onRefresh = billViewModel::refresh,
                                     onLoadMore = billViewModel::loadMore,
                                     onDateSelected = billViewModel::selectDate,
@@ -589,7 +589,6 @@ private fun MainContent(
                                     customAvatar = customAvatar,
                                     avatarImage = avatarImage, avatarPending = avatarPending,
                                     isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
-                                    onActivate = myModel::onActivate,
                                     onRefresh = { myModel.refresh(); viewModel.refreshAccount(manual = true) },
                                     onProfile = { open(Screen.Profile) }, onAccount = { open(Screen.Account) },
                                     onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
@@ -669,6 +668,7 @@ private fun MainContent(
                 }
             }
         }
+    }
     }
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&

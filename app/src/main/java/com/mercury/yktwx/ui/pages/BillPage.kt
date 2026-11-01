@@ -59,7 +59,6 @@ fun BillPage(
     state: BillUiState,
     settings: ThemeSettings,
     onBack: () -> Unit,
-    onActivate: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onDateSelected: (BillDateFilter) -> Unit,
@@ -74,6 +73,7 @@ fun BillPage(
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
 ) {
+    val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
@@ -130,9 +130,8 @@ fun BillPage(
     val listState = if (state.statsVisible) statisticsState else detailsState
     val currentState by rememberUpdatedState(state)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
-    // Adjacent tabs may be precomposed. Load only when the bill tab is active.
+    // The shell owns read activation; the page only resets its transient controls.
     LaunchedEffect(isActive, state.statsVisible) {
-        if (isActive) onActivate()
         if (!isActive || state.statsVisible) showFilter = false
     }
     LaunchedEffect(isActive, state.statsVisible) { if (!isActive || state.statsVisible) dismissSearch() }

@@ -121,7 +121,7 @@ class DashboardLoadingTest {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalInspectionMode provides true, LocalDensity provides Density(density, scale)) {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
-                    MyPage(state, payment, settings, 0.dp, false, {}, {}, {}, {}, {}, {}, rechargeLoading, {},
+                    MyPage(state, payment, settings, 0.dp, false, {}, {}, {}, {}, {}, rechargeLoading, {},
                         false, false, {}, {})
                 }
             }

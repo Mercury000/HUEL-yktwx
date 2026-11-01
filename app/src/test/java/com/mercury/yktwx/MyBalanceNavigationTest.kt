@@ -44,6 +44,12 @@ class MyBalanceNavigationTest {
 
     @Test fun myBalanceCardAndStatisticsLoadWhilePaymentAndBillsArePendingAndAccountDetailsShareTheRead() {
         val app = compose.activity.application
+        val connectivity = compose.activity.getSystemService(android.net.ConnectivityManager::class.java)
+        shadowOf(connectivity).setActiveNetworkInfo(org.robolectric.shadows.ShadowNetworkInfo.newInstance(
+            android.net.NetworkInfo.DetailedState.CONNECTED, android.net.ConnectivityManager.TYPE_WIFI, 0, true, true))
+        val capabilities = org.robolectric.shadows.ShadowNetworkCapabilities.newInstance()
+        shadowOf(capabilities).addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        shadowOf(connectivity).setNetworkCapabilities(connectivity.activeNetwork, capabilities)
         val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
         val vault = object : Vault {
             override fun credentials() = Credentials("fake-user", "fake-password")
@@ -115,9 +121,11 @@ class MyBalanceNavigationTest {
         assertEquals(1, balanceReads)
         compose.runOnIdle { balanceGate.complete(Unit) }
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payment.state.value.account != null && !payment.state.value.accountLoading }
-        compose.onNode(hasText("¥ 64.96") and hasAnySibling(hasText("余额"))).assertIsDisplayed()
+        compose.waitForIdle()
+        compose.onNode(hasText("¥ 64.96") and hasAnyAncestor(hasTestTag("profile-field-余额"))).assertIsDisplayed()
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payment.state.value.accountCard != null }
-        compose.onNode(hasText("正常") and hasAnySibling(hasText("校园卡状态"))).assertIsDisplayed()
+        compose.waitForIdle()
+        compose.onNode(hasText("正常") and hasAnyAncestor(hasTestTag("profile-field-校园卡状态"))).assertIsDisplayed()
         compose.runOnIdle { paymentGate.complete(Unit) }
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); paymentResponses == 1 }
         assertEquals(1, payments)

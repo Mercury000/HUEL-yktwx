@@ -39,7 +39,7 @@ class ExperienceUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { page() } } }
     }
     @Composable private fun bill(state: BillUiState, onSearch: (String) -> Unit = {}, onFilter: (String?, Long?, Long?) -> Unit = { _, _, _ -> }) {
-        BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, {}, onFilter, onSearch, {}, {})
+        BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, onFilter, onSearch, {}, {})
     }
     private fun capture(name: String) {
         val file = File("../tools/experience/$name.png")
@@ -110,7 +110,7 @@ class ExperienceUiTest {
         var state by mutableStateOf(PreviewData.billState().copy(info = "原搜索"))
         var active by mutableStateOf(true)
         val searches = mutableListOf<String>()
-        content { BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, {},
+        content { BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {},
             { _, _, _ -> }, { searches += it; state = state.copy(info = it) }, {}, {}, isActive = active) }
         compose.mainClock.autoAdvance = false
         val field = compose.onNodeWithTag("bill-search")

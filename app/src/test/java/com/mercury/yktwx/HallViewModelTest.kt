@@ -190,6 +190,27 @@ class HallViewModelTest {
         assertTrue(model.state.value.selectedRoom!!.meters.none { it.updating })
         assertEquals(2, model.state.value.selectedRoom!!.meters.size)
     }
+    @Test fun cancelledTransactionDiscoveryKeepsItsBoundReadingAndResumesOnActivation() {
+        fees.paired = true
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A照明")
+        fees.pickerGate = CompletableDeferred()
+        model.accountChanged("fake-owner")
+        model.invalidateTransaction(FeeProject.Zhengdong)
+        model.setPageVisible(true)
+        await { model.state.value.selectedRoom?.meters?.singleOrNull()?.query != null }
+        val partial = model.state.value.selectedRoom!!
+        assertTrue(partial.pendingMeters.isNotEmpty())
+        model.setPageVisible(false)
+        assertFalse(model.state.value.loading)
+        assertSame(partial, model.state.value.selectedRoom)
+        fees.pickerGate!!.complete(Unit)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(partial, model.state.value.selectedRoom)
+        model.setPageVisible(true)
+        await { model.state.value.loaded && !model.state.value.loading }
+        assertEquals(2, model.state.value.selectedRoom!!.meters.size)
+        assertTrue(model.state.value.selectedRoom!!.pendingMeters.isEmpty())
+    }
     @Test fun switchingRoomsDuringSlowNetworkSurvivesTheFinalPublication() {
         fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
         fees.saved[FeeProject.Wenbei] = fees.room(FeeProject.Wenbei, "B")

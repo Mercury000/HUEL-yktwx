@@ -249,7 +249,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
 
     fun refreshAccount(manual: Boolean = false, silent: Boolean = false, balanceOnly: Boolean = false) {
         val current = mutable.value
-        if (!(accountPageVisible || balanceOnly && pageVisible) || !readPageVisible || !foreground || preview || current.needsLogin || current.restoringLogin ||
+        if (!(accountPageVisible || balanceOnly && pageVisible) || !readPageVisible && !manual || !foreground || preview || current.needsLogin || current.restoringLogin ||
             current.busy || accountRequest?.isActive == true) return
         val readBalance = manual || current.account == null || balanceRefresh.needsRead(balanceKey(current.account)) ||
             !ReadCachePolicy.isFresh(accountReadAt)

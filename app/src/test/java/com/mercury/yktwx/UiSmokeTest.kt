@@ -111,7 +111,7 @@ class UiSmokeTest {
                         types = listOf(BillType("4", "二维码支付")),
                     ),
                     settings = settings,
-                    onBack = {}, onActivate = {}, onRefresh = {}, onLoadMore = {},
+                    onBack = {}, onRefresh = {}, onLoadMore = {},
                     onDateSelected = {}, onFiltersApplied = { _, _, _ -> },
                     onSearch = {}, onOpenStats = {}, onOpenDetail = {},
                 )

@@ -138,7 +138,7 @@ class DarkModeAuditTest {
                     val selectedColor = if (dark) c.secondaryVariant else DashboardPalette.card
                     SideEffect { surface = c.surface; track = trackColor; selected = selectedColor }
                     BillPage(state.copy(statsVisible = statistics), settings,
-                        {}, {}, {}, {}, {}, { _, _, _ -> }, {}, { statistics = true }, {},
+                        {}, {}, {}, {}, { _, _, _ -> }, {}, { statistics = true }, {},
                         showBack = false, onShowDetails = { statistics = false })
                 }
             }
@@ -397,14 +397,14 @@ class DarkModeAuditTest {
                                     PaymentResultContent(listOf(RechargePhase.AwaitingPayment, RechargePhase.Checking, RechargePhase.Paid, RechargePhase.Failed, RechargePhase.TimedOut)[screen - 17],
                                         screen == 18, 1000, if (screen == 20) "持卡人已挂失！" else null, {}, onCheck = {})
                                 }
-                                22, 23 -> BillPage(BillUiState(needsLogin = false, loading = screen == 22, error = if (screen == 23) "网络连接失败" else null), settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
+                                22, 23 -> BillPage(BillUiState(needsLogin = false, loading = screen == 22, error = if (screen == 23) "网络连接失败" else null), settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
                                 24, 25 -> MyPage(MyUiState(loading = screen == 24, profileError = if (screen == 25) "网络连接失败" else null),
                                     PaymentUiState(needsLogin = false, accountLoading = screen == 24, accountError = if (screen == 25) "网络连接失败" else null), settings, 0.dp,
-                                    true, {}, {}, {}, {}, {}, {}, false, {}, false, false, {}, {})
+                                    true, {}, {}, {}, {}, {}, false, {}, false, false, {}, {})
                                 26 -> RechargeDialog(RechargeUiState(visible = true, config = PreviewData.rechargeConfiguration(), error = "充值金额超出限制"), {}, {}, {})
                                 27 -> PaymentSuccessDialog(1000, {})
                                 28 -> LoginPage(PaymentUiState(busy = true, username = "fictional")) { _, _ -> }
-                                29 -> BillPage(BillUiState(needsLogin = false, loaded = true), settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
+                                29 -> BillPage(BillUiState(needsLogin = false, loaded = true), settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
                             }
                         }
                     }
@@ -518,7 +518,7 @@ class DarkModeAuditTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Dark, accent) {
-                    BillPage(state, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
+                    BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {})
                 }
             }
         }

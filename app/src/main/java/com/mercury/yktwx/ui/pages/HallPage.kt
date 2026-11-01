@@ -53,14 +53,13 @@ fun HallPage(
     othersRechargeLoading: Boolean = false,
     dorm: DormUiState = DormUiState(),
     isActive: Boolean = false,
-    onActivate: () -> Unit = {},
     onRefreshDorm: () -> Unit = {},
     onOpenDormFee: (FeeProject, FeeRoomBinding) -> Unit = { project, _ -> onOpenFee(project) },
     onSelectRoom: (Int) -> Unit = {},
     onRemoveRoom: (DormRoom) -> Unit = {},
     onAddRoom: (FeeProject) -> Unit = onOpenFee,
 ) {
-    LaunchedEffect(isActive) { if (isActive) onActivate() }
+    val dorm = if (LocalReadOffline.current) dorm.offlineDisplay() else dorm
     var targets by remember { mutableStateOf(false) }
     var targetTab by remember { mutableIntStateOf(0) }
     var targetAdding by remember { mutableStateOf(false) }
@@ -363,6 +362,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
 
 @Composable
 private fun PendingMeterPanel(slot: DormMeterSlot, modifier: Modifier) {
+    val offline = LocalReadOffline.current
     val water = slot.project == FeeProject.FamilyWater
     val secondary = water || slot.kind == DormMeterKind.AirConditioning
     val family = slot.project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
@@ -378,11 +378,21 @@ private fun PendingMeterPanel(slot: DormMeterSlot, modifier: Modifier) {
                 fontSize = 13.sp, lineHeight = 18.sp, color = ink)
         }
         Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)) {
-            DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
-            UtilityValueRow { DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0") }
+            if (offline) {
+                Text(if (water) "剩余水量" else "剩余电量", fontSize = 10.sp, lineHeight = 14.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                UtilityValueRow {
+                    Text("—", fontSize = 29.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold, color = ink)
+                }
+            } else {
+                DashboardPlaceholder(10.sp, Modifier.fillMaxWidth(), lineHeight = 14.sp)
+                UtilityValueRow { DashboardPlaceholder(29.sp, Modifier.fillMaxWidth(), lineHeight = 38.sp, sample = "0") }
+            }
         }
         Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
+            if (offline) Text(FeedbackText.Offline, fontSize = 13.sp, lineHeight = 18.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            else DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
         }
     }
 }

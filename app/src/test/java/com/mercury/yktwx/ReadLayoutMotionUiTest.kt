@@ -382,12 +382,16 @@ class ReadLayoutMotionUiTest {
             network = ready.network, displayRestored = true))
         val active = mutableStateOf(true)
         var activations = 0
-        content { HallPage(settings, 0.dp, dorm = current.value, isActive = active.value,
-            onActivate = {
-                activations++
-                current.value = DormUiState(listOf(room), loaded = true, loading = true,
-                    network = ready.network, displayRestored = true)
-            }) }
+        content {
+            LaunchedEffect(active.value) {
+                if (active.value) {
+                    activations++
+                    current.value = DormUiState(listOf(room), loaded = true, loading = true,
+                        network = ready.network, displayRestored = true)
+                }
+            }
+            HallPage(settings, 0.dp, dorm = current.value, isActive = active.value)
+        }
         val panels = listOf("Lighting", "AirConditioning").map {
             compose.onNodeWithTag("utility-panel-Zhengdong-$it")
         }

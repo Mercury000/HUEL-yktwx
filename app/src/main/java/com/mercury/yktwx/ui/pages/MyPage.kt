@@ -43,7 +43,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 @Composable
 internal fun MyPage(
     state: MyUiState, payment: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp,
-    isActive: Boolean, onActivate: () -> Unit, onRefresh: () -> Unit,
+    isActive: Boolean, onRefresh: () -> Unit,
     onProfile: () -> Unit, onAccount: () -> Unit, onBills: () -> Unit,
     onRecharge: () -> Unit, rechargeLoading: Boolean,
     onCardAction: (CampusCardAction) -> Unit, manageLoading: Boolean, passwordLoading: Boolean,
@@ -51,8 +51,9 @@ internal fun MyPage(
     customAvatar: Boolean = false,
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false,
 ) {
+    val state = if (LocalReadOffline.current) state.offlineDisplay() else state
+    val payment = if (LocalReadOffline.current) payment.offlineDisplay() else payment
     val dark = isSystemInDarkTheme()
-    LaunchedEffect(isActive) { if (isActive) onActivate() }
     val balancePending = payment.balanceLoading || payment.accountLoading
     val cardPending = payment.cardStatusLoading
     val balanceError = rememberInitialReadError(payment.account != null, payment.accountError, !balancePending)

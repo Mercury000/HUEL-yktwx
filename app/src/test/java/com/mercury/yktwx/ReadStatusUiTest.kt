@@ -168,7 +168,7 @@ class ReadStatusUiTest {
         var state by mutableStateOf(PreviewData.billState())
         val settings = ThemeSettings(compose.activity.application)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
-            BillPage(state, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+            BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
         } } }
         val before = compose.onNodeWithTag("bill-summary").captureToImage().asAndroidBitmap()
         val bounds = compose.onNodeWithTag("bill-summary").fetchSemanticsNode().boundsInRoot
@@ -229,10 +229,10 @@ class ReadStatusUiTest {
                                 0 -> HallPage(settings, 0.dp, dorm = DormUiState(hall.rooms, loading = true,
                                     network = hall.network, roomsAvailable = true, displayRestored = true))
                                 1 -> MyPage(my.copy(loading = true, displayRestored = true), PreviewData.paymentState(false),
-                                    settings, 0.dp, true, {}, {}, {}, {}, {}, {}, false, {}, false, false, {}, {})
+                                    settings, 0.dp, true, {}, {}, {}, {}, {}, false, {}, false, false, {}, {})
                                 2 -> BillPage(bill.copy(statsVisible = true,
                                     stats = bill.stats.copy(loading = true, displayRestored = true)), settings,
-                                    {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                                    {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
                             }
                         }
                     }

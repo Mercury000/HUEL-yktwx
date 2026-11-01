@@ -85,7 +85,7 @@ class ContentMotionUiTest {
             compose.setContent {
                 val state by model.state.collectAsState()
                 CompositionLocalProvider(LocalInspectionMode provides true) {
-                    AppTheme { BillPage(state, settings, {}, model::onActivate, model::refresh,
+                    AppTheme { BillPage(state, settings, {}, model::refresh,
                         model::loadMore, model::selectDate, model::applyFilters, model::search,
                         model::openStats, model::openDetail, onStatsTypeChange = model::selectStatsType) }
                 }
@@ -121,7 +121,7 @@ class ContentMotionUiTest {
         val settings = ThemeSettings(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { BillPage(state, settings, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {},
+                AppTheme { BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {},
                     onStatsTypeChange = { state = state.copy(stats = BillStatsState(period = state.stats.period, type = it, loading = true)) }) }
             }
         }
@@ -154,7 +154,7 @@ class ContentMotionUiTest {
         val settings = ThemeSettings(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme { BillPage(state = state, settings = settings, onBack = {}, onActivate = {},
+                AppTheme { BillPage(state = state, settings = settings, onBack = {},
                     onRefresh = {}, onLoadMore = {}, onDateSelected = {}, onFiltersApplied = { _, _, _ -> },
                     onSearch = {}, onOpenStats = {}, onOpenDetail = {},
                     onStatsTypeChange = { state = state.copy(stats = BillStatsState(period = period, type = it, loading = true)) }) }

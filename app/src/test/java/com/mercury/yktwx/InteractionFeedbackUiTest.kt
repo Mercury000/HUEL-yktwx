@@ -161,7 +161,7 @@ class InteractionFeedbackUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(mode.value) {
                     MyPage(PreviewData.myState(), PreviewData.paymentState(false), settings, 0.dp,
-                        isActive = false, onActivate = {}, onRefresh = {},
+                        isActive = false, onRefresh = {},
                         onProfile = { profileClicks++ }, onAccount = { accountClicks++ }, onBills = {},
                         onRecharge = {}, rechargeLoading = false, onCardAction = {}, manageLoading = false,
                         passwordLoading = false, onSettings = {}, onAbout = {})
