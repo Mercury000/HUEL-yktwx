@@ -39,12 +39,14 @@ class TransactionDataRefreshTest {
     @Volatile private var countsUpdated = false
     @Volatile private var networkUpdated = false
     @Volatile private var categoriesUpdated = false
+    @Volatile private var categoriesAmount = 100L
     @Volatile private var trendUpdated = false
     @Volatile private var rankingUpdated = false
     @Volatile private var listFails = false
     @Volatile private var summaryFails = false
     @Volatile private var categoriesFail = false
     @Volatile private var networkFails = false
+    @Volatile private var balanceFails = false
     @Volatile private var configurationFailures = emptySet<FeeProject>()
     @Volatile private var pageGate: CompletableDeferred<Unit>? = null
     private val gates = mutableListOf<CompletableDeferred<Unit>>()
@@ -62,7 +64,11 @@ class TransactionDataRefreshTest {
             onAccount(account)
             return PaymentBatch(listOf("12345678901234567890"), 60, account)
         }
-        override suspend fun paymentAccount(token: String): PaymentAccount { read("balance"); return account() }
+        override suspend fun paymentAccount(token: String): PaymentAccount {
+            read("balance")
+            if (balanceFails) throw NetworkFailure()
+            return account()
+        }
         override suspend fun paymentCard(token: String, account: String): CampusCard {
             read("card"); return CampusCard(account, "校园卡", "fake-user", false, false, 0)
         }
@@ -86,7 +92,7 @@ class TransactionDataRefreshTest {
         override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
             read("categories")
             if (categoriesFail) throw NetworkFailure()
-            return if (categoriesUpdated) listOf(BillCategory("示例消费", 100)) else emptyList()
+            return if (categoriesUpdated) listOf(BillCategory("示例消费", categoriesAmount)) else emptyList()
         }
         override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
             read("trend"); return if (trendUpdated) listOf(BillDailyPoint(LocalDate.now(), 100)) else emptyList()
@@ -206,6 +212,30 @@ class TransactionDataRefreshTest {
         assertEquals(1000L, model.state.value.account?.balanceCents)
         balance = 2000
         await(advance = true) { model.state.value.account?.balanceCents == 2000L }
+        shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
+        assertEquals(before + 2, count("balance"))
+        assertEquals(cards, count("card")); assertEquals(codes, count("codes"))
+    }
+
+    @Test fun failedUpdatedBalanceRetriesWithoutRefreshingTheCardOrPaymentCode() {
+        val model = payment()
+        model.setPageVisible(false); model.setAccountPageVisible(true)
+        await { !model.state.value.accountLoading && !model.state.value.cardStatusLoading }
+        balance = 2000
+        model.invalidateBalance()
+        await { model.state.value.account?.balanceCents == 2000L && !model.state.value.accountLoading }
+        val before = count("balance")
+        val cards = count("card")
+        val codes = count("codes")
+        balanceFails = true
+        await {
+            // Balance publication can precede completion of the previous cache write.
+            if (count("balance") == before) model.refreshAccount(manual = true, balanceOnly = true)
+            model.state.value.accountError != null && !model.state.value.accountLoading
+        }
+        assertEquals(before + 1, count("balance"))
+        balanceFails = false; balance = 3000
+        await(advance = true) { model.state.value.account?.balanceCents == 3000L && model.state.value.accountError == null }
         shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
         assertEquals(before + 2, count("balance"))
         assertEquals(cards, count("card")); assertEquals(codes, count("codes"))
@@ -425,8 +455,11 @@ class TransactionDataRefreshTest {
         }
         val trendReads = count("trend")
         val rankingReads = count("ranking")
-        categoriesFail = false
-        await(advance = true) { count("categories") == 5 && model.state.value.stats.categoriesError == null }
+        categoriesFail = false; categoriesAmount = 200
+        await(advance = true) {
+            count("categories") == 5 && model.state.value.stats.categoriesError == null &&
+                model.state.value.stats.categories.singleOrNull()?.amountCents == 200L
+        }
         shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
         assertEquals(5, count("categories"))
         assertEquals(trendReads, count("trend")); assertEquals(rankingReads, count("ranking"))
