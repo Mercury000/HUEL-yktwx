@@ -67,10 +67,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
             }
         }
     }
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
-                DashboardTopBar("付款")
+                DashboardTopBar("付款", scrollBehavior = scrollBehavior)
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -79,7 +80,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
-                    // The title is fixed; an unattached collapsing behavior consumes upward scrolls.
+                    topAppBarScrollBehavior = scrollBehavior,
                     color = MiuixTheme.colorScheme.primary,
                     refreshTexts = AppRefreshTexts,
                 ) {

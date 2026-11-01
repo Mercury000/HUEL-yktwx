@@ -58,20 +58,12 @@ internal object DashboardPalette {
         lerp(MiuixTheme.colorScheme.secondaryVariant, Color(0xFF466C78), .22f) else Color(0xFFE4EEF0)
 }
 
-/** Dashboard composition uses the official bar, buttons and surfaces with explicit dimensions. */
+/** Use Miuix's large title and centered collapsed title on every dashboard page. */
 @Composable
 internal fun DashboardTopBar(title: String, subtitle: String? = null, scrollBehavior: ScrollBehavior? = null,
     actions: @Composable RowScope.() -> Unit = {}) {
-    SmallTopAppBar(title = "", color = Color.Transparent, scrollBehavior = scrollBehavior, bottomContent = {
-        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 20.dp, bottom = 8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, Modifier.weight(1f), fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
-                actions()
-            }
-            if (subtitle != null) Text(subtitle, Modifier.padding(top = 12.dp), fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        }
-    })
+    TopAppBar(title = title, largeTitle = title, subtitle = subtitle.orEmpty(),
+        color = Color.Transparent, scrollBehavior = scrollBehavior, actions = actions)
 }
 
 /** Background reads keep the list usable; only a user pull owns the refresh indicator. */

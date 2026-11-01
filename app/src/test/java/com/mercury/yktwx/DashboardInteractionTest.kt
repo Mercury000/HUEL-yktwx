@@ -309,13 +309,15 @@ class DashboardInteractionTest {
         compose.onNodeWithTag("bill-trend-plot").performTouchInput { click(center) }
         val selection = compose.onNodeWithTag("bill-trend-selection")
         selection.assertExists()
+        val plotTop = compose.onNodeWithTag("bill-trend-plot").fetchSemanticsNode().boundsInRoot.top
         selection.performTouchInput {
             down(center)
             moveTo(center.copy(y = center.y - 250f), delayMillis = 400)
             up()
         }
-        assertTrue("Dragging from the amount label must allow the statistics list to scroll",
-            list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
+        assertTrue("Dragging from the amount label must scroll content or collapse the top bar",
+            list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f ||
+                compose.onNodeWithTag("bill-trend-plot").fetchSemanticsNode().boundsInRoot.top < plotTop)
         selection.assertExists()
     }
 
