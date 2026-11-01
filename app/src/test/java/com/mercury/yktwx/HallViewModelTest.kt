@@ -418,6 +418,18 @@ class HallViewModelTest {
         assertEquals(1, fees.writes.size)
     }
 
+    @Test fun lostUnbindResponseIsConfirmedWithoutRepeatingTheWrite() {
+        fees.saved[FeeProject.Zhengdong] = fees.room(FeeProject.Zhengdong, "A")
+        open()
+        fees.lostWriteResponse = FeeProject.Zhengdong
+        model.remove(model.state.value.rooms.single())
+        await { !model.state.value.managing && !model.state.value.loading }
+        assertEquals(listOf(FeeProject.Zhengdong), fees.writes)
+        assertNull(fees.saved[FeeProject.Zhengdong])
+        assertTrue(model.state.value.rooms.isEmpty())
+        assertNull(model.state.value.error)
+    }
+
     @Test fun partialFamilyUnbindKeepsFailureAndReconcilesActualRemainingBinding() {
         fees.saved[FeeProject.FamilyElectric] = fees.room(FeeProject.FamilyElectric, "A电表")
         fees.saved[FeeProject.FamilyWater] = fees.room(FeeProject.FamilyWater, "A水表")
@@ -477,6 +489,7 @@ class HallViewModelTest {
         val configReads = java.util.concurrent.ConcurrentHashMap<FeeProject, Int>()
         val writes = mutableListOf<FeeProject>()
         var failWrite: FeeProject? = null
+        var lostWriteResponse: FeeProject? = null
         var failConfigurations = false
         var configurationFailures: Map<FeeProject, Exception> = emptyMap()
         var failDetails = false
@@ -528,6 +541,7 @@ class HallViewModelTest {
             writes += project
             if (project == failWrite) throw YktException("模拟解绑拒绝")
             saved[project] = room
+            if (project == lostWriteResponse) throw NetworkFailure()
         }
     }
 }

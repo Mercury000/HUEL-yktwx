@@ -125,14 +125,11 @@ class HallViewModel internal constructor(
                         val current = repository.feeConfiguration(username, source.project)
                         if (attempt != generation) return@launchTask
                         if (!current.roomBindingEnabled || current.invalidRoomBinding || !source.binding.sameTarget(current.roomBinding)) throw YktException("绑定已变化，请刷新后核实")
-                        var failure: Exception? = null
-                        try { repository.setFeeRoom(username, source.project, null) }
-                        catch (e: CancellationException) { throw e }
-                        catch (e: Exception) { failure = e }
-                        if (attempt != generation) return@launchTask
-                        val fresh = repository.feeConfiguration(username, source.project)
-                        if (attempt != generation) return@launchTask
-                        if (!fresh.roomBindingEnabled || fresh.invalidRoomBinding || fresh.roomBinding != null) throw failure ?: YktException("解绑结果未确认，请刷新后核实")
+                        val confirmation = confirmFeeRoomBinding(null,
+                            write = { repository.setFeeRoom(username, source.project, null) },
+                            read = { repository.feeConfiguration(username, source.project) },
+                            isCurrent = { attempt == generation })
+                        if (!confirmation.confirmed) throw confirmation.writeFailure ?: YktException("解绑结果未确认，请刷新后核实")
                     }
                 }
                 if (attempt != generation) return@launchTask
