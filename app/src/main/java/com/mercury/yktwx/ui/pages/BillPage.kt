@@ -5,6 +5,8 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +25,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.ScrollAxisRange
+import androidx.compose.ui.semantics.scrollToIndex
+import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -53,6 +58,7 @@ import java.math.RoundingMode
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 private data class BillReadFrame(val state: BillUiState, val error: ReadError?, val networkError: String?,
@@ -144,7 +150,14 @@ fun BillPage(
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
     val expenseState = key(state.stats.period) { rememberLazyListState() }
     val incomeState = key(state.stats.period) { rememberLazyListState() }
+    val pageScroll = rememberBillPageScroll()
+    val scrollScope = rememberCoroutineScope()
     val listState = if (!state.statsVisible) detailsState else if (state.stats.type == 2) expenseState else incomeState
+    SideEffect {
+        pageScroll.statistics = state.statsVisible && !state.needsLogin
+        // Read the live animation state when scrolling; a copied flag can outlive subcomposition.
+        pageScroll.inputEnabled = { isActive && !motion.running }
+    }
     val currentState by rememberUpdatedState(state)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // The shell owns read activation; the page only resets its transient controls.
@@ -152,14 +165,15 @@ fun BillPage(
         if (!isActive || state.statsVisible) showFilter = false
     }
     LaunchedEffect(isActive, state.statsVisible) { if (!isActive || state.statsVisible) dismissSearch() }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.distinctUntilChanged().filter { it }.collect { dismissSearch() }
+    LaunchedEffect(listState, pageScroll) {
+        snapshotFlow { pageScroll.state.isScrollInProgress || listState.isScrollInProgress }
+            .distinctUntilChanged().filter { it }.collect { dismissSearch() }
     }
     LaunchedEffect(listState) {
         snapshotFlow {
             val layout = listState.layoutInfo
             val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
-            listState.isScrollInProgress && lastVisible >= layout.totalItemsCount - 3
+            (pageScroll.state.isScrollInProgress || listState.isScrollInProgress) && lastVisible >= layout.totalItemsCount - 3
         }
             .distinctUntilChanged()
             .filter { it }
@@ -175,16 +189,18 @@ fun BillPage(
 
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
-            BlurredBar(topGradient = true) {
-                if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior) else TopAppBar(
-                    title = "账单",
-                    largeTitle = "账单",
-                    scrollBehavior = scrollBehavior,
-                    color = Color.Transparent,
-                    navigationIcon = {
-                        if (showBack) IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
-                    },
-                )
+            Box(Modifier.testTag("bill-top-bar")) {
+                BlurredBar(topGradient = true) {
+                    if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior) else TopAppBar(
+                        title = "账单",
+                        largeTitle = "账单",
+                        scrollBehavior = scrollBehavior,
+                        color = Color.Transparent,
+                        navigationIcon = {
+                            if (showBack) IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
+                        },
+                    )
+                }
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -196,8 +212,18 @@ fun BillPage(
                     scrollBehavior = scrollBehavior,
                     readIdentity = readIdentity,
                 ) {
-                Column(Modifier.fillMaxSize()) {
-                    // One live control layer stays outside the horizontal content transition.
+                BillScrollLayer(offset = { pageScroll.controlsOffset },
+                    onHeaderHeight = pageScroll::measureControls,
+                    modifier = Modifier.testTag("bill-scroll-surface").overScrollVertical()
+                        .scrollable(pageScroll.state, Orientation.Vertical, reverseDirection = true, enabled = isActive && !motion.running)
+                        .semantics {
+                            verticalScrollAxisRange = ScrollAxisRange(
+                                value = { pageScroll.position },
+                                maxValue = { pageScroll.position + if (pageScroll.state.canScrollForward) 100f else 0f },
+                            )
+                        },
+                    header = {
+                    // Controls share vertical scrolling without joining the horizontal mode switch.
                     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp,
                         top = padding.calculateTopPadding() + 10.dp)) {
                         PageReadNotice(networkError.takeIf { initialError == null }, 12.dp, errorMaxLines = Int.MAX_VALUE,
@@ -238,11 +264,13 @@ fun BillPage(
                             }
                         }
                     }
+                }) {
                     val frame = BillReadFrame(state, initialError, networkError, readIdentity, readStartedAt,
                         if (state.statsVisible) statsHasContent else listHasContent)
                     BillContentTransition(frame, if (state.statsVisible) 1 else 0, motion,
-                        Modifier.weight(1f).testTag("bill-content-viewport")) { modeFrame ->
-                        Column(Modifier.fillMaxSize()) {
+                        Modifier.fillMaxSize().testTag("bill-content-viewport")) { modeFrame ->
+                        BillScrollLayer(offset = { if (modeFrame.state.statsVisible) pageScroll.typeOffset else 0f },
+                            onHeaderHeight = { if (modeFrame.state.statsVisible) pageScroll.measureType(it) }, header = {
                             // Type controls belong to the statistics page and travel only with mode changes.
                             if (modeFrame.state.statsVisible && !modeFrame.state.needsLogin) {
                                 Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
@@ -251,8 +279,9 @@ fun BillPage(
                                     }
                                 }
                             }
+                        }) {
                             BillContentTransition(modeFrame, if (modeFrame.state.stats.type == 2) 0 else 1, motion,
-                                Modifier.weight(1f)) { incomingFrame ->
+                                Modifier.fillMaxSize()) { incomingFrame ->
                                 val switching = LocalContentSwitchActive.current
                                 val enteringDuringSwitch = remember(incomingFrame.identity, motion) { switching }
                                 val enteringWithoutCache = remember(incomingFrame.identity, motion) {
@@ -284,9 +313,19 @@ fun BillPage(
                                     val failureState = rememberLazyListState()
                                     val bodyListState = if (showFailure) failureState else if (!state.statsVisible) detailsState
                                         else if (state.stats.type == 2) expenseState else incomeState
+                                    SideEffect {
+                                        if (incomingFrame.state.contentSelection() == currentState.contentSelection() &&
+                                            showFailure == (displayed.error != null)) pageScroll.body = bodyListState
+                                    }
                                     LazyColumn(state = bodyListState,
                                         modifier = Modifier.fillMaxSize().testTag(if (state.statsVisible) "bill-stats-list" else "bill-list")
-                                            .overScrollVertical(),
+                                            .semantics {
+                                                scrollToIndex { index ->
+                                                    if (index !in 0 until bodyListState.layoutInfo.totalItemsCount) false
+                                                    else { scrollScope.launch { bodyListState.scrollToItem(index) }; true }
+                                                }
+                                            },
+                                        userScrollEnabled = false,
                                         contentPadding = PaddingValues(top = 12.dp,
                                             bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
                                             start = 16.dp, end = 16.dp),

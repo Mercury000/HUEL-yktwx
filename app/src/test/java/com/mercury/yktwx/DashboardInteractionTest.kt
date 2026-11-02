@@ -354,7 +354,7 @@ class DashboardInteractionTest {
         compose.onRoot().performTouchInput { click(Offset(bounds.center.x, bounds.bottom + 15f)) }
         search.assertIsNotFocused()
         search.performClick().assertIsFocused()
-        compose.onNodeWithText("账单").performTouchInput { click(center) }
+        compose.onNodeWithTag("bill-top-bar").performTouchInput { click(center) }
         search.assertIsNotFocused()
         search.performClick().performTextInput("餐厅")
         search.performImeAction()
