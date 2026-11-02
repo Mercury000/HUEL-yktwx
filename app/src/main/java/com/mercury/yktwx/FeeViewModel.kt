@@ -426,7 +426,7 @@ class FeeViewModel internal constructor(
                 val confirmed = confirmation?.confirmed ?: true
                 roomUpdates.trySend(Unit)
                 mutable.value = copy(mutable.value, roomBusy = false, roomBinding = fresh, roomBindingKnown = true,
-                    error = if (confirmed) null else confirmation?.writeFailure?.let(::message) ?: "房间绑定未更新，请稍后重试",
+                    error = if (confirmed) null else confirmation.writeFailure?.let(::message) ?: "房间绑定未更新，请稍后重试",
                     roomNotice = if (confirmed) (if (target == null) "已解绑" else "已保存为我的房间") else null)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
