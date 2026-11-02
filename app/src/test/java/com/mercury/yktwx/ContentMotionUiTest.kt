@@ -101,36 +101,38 @@ class ContentMotionUiTest {
             val pixels = tabs.captureToImage().asAndroidBitmap()
             val tabNode = tabs.fetchSemanticsNode()
             selectTab("支出")
-            repeat(12) {
+            repeat(25) {
                 frames(1)
                 compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
                 assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
-                val currentAmount = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
-                assertTrue("Cached expenses must display the final amount in every frame", expenseAmount.sameAs(currentAmount))
             }
+            assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
+            assertTrue("Cached expenses settle at the final amount without a second number animation",
+                expenseAmount.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
             assertEquals(800L, model.state.value.stats.categories.single().amountCents)
             selectTab("收入")
-            repeat(16) {
+            repeat(25) {
                 frames(1)
                 compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
-                assertTrue("Cached income must display the final amount in every frame",
-                    incomeAmount.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
             }
+            assertTrue("Cached income settles at the final amount without a second number animation",
+                incomeAmount.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
             compose.runOnIdle { now += 60_000; expenseCents = 900; gate = CompletableDeferred() }
             selectTab("支出")
-            frames(3)
+            frames(25)
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             assertEquals(800L, model.state.value.stats.categories.single().amountCents)
-            // Revalidation inserts progress above the tabs without recreating them.
+            // Revalidation paints progress in the existing gap without recreating or moving the tabs.
             val refreshingTabs = tabs.fetchSemanticsNode()
             assertEquals(tabNode.id, refreshingTabs.id)
             assertEquals(tabNode.boundsInRoot.width, refreshingTabs.boundsInRoot.width, 1f)
             assertEquals(tabNode.boundsInRoot.height, refreshingTabs.boundsInRoot.height, 1f)
+            assertEquals(tabNode.boundsInRoot.top, refreshingTabs.boundsInRoot.top, 1f)
             compose.runOnIdle { gate.complete(Unit) }; waitForRead(true)
             frames(2)
             val updating = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
             compose.onNodeWithTag("bill-stats-amount").assertTextEquals("¥ 9.00")
-            frames(20)
+            frames(25)
             assertFalse("A real amount update within the same query must still animate",
                 updating.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
         } finally {
@@ -160,13 +162,17 @@ class ContentMotionUiTest {
             }
             repeat(16) { frame ->
                 frames(1)
-                assertEquals("Mode tabs were recreated when restoring type $type", nodeId, tabs.fetchSemanticsNode().id)
+                compose.onAllNodesWithTag("bill-mode-tabs").assertCountEquals(1)
+                assertEquals(nodeId, tabs.fetchSemanticsNode().id)
                 assertEquals(bounds, tabs.fetchSemanticsNode().boundsInRoot)
-                assertTrue("Mode tabs flashed when restoring type $type at frame $frame",
+                assertTrue("Mode selector must stay opaque and still during type $type at frame $frame",
                     baseline.sameAs(tabs.captureToImage().asAndroidBitmap()))
             }
             compose.runOnIdle { state = state.copy(stats = state.stats.copy(loading = false)) }
             frames(30)
+            assertEquals(bounds, tabs.fetchSemanticsNode().boundsInRoot)
+            assertTrue("Mode tabs settle at their original appearance after type $type",
+                baseline.sameAs(tabs.captureToImage().asAndroidBitmap()))
         }
     }
 

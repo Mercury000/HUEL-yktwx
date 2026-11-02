@@ -74,6 +74,9 @@ internal fun BalanceReadIndicator(loading: Boolean) {
 
 private val LocalSkeletonActive = staticCompositionLocalOf { true }
 internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
+/** A newly entering page carries its skeleton as opaque paint from its first slide frame. */
+internal val LocalReadSkeletonImmediate = staticCompositionLocalOf { false }
+private val LocalReadStartedAt = staticCompositionLocalOf<Long?> { null }
 internal val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
 private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 
@@ -115,17 +118,35 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     failed: Boolean = error != null,
     topSpacing: Dp = 0.dp,
     errorMaxLines: Int = 1,
+    readIdentity: Any? = Unit,
+    stableProgress: Boolean = false,
+    deferFeedback: Boolean = false,
     content: @Composable () -> Unit) {
     val userRefresh = LocalUserRefresh.current
     val offline = LocalReadOffline.current
-    val reading = loading && !userRefresh && !offline
-    var finishing by remember { mutableStateOf(false) }
-    val completion = remember { Animatable(0f) }
-    var wasReading by remember { mutableStateOf(reading) }
+    val requestedRead = loading && !userRefresh && !offline
+    val reading = if (stableProgress) {
+        var delayedRead by remember(readIdentity) { mutableStateOf(false) }
+        var admittedRead by remember(readIdentity) { mutableStateOf(false) }
+        LaunchedEffect(requestedRead, readIdentity) {
+            if (requestedRead) delay(250)
+            delayedRead = requestedRead
+        }
+        SideEffect {
+            if (!requestedRead) admittedRead = false
+            else if (delayedRead && !deferFeedback) admittedRead = true
+        }
+        // Existing progress can finish normally; a short read during navigation never flashes in.
+        requestedRead && delayedRead && (admittedRead || !deferFeedback)
+    } else requestedRead
+    // Switching queries cancels completion; it is not a successful response from the old query.
+    var finishing by remember(readIdentity) { mutableStateOf(false) }
+    val completion = remember(readIdentity) { Animatable(0f) }
+    var wasReading by remember(readIdentity) { mutableStateOf(reading) }
     // Retain the error while the whole slot exits; a new read can replace its snapshot.
     val displayedError = rememberWhileShown(error != null || reading, error.orEmpty())
     val completing = !reading && wasReading && !failed && !userRefresh && !offline && displayedError.isEmpty()
-    LaunchedEffect(reading, error, failed, userRefresh, offline) {
+    LaunchedEffect(reading, error, failed, userRefresh, offline, readIdentity) {
         val completeRead = wasReading && !failed && !userRefresh && !offline && displayedError.isEmpty()
         wasReading = reading
         if (reading) {
@@ -140,6 +161,25 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     // Cached failures are already present on entry; only a new visibility change animates.
     val showing = error != null || reading || completing || finishing
     val displayedProgress = rememberWhileShown(showing, reading || completing || finishing)
+    if (stableProgress) {
+        // Progress uses the existing gap above the first item, so reads never move the tab row.
+        // Error height changes wait for the content switch; the network request remains immediate.
+        var settledError by remember { mutableStateOf(error) }
+        LaunchedEffect(error, deferFeedback) { if (!deferFeedback) settledError = error }
+        val errorText = rememberWhileShown(settledError != null, settledError.orEmpty())
+        val progressVisible = reading || completing || finishing
+        Column(Modifier.fillMaxWidth()) {
+            FeedbackTransition(settledError != null, topSpacing = topSpacing, bottomSpacing = spacing) {
+                ContentFade(errorText) { InlineError(it, Modifier.testTag(errorTag), maxLines = errorMaxLines) }
+            }
+            Box(Modifier.fillMaxWidth()) {
+                content()
+                StableReadProgress(progressVisible, completion.value,
+                    Modifier.align(Alignment.TopCenter).offset(y = (-6).dp))
+            }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth()) {
         FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = spacing) {
             Box(Modifier.fillMaxWidth().readContentSize()) {
@@ -160,6 +200,14 @@ private fun ReadProgress(modifier: Modifier, completion: Float) {
         contentDescription = "正在刷新数据"
     }, progress = completion.takeIf { it > 0 }?.let { .45f + .55f * it },
         height = 2.dp, colors = readProgressColors())
+}
+
+@Composable
+private fun StableReadProgress(visible: Boolean, completion: Float, modifier: Modifier) {
+    AnimatedVisibility(visible, modifier,
+        enter = fadeIn(tween(ContentMotion.Fade)), exit = fadeOut(tween(ContentMotion.Fade))) {
+        ReadProgress(Modifier, completion)
+    }
 }
 
 @Composable
@@ -186,10 +234,12 @@ internal fun delayedSkeletonModifier(active: Boolean = true, enabled: Boolean = 
     if (!enabled) return Modifier
     val opacity = remember { Animatable(0f) }
     val painting = LocalSkeletonActive.current && active
-    LaunchedEffect(painting) {
-        if (painting) {
-            opacity.snapTo(0f)
-            delay(250)
+    val startedAt = LocalReadStartedAt.current
+    val switching = LocalContentSwitchActive.current
+    LaunchedEffect(painting, switching) {
+        if (painting && !switching) {
+            val elapsed = startedAt?.let { android.os.SystemClock.uptimeMillis() - it } ?: 0L
+            delay((250L - elapsed).coerceAtLeast(0))
             opacity.animateTo(1f, tween(ContentMotion.Fade))
         } else opacity.stop()
     }
@@ -200,13 +250,17 @@ internal fun delayedSkeletonModifier(active: Boolean = true, enabled: Boolean = 
 @Composable
 internal fun InitialReadTransition(error: ReadError?, networkError: String? = null,
     displayRestored: Boolean = false,
+    readStartedAt: Long? = null,
+    delaySkeleton: Boolean = true,
     content: @Composable (displayedError: ReadError?) -> Unit) {
     // Cache restoration only changes the content transition, never the page's identity.
     CompositionLocalProvider(LocalReadSnapshotRestored provides displayRestored) {
         val displayedError = rememberWhileShown(error != null, error)
         ContentFade(error != null, Modifier.fillMaxSize()) { showFailure ->
             CompositionLocalProvider(LocalSkeletonActive provides (error == null),
-                LocalSkeletonDelayEnabled provides true,
+                LocalSkeletonDelayEnabled provides delaySkeleton,
+                LocalReadSkeletonImmediate provides !delaySkeleton,
+                LocalReadStartedAt provides readStartedAt,
                 LocalPageNetworkError provides networkError.takeIf { !showFailure && error == null },
                 LocalInitialReadFailure provides showFailure) {
                 content(displayedError.takeIf { showFailure })

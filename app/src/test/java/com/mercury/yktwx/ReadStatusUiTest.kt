@@ -277,6 +277,14 @@ class ReadStatusUiTest {
         }
         for (night in listOf(false, true)) for (index in 0..2) {
             compose.runOnIdle { dark = night; page = index }
+            if (index == 2) {
+                // Bill tab switches reserve the progress gap and delay paint for short reads.
+                compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+                val bounds = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot
+                compose.mainClock.advanceTimeBy(450)
+                compose.waitForIdle()
+                assertEquals(bounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+            }
             compose.onAllNodesWithTag("page-read-progress").assertCountEquals(1)
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             compose.onNodeWithTag("page-network-error").assertDoesNotExist()

@@ -21,28 +21,43 @@ import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit, onOpenDetail: (BillRecord) -> Unit) {
-    item(key = "tabs") {
+internal fun LazyListScope.billStatsTabs(stats: BillStatsState, onTypeChange: (Int) -> Unit,
+    motion: BillContentMotion?, selectedType: Int) {
+    billMotionItem("tabs", motion) {
         Column {
-        TabRow(
-            tabs = listOf("支出", "收入"),
-            selectedTabIndex = if (stats.type == 2) 0 else 1,
-            onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        BillStatsTypeTabs(selectedType, onTypeChange)
         ReadNotice(readError(stats.error.takeIf { stats.loaded }, stats.errorKind), cached = true, topSpacing = 20.dp)
         }
     }
+}
+
+@Composable
+internal fun BillStatsTypeTabs(selectedType: Int, onTypeChange: (Int) -> Unit) {
+    TabRow(
+        tabs = listOf("支出", "收入"),
+        selectedTabIndex = if (selectedType == 2) 0 else 1,
+        onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },
+        modifier = Modifier.fillMaxWidth().testTag("bill-type-tabs"),
+    )
+}
+
+internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit,
+    onOpenDetail: (BillRecord) -> Unit, motion: BillContentMotion? = null, selectedType: Int = stats.type,
+    includeTabs: Boolean = true) {
+    if (includeTabs) billStatsTabs(stats, onTypeChange, motion, selectedType)
+    else if (stats.error != null && stats.loaded) billMotionItem("stats-notice", motion) {
+        ReadNotice(readError(stats.error, stats.errorKind), cached = true, topSpacing = 0.dp)
+    }
     if (stats.error != null) {
         if (!stats.loaded) {
-            item(key = "error") {
+            billMotionItem("error", motion) {
                 BillErrorCard(checkNotNull(readError(stats.error, stats.errorKind)))
             }
             return
         }
     }
-    item(key = "overview") { StatsOverview(stats) }
-    if (stats.period.trendSupported) item(key = "trend") {
+    billMotionItem("overview", motion) { StatsOverview(stats) }
+    if (stats.period.trendSupported) billMotionItem("trend", motion) {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-trend")) {
             Column(Modifier.padding(20.dp)) {
                 key(stats.period, stats.type) {
@@ -59,7 +74,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
             }
         }
     }
-    item(key = "category") {
+    billMotionItem("category", motion) {
         ReadLayout(Modifier.fillMaxWidth()) {
         Card(Modifier.fillMaxWidth().testTag("bill-stats-category")) {
             Column(Modifier.padding(20.dp)) {
@@ -78,9 +93,9 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
         }
         }
     }
-    if (!stats.rankingLoaded && stats.rankingError == null) item(key = "ranking") {
+    if (!stats.rankingLoaded && stats.rankingError == null) billMotionItem("ranking", motion) {
         BillLoadingCard("正在加载单笔排行")
-    } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) item(key = "ranking") {
+    } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) billMotionItem("ranking", motion) {
         Column {
             if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
             ReadNotice(readError(stats.rankingError.takeIf { stats.ranking.isNotEmpty() }, stats.rankingErrorKind), cached = true)

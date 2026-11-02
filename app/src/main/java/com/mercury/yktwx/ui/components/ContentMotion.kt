@@ -67,6 +67,7 @@ internal fun UpdatedText(
     numeric: Boolean = true, textAlign: TextAlign = TextAlign.Start,
     fontFamily: FontFamily? = null, fitNumber: Boolean = true,
 ) {
+    val switchActive = LocalContentSwitchActive.current
     if (!LocalReadMotionEnabled.current) {
         Text(prefix + text, modifier, fontSize = fontSize, lineHeight = lineHeight,
             fontWeight = fontWeight, color = color, maxLines = maxLines, overflow = overflow,
@@ -99,7 +100,8 @@ internal fun UpdatedText(
                         slideInVertically(tween(duration, easing = ContentMotion.Easing)) { if (before != null && after != null) distance * direction else 0 }
                     val exit = fadeOut(tween(duration, easing = ContentMotion.Easing)) +
                         slideOutVertically(tween(duration, easing = ContentMotion.Easing)) { if (before != null && after != null) -distance * direction else 0 }
-                    (enter togetherWith exit).using(if (resize) SizeTransform { _, _ ->
+                    (if (switchActive) EnterTransition.None togetherWith ExitTransition.None
+                    else enter togetherWith exit).using(if (resize && !switchActive) SizeTransform { _, _ ->
                         tween(ContentMotion.Layout, easing = ContentMotion.Easing)
                     } else null)
                 }, label = "UpdatedText") { displayed ->
@@ -147,6 +149,8 @@ private data class WholeNumberAutoSize(val preferredSize: TextUnit) : TextAutoSi
 internal val LocalReadSnapshotRestored = staticCompositionLocalOf { false }
 /** Hidden geometry templates need text metrics, never transitions or number fitting. */
 internal val LocalReadMotionEnabled = staticCompositionLocalOf { true }
+/** A tab switch owns paint; response-driven children must not add another entrance animation. */
+internal val LocalContentSwitchActive = staticCompositionLocalOf { false }
 private val LocalReadLayoutManaged = staticCompositionLocalOf { false }
 private val LocalReadSkeletonManaged = staticCompositionLocalOf { false }
 internal class ReadLayoutMotion { var feedbackTransitions by mutableIntStateOf(0) }
@@ -180,15 +184,16 @@ internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -
 @Composable
 internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it },
     animate: Boolean = true, animateSize: Boolean = false, content: @Composable (T) -> Unit) {
+    val switchActive = LocalContentSwitchActive.current
     val resize = animateSize && !LocalReadLayoutManaged.current
     AnimatedContent(targetState = ContentFadeTarget(state, LocalReadSnapshotRestored.current),
         modifier = modifier, transitionSpec = {
         // A newly restored snapshot replaces pending paint immediately. Keep the
         // composition alive so controls and their selection/scroll state survive.
         val restoring = targetState.restored && !initialState.restored
-        (if (animate && !restoring) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
+        (if (animate && !restoring && !switchActive) fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade))
         else EnterTransition.None togetherWith ExitTransition.None).using(
-            if (animate && !restoring && resize) SizeTransform { _, _ ->
+            if (animate && !restoring && !switchActive && resize) SizeTransform { _, _ ->
                 tween(ContentMotion.Layout, easing = ContentMotion.Easing)
             } else null,
         )
@@ -202,7 +207,8 @@ internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey
 internal fun <T> ReadContent(state: T, modifier: Modifier = Modifier,
     pending: (T) -> Boolean, contentKey: (T) -> Any? = { it }, animateSize: Boolean = true,
     content: @Composable (T) -> Unit) {
-    val skeletonPaint = delayedSkeletonModifier(active = pending(state), enabled = !LocalReadSkeletonManaged.current)
+    val skeletonPaint = delayedSkeletonModifier(active = pending(state),
+        enabled = !LocalReadSkeletonManaged.current && !LocalReadSkeletonImmediate.current)
     ContentFade(state, modifier, contentKey, animateSize = animateSize) { displayed ->
         CompositionLocalProvider(LocalSkeletonDelayEnabled provides false,
             LocalReadSkeletonManaged provides (LocalReadSkeletonManaged.current || pending(displayed))) {
@@ -254,6 +260,7 @@ internal fun recordArrivalModifier(event: Long, animate: Boolean, appended: Bool
 /** Interrupted refreshes begin from the currently displayed geometry, not an obsolete target. */
 @Composable
 internal fun <K> rememberChartValues(values: Map<K, Double>): Map<K, Double> {
+    val switchActive = LocalContentSwitchActive.current
     val progress = remember { Animatable(1f) }
     var from by remember { mutableStateOf(values) }
     var target by remember { mutableStateOf(values) }
@@ -261,12 +268,16 @@ internal fun <K> rememberChartValues(values: Map<K, Double>): Map<K, Double> {
         val start = from[it] ?: 0.0
         start + ((target[it] ?: 0.0) - start) * progress.value
     }
-    LaunchedEffect(values) {
+    LaunchedEffect(values, switchActive) {
         if (values != target) {
             from = sampled()
             target = values
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(ContentMotion.Chart, easing = ContentMotion.Easing))
+            if (switchActive) progress.snapTo(1f)
+            else progress.animateTo(1f, tween(ContentMotion.Chart, easing = ContentMotion.Easing))
+            from = target
+        } else if (switchActive) {
+            progress.snapTo(1f)
             from = target
         }
     }

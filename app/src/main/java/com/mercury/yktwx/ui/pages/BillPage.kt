@@ -55,6 +55,9 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
 import java.util.Locale
 
+private data class BillReadFrame(val state: BillUiState, val error: ReadError?, val networkError: String?,
+    val identity: Any, val startedAt: Long, val hasContent: Boolean)
+
 @Composable
 fun BillPage(
     state: BillUiState,
@@ -76,6 +79,16 @@ fun BillPage(
     updateNotice: @Composable () -> Unit = {},
 ) {
     val state = if (LocalReadOffline.current) state.offlineDisplay() else state
+    val motion = rememberBillContentMotion(state, isActive)
+    SideEffect { motion.selection = state.contentSelection() }
+    fun selectMode(statistics: Boolean) = motion.select(if (statistics) (if (state.stats.type == 2) 1 else 2) else 0) {
+        if (statistics) onOpenStats() else onShowDetails()
+    }
+    fun selectType(type: Int) = motion.select(if (type == 2) 1 else 2) { onStatsTypeChange(type) }
+    val currentSelectType by rememberUpdatedState(::selectType)
+    val readIdentity = if (state.statsVisible) listOf("stats", state.stats.period, state.stats.type)
+        else listOf("details", state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info)
+    val readStartedAt = remember(readIdentity, isActive) { android.os.SystemClock.uptimeMillis() }
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
@@ -101,9 +114,7 @@ fun BillPage(
             ReadRegion("账单概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
                 state.summary != null || state.counts != null))
     }
-    val detailBar = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberTopAppBarState() }
-    val statsBar = key(state.stats.period) { rememberTopAppBarState() }
-    val scrollBehavior = MiuixScrollBehavior(if (state.statsVisible) statsBar else detailBar)
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
@@ -130,10 +141,10 @@ fun BillPage(
         submitSearch(query.text)
     }
     val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
-    val groups = remember(state.items) { state.items.groupByDay() }
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
-    val statisticsState = key(state.stats.period) { rememberLazyListState() }
-    val listState = if (state.statsVisible) statisticsState else detailsState
+    val expenseState = key(state.stats.period) { rememberLazyListState() }
+    val incomeState = key(state.stats.period) { rememberLazyListState() }
+    val listState = if (!state.statsVisible) detailsState else if (state.stats.type == 2) expenseState else incomeState
     val currentState by rememberUpdatedState(state)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // The shell owns read activation; the page only resets its transient controls.
@@ -183,41 +194,25 @@ fun BillPage(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp),
                     scrollBehavior = scrollBehavior,
+                    readIdentity = readIdentity,
                 ) {
-                InitialReadTransition(initialError, networkError,
-                    if (state.statsVisible) state.stats.displayRestored else state.displayRestored) { displayedError ->
-                    val showFailure = displayedError != null
-                    // Only an empty pending shell is retained for the outgoing skeleton.
-                    val state = if (!showFailure && (initialError != null ||
-                        (if (state.statsVisible) state.stats.loading && !statsHasContent
-                         else (state.loading || state.refreshing) && !listHasContent))) state.copy(
-                            error = null, loaded = false, listLoaded = false, listAvailable = false,
-                            summaryLoaded = false, countsLoaded = false, summaryError = null, countsError = null,
-                            stats = com.mercury.yktwx.BillStatsState(period = state.stats.period, type = state.stats.type)) else state
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().testTag(if (state.statsVisible) "bill-stats-list" else "bill-list").overScrollVertical(),
-                        contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 10.dp,
-                            bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
-                            start = 16.dp,
-                            end = 16.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        item(key = "mode") {
-                            PageReadNotice(networkError.takeIf { initialError == null }, 12.dp, errorMaxLines = Int.MAX_VALUE,
-                                loading = !showFailure && !state.needsLogin && if (state.statsVisible)
-                                    state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
-                                    else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
-                                        (state.loaded || state.displayRestored),
-                                failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
-                                    state.stats.categoriesError != null || state.stats.rankingError != null
-                                    else state.error != null || state.summaryError != null || state.countsError != null) {
+                Column(Modifier.fillMaxSize()) {
+                    // One live control layer stays outside the horizontal content transition.
+                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp,
+                        top = padding.calculateTopPadding() + 10.dp)) {
+                        PageReadNotice(networkError.takeIf { initialError == null }, 12.dp, errorMaxLines = Int.MAX_VALUE,
+                            loading = initialError == null && !state.needsLogin && if (state.statsVisible)
+                                state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
+                                else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
+                                    (state.loaded || state.displayRestored),
+                            failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
+                                state.stats.categoriesError != null || state.stats.rankingError != null
+                                else state.error != null || state.summaryError != null || state.countsError != null,
+                            readIdentity = readIdentity, stableProgress = true, deferFeedback = motion.running) {
                             updateNotice()
                             Box(Modifier.width(180.dp).testTag("bill-mode-tabs")) {
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
-                                    onTabSelected = { if (it == 0) onShowDetails() else onOpenStats() },
+                                    onTabSelected = { selectMode(it == 1) },
                                     minWidth = 85.dp, maxWidth = 85.dp, height = 38.dp, cornerRadius = 12.dp, itemSpacing = 0.dp,
                                     colors = TabRowDefaults.tabRowColors(
                                         backgroundColor = if (androidx.compose.foundation.isSystemInDarkTheme()) DashboardPalette.card else DashboardPalette.field,
@@ -225,156 +220,212 @@ fun BillPage(
                                         selectedBackgroundColor = if (androidx.compose.foundation.isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryVariant else DashboardPalette.card,
                                         selectedContentColor = DashboardPalette.ink))
                             }
-                            }
                         }
-                        if (showFailure && !state.needsLogin) {
-                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
-                        } else if (state.needsLogin) {
-                            item(key = "login") {
-                                BillErrorCard(ReadError("登录已失效，请重新登录", ReadFailureKind.Authentication))
-                            }
-                        } else {
-                            item(key = "date") {
-                                BillDateSelector(
-                                    filter = state.dateFilter,
-                                    minimumDate = BillListMinimumDate,
-                                    onDateSelected = onDateSelected,
-                                    isActive = isActive,
-                                ) {
-                                    if (!state.statsVisible) Box {
-                                        IconButton(
-                                            onClick = { showFilter = true },
-                                        ) {
-                                            Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        }
-                                        if (state.activeFilterCount > 0) {
-                                            Badge(
-                                                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                                    .size(7.dp),
-                                                containerColor = MiuixTheme.colorScheme.primary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            if (state.statsVisible) {
-                                billStatsContent(state.stats, onStatsTypeChange, onRefreshStats, onOpenDetail)
-                            } else {
-                            item(key = "summary") {
-                                BillSummaryCard(state)
-                            }
-                            item(key = "search") {
-                                Column {
-                                Box(Modifier.fillMaxWidth()) {
-                                TextField(
-                                    value = query,
-                                    onValueChange = { query = it },
-                                    modifier = Modifier.trackInputFocus().fillMaxWidth().testTag("bill-search")
-                                        .semantics { contentDescription = "搜索商户或摘要" },
-                                    insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
-                                    label = "搜索商户或摘要",
-                                    useLabelAsPlaceholder = true,
-                                    singleLine = true,
-                                    cornerRadius = 14.dp,
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
-                                    colors = TextFieldDefaults.textFieldColors(),
-                                    leadingIcon = {
-                                        Icon(
-                                            MiuixIcons.Search, contentDescription = null,
-                                            modifier = Modifier.padding(start = 14.dp, end = 10.dp).size(17.dp),
-                                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        if (query.text.isNotEmpty()) {
-                                            Spacer(Modifier.size(IconButtonDefaults.MinWidth, IconButtonDefaults.MinHeight))
-                                        }
-                                    },
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                    keyboardActions = KeyboardActions(onSearch = {
-                                        dismissSearch()
-                                        submitSearch(query.text)
-                                    }),
-                                )
-                                // Keep this tap outside BasicTextField's focus/selection gesture path.
-                                // The empty trailing slot reserves the same space in the decoration.
-                                if (query.text.isNotEmpty()) {
-                                    IconButton(onClick = {
-                                        query = TextFieldValue()
-                                        submitSearch("")
-                                    }, modifier = Modifier.align(Alignment.CenterEnd)) {
-                                        Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
-                                            modifier = Modifier.size(17.dp),
+                        if (!state.needsLogin) {
+                            Spacer(Modifier.height(12.dp))
+                            BillDateSelector(filter = state.dateFilter, minimumDate = BillListMinimumDate,
+                                onDateSelected = onDateSelected, isActive = isActive,
+                                modifier = Modifier.testTag("bill-date-selector")) {
+                                if (!state.statsVisible) Box {
+                                    IconButton(onClick = { showFilter = true }) {
+                                        Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp),
                                             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
-                                }
-                                }
-                                // A cached query is checked below the stable overview and search field.
-                                PageReadNotice(null, 0.dp, loading = state.listOnlyRead && state.listLoading && state.listAvailable,
-                                    failed = state.error != null, topSpacing = 12.dp) {}
-                                ReadNotice(readError(state.error.takeIf { state.items.isNotEmpty() }, state.errorKind), cached = true, topSpacing = 20.dp)
+                                    if (state.activeFilterCount > 0) Badge(
+                                        Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp).size(7.dp),
+                                        containerColor = MiuixTheme.colorScheme.primary)
                                 }
                             }
-                            if (state.activeFilterCount > 0 || state.info.isNotBlank()) item(key = "conditions") {
-                                BillQueryConditions(state, onFiltersApplied, onSearch)
+                        }
+                    }
+                    val frame = BillReadFrame(state, initialError, networkError, readIdentity, readStartedAt,
+                        if (state.statsVisible) statsHasContent else listHasContent)
+                    BillContentTransition(frame, if (state.statsVisible) 1 else 0, motion,
+                        Modifier.weight(1f).testTag("bill-content-viewport")) { modeFrame ->
+                        Column(Modifier.fillMaxSize()) {
+                            // Type controls belong to the statistics page and travel only with mode changes.
+                            if (modeFrame.state.statsVisible && !modeFrame.state.needsLogin) {
+                                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+                                    BillStatsTypeTabs(modeFrame.state.stats.type) {
+                                        if (currentState.statsVisible) currentSelectType(it)
+                                    }
+                                }
                             }
-                            when {
-                                // Precomposed tabs and the credential check precede loading=true.
-                                // An unread list is not a confirmed empty result.
-                                state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
-                                    item(key = "loading") { BillLoadingCard() }
-                                state.error != null && state.items.isEmpty() -> item(key = "error") {
-                                    BillErrorCard(checkNotNull(readError(state.error, state.errorKind)))
+                            BillContentTransition(modeFrame, if (modeFrame.state.stats.type == 2) 0 else 1, motion,
+                                Modifier.weight(1f)) { incomingFrame ->
+                                val switching = LocalContentSwitchActive.current
+                                val enteringDuringSwitch = remember(incomingFrame.identity, motion) { switching }
+                                val enteringWithoutCache = remember(incomingFrame.identity, motion) {
+                                    switching && !incomingFrame.hasContent && incomingFrame.error == null
                                 }
-                                state.items.isEmpty() -> item(key = "empty") {
-                                    if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
-                                        BillEmptyCard("没有符合条件的账单", "试试调整搜索或筛选条件。")
-                                    } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
-                                }
-                                else -> {
-                                    items(groups, key = { it.key }) { group ->
-                                        Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null,
-                                            placementSpec = tween(ContentMotion.Insert, easing = ContentMotion.Easing))) {
-                                            Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically) {
-                                                Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
-                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                                // Only complete, unfiltered ranges can support full daily subtotals.
-                                                if (state.listLoaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
-                                                    val expense = group.records.filter { !it.income }.sumOf { it.amountCents }
-                                                    val income = group.records.filter { it.income }.sumOf { it.amountCents }
-                                                    if (expense > 0) Text("支出 ¥ ${money(expense)}", fontSize = 10.sp,
-                                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                                    if (income > 0) Text("收入 ¥ ${money(income)}", Modifier.padding(start = 8.dp), fontSize = 10.sp,
-                                                        color = MiuixTheme.colorScheme.primary)
-                                                }
+                                var settledFrame by remember(incomingFrame.identity, motion) { mutableStateOf(incomingFrame) }
+                                // Freeze response-driven paint and geometry until this moving region settles.
+                                val displayed = if (switching) settledFrame else incomingFrame
+                                SideEffect { if (!switching) settledFrame = incomingFrame }
+                                val restored = if (displayed.state.statsVisible) displayed.state.stats.displayRestored
+                                    else displayed.state.displayRestored
+                                InitialReadTransition(displayed.error, displayed.networkError,
+                                    restored && !enteringWithoutCache,
+                                    readStartedAt = displayed.startedAt,
+                                    delaySkeleton = !enteringDuringSwitch) { displayedError ->
+                                    val showFailure = displayedError != null
+                                    val requestedState = displayed.state
+                                    val readIdentity = displayed.identity
+                                    // Keep pending measurements while errors replace only the body.
+                                    val state = if (!showFailure && (displayed.error != null ||
+                                        (if (requestedState.statsVisible) requestedState.stats.loading && !displayed.hasContent
+                                         else (requestedState.loading || requestedState.refreshing) && !displayed.hasContent))) requestedState.copy(
+                                            error = null, loaded = false, listLoaded = false, listAvailable = false,
+                                            summaryLoaded = false, countsLoaded = false, summaryError = null, countsError = null,
+                                            stats = com.mercury.yktwx.BillStatsState(period = requestedState.stats.period, type = requestedState.stats.type))
+                                        else requestedState
+                                    val groups = remember(state.items) { state.items.groupByDay() }
+                                    // Crossfading failure and content must not share a lazy list's measurements.
+                                    val failureState = rememberLazyListState()
+                                    val bodyListState = if (showFailure) failureState else if (!state.statsVisible) detailsState
+                                        else if (state.stats.type == 2) expenseState else incomeState
+                                    LazyColumn(state = bodyListState,
+                                        modifier = Modifier.fillMaxSize().testTag(if (state.statsVisible) "bill-stats-list" else "bill-list")
+                                            .overScrollVertical(),
+                                        contentPadding = PaddingValues(top = 12.dp,
+                                            bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
+                                            start = 16.dp, end = 16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        if (showFailure && !state.needsLogin) {
+                                            billMotionItem("failure", motion, fadeAppearance = true) {
+                                                ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
                                             }
-                                            Card(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
-                                                group.records.forEachIndexed { index, record ->
-                                                    key(record.stableId) {
-                                                        val arrives = remember(state.listUpdateId) {
-                                                            record.stableId in state.animatedOrderIds &&
-                                                                android.os.SystemClock.elapsedRealtime() - arrivalAt < 450
-                                                        }
-                                                        val appended = state.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
-                                                        val visible = remember(state.listUpdateId) { MutableTransitionState(!arrives || appended) }
-                                                        visible.targetState = true
-                                                        AnimatedVisibility(visibleState = visible,
-                                                            enter = expandVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing), expandFrom = Alignment.Top)) {
-                                                            Column(recordArrivalModifier(state.listUpdateId, arrives, appended, index)) {
-                                                                BillRow(record) { onOpenDetail(record) }
-                                                                if (index != group.records.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
+                                        } else if (state.needsLogin) {
+                                            billMotionItem("login", motion) {
+                                                BillErrorCard(ReadError("登录已失效，请重新登录", ReadFailureKind.Authentication))
+                                            }
+                                        } else {
+                                            if (state.statsVisible) {
+                                                billStatsContent(state.stats, ::selectType, onRefreshStats, onOpenDetail,
+                                                    motion, requestedState.stats.type, includeTabs = false)
+                                            } else {
+                                                billMotionItem("summary", motion) {
+                                                    BillSummaryCard(state)
+                                                }
+                                                billMotionItem("search", motion) {
+                                                    Column {
+                                                        Box(Modifier.fillMaxWidth()) {
+                                                            TextField(
+                                                                value = query,
+                                                                onValueChange = { query = it },
+                                                                modifier = Modifier.trackInputFocus().fillMaxWidth().testTag("bill-search")
+                                                                    .semantics { contentDescription = "搜索商户或摘要" },
+                                                                insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
+                                                                label = "搜索商户或摘要",
+                                                                useLabelAsPlaceholder = true,
+                                                                singleLine = true,
+                                                                enabled = !requestedState.statsVisible,
+                                                                cornerRadius = 14.dp,
+                                                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                                                colors = TextFieldDefaults.textFieldColors(),
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        MiuixIcons.Search, contentDescription = null,
+                                                                        modifier = Modifier.padding(start = 14.dp, end = 10.dp).size(17.dp),
+                                                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                                                    )
+                                                                },
+                                                                trailingIcon = {
+                                                                    if (query.text.isNotEmpty()) {
+                                                                        Spacer(Modifier.size(IconButtonDefaults.MinWidth, IconButtonDefaults.MinHeight))
+                                                                    }
+                                                                },
+                                                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                                                keyboardActions = KeyboardActions(onSearch = {
+                                                                    dismissSearch()
+                                                                    submitSearch(query.text)
+                                                                }),
+                                                            )
+                                                            // Keep this tap outside BasicTextField's focus/selection gesture path.
+                                                            // The empty trailing slot reserves the same space in the decoration.
+                                                            if (query.text.isNotEmpty()) {
+                                                                IconButton(onClick = {
+                                                                    query = TextFieldValue()
+                                                                    submitSearch("")
+                                                                }, modifier = Modifier.align(Alignment.CenterEnd)) {
+                                                                    Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
+                                                                        modifier = Modifier.size(17.dp),
+                                                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                                }
                                                             }
                                                         }
+                                                        // A cached query is checked below the stable overview and search field.
+                                                        PageReadNotice(null, 0.dp,
+                                                            loading = !requestedState.statsVisible && state.listOnlyRead && state.listLoading && state.listAvailable,
+                                                            failed = state.error != null, topSpacing = 12.dp, readIdentity = readIdentity) {}
+                                                        ReadNotice(readError(state.error.takeIf { state.items.isNotEmpty() }, state.errorKind), cached = true, topSpacing = 20.dp)
                                                     }
                                                 }
+                                                if (state.activeFilterCount > 0 || state.info.isNotBlank()) billMotionItem("conditions", motion) {
+                                                    BillQueryConditions(state, onFiltersApplied, onSearch)
+                                                }
+                                                when {
+                                                    // Precomposed tabs and the credential check precede loading=true.
+                                                    // An unread list is not a confirmed empty result.
+                                                    state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
+                                                        billMotionItem("loading", motion) { BillLoadingCard() }
+                                                    state.error != null && state.items.isEmpty() -> billMotionItem("error", motion) {
+                                                        BillErrorCard(checkNotNull(readError(state.error, state.errorKind)))
+                                                    }
+                                                    state.items.isEmpty() -> billMotionItem("empty", motion) {
+                                                        if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
+                                                            BillEmptyCard("没有符合条件的账单", "试试调整搜索或筛选条件。")
+                                                        } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
+                                                    }
+                                                    else -> {
+                                                        items(groups, key = { it.key }) { group ->
+                                                            Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null,
+                                                                placementSpec = tween(ContentMotion.Insert, easing = ContentMotion.Easing))) {
+                                                                Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically) {
+                                                                    Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
+                                                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                                    // Only complete, unfiltered ranges can support full daily subtotals.
+                                                                    if (state.listLoaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
+                                                                        val expense = group.records.filter { !it.income }.sumOf { it.amountCents }
+                                                                        val income = group.records.filter { it.income }.sumOf { it.amountCents }
+                                                                        if (expense > 0) Text("支出 ¥ ${money(expense)}", fontSize = 10.sp,
+                                                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                                        if (income > 0) Text("收入 ¥ ${money(income)}", Modifier.padding(start = 8.dp), fontSize = 10.sp,
+                                                                            color = MiuixTheme.colorScheme.primary)
+                                                                    }
+                                                                }
+                                                                Card(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
+                                                                    group.records.forEachIndexed { index, record ->
+                                                                        key(record.stableId) {
+                                                                            val arrives = remember(state.listUpdateId) {
+                                                                                record.stableId in state.animatedOrderIds &&
+                                                                                android.os.SystemClock.elapsedRealtime() - arrivalAt < 450
+                                                                            }
+                                                                            val animateArrival = arrives && !motion.running
+                                                                            val appended = state.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
+                                                                            val visible = remember(state.listUpdateId) { MutableTransitionState(!animateArrival || appended) }
+                                                                            visible.targetState = true
+                                                                            AnimatedVisibility(visibleState = visible,
+                                                                                enter = expandVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing), expandFrom = Alignment.Top)) {
+                                                                                Column(recordArrivalModifier(state.listUpdateId, animateArrival, appended, index)) {
+                                                                                    BillRow(record) { onOpenDetail(record) }
+                                                                                    if (index != group.records.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        billMotionItem("footer", motion) { BillFooter(state, onLoadMore) }
+                                                    }
+                                                }
+                                                if (UiPreview.enabled && state.preview) billMotionItem("preview", motion) { PreviewNotes.Bill() }
                                             }
                                         }
                                     }
-                                    item(key = "footer") { BillFooter(state, onLoadMore) }
                                 }
-                            }
-                            if (UiPreview.enabled && state.preview) item(key = "preview") { PreviewNotes.Bill() }
                             }
                         }
                     }

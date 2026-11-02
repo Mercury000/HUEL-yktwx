@@ -72,8 +72,9 @@ internal val LocalUserRefresh = staticCompositionLocalOf { false }
 @Composable
 internal fun DashboardPullToRefresh(loading: Boolean, onRefresh: () -> Unit, modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(), scrollBehavior: ScrollBehavior? = null,
+    readIdentity: Any? = Unit,
     content: @Composable () -> Unit) {
-    var requested by remember { mutableStateOf(false) }
+    var requested by remember(readIdentity) { mutableStateOf(false) }
     LaunchedEffect(loading, requested) { if (!loading) requested = false }
     PullToRefresh(isRefreshing = requested && loading, onRefresh = { requested = true; onRefresh() },
         modifier = modifier, contentPadding = contentPadding, topAppBarScrollBehavior = scrollBehavior,
