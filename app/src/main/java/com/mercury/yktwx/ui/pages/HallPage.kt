@@ -69,12 +69,12 @@ fun HallPage(
     val hasContent = dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null
     val initialError = rememberInitialReadError(hasContent,
         FeedbackText.firstError(readError(dorm.error, dorm.errorKind), readError(dorm.networkError, dorm.networkErrorKind)), !dorm.loading && dorm.loaded)
-    val networkError = rememberPageNetworkError(FeedbackText.mergedNetworkError(
-        "水电费" to FeedbackText.networkError(readError(dorm.error, dorm.errorKind),
+    val networkError = rememberPageNetworkError(dorm.loading, hasContent, initialError,
+        ReadRegion("水电费", FeedbackText.networkError(readError(dorm.error, dorm.errorKind),
             ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { ReadFailureKind.Network in dorm.projectErrorKinds.values },
             *dorm.rooms.flatMap { room -> room.meters.map { readError(it.error, it.errorKind) } }.toTypedArray()),
-        "校园网" to readError(dorm.networkError, dorm.networkErrorKind)), dorm.loading, hasContent,
-        offline = LocalReadOffline.current)
+            dorm.roomsAvailable || dorm.rooms.isNotEmpty()),
+        ReadRegion("校园网信息", readError(dorm.networkError, dorm.networkErrorKind), dorm.network != null))
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -115,10 +115,11 @@ fun HallPage(
                     } else {
                     item {
                         Column {
-                            updateNotice()
-                            PageReadNotice(networkError, 14.dp,
+                            PageReadNotice(networkError.takeIf { initialError == null }, 14.dp,
+                                errorMaxLines = Int.MAX_VALUE,
                                 loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
                                 failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
+                                updateNotice()
                                 UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
                                     onSwitch = { targetTab = 0; targetAdding = false; targets = true },
                                     onAdd = { targetTab = 0; targetAdding = true; targets = true },

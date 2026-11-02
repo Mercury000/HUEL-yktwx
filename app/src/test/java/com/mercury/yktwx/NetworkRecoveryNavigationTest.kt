@@ -65,9 +65,8 @@ class NetworkRecoveryNavigationTest {
             swipe(start = center.copy(y = height * .15f), end = center.copy(y = height * .8f), durationMillis = 600)
         }
     }
-    private fun visibleTag(tag: String) = hasTestTag(tag) and SemanticsMatcher("Inside the visible page") {
-        it.boundsInRoot.left >= 0 && it.boundsInRoot.right > 0
-    }
+    private fun visibleTag(tag: String, page: String = "hall-page-list") =
+        hasTestTag(tag) and hasAnyAncestor(hasTestTag(page))
 
     @Test fun hallRecoversInPlaceAndCachedMyPageRecoversOnReconnectAndForegroundWithoutFetchingPaymentCodes() {
         val app = compose.activity.application
@@ -150,10 +149,10 @@ class NetworkRecoveryNavigationTest {
         compose.onNode(visibleTag("network-package-placeholder")).assertDoesNotExist()
         assertNull(hall.state.value.error)
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
-        compose.onNode(visibleTag("read-unavailable")).assertIsDisplayed()
+        compose.onNode(visibleTag("read-unavailable", "my-page-list")).assertIsDisplayed()
         assertNull(mine.state.value.profileError)
         compose.onNode(hasText("账单") and hasClickAction()).performClick()
-        compose.onNode(visibleTag("read-unavailable")).assertIsDisplayed()
+        compose.onNode(visibleTag("read-unavailable", "bill-list")).assertIsDisplayed()
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
         assertEquals(0, feeReads.get())
         assertEquals(0, profileReads.get())
@@ -198,13 +197,13 @@ class NetworkRecoveryNavigationTest {
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
         assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
         assertEquals(ReadFailureKind.Network, payment.state.value.accountErrorKind)
-        compose.onAllNodes(visibleTag("page-network-error")).assertCountEquals(1)
+        compose.onAllNodes(visibleTag("page-network-error", "my-page-list")).assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.onNodeWithText("¥ 64.96").assertIsDisplayed()
         compose.runOnIdle { connection(true) }
         await { mine.state.value.profileError == null && payment.state.value.accountError == null &&
             !mine.state.value.loading && !payment.state.value.accountLoading }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNode(visibleTag("page-network-error", "my-page-list")).assertDoesNotExist()
 
         // The service can also fail while Android still reports an online connection.
         // Recovery must work even when the exception has no recognized network wording.
@@ -214,14 +213,14 @@ class NetworkRecoveryNavigationTest {
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
         assertEquals(failureMessage, mine.state.value.profileError)
         assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
-        compose.onAllNodes(visibleTag("page-network-error")).assertCountEquals(1)
+        compose.onAllNodes(visibleTag("page-network-error", "my-page-list")).assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
         online = true
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         await { mine.state.value.profileError == null && payment.state.value.accountError == null &&
             !mine.state.value.loading && !payment.state.value.accountLoading }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNode(visibleTag("page-network-error", "my-page-list")).assertDoesNotExist()
         assertNull(mine.state.value.profileErrorKind)
         assertNull(payment.state.value.accountErrorKind)
         assertEquals(paymentReadsBeforeMy, paymentReads.get())

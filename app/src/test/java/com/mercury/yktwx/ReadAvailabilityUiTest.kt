@@ -75,8 +75,9 @@ class ReadAvailabilityUiTest {
             }
             val errorTag = if (index < 4) "page-network-error" else "read-notice"
             compose.runOnIdle { page = index; offline = true }
-            compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
-            compose.onAllNodesWithText("网络连接失败，显示上次数据").assertCountEquals(1)
+            val message = if (index < 4) "网络连接失败，显示上次数据，请下拉刷新" else "网络连接失败，显示上次数据"
+            compose.onNodeWithText(message).assertIsDisplayed()
+            compose.onAllNodesWithText(message).assertCountEquals(1)
             compose.onAllNodesWithTag("page-network-error").assertCountEquals(if (index < 4) 1 else 0)
             compose.onAllNodesWithTag("read-notice").assertCountEquals(if (index < 4) 0 else 1)
             compose.onAllNodesWithTag("read-unavailable").assertCountEquals(0)
@@ -115,6 +116,7 @@ class ReadAvailabilityUiTest {
             compose.runOnIdle { page = index }
             compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
             compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
+            compose.onAllNodesWithTag("page-network-error").assertCountEquals(0)
             compose.onNodeWithText("网络连接失败，显示上次数据").assertDoesNotExist()
             compose.onNodeWithText("未提供").assertDoesNotExist()
         }
@@ -173,7 +175,7 @@ class ReadAvailabilityUiTest {
             }
         }
         compose.onNodeWithText("缓存套餐").assertIsDisplayed()
-        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，显示上次数据，请下拉刷新").assertIsDisplayed()
         compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
         compose.onNodeWithText("—").assertIsDisplayed()
@@ -205,7 +207,7 @@ class ReadAvailabilityUiTest {
         compose.runOnIdle { offline = true }
         compose.onNodeWithText("86.4").assertIsDisplayed()
         compose.onNodeWithText("—").assertIsDisplayed()
-        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，显示上次数据，请下拉刷新").assertIsDisplayed()
         compose.onNodeWithText(FeedbackText.Offline).assertDoesNotExist()
         compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()

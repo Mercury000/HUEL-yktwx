@@ -119,12 +119,12 @@ class ReadStatusUiTest {
         var error by mutableStateOf<String?>(null)
         compose.mainClock.autoAdvance = false
         compose.setContent { AppTheme {
-            val displayed = rememberPageNetworkError(error, loading, true)
+            val displayed = rememberPageNetworkError(loading, true, readError(error, com.mercury.yktwx.data.ReadFailureKind.Network))
             PageReadNotice(displayed, 12.dp, loading) { Box(Modifier.size(100.dp).testTag("content")) }
         } }
         fun top() = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
         val pendingTop = top()
-        compose.runOnIdle { loading = false; error = "水电费、校园网更新失败，请下拉刷新" }
+        compose.runOnIdle { loading = false; error = FeedbackText.Offline }
         repeat(3) { frame() }
         repeat(5) {
             compose.mainClock.advanceTimeBy(48)
@@ -151,7 +151,7 @@ class ReadStatusUiTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                 AppTheme {
                     Box(Modifier.width(240.dp)) {
-                        PageReadNotice(error, 12.dp, loading) {
+                        PageReadNotice(error, 12.dp, loading, errorMaxLines = Int.MAX_VALUE) {
                             Box(Modifier.size(100.dp).testTag("content"))
                         }
                     }
