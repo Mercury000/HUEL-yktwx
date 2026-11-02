@@ -563,8 +563,10 @@ private fun MainContent(
             }) {
                 MainNavigationScaffold(
                     settings, tabs.selectedPage, tabs::animateToPage,
-                    floatingBarVisible = layers.isEmpty() && !motion[0].predictiveActive &&
-                        motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD,
+                    // Classic navigation stays with the page when predictive back is disabled.
+                    bottomBarVisible = (!settings.predictiveBack.value && !settings.floatingBottomBar.value) ||
+                        (layers.isEmpty() && !motion[0].predictiveActive &&
+                            motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD),
                 ) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                     val bottom = padding.calculateBottomPadding() + 28.dp
