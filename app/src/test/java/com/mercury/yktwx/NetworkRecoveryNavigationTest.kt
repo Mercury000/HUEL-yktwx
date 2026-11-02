@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -65,6 +66,9 @@ class NetworkRecoveryNavigationTest {
             shadowOf(manager).setActiveNetworkInfo(null)
             if (previous != null) shadowOf(manager).networkCallbacks.forEach { it.onLost(previous) }
         }
+        // The monitor debounces default-network handovers on the main Handler. Robolectric's
+        // paused looper does not advance that delay on its own while tests await Compose state.
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400))
     }
     private fun pullMyPage() {
         compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasTestTag("my-balance-card")) and
@@ -134,7 +138,8 @@ class NetworkRecoveryNavigationTest {
                 statsRead(type); return PreviewData.billStats(period, type).ranking
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = AccountRepository(service, vault, displayCache = cache,
+            feeService = FeeApi({ error("Unexpected fee HTTP request") }))
         runBlocking {
             repository.username()
             repository.saveDisplay("fake-user", DisplayKeys.bills(period, null, null, null, ""), BillPageData(display.items, 1, 1), DisplayCodecs.Page)
@@ -147,9 +152,10 @@ class NetworkRecoveryNavigationTest {
                 repository.saveDisplay("fake-user", DisplayKeys.stats(period, type, "ranking"), stats.ranking, DisplayCodecs.Records)
             }
         }
-        payment = PaymentViewModel(app, repository)
-        val bills = BillViewModel(app, repository).also { it.initialize() }
-        for (model in listOf(payment, bills, MyViewModel(app, repository), HallViewModel(app, repository))) {
+        payment = PaymentViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = BillViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
+        for (model in listOf(payment, bills, MyViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive),
+            HallViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive))) {
             compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         }
         try {
@@ -266,16 +272,18 @@ class NetworkRecoveryNavigationTest {
             }
         }
         val repository = AccountRepository(service, vault, profileService = profiles, feeService = fees)
-        payment = PaymentViewModel(app, repository)
-        val hall = HallViewModel(app, repository)
-        val mine = MyViewModel(app, repository)
-        val bills = BillViewModel(app, repository).also { it.initialize() }
+        payment = PaymentViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val hall = HallViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val mine = MyViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = BillViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
         for (model in listOf(payment, hall, mine, bills)) compose.activity.viewModelStore.put(
             "androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         compose.runOnIdle { connection(false); payment.initialize() }
         await { !payment.state.value.restoringLogin }
         compose.runOnIdle { payment.onForeground() }
-        await { !payment.state.value.busy && payment.state.value.error != null }
+        await { !payment.state.value.busy }
+        assertEquals(0, paymentReads.get())
+        assertNull(payment.state.value.error)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
         }
@@ -306,8 +314,14 @@ class NetworkRecoveryNavigationTest {
         assertEquals(originalPaymentReads, paymentReads.get())
 
         // Offline re-entry preserves the notice without starting another automatic read.
-        compose.runOnIdle { connection(false); hall.refresh() }
-        await { hall.state.value.error != null && hall.state.value.networkError != null && !hall.state.value.loading }
+        val hallReadsBeforeOfflineRefresh = feeReads.get()
+        compose.runOnIdle { connection(false) }
+        compose.waitForIdle()
+        compose.runOnIdle { hall.refresh() }
+        await { !hall.state.value.loading }
+        assertEquals(hallReadsBeforeOfflineRefresh, feeReads.get())
+        assertNull(hall.state.value.error)
+        assertNull(hall.state.value.networkError)
         compose.onNode(visibleTag("page-network-error")).assertIsDisplayed()
         val failedTop = compose.onNode(visibleTag("hall-utility-card")).fetchSemanticsNode().boundsInRoot.top
         val offlineReads = feeReads.get()
@@ -333,10 +347,14 @@ class NetworkRecoveryNavigationTest {
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
         await { mine.state.value.profile != null && payment.state.value.account != null && !mine.state.value.loading }
         compose.runOnIdle { connection(false) }
+        val profileReadsBeforeOfflinePull = profileReads.get()
+        val ledgerReadsBeforeOfflinePull = ledgerReads.get()
         pullMyPage()
-        await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
-        assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
-        assertEquals(ReadFailureKind.Network, payment.state.value.accountErrorKind)
+        await { !mine.state.value.loading && !payment.state.value.accountLoading }
+        assertEquals(profileReadsBeforeOfflinePull, profileReads.get())
+        assertEquals(ledgerReadsBeforeOfflinePull, ledgerReads.get())
+        assertNull(mine.state.value.profileError)
+        assertNull(payment.state.value.accountError)
         compose.onAllNodes(visibleTag("page-network-error", "my-page-list")).assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.onNodeWithText("¥ 64.96").assertIsDisplayed()
@@ -365,5 +383,71 @@ class NetworkRecoveryNavigationTest {
         assertNull(payment.state.value.accountErrorKind)
         assertEquals(paymentReadsBeforeMy, paymentReads.get())
         assertNull(payment.state.value.code)
+    }
+
+    @Test fun profileDetailsRecoverAnIdentityOnlyFailureFromAnOlderRequest() {
+        val app = compose.activity.application
+        val identityGate = CompletableDeferred<Unit>()
+        val identityReads = AtomicInteger()
+        val profileReads = AtomicInteger()
+        val vault = object : Vault {
+            override fun credentials() = Credentials("fake-user", "fake-password")
+            override fun session() = Session("fake-token", Long.MAX_VALUE)
+            override fun saveCredentials(value: Credentials) = Unit
+            override fun saveSession(value: Session) = Unit
+            override fun clearSession() = Unit
+            override fun clear() = Unit
+        }
+        val profiles = object : ProfileService {
+            override suspend fun profile(token: String): PersonalProfile {
+                profileReads.incrementAndGet()
+                return PersonalProfile("示例姓名", "fake-user", "示例部门", "", null)
+            }
+            override suspend fun avatar(path: String): ByteArray? = null
+            override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity? {
+                if (identityReads.incrementAndGet() == 1) {
+                    identityGate.await()
+                    throw NetworkFailure("服务暂时无法访问")
+                }
+                return HomeCardIdentity("示例姓名", sno, "示例院系", "示例专业")
+            }
+        }
+        val service = object : YktService by FakeAccountService() {
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 0
+        }
+        val repo = AccountRepository(service, vault, profileService = profiles,
+            feeService = FeeApi({ error("Unexpected fee HTTP request") }))
+        payment = PaymentViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive)
+        val mine = MyViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = BillViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
+        for (model in listOf(payment, mine, bills, HallViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive))) {
+            compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
+        }
+        try {
+            compose.runOnIdle { connection(true); payment.initialize() }
+            await { !payment.state.value.restoringLogin }
+            compose.runOnIdle { payment.onForeground() }
+            compose.setContent {
+                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+            }
+            compose.onNode(hasText("我的") and hasClickAction()).performClick()
+            await { identityReads.get() >= 1 && mine.state.value.profile != null }
+            assertEquals(1, identityReads.get())
+            compose.mainClock.advanceTimeBy(500)
+            compose.waitForIdle()
+            await { compose.onAllNodesWithContentDescription("个人信息").fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithContentDescription("个人信息").performClick()
+            compose.runOnIdle { connection(false) }
+            compose.waitForIdle()
+            compose.runOnIdle { connection(true) }
+            compose.waitForIdle()
+            compose.runOnIdle { identityGate.complete(Unit) }
+            await { identityReads.get() == 2 && mine.state.value.homeIdentity != null && !mine.state.value.loading }
+            assertNull(mine.state.value.homeIdentityError)
+            assertEquals(2, profileReads.get())
+            compose.mainClock.advanceTimeBy(500)
+            assertEquals(2, identityReads.get())
+        } finally { identityGate.complete(Unit) }
     }
 }

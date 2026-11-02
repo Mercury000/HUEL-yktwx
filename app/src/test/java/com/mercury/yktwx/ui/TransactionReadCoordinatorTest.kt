@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui
 
 import com.mercury.yktwx.data.BalanceChange
 import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.TransactionUpdate
 import org.junit.Assert.*
 import org.junit.Test

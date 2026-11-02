@@ -33,13 +33,41 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 ## 账单
 
-账单列表使用 `/berserker-search/search/personal/turnover`，汇总使用 `/berserker-search/statistics/turnover/count`，分类与趋势通过对应 statistics 接口读取。金额以分处理，收入与支出方向由响应字段决定。
+账单请求同样使用 `synjones-auth: bearer <access_token>`，不携带网页 Cookie，不跟随重定向。列表、统计和排行均只查询当前账户；客户端支持单日、自然月、自然年和自定义时间段，统一以 `timeFrom=<yyyy-MM-dd>&timeTo=<yyyy-MM-dd>` 传给列表、汇总、分类和排行接口。
 
-支持单日、自然月、自然年及自定义日期范围，各接口共用 `timeFrom` / `timeTo`。
+日期下限不是账单接口返回值，而是官网前端规则：
 
-关键词搜索将 `info` 传入列表接口，同时保留当前日期和交易类型筛选。
+- 账单列表默认 `minDate=2010-02-01`，并允许前端配置 `billMinDate` 覆盖。
+- 统计页默认 `minDate=2010-01-01`，年份列表固定回溯到 2010。
+- 官网通用日期组件的 `2004-01-01` 只是未被这两个页面采用的默认兜底值。
 
-仅持久化首屏展示字段，先核对实时首屏后继续分页。
+1. `GET /berserker-search/search/personal/turnover`
+   - 列表/搜索参数：`current`、`size`、`timeFrom`、`timeTo`，可选 `typeId`、`amountFrom`、`amountTo`（单位分）、`info`，以及 `synAccessSource=h5`。
+   - 搜索沿用当前日期范围并传 `info`；不单独保存搜索输入，按日期、筛选和查询条件隔离的账单首屏展示快照使用本地加密缓存，搜索条件改变时重新查询。
+   - 排行复用该接口，附加 `current=1`、`size=5`、`type=2`、`sortFields=tranamt`、`sortType=desc`。
+   - 解析 `data.{records,total,size,current,pages}`；记录字段包括 `orderId`、`resume`、`payName`、`turnoverType`、`icon`、`typeId`、`typeFrom`、`tranamt`、`cardBalance`、`feeAmt`、`effectdateStr`、`jndatetimeStr`、`fromAccount`、`posCode`、`remark`、`toMerchant`、`sno`、`labelName`。
+   - 收入/支出笔数复用该列表接口，附加 `type=1`（收入）或 `type=2`（支出）、`current=1`、`size=1`，读取 `data.total`。
+2. `GET /berserker-search/statistics/turnover/count?timeFrom=<date>&timeTo=<date>&synAccessSource=h5`
+   - 解析 `data.income`、`data.expenses`，用于月收入/支出汇总。
+3. `GET /berserker-search/search/turnoverType?synAccessSource=h5`
+   - 解析 `data[].{id,name,icon}`，作为交易类型筛选项。
+4. `GET /berserker-search/statistics/turnover?type=2&timeFrom=<date>&timeTo=<date>&synAccessSource=h5`
+   - 支出分类饼图；`type=1` 为收入、`type=2` 为支出。
+   - 解析 `data[].{turnoverType,amount,typeId,icon}`，按金额降序展示。
+5. `GET /berserker-search/statistics/turnover/sum/user?dateStr=2026-10&dateType=month&statisticsDateStr=day&type=2&synAccessSource=h5`
+   - 按月查询时按日聚合；`dateStr` 为 `yyyy-MM`，响应 `data` 是日期到金额的对象。
+   - 按年查询使用 `dateStr=2026&dateType=year&statisticsDateStr=month`，响应键为 `yyyy-MM`。
+   - 单日和自定义时间段仍使用汇总、分类与排行接口；官网未提供对应的趋势聚合参数，客户端不伪造趋势数据。
+   - 趋势键同时接受 `yyyy-MM-dd` 与 `yyyy-MM`，其余忽略。
+
+约定：
+
+- `tranamt` 等金额字段按分处理；接口可能返回 `800.0` 形式，解析时四舍五入为整数分。`tranamt` 恒为正，收支方向看 `typeFrom`：`"1"` 为收入，其他为支出。收入显示 `+`，支出显示 `-`。
+- 空值字段可能为字符串 `"null"`，解析时统一转为空字符串，避免界面显示 `null`。
+- 列表按稳定交易标识去重，优先使用 `orderId`，缺失时使用流水号或交易字段摘要；分页加载到 `current >= pages` 后停止。仅首屏持久化，后续分页留在本次运行内存；恢复快照后先核对实时首屏，再允许继续分页。
+- Token 过期或被拒绝时映射为 `AuthenticationRequired`，由账户仓库最多重登一次；API 层不保存原始账单响应，页面层仅缓存解析后的展示字段。
+- Android 的账单预览模式只注入虚构记录、金额和账户名，不读取真实账单。
+
 
 ## 校园卡管理
 

@@ -1,112 +1,82 @@
 package com.mercury.yktwx.ui
 
+import android.app.Application
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.os.Handler
-import android.os.Looper
 import android.widget.Toast
 import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mercury.yktwx.data.AndroidNetworkMonitor
+import com.mercury.yktwx.data.NetworkState
+import com.mercury.yktwx.data.networkAvailable
+import com.mercury.yktwx.data.networkState
 import com.mercury.yktwx.ui.components.FeedbackText
-import kotlinx.coroutines.flow.first
 
-internal fun isNetworkAvailable(context: Context): Boolean {
-    val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return true
-    val network = connectivity.activeNetwork ?: return false
-    // Campus services can be reachable even when Android has not validated the connection.
-    return connectivity.getNetworkCapabilities(network)
-        ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != false
+internal fun isNetworkAvailable(context: Context) = networkAvailable(context)
+
+/** Keep connectivity epochs aligned with page ViewModels across Activity recreation. */
+internal class NetworkStateViewModel(app: Application) : AndroidViewModel(app) {
+    val monitor = AndroidNetworkMonitor(app)
+    override fun onCleared() { monitor.stop() }
 }
 
-internal data class NetworkReadAvailability(
-    val online: Boolean, val foreground: Boolean, val recoveryId: Long = 0,
-    val reconnected: Boolean = false,
-) {
-    fun update(online: Boolean = this.online, foreground: Boolean = this.foreground): NetworkReadAvailability {
-        val restored = online && !this.online
-        val resumed = foreground && !this.foreground
-        val recover = online && foreground && (restored || resumed)
-        return copy(online = online, foreground = foreground,
-            recoveryId = recoveryId + if (recover) 1 else 0,
-            reconnected = if (recover) restored || reconnected && !this.foreground
-                else if (restored && !foreground) true
-                else if (!foreground && this.foreground) false else reconnected)
-    }
-}
-
-/** One connection listener for the authenticated shell, including a fresh snapshot on foreground. */
+/**
+ * The shell owns the only Android connectivity listener. Preview mode is always explicitly online
+ * and never registers a real callback.
+ */
 @Composable
-internal fun rememberNetworkReadAvailability(preview: Boolean): State<NetworkReadAvailability> {
-    val context = LocalContext.current
+internal fun rememberNetworkState(preview: Boolean): State<NetworkState> {
+    if (preview) return remember { mutableStateOf(NetworkState(online = true)) }
+    val model: NetworkStateViewModel = viewModel()
+    val monitor = model.monitor
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val state = remember(context, lifecycle, preview) { mutableStateOf(NetworkReadAvailability(
-        online = preview || isNetworkAvailable(context),
-        foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))) }
-    DisposableEffect(context, lifecycle, preview) {
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        val handler = Handler(Looper.getMainLooper())
-        var observing = true
-        fun update(foreground: Boolean = state.value.foreground) {
-            state.value = state.value.update(preview || isNetworkAvailable(context), foreground)
+    DisposableEffect(monitor, lifecycle) {
+        monitor.start()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) monitor.refresh()
         }
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            private fun changed() {
-                val online = isNetworkAvailable(context)
-                handler.post { if (observing) state.value = state.value.update(online = online) }
-            }
-            override fun onAvailable(network: Network) = changed()
-            override fun onLost(network: Network) = changed()
-            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = changed()
-        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); monitor.stop() }
+    }
+    return monitor.state.collectAsState()
+}
+
+internal data class ForegroundState(val active: Boolean, val epoch: Long)
+
+/**
+ * Foreground is lifecycle state, not a reconnect signal. [ForegroundState.epoch] still changes on
+ * every resume so a stop/start that Compose coalesces into one frame cannot drop the re-evaluation.
+ */
+@Composable
+internal fun rememberForegroundState(): State<ForegroundState> {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val state = remember(lifecycle) {
+        val active = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        mutableStateOf(ForegroundState(active, if (active) 1L else 0L))
+    }
+    DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> update(foreground = true)
-                Lifecycle.Event.ON_STOP -> update(foreground = false)
+                Lifecycle.Event.ON_START -> state.value = ForegroundState(true, state.value.epoch + 1)
+                Lifecycle.Event.ON_STOP -> state.value = state.value.copy(active = false)
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
-        if (!preview) connectivity?.registerDefaultNetworkCallback(callback)
-        onDispose {
-            observing = false
-            lifecycle.removeObserver(observer)
-            if (!preview) connectivity?.unregisterNetworkCallback(callback)
-        }
+        onDispose { lifecycle.removeObserver(observer) }
     }
     return state
 }
 
-/** A recovery event retries a failed read once; its own result cannot trigger another retry. */
-@Composable
-internal fun ReadRecoveryEffect(availability: NetworkReadAvailability, page: Any?, loading: Boolean,
-    networkFailed: Boolean, onRetry: () -> Unit) {
-    var handledId by remember { mutableLongStateOf(0) }
-    val latestLoading by rememberUpdatedState(loading)
-    val latestFailure by rememberUpdatedState(networkFailed)
-    val retry by rememberUpdatedState(onRetry)
-    LaunchedEffect(availability.recoveryId, availability.online, availability.foreground, page) {
-        if (page == null || !availability.online || !availability.foreground ||
-            availability.recoveryId == handledId) return@LaunchedEffect
-        // Foreground/entry handlers may already have started a read. A reconnection during an
-        // offline request waits for that request to settle, then retries only if it still failed.
-        if (latestLoading && !availability.reconnected) {
-            handledId = availability.recoveryId
-            return@LaunchedEffect
-        }
-        snapshotFlow { latestLoading }.first { !it }
-        handledId = availability.recoveryId
-        if (latestFailure) retry()
-    }
-}
-
-/** Block only a known offline entry. Connected networks can still fail at the service. */
+/**
+ * Block only a known-offline click or dialog entry. Pull-to-refresh deliberately does not use
+ * this: it must end with an inline notice, never a Toast.
+ */
 internal fun allowOnlineEntry(context: Context, preview: Boolean = false): Boolean {
-    val offline = !preview && !isNetworkAvailable(context)
+    val offline = !preview && networkState(context) == false
     if (offline) Toast.makeText(context, FeedbackText.Offline, Toast.LENGTH_SHORT).show()
     return !offline
 }

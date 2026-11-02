@@ -187,6 +187,69 @@ class TransactionDataRefreshTest {
         assertNull(balanceEvent(model))
     }
 
+    private fun assertTransactionBudgetWithoutOrdinaryRetry(key: String, settled: () -> Boolean) {
+        val initial = count(key)
+        shadowOf(Looper.getMainLooper()).idleFor(600, TimeUnit.MILLISECONDS)
+        assertEquals("The transaction owns the retry schedule from its first read", initial, count(key))
+        for (expected in initial + 1..initial + delays.size) {
+            await(advance = true) { count(key) >= expected && settled() }
+            assertEquals(expected, count(key))
+        }
+        shadowOf(Looper.getMainLooper()).idleFor(10, TimeUnit.SECONDS)
+        assertEquals(initial + delays.size, count(key))
+    }
+
+    @Test fun aFailedTransactionListActivationDoesNotAddAnOrdinaryRetry() {
+        val model = bills()
+        listFails = true
+        model.invalidate(); model.onActivate()
+        await { count("list") == 2 && !model.state.value.refreshing }
+        assertTransactionBudgetWithoutOrdinaryRetry("list") { !model.state.value.refreshing }
+    }
+
+    @Test fun aFailedTransactionStatsActivationDoesNotAddAnOrdinaryRetry() {
+        val model = bills()
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        categoriesFail = true
+        model.invalidate(income = false); model.onActivate()
+        await { count("categories") == 2 && !model.state.value.stats.loading }
+        assertTransactionBudgetWithoutOrdinaryRetry("categories") { !model.state.value.stats.loading }
+    }
+
+    @Test fun aFailedTransactionMonthlyActivationDoesNotAddAnOrdinaryRetry() {
+        val model = MyViewModel(app, repository, delays)
+        store.put("mine", model)
+        model.accountChanged("fake-user"); model.setPageVisible(true)
+        await { model.state.value.loaded && !model.state.value.loading }
+        summaryFails = true
+        model.invalidate(); model.onActivate()
+        await { count("summary") == 2 && !model.state.value.loading }
+        assertTransactionBudgetWithoutOrdinaryRetry("summary") { !model.state.value.loading }
+    }
+
+    @Test fun aFailedTransactionHallActivationDoesNotAddAnOrdinaryRetry() {
+        val model = HallViewModel(app, repository, delays)
+        store.put("hall", model)
+        model.accountChanged("fake-user"); model.setPageVisible(true)
+        await { model.state.value.loaded && !model.state.value.loading }
+        networkFails = true
+        model.invalidateTransaction(FeeProject.Network); model.onActivate()
+        await { count("network") == 2 && !model.state.value.loading }
+        assertTransactionBudgetWithoutOrdinaryRetry("network") { !model.state.value.loading }
+    }
+
+    @Test fun aFailedTransactionBalanceReadOnReturnDoesNotAddAnOrdinaryRetry() {
+        val model = payment()
+        model.setPageVisible(false); model.setAccountPageVisible(true)
+        await { !model.state.value.cardStatusLoading }
+        model.setReadPageVisible(false)
+        model.invalidateBalance(); balanceFails = true
+        val previousReads = count("balance")
+        model.setReadPageVisible(true)
+        await { count("balance") == previousReads + 1 && model.state.value.accountError != null && !model.state.value.accountLoading }
+        assertTransactionBudgetWithoutOrdinaryRetry("balance") { !model.state.value.accountLoading }
+    }
+
     @Test fun anotherAccountAndReloginNeverCompareBalancesAcrossIdentities() {
         val model = payment()
         accountId = "other-account"; balance = 20

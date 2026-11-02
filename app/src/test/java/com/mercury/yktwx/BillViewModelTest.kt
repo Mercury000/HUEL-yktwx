@@ -125,6 +125,37 @@ class BillViewModelTest {
         assertNull(model.state.value.stats.dailyError)
     }
 
+    @Test fun leavingFailedStatisticsCancelsItsRetryEvenAfterTheRequestHasFinished() {
+        model.initialize()
+        loadExistingBills()
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        model.openStats()
+        await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        assertNotNull(model.state.value.stats.dailyError)
+        service.queryFailures = emptyMap()
+        model.selectStatsType(1)
+        await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        val requests = service.statsRequests.size
+        shadowOf(Looper.getMainLooper()).idleFor(700, TimeUnit.MILLISECONDS)
+        assertEquals(requests, service.statsRequests.size)
+        assertFalse(model.state.value.stats.loading)
+    }
+
+    @Test fun changingAFailedSearchCancelsItsRetryAfterTheRequestHasFinished() {
+        model.initialize()
+        loadExistingBills()
+        service.failure = NetworkFailure()
+        model.search("旧查询")
+        await { model.state.value.error != null && !model.state.value.refreshing }
+        service.failure = null
+        model.search("新查询")
+        await { model.state.value.listAvailable && !model.state.value.refreshing }
+        val requests = service.requests
+        shadowOf(Looper.getMainLooper()).idleFor(700, TimeUnit.MILLISECONDS)
+        assertEquals(requests, service.requests)
+        assertEquals("新查询", model.state.value.info)
+    }
+
     @Test fun reconnectWaitsForAnOlderReadThenRetriesOnlyItsFailure() {
         model.initialize()
         loadExistingBills()
@@ -656,7 +687,7 @@ class BillViewModelTest {
         assertEquals(service.categories, model.state.value.stats.categories)
     }
 
-    @Test fun reactivatingFailedStatisticsRetriesWithinTheCacheWindow() {
+    @Test fun reactivatingFailedStatisticsRespectsBackoffWithinTheCacheWindow() {
         loadExistingBills()
         service.queryFailures = mapOf("trend" to NetworkFailure())
         model.openStats()
@@ -665,7 +696,9 @@ class BillViewModelTest {
         service.queryFailures = emptyMap()
         service.queryGates["trend"] = CompletableDeferred()
         model.onActivate()
-        assertTrue(model.state.value.stats.loading)
+        assertFalse(model.state.value.stats.loading)
+        shadowOf(Looper.getMainLooper()).idleFor(600, TimeUnit.MILLISECONDS)
+        await { service.statsRequests.size == 6 }
         service.queryGates.getValue("trend").complete(Unit)
         await { !model.state.value.stats.loading }
         assertNull(model.state.value.stats.dailyError)

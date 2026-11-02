@@ -10,49 +10,81 @@ import com.mercury.yktwx.data.ReadFailureKind
 internal val LocalReadOffline = staticCompositionLocalOf { false }
 
 /** Display-only failures for unread regions. Never write these into ViewModel or cache state. */
-private fun offlineError(error: String?, unread: Boolean) = error ?: FeedbackText.Offline.takeIf { unread }
-private fun offlineKind(error: String?, kind: ReadFailureKind?, unread: Boolean) =
-    if (error == null && unread) ReadFailureKind.Network else kind
+private fun offlineError(error: String?, kind: ReadFailureKind?, unread: Boolean): String? = when {
+    error == null -> FeedbackText.Offline.takeIf { unread }
+    // A stale network failure must not outrank the connection state the user can see right now.
+    kind == ReadFailureKind.Network -> FeedbackText.Offline
+    else -> error
+}
 
-internal fun MyUiState.offlineDisplay() = copy(
-    profileError = offlineError(profileError, profile == null && homeIdentity == null && !profileLoaded),
-    homeIdentityError = offlineError(homeIdentityError, homeIdentity == null && profile?.professionName.isNullOrBlank() && !homeIdentityLoaded),
-    summaryError = offlineError(summaryError, summary == null && !summaryLoaded),
-    countsError = offlineError(countsError, counts == null && !countsLoaded),
-    profileErrorKind = offlineKind(profileError, profileErrorKind, profile == null && homeIdentity == null && !profileLoaded),
-    homeIdentityErrorKind = offlineKind(homeIdentityError, homeIdentityErrorKind, homeIdentity == null && profile?.professionName.isNullOrBlank() && !homeIdentityLoaded),
-    summaryErrorKind = offlineKind(summaryError, summaryErrorKind, summary == null && !summaryLoaded),
-    countsErrorKind = offlineKind(countsError, countsErrorKind, counts == null && !countsLoaded),
-)
+private fun offlineKind(error: String?, kind: ReadFailureKind?, unread: Boolean): ReadFailureKind? = when {
+    error == null && unread -> ReadFailureKind.Network
+    kind == ReadFailureKind.Network -> ReadFailureKind.Network
+    else -> kind
+}
 
-internal fun PaymentUiState.offlineDisplay() = copy(accountError = offlineError(accountError, account == null),
-    accountErrorKind = offlineKind(accountError, accountErrorKind, account == null))
+internal fun MyUiState.offlineDisplay(): MyUiState {
+    val profileUnread = !restoringDisplay && profile == null && homeIdentity == null && !profileLoaded
+    val identityUnread = !restoringDisplay && homeIdentity == null &&
+        profile?.professionName.isNullOrBlank() && !homeIdentityLoaded
+    val summaryUnread = !restoringDisplay && summary == null && !summaryLoaded
+    val countsUnread = !restoringDisplay && counts == null && !countsLoaded
+    return copy(
+        profileError = offlineError(profileError, profileErrorKind, profileUnread),
+        homeIdentityError = offlineError(homeIdentityError, homeIdentityErrorKind, identityUnread),
+        summaryError = offlineError(summaryError, summaryErrorKind, summaryUnread),
+        countsError = offlineError(countsError, countsErrorKind, countsUnread),
+        profileErrorKind = offlineKind(profileError, profileErrorKind, profileUnread),
+        homeIdentityErrorKind = offlineKind(homeIdentityError, homeIdentityErrorKind, identityUnread),
+        summaryErrorKind = offlineKind(summaryError, summaryErrorKind, summaryUnread),
+        countsErrorKind = offlineKind(countsError, countsErrorKind, countsUnread),
+    )
+}
 
-internal fun DormUiState.offlineDisplay() = DormUiState(
-    rooms = rooms, loading = loading, loaded = loaded, needsLogin = needsLogin, selectedIndex = selectedIndex,
-    network = network, managing = managing, bindingProjects = bindingProjects,
-    roomsLoaded = roomsLoaded, networkLoaded = networkLoaded, roomsAvailable = roomsAvailable,
-    displayRestored = displayRestored,
-    error = offlineError(error, rooms.isEmpty() && !roomsAvailable && !roomsLoaded),
-    networkError = offlineError(networkError, network == null && !networkLoaded),
-    errorKind = offlineKind(error, errorKind, rooms.isEmpty() && !roomsAvailable && !roomsLoaded),
-    networkErrorKind = offlineKind(networkError, networkErrorKind, network == null && !networkLoaded),
-    projectErrorKinds = projectErrorKinds,
-)
+internal fun PaymentUiState.offlineDisplay(): PaymentUiState {
+    val unread = account == null
+    return copy(accountError = offlineError(accountError, accountErrorKind, unread),
+        accountErrorKind = offlineKind(accountError, accountErrorKind, unread))
+}
 
-internal fun BillUiState.offlineDisplay() = copy(
-    error = offlineError(error, !restoringDisplay && items.isEmpty() && !listAvailable && !listLoaded),
-    summaryError = offlineError(summaryError, !restoringDisplay && summary == null && !summaryLoaded),
-    countsError = offlineError(countsError, !restoringDisplay && counts == null && !countsLoaded),
-    errorKind = offlineKind(error, errorKind, !restoringDisplay && items.isEmpty() && !listAvailable && !listLoaded),
-    summaryErrorKind = offlineKind(summaryError, summaryErrorKind, !restoringDisplay && summary == null && !summaryLoaded),
-    countsErrorKind = offlineKind(countsError, countsErrorKind, !restoringDisplay && counts == null && !countsLoaded),
-    stats = stats.copy(
-        dailyError = offlineError(stats.dailyError, !stats.restoringDisplay && !stats.dailyLoaded && stats.period.trendSupported),
-        categoriesError = offlineError(stats.categoriesError, !stats.restoringDisplay && !stats.categoriesLoaded),
-        rankingError = offlineError(stats.rankingError, !stats.restoringDisplay && !stats.rankingLoaded),
-        dailyErrorKind = offlineKind(stats.dailyError, stats.dailyErrorKind, !stats.restoringDisplay && !stats.dailyLoaded && stats.period.trendSupported),
-        categoriesErrorKind = offlineKind(stats.categoriesError, stats.categoriesErrorKind, !stats.restoringDisplay && !stats.categoriesLoaded),
-        rankingErrorKind = offlineKind(stats.rankingError, stats.rankingErrorKind, !stats.restoringDisplay && !stats.rankingLoaded),
-    ),
-)
+internal fun DormUiState.offlineDisplay(): DormUiState {
+    val roomsUnread = !restoringDisplay && rooms.isEmpty() && !roomsAvailable && !roomsLoaded
+    val networkUnread = !restoringDisplay && network == null && !networkLoaded
+    return DormUiState(
+        rooms = rooms, loading = loading, loaded = loaded, needsLogin = needsLogin, selectedIndex = selectedIndex,
+        network = network, managing = managing, bindingProjects = bindingProjects,
+        roomsLoaded = roomsLoaded, networkLoaded = networkLoaded, roomsAvailable = roomsAvailable,
+        displayRestored = displayRestored,
+        restoringDisplay = restoringDisplay,
+        error = offlineError(error, errorKind, roomsUnread),
+        networkError = offlineError(networkError, networkErrorKind, networkUnread),
+        errorKind = offlineKind(error, errorKind, roomsUnread),
+        networkErrorKind = offlineKind(networkError, networkErrorKind, networkUnread),
+        projectErrorKinds = projectErrorKinds,
+    )
+}
+
+internal fun BillUiState.offlineDisplay(): BillUiState {
+    val listUnread = !restoringDisplay && items.isEmpty() && !listAvailable && !listLoaded
+    val summaryUnread = !restoringDisplay && summary == null && !summaryLoaded
+    val countsUnread = !restoringDisplay && counts == null && !countsLoaded
+    val dailyUnread = !stats.restoringDisplay && !stats.dailyLoaded && stats.period.trendSupported
+    val categoriesUnread = !stats.restoringDisplay && !stats.categoriesLoaded
+    val rankingUnread = !stats.restoringDisplay && !stats.rankingLoaded
+    return copy(
+        error = offlineError(error, errorKind, listUnread),
+        summaryError = offlineError(summaryError, summaryErrorKind, summaryUnread),
+        countsError = offlineError(countsError, countsErrorKind, countsUnread),
+        errorKind = offlineKind(error, errorKind, listUnread),
+        summaryErrorKind = offlineKind(summaryError, summaryErrorKind, summaryUnread),
+        countsErrorKind = offlineKind(countsError, countsErrorKind, countsUnread),
+        stats = stats.copy(
+            dailyError = offlineError(stats.dailyError, stats.dailyErrorKind, dailyUnread),
+            categoriesError = offlineError(stats.categoriesError, stats.categoriesErrorKind, categoriesUnread),
+            rankingError = offlineError(stats.rankingError, stats.rankingErrorKind, rankingUnread),
+            dailyErrorKind = offlineKind(stats.dailyError, stats.dailyErrorKind, dailyUnread),
+            categoriesErrorKind = offlineKind(stats.categoriesError, stats.categoriesErrorKind, categoriesUnread),
+            rankingErrorKind = offlineKind(stats.rankingError, stats.rankingErrorKind, rankingUnread),
+        ),
+    )
+}

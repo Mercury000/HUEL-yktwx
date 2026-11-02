@@ -72,7 +72,7 @@ internal fun MyPage(
         ReadRegion("余额", FeedbackText.networkError(balanceError, readError(payment.accountError, payment.accountErrorKind)), payment.account != null),
         ReadRegion("卡状态", readError(payment.cardStatusError, payment.cardStatusErrorKind), payment.accountCard != null),
         ReadRegion("本月概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
-            state.summary != null || state.counts != null)) }
+            state.summary != null || state.counts != null), restoringDisplay = state.restoringDisplay) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -308,9 +308,11 @@ internal fun ProfileAvatar(bytes: ByteArray?, size: Dp, custom: Boolean = false,
 internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBack: () -> Unit, onRefresh: () -> Unit,
     onAvatar: (() -> Unit)? = null, customAvatar: Boolean = false,
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false) {
+    val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val initialError = rememberInitialReadError(state.profile != null, readError(state.profileError, state.profileErrorKind), !state.loading)
     val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
-    val error = rememberCachedReadError(FeedbackText.firstError(readError(state.profileError, state.profileErrorKind), readError(state.avatarError, state.avatarErrorKind)), state.loading, state.profile != null,
+    val error = rememberCachedReadError(FeedbackText.firstError(readError(state.profileError, state.profileErrorKind),
+        readError(state.homeIdentityError, state.homeIdentityErrorKind), readError(state.avatarError, state.avatarErrorKind)), state.loading || state.restoringDisplay, state.profile != null,
         offline = LocalReadOffline.current)
     ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError, state.displayRestored) {
         item {

@@ -43,7 +43,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     PaymentCodePresentationEffect(isActive && displayCode != null)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
     LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
-    val readError = readError(state.error, state.errorKind) ?: ReadError("暂时无法确认卡状态").takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
+    val readError = readError(state.error, state.errorKind)
+        ?: ReadError(FeedbackText.Offline, com.mercury.yktwx.data.ReadFailureKind.Network)
+            .takeIf { LocalReadOffline.current && displayCode == null && state.problem !in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen) }
+        ?: ReadError("暂时无法确认卡状态").takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
     val initialError = rememberInitialReadError(state.account != null || displayCode != null,
         readError, !state.busy)
     val networkError = rememberPageNetworkError(state.busy || state.refreshing || state.accountLoading || state.balanceLoading || state.cardStatusLoading,

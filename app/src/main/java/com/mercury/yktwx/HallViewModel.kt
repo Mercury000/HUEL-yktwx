@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
-import com.mercury.yktwx.data.AccountRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -14,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -22,14 +23,17 @@ import kotlinx.coroutines.withContext
 class HallViewModel internal constructor(
     app: Application, private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
+    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Hall),
 ) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app))
+    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
     private val mutable = MutableStateFlow(DormUiState())
     val state = mutable.asStateFlow()
     private var owner = ""
     private var preview = false
     private var generation = 0L
     private var refreshedAt = 0L
+    private val reads = ReadController(viewModelScope, setOf(ReadPage.Hall), initialEnvironment, ::onActivate)
+    private fun readQuery() = ReadQuery(owner, ReadQuery.Resource.Hall)
     private var task: Job? = null
     private var displayTask: Job? = null
     private var displayPrepared = false
@@ -44,7 +48,7 @@ class HallViewModel internal constructor(
         transactionProjects.any(::transactionProjectPending)
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
-        retry = { startRefresh(transactionRetry = true, silent = true) })
+        retry = { startRefresh(transactionRetry = true, silent = true, trigger = ReadTrigger.Transaction) })
     private val displayPreferences = app.getSharedPreferences("hall_display", Application.MODE_PRIVATE)
     private fun digest(value: String) = java.security.MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
         .joinToString("") { "%02x".format(it) }
@@ -65,27 +69,30 @@ class HallViewModel internal constructor(
         if (owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         transactionRefresh.clear(); transactionProjects.clear()
+        reads.clear()
         projectReadErrors.clear()
         refreshPending = false; managementError = null
         owner = username; preview = enabledPreview
         displayPrepared = false
         lastSelectedTargets = if (owner.isBlank()) emptySet() else
             displayPreferences.getStringSet(displayKey(), emptySet()).orEmpty().toSet()
-        mutable.value = if (UiPreview.enabled && preview && username.isNotBlank()) PreviewData.hallState() else DormUiState()
+        mutable.value = if (UiPreview.enabled && preview && username.isNotBlank()) PreviewData.hallState()
+            else DormUiState(restoringDisplay = username.isNotBlank() && !preview)
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
         if (!preview && username.isNotBlank()) {
-            val attempt = generation
-            displayTask = viewModelScope.launch { restoreDisplay(username, attempt) }
+            displayTask = viewModelScope.launch { restoreDisplay(username) }
         }
     }
     fun onActivate() {
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
         val current = mutable.value
-        if (transactionPending() && current.loaded) { startRefresh(transactionRetry = true); return }
+        if (refreshPending) { startRefresh(trigger = ReadTrigger.Visible); return }
+        if (transactionPending() && current.loaded) { startRefresh(transactionRetry = true, trigger = ReadTrigger.Visible); return }
         if (!current.loaded || !ReadCachePolicy.isFresh(refreshedAt) ||
-            current.error != null || current.networkError != null || current.rooms.any { room -> room.meters.any { it.error != null } }) refresh()
+            current.error != null || current.networkError != null || current.rooms.any { room -> room.meters.any { it.error != null } })
+            startRefresh(trigger = ReadTrigger.Visible)
     }
-    fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) refreshPending = true }
+    fun invalidate() { refreshedAt = 0L; if (task?.isActive == true) { refreshPending = true; reads.reevaluateWhenIdle() } }
     fun invalidateTransaction(project: FeeProject?) {
         transactionProjects.removeAll { !transactionProjectPending(it) }
         transactionProjects += project?.let { listOf(it) } ?: FeeProject.entries
@@ -93,15 +100,34 @@ class HallViewModel internal constructor(
         refreshedAt = 0L
         if (mutable.value.managing) { refreshPending = true; return }
         generation++; task?.cancel(); task = null
+        reads.cancel(readQuery())
         update(loading = false)
     }
-    fun setPageVisible(visible: Boolean) {
-        transactionRefresh.setVisible(visible && !preview && owner.isNotBlank())
-        if (visible) onActivate()
-        else if (transactionPending() && !mutable.value.managing) {
-            generation++; task?.cancel(); task = null
-            update(loading = false)
+
+    fun onReadEnvironment(environment: ReadEnvironment) {
+        reads.update(environment)
+        val visible = reads.isVisible
+        transactionRefresh.setVisible(visible && environment.online != false && !preview && owner.isNotBlank())
+        if (!visible) {
+            if (transactionPending() && !mutable.value.managing) {
+                generation++; reads.cancel(readQuery()); task?.cancel(); task = null
+                update(loading = false)
+            }
+            return
         }
+        if (environment.online == false) {
+            return
+        }
+        onActivate()
+    }
+
+    fun setPageVisible(visible: Boolean, online: Boolean = true, recoveryId: Long = 0) {
+        onReadEnvironment(ReadEnvironment(
+            page = if (visible) ReadPage.Hall else null,
+            foreground = true,
+            online = online,
+            epoch = recoveryId,
+        ))
     }
     fun selectRoom(index: Int) {
         val s = mutable.value
@@ -149,13 +175,22 @@ class HallViewModel internal constructor(
     }
     fun refresh() {
         managementError = null
-        startRefresh()
+        startRefresh(trigger = ReadTrigger.Pull)
     }
-    private fun startRefresh(transactionRetry: Boolean = false, silent: Boolean = false) {
-        if (owner.isBlank() || preview || task?.isActive == true) return
+    fun recoverRead(recoveryId: Long) = reads.recover(readQuery(), recoveryId) {
+        startRefresh(trigger = ReadTrigger.Reconnect, silent = true)
+    }
+    private fun startRefresh(transactionRetry: Boolean = false, silent: Boolean = false,
+        trigger: ReadTrigger = ReadTrigger.Visible) {
+        if (owner.isBlank() || preview || mutable.value.managing) return
+        val query = readQuery()
+        val readTrigger = if (trigger.automatic && transactionPending()) ReadTrigger.Transaction else trigger
+        if (!reads.canStart(query, readTrigger)) return
+
         val attempt = generation
         val username = owner
         val read = transactionRefresh.started()
+        val previousState = mutable.value
         val projects = if (transactionRetry) transactionProjects.filter(::transactionProjectPending)
             else FeeProject.entries
         val errors = if (transactionRetry) projectReadErrors.filterKeys { it !in projects }.toMutableMap()
@@ -172,12 +207,20 @@ class HallViewModel internal constructor(
         fun blockErrorKind() = if (managementError != null) ReadFailureKind.Other else blockProjectError()?.let { errorKinds[it.key] }
         refreshPending = false
         update(loading = !silent, error = blockError(), errorKind = blockErrorKind(), networkError = networkError, networkErrorKind = networkErrorKind)
-        launchTask {
+        task = reads.launch(query, readTrigger, retry = { startRefresh(silent = true, trigger = ReadTrigger.Retry) }) {
             displayTask?.join()
-            if (attempt != generation) return@launchTask
+            if (attempt != generation) return@launch
             if (mutable.value.rooms.isEmpty() && mutable.value.network == null) {
-                restoreDisplay(username, attempt)
+                restoreDisplay(username)
             }
+            if (!startNetwork()) {
+                update(loading = false, error = previousState.error, errorKind = previousState.errorKind,
+                    networkError = previousState.networkError, networkErrorKind = previousState.networkErrorKind)
+                return@launch
+            }
+            var failure: ReadFailureKind? = null
+            var cancelled = true
+            try {
             val previous = mutable.value
             val rooms = previous.rooms.flatMap { it.bindings }.associateBy { it.project }.toMutableMap()
             val bindingProjects = if (transactionRetry) previous.bindingProjects.toMutableSet() else mutableSetOf<FeeProject>()
@@ -325,13 +368,27 @@ class HallViewModel internal constructor(
                     publish()
                 } }
             }
-            if (attempt != generation) return@launchTask
+            if (attempt != generation) return@launch
             publish(finished = true)
             if (errors.isEmpty() && networkError == null && rooms.values.all { room -> room.meters.all { it.error == null } })
                 refreshedAt = if (transactionPending()) 0L else ReadCachePolicy.now()
-            transactionRefresh.finished(read)
+            failure = dormFailure(mutable.value)
+            cancelled = false
+            } catch (e: CancellationException) {
+                throw e
+            } finally {
+                if (!cancelled) complete(failure)
+                transactionRefresh.finished(read)
+            }
         }
     }
+
+    private fun dormFailure(state: DormUiState): ReadFailureKind? = readFailureKind(
+        state.networkErrorKind, state.errorKind,
+        *state.projectErrorKinds.values.toTypedArray(),
+        *state.rooms.flatMap { room -> room.meters.map { it.errorKind } }.toTypedArray(),
+    )
+
     /** Retain only readings for the exact same verified meter after a failed refresh. */
     private fun retainReadings(fresh: DormRoom, previous: DormRoom?): DormRoom {
         if (previous == null || !previous.binding.sameTarget(fresh.binding)) return fresh
@@ -379,15 +436,16 @@ class HallViewModel internal constructor(
         mutable.value = DormUiState(rooms, loading, s.loaded, error, s.needsLogin,
             selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, networkError, managing, s.bindingProjects,
             s.roomsLoaded, s.networkLoaded, s.roomsAvailable, s.displayRestored, s.projectErrorKinds,
-            networkErrorKind.takeIf { networkError != null }, errorKind.takeIf { error != null })
+            networkErrorKind.takeIf { networkError != null }, errorKind.takeIf { error != null }, s.restoringDisplay)
     }
-    private suspend fun restoreDisplay(username: String, attempt: Long) {
+    private suspend fun restoreDisplay(username: String) {
         if (displayPrepared) return
         val cachedRooms = FeeProject.entries.filterNot { it.network }.mapNotNull { project ->
             repository.cachedDisplay(username, DisplayKeys.room(project), DisplayCodecs.Room)
         }
         val network = repository.cachedDisplay(username, DisplayKeys.Network, DisplayCodecs.Query)
-        if (attempt != generation) return
+        currentCoroutineContext().ensureActive()
+        if (owner != username) return
         displayPrepared = true
         val merged = mergeFamilyRooms(cachedRooms).sortedBy(::roomOrder)
         mutable.value = DormUiState(rooms = merged, loading = mutable.value.loading, network = network,

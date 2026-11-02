@@ -175,7 +175,7 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
                 ContentFade(errorText) { InlineError(it, Modifier.testTag(errorTag), maxLines = errorMaxLines) }
             }
             Box(Modifier.fillMaxWidth()) {
-                content()
+                Column(Modifier.fillMaxWidth()) { content() }
                 StableReadProgress(progressVisible, completion.value,
                     Modifier.align(Alignment.TopCenter).offset(y = (-6).dp))
             }
