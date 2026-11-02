@@ -75,6 +75,119 @@ class BillContentTransitionUiTest {
         output.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    private fun failedStats(type: Int) = PreviewData.billStats(state.dateFilter, type).copy(
+        displayRestored = true,
+        dailyError = "网络连接失败", dailyErrorKind = ReadFailureKind.Network,
+        categoriesError = "网络连接失败", categoriesErrorKind = ReadFailureKind.Network,
+        rankingError = "网络连接失败", rankingErrorKind = ReadFailureKind.Network,
+    )
+
+    @Test fun cachedNetworkNoticeStaysContinuousAcrossTypeRetriesAndClearsOnSuccess() {
+        state = state.copy(statsVisible = true, stats = failedStats(2))
+        onType = { type -> state = state.copy(stats = PreviewData.billStats(state.dateFilter, type)
+            .copy(loading = true, displayRestored = true)) }
+        content()
+        frame(20)
+        val notice = compose.onNodeWithTag("page-network-error")
+        val noticeImage = notice.captureToImage().asAndroidBitmap()
+        val noticeBounds = notice.fetchSemanticsNode().boundsInRoot
+        val modeBounds = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot
+        val typeBounds = compose.onNodeWithTag("bill-type-tabs").fetchSemanticsNode().boundsInRoot
+        // Fail before, near, and after the slide settles, then keep one retry pending for longer.
+        for (failureFrame in listOf(1, 16, 35, 70)) {
+            val nextType = if (state.stats.type == 2) 1 else 2
+            click(if (nextType == 1) "收入" else "支出")
+            repeat(failureFrame + 25) { index ->
+                if (index == failureFrame) compose.runOnIdle { state = state.copy(stats = failedStats(nextType)) }
+                frame()
+                compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+                assertEquals("Retry must not collapse the common controls at frame $index",
+                    modeBounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+                assertEquals(typeBounds, compose.onNodeWithTag("bill-type-tabs").fetchSemanticsNode().boundsInRoot)
+                assertEquals(noticeBounds, notice.fetchSemanticsNode().boundsInRoot)
+                assertTrue("A repeated network failure must not exit and re-enter at frame $index",
+                    noticeImage.sameAs(notice.captureToImage().asAndroidBitmap()))
+            }
+        }
+        click("收入")
+        frame(35)
+        assertEquals(modeBounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { state = state.copy(stats = PreviewData.billStats(state.dateFilter, 1)) }
+        frame(25)
+        notice.assertDoesNotExist()
+        compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+        compose.onNodeWithTag("bill-stats-amount").assertIsDisplayed()
+        val settledBounds = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot
+        frame(10)
+        assertEquals(settledBounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+    }
+
+    @Test fun delayedCacheRestorationAndRapidReversalsKeepOneNetworkNotice() {
+        state = state.copy(statsVisible = true, stats = failedStats(2))
+        onType = { type -> state = state.copy(stats = BillStatsState(period = state.dateFilter,
+            type = type, loading = true)) }
+        content(dark = true, narrow = true)
+        frame(20)
+        val notice = compose.onNodeWithTag("page-network-error")
+        val image = notice.captureToImage().asAndroidBitmap()
+        val bounds = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot
+        fun assertStable() {
+            compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+            assertTrue(image.sameAs(notice.captureToImage().asAndroidBitmap()))
+            assertEquals(bounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+        }
+        repeat(3) {
+            click("收入")
+            repeat(4) { frame(); assertStable() }
+            compose.runOnIdle { state = state.copy(stats = PreviewData.billStats(state.dateFilter, 1)
+                .copy(loading = true, displayRestored = true)) }
+            repeat(3) { frame(); assertStable() }
+            click("支出")
+            frame()
+            compose.runOnIdle { state = state.copy(stats = PreviewData.billStats(state.dateFilter, 2)
+                .copy(loading = true, displayRestored = true)) }
+            repeat(35) { frame(); assertStable() }
+            compose.runOnIdle { state = state.copy(stats = failedStats(2)) }
+            repeat(20) { frame(); assertStable() }
+        }
+    }
+
+    @Test fun networkRetryNoticeDoesNotLeakIntoUncachedOrDifferentPeriodReads() {
+        state = state.copy(statsVisible = true, stats = failedStats(2))
+        onType = { type -> state = state.copy(stats = BillStatsState(period = state.dateFilter,
+            type = type, loading = true)) }
+        content()
+        click("收入")
+        frame(50)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithContentDescription("正在加载统计").assertIsDisplayed()
+        compose.onAllNodesWithText("显示上次数据", substring = true).assertCountEquals(0)
+        compose.runOnIdle { state = state.copy(stats = state.stats.copy(loading = false, loaded = true,
+            dailyError = "网络连接失败", dailyErrorKind = ReadFailureKind.Network,
+            categoriesError = "网络连接失败", categoriesErrorKind = ReadFailureKind.Network,
+            rankingError = "网络连接失败", rankingErrorKind = ReadFailureKind.Network)) }
+        frame(25)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(stats = failedStats(1)) }
+        frame(25)
+        compose.onNodeWithTag("page-network-error").assertIsDisplayed()
+        val newPeriod = BillDateFilter.year(2025)
+        compose.runOnIdle { state = state.copy(dateFilter = newPeriod,
+            stats = PreviewData.billStats(newPeriod, 1).copy(loading = true, displayRestored = true)) }
+        frame(25)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithTag("bill-stats-amount").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(stats = failedStats(1)) }
+        frame(25)
+        compose.onNodeWithTag("page-network-error").assertIsDisplayed()
+        compose.runOnIdle { state = BillUiState(needsLogin = true, statsVisible = true,
+            dateFilter = newPeriod, stats = BillStatsState(period = newPeriod, type = 1)) }
+        frame(25)
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+    }
+
     @Test fun modeSwitchKeepsOneSelectorAndRestoresIndependentReadingPositions() {
         content()
         val selectorId = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().id
