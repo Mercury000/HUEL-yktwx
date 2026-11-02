@@ -142,6 +142,41 @@ class ReadStatusUiTest {
         capture("retry")
     }
 
+    @Test fun successfulRetryCollapsesErrorAndProgressTogetherWithoutFlashing() {
+        var loading by mutableStateOf(true)
+        var error by mutableStateOf<String?>("资料、余额、本月概览更新失败，显示上次数据，请下拉刷新")
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                AppTheme {
+                    Box(Modifier.width(240.dp)) {
+                        PageReadNotice(error, 12.dp, loading) {
+                            Box(Modifier.size(100.dp).testTag("content"))
+                        }
+                    }
+                }
+            }
+        }
+        repeat(3) { frame() }
+        compose.onNodeWithTag("page-network-error").assertIsDisplayed()
+        compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+        var previousTop = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { loading = false; error = null }
+        repeat(40) { step ->
+            frame()
+            val errors = compose.onAllNodesWithTag("page-network-error").fetchSemanticsNodes().size
+            val progress = compose.onAllNodesWithTag("page-read-progress").fetchSemanticsNodes().size
+            assertEquals("The error and its progress must exit together in frame $step", errors, progress)
+            val currentTop = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
+            assertTrue("The notice must not expand again during exit: $previousTop -> $currentTop", currentTop <= previousTop + 1f)
+            previousTop = currentTop
+        }
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+        assertEquals(0f, previousTop, 1f)
+    }
+
     @Test fun actualPullOwnsProgressAndFailureStillAppearsAfterIt() {
         val ready = PreviewData.hallState()
         var state by mutableStateOf(ready)
@@ -160,7 +195,8 @@ class ReadStatusUiTest {
         assertEquals(1, refreshes)
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
         compose.runOnIdle { state = DormUiState(ready.rooms, loaded = true, network = ready.network,
-            error = "网络连接失败", networkError = "网络连接失败") }
+            error = "网络连接失败", errorKind = com.mercury.yktwx.data.ReadFailureKind.Network,
+            networkError = "网络连接失败", networkErrorKind = com.mercury.yktwx.data.ReadFailureKind.Network) }
         compose.onNodeWithTag("page-network-error").assertIsDisplayed()
     }
 

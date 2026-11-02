@@ -109,30 +109,35 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     topSpacing: Dp = 0.dp,
     content: @Composable () -> Unit) {
     val userRefresh = LocalUserRefresh.current
-    val reading = loading && !userRefresh && !LocalReadOffline.current
+    val offline = LocalReadOffline.current
+    val reading = loading && !userRefresh && !offline
     var finishing by remember { mutableStateOf(false) }
     val completion = remember { Animatable(0f) }
     var wasReading by remember { mutableStateOf(reading) }
-    LaunchedEffect(reading, error, failed) {
+    // Retain the error while the whole slot exits; a new read can replace its snapshot.
+    val displayedError = rememberWhileShown(error != null || reading, error.orEmpty())
+    val completing = !reading && wasReading && !failed && !userRefresh && !offline && displayedError.isEmpty()
+    LaunchedEffect(reading, error, failed, userRefresh, offline) {
+        val completeRead = wasReading && !failed && !userRefresh && !offline && displayedError.isEmpty()
+        wasReading = reading
         if (reading) {
             finishing = false
             completion.snapTo(0f)
-        } else if (wasReading && !failed && !userRefresh) {
+        } else if (completeRead) {
             finishing = true
             completion.animateTo(1f, tween(ContentMotion.Append))
             finishing = false
         } else finishing = false
-        wasReading = reading
     }
     // Cached failures are already present on entry; only a new visibility change animates.
-    val showing = error != null || reading || finishing
-    val displayedError = rememberWhileShown(error != null, error.orEmpty())
+    val showing = error != null || reading || completing || finishing
+    val displayedProgress = rememberWhileShown(showing, reading || completing || finishing)
     Column(Modifier.fillMaxWidth()) {
         FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = spacing) {
             Box(Modifier.fillMaxWidth().readContentSize()) {
-                if (error != null || displayedError.isNotEmpty() && !reading && !finishing) {
+                if (displayedError.isNotEmpty()) {
                     ContentFade(displayedError) { InlineError(it, Modifier.testTag(errorTag)) }
-                    if (reading) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
+                    if (displayedProgress) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
                 } else ReadProgress(Modifier, completion.value)
             }
         }
