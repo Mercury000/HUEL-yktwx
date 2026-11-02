@@ -46,6 +46,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val readError = readError(state.error, state.errorKind) ?: ReadError("暂时无法确认卡状态").takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
     val initialError = rememberInitialReadError(state.account != null || displayCode != null,
         readError, !state.busy)
+    val networkError = rememberPageNetworkError(state.busy || state.refreshing || state.accountLoading || state.balanceLoading || state.cardStatusLoading,
+        state.account != null || displayCode != null, null,
+        ReadRegion("余额", readError(state.accountError, state.accountErrorKind), state.account != null),
+        ReadRegion("卡状态", readError(state.cardStatusError, state.cardStatusErrorKind), state.accountCard != null))
+        .takeIf { initialError == null && readError == null && !state.busy }
     val showEnlarged = isActive && displayCode != null && enlarged != null
     // Only the format survives exit. The popup may still compose its previous content
     // after the close action clears enlarged, so it must not unwrap that live state.
@@ -84,7 +89,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     color = MiuixTheme.colorScheme.primary,
                     refreshTexts = AppRefreshTexts,
                 ) {
-                InitialReadTransition(initialError) { displayedError ->
+                InitialReadTransition(initialError, networkError) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && initialError != null) state.copy(error = null, busy = true) else state
@@ -103,7 +108,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                         } else {
                         item {
-                            Column {
+                            PageReadNotice(networkError, 16.dp, errorMaxLines = Int.MAX_VALUE) {
                             updateNotice()
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {

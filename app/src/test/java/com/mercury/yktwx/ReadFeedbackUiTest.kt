@@ -44,6 +44,7 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadFeedbackUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val cachedOffline = "网络连接失败，显示上次数据，请下拉刷新"
     private val networkError = "服务暂时无法访问"
     private val verticalList = hasScrollToIndexAction() and
         SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
@@ -53,6 +54,89 @@ class ReadFeedbackUiTest {
         file.parentFile?.mkdirs()
         file.outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
+    @Test fun pageNetworkMessagesDistinguishFullPartialAndCachedFailures() {
+        val error = ReadError(networkError, ReadFailureKind.Network)
+        assertNull(FeedbackText.pageNetworkError(ReadRegion("余额", null, true)))
+        assertEquals(FeedbackText.PageOffline, FeedbackText.pageNetworkError(ReadRegion("余额", error, false)))
+        assertEquals(cachedOffline, FeedbackText.pageNetworkError(ReadRegion("余额", error, true)))
+        assertEquals("余额获取失败，请下拉刷新", FeedbackText.pageNetworkError(
+            ReadRegion("余额", error, false), ReadRegion("资料", null, true)))
+        assertEquals("余额、本月概览更新失败，显示上次数据，请下拉刷新", FeedbackText.pageNetworkError(
+            ReadRegion("余额", error, true), ReadRegion("本月概览", error, true), ReadRegion("资料", null, true)))
+        assertEquals("余额、本月概览获取失败，请下拉刷新", FeedbackText.pageNetworkError(
+            ReadRegion("余额", error, false), ReadRegion("本月概览", error, false), ReadRegion("资料", null, true)))
+    }
+
+    @Test fun partialCachedStatisticsNameFailedRegionsAndWrapAtLargeDarkText() {
+        val settings = ThemeSettings(compose.activity.application)
+        val ready = PreviewData.billState()
+        val stats = PreviewData.billStats(ready.dateFilter, 2).copy(
+            dailyError = networkError, dailyErrorKind = ReadFailureKind.Network,
+            categoriesError = networkError, categoriesErrorKind = ReadFailureKind.Network)
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalInspectionMode provides true,
+                LocalDensity provides Density(density.density, 1.5f)) {
+                AppTheme(ColorSchemeMode.Dark) {
+                    BillPage(ready.copy(statsVisible = true, stats = stats), settings, {}, {}, {}, {},
+                        { _, _, _ -> }, {}, {}, {}, showBack = false)
+                }
+            }
+        }
+        val message = "每日趋势、分类统计更新失败，显示上次数据，请下拉刷新"
+        assertSingleNetworkFeedback(message)
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText(message).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.single().lineCount > 1)
+        assertFalse(layouts.single().hasVisualOverflow)
+        capture("stats-partial-cache-large-dark")
+    }
+
+    @Test fun wrappedNetworkNoticeReusesReadAndCachedContentHeightTransitions() {
+        var cached by mutableStateOf(false)
+        var loading by mutableStateOf(true)
+        var message by mutableStateOf<String?>(null)
+        val short = FeedbackText.PageOffline
+        val long = "资料、余额、卡状态、本月概览更新失败，显示上次数据，请下拉刷新"
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                AppTheme {
+                    key(cached) {
+                        Box(Modifier.width(240.dp)) {
+                            PageReadNotice(message, 12.dp, loading, errorMaxLines = Int.MAX_VALUE) {
+                                Box(Modifier.size(100.dp).testTag("notice-content"))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        fun top() = compose.onNodeWithTag("notice-content").fetchSemanticsNode().boundsInRoot.top
+        for (hasCache in listOf(false, true)) {
+            compose.runOnIdle { cached = hasCache; loading = false; message = null }
+            val empty = top()
+            compose.runOnIdle { loading = !hasCache }
+            compose.runOnIdle { loading = false; message = short }
+            val oneLine = top()
+            compose.mainClock.autoAdvance = false
+            compose.runOnIdle { message = long }
+            compose.mainClock.advanceTimeByFrame()
+            assertEquals(oneLine, top(), 1f)
+            compose.mainClock.advanceTimeBy(64)
+            val expanding = top()
+            compose.mainClock.advanceTimeBy(400)
+            val wrapped = top()
+            assertTrue("Both read and cached notices resize gradually", expanding > oneLine && expanding < wrapped)
+            compose.runOnIdle { message = null }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeByFrame()
+            compose.mainClock.advanceTimeBy(400)
+            assertEquals(empty, top(), 1f)
+            compose.mainClock.autoAdvance = true
         }
     }
 
@@ -171,6 +255,10 @@ class ReadFeedbackUiTest {
         var page by mutableIntStateOf(0)
         var dark by mutableStateOf(false)
         var refreshes = 0
+        val updateHint: @Composable () -> Unit = {
+            InlineUpdateNotice(AppUpdateUiState(noticeVisible = true,
+                release = UpdateRelease(5, "1.3.0", "", "https://example.com/update")), {}, {})
+        }
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalInspectionMode provides true,
@@ -179,17 +267,17 @@ class ReadFeedbackUiTest {
                     key(page, dark) {
                         when (page) {
                             0 -> PaymentPage(PaymentUiState(needsLogin = false, error = networkError, errorKind = ReadFailureKind.Network),
-                                settings, 0.dp, { refreshes++ })
+                                settings, 0.dp, { refreshes++ }, updateNotice = updateHint)
                             1 -> HallPage(settings, 0.dp, dorm = DormUiState(loaded = true,
                                 error = networkError, errorKind = ReadFailureKind.Network, networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false),
-                                onRefreshDorm = { refreshes++ })
+                                onRefreshDorm = { refreshes++ }, updateNotice = updateHint)
                             2 -> BillPage(BillUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
                                 summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network), settings,
-                                {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                                {}, { refreshes++ }, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false, updateNotice = updateHint)
                             3 -> MyPage(MyUiState(loaded = true, profileError = networkError, profileErrorKind = ReadFailureKind.Network,
                                 homeIdentityError = networkError, homeIdentityErrorKind = ReadFailureKind.Network, summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network),
                                 PaymentUiState(needsLogin = false), settings, 0.dp, false, { refreshes++ },
-                                {}, {}, {}, {}, false, {}, false, false, {}, {})
+                                {}, {}, {}, {}, false, {}, false, false, {}, {}, updateNotice = updateHint)
                         }
                     }
                 }
@@ -198,9 +286,12 @@ class ReadFeedbackUiTest {
         for (night in listOf(false, true)) for (index in 0..3) {
             compose.runOnIdle { dark = night; page = index }
             compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
-            compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
             compose.onAllNodesWithTag("page-network-error").assertCountEquals(0)
-            compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+            compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
+            compose.onNodeWithText(FeedbackText.PageOffline).assertIsDisplayed()
+            compose.onNodeWithTag("read-unavailable").assert(!hasClickAction())
+            assertTrue(compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot.bottom <=
+                compose.onNodeWithTag("read-unavailable").fetchSemanticsNode().boundsInRoot.top)
             compose.onNodeWithText("重试").assertDoesNotExist()
             compose.onNodeWithText("未更新").assertDoesNotExist()
             capture("first-$index-${if (night) "large-dark" else "light"}")
@@ -210,6 +301,57 @@ class ReadFeedbackUiTest {
             }
             compose.runOnIdle { assertEquals("Page $index must receive a real pull", before + 1, refreshes) }
         }
+    }
+
+    @Test fun cachedMainPagesKeepNetworkNoticeAboveUpdatesAndContent() {
+        val settings = ThemeSettings(compose.activity.application)
+        var page by mutableIntStateOf(0)
+        val updateHint: @Composable () -> Unit = {
+            InlineUpdateNotice(AppUpdateUiState(noticeVisible = true,
+                release = UpdateRelease(5, "1.3.0", "", "https://example.com/update")), {}, {})
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    key(page) {
+                        when (page) {
+                            0 -> PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {}, updateNotice = updateHint)
+                            1 -> HallPage(settings, 0.dp, dorm = PreviewData.hallState(), updateNotice = updateHint)
+                            2 -> BillPage(PreviewData.billState(), settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {},
+                                showBack = false, updateNotice = updateHint)
+                            3 -> MyPage(PreviewData.myState(), PreviewData.paymentState(false), settings, 0.dp, false, {},
+                                {}, {}, {}, {}, false, {}, false, false, {}, {}, updateNotice = updateHint)
+                        }
+                    }
+                }
+            }
+        }
+        for (index in 0..3) {
+            compose.runOnIdle { page = index }
+            assertSingleNetworkFeedback(cachedOffline)
+            val contentTag = listOf("payment-code-card", "hall-utility-card", "bill-mode-tabs", "my-balance-card")[index]
+            val notice = compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot
+            val update = compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot
+            assertTrue(notice.bottom <= update.top)
+            assertTrue(update.bottom <= compose.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.top)
+            capture("cached-$index-with-update")
+        }
+    }
+
+    @Test fun billPaginationNetworkFailureSharesTopNoticeAndKeepsLoadMoreGesture() {
+        val settings = ThemeSettings(compose.activity.application)
+        val state = PreviewData.billState().copy(currentPage = 1, pages = 2,
+            loadMoreError = networkError, loadMoreErrorKind = ReadFailureKind.Network)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false) }
+            }
+        }
+        assertSingleNetworkFeedback("账单明细更新失败，显示上次数据，请下拉刷新")
+        compose.onNodeWithTag("bill-list").performScrollToNode(hasText("继续上拉加载更多"))
+        compose.onNodeWithText("继续上拉加载更多").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，更多账单未加载，请再次上拉").assertDoesNotExist()
+        compose.onNodeWithText("没有更多了").assertDoesNotExist()
     }
 
     @Test fun failedRetryKeepsTheErrorUntilActualContentArrives() {
@@ -222,8 +364,10 @@ class ReadFeedbackUiTest {
             }
         }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.runOnIdle { state = DormUiState(loading = true, loaded = true, roomsAvailable = false) }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onNodeWithTag("hall-utility-card").assertDoesNotExist()
         compose.runOnIdle { state = state.let { DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
             networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false) } }
@@ -243,14 +387,14 @@ class ReadFeedbackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = failed) } }
         }
-        assertSingleNetworkFeedback("水电费、校园网更新失败，请下拉刷新")
+        assertSingleNetworkFeedback(cachedOffline)
         room.meters.forEach { meter ->
             compose.onAllNodesWithText(meter.readings.first().value).assertCountEquals(1)
         }
         capture("hall-cache")
     }
 
-    @Test fun hallSingleNetworkFailuresRemainInsideTheirRegionAndKeepHealthyRegions() {
+    @Test fun hallSingleNetworkFailuresUseTopNoticeAndKeepHealthyRegions() {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.hallState()
         var state by mutableStateOf(DormUiState(rooms = ready.rooms, loaded = true,
@@ -259,21 +403,21 @@ class ReadFeedbackUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = state) } }
         }
         compose.onNodeWithText("校园网").assertIsDisplayed()
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
-        compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("hall-network-card")))
+        assertSingleNetworkFeedback("校园网信息获取失败，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("hall-network-card").fetchSemanticsNode().boundsInRoot.top)
         capture("hall-network-first-failure")
         compose.runOnIdle { state = DormUiState(rooms = ready.rooms, loaded = true,
             network = ready.network, networkError = networkError, networkErrorKind = ReadFailureKind.Network) }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithTag("read-notice").assert(hasAnyAncestor(hasTestTag("hall-network-card")))
+        assertSingleNetworkFeedback("校园网信息更新失败，显示上次数据，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("hall-network-card").fetchSemanticsNode().boundsInRoot.top)
         capture("hall-network-cache-failure")
         compose.runOnIdle { state = DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
             network = ready.network, roomsAvailable = false) }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
-        compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("hall-utility-card")))
+        assertSingleNetworkFeedback("水电费获取失败，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.top)
         compose.onNodeWithText("未绑定").assertDoesNotExist()
         capture("hall-utility-first-failure")
         compose.runOnIdle { state = ready }
@@ -282,7 +426,7 @@ class ReadFeedbackUiTest {
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
     }
 
-    @Test fun myBalanceReadUsesSkeletonThenOneRegionFailureAndRetainsItUntilBalanceReturns() {
+    @Test fun myBalanceReadUsesSkeletonThenTopNoticeUntilBalanceReturns() {
         val settings = ThemeSettings(compose.activity.application)
         var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountLoading = true))
         compose.setContent {
@@ -295,20 +439,18 @@ class ReadFeedbackUiTest {
         }
         compose.onNodeWithText("¥ —").assertDoesNotExist()
         compose.runOnIdle { payment = payment.copy(accountLoading = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network) }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-unavailable").assertCountEquals(1)
-        compose.onNodeWithTag("read-unavailable").assert(hasAnyAncestor(hasTestTag("my-balance-card")))
+        assertSingleNetworkFeedback("余额获取失败，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("my-balance-card").fetchSemanticsNode().boundsInRoot.top)
         compose.onNodeWithTag("my-summary-card").assertExists()
         capture("my-balance-first-failure")
         compose.runOnIdle { payment = payment.copy(accountLoading = true, accountError = null) }
-        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        compose.onNodeWithText("余额获取失败，请下拉刷新").assertIsDisplayed()
         val account = PreviewData.paymentState(false).account!!
         compose.runOnIdle { payment = PaymentUiState(needsLogin = false, account = account, accountError = networkError, accountErrorKind = ReadFailureKind.Network) }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithTag("read-notice").assert(!hasAnyAncestor(hasTestTag("my-balance-card")))
-        assertTrue(compose.onNodeWithTag("read-notice").fetchSemanticsNode().boundsInRoot.top >=
-            compose.onNodeWithTag("my-balance-card").fetchSemanticsNode().boundsInRoot.bottom)
+        assertSingleNetworkFeedback("余额更新失败，显示上次数据，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("my-balance-card").fetchSemanticsNode().boundsInRoot.top)
         compose.onNodeWithText("¥ ${money(account.balanceCents)}").assertIsDisplayed()
         capture("my-balance-cache-failure")
     }
@@ -350,8 +492,10 @@ class ReadFeedbackUiTest {
             }
         }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(refreshing = true, error = null, summaryError = null, countsError = null) }
         compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onNodeWithContentDescription("正在加载账单").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(refreshing = false, summary = BillSummary(0, 0)) }
         compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
@@ -368,11 +512,11 @@ class ReadFeedbackUiTest {
                 }
             }
         }
-        assertSingleNetworkFeedback("明细、概览更新失败，请下拉刷新")
+        assertSingleNetworkFeedback(cachedOffline)
         capture("bill-cache")
     }
 
-    @Test fun failedSummaryAndCountsRemainOneInlineErrorInTheirSharedOverview() {
+    @Test fun failedSummaryAndCountsUseOneTopNotice() {
         val settings = ThemeSettings(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -382,13 +526,13 @@ class ReadFeedbackUiTest {
                 }
             }
         }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+        assertSingleNetworkFeedback("账单概览更新失败，显示上次数据，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot.top)
         capture("bill-summary-only-network-error")
     }
 
-    @Test fun bothMeterErrorsRemainOneUtilityInlineErrorWhenCampusNetworkIsHealthy() {
+    @Test fun bothMeterErrorsUseTopNoticeWhenCampusNetworkIsHealthy() {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
@@ -398,14 +542,14 @@ class ReadFeedbackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { HallPage(settings, 0.dp, dorm = failed) } }
         }
-        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
-        compose.onAllNodesWithTag("read-notice").assertCountEquals(1)
-        compose.onNodeWithTag("read-notice").assert(hasAnyAncestor(hasTestTag("hall-utility-card")))
+        assertSingleNetworkFeedback("水电费更新失败，显示上次数据，请下拉刷新")
+        assertTrue(compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot.bottom <=
+            compose.onNodeWithTag("hall-utility-card").fetchSemanticsNode().boundsInRoot.top)
         room.meters.forEach { compose.onNodeWithText(it.readings.first().value).assertIsDisplayed() }
         capture("hall-utility-only-network-error")
     }
 
-    @Test fun multipleFailedUnreadRegionsUseOneNamedErrorAndKeepValuesUnknown() {
+    @Test fun multipleFailedUnreadRegionsUseOneTopNoticeAndKeepValuesUnknown() {
         val settings = ThemeSettings(compose.activity.application)
         val my = PreviewData.myState().copy(summary = null, counts = null,
             summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network)
@@ -416,16 +560,19 @@ class ReadFeedbackUiTest {
                     false, {}, false, false, {}, {}) }
             }
         }
-        assertSingleNetworkFeedback("余额、概览更新失败，请下拉刷新")
+        assertSingleNetworkFeedback("余额、本月概览获取失败，请下拉刷新")
         compose.onNodeWithText("¥ 0.00").assertDoesNotExist()
         capture("my-partial-unread-network-error")
     }
 
-    private fun assertSingleNetworkFeedback(message: String) {
+    private fun assertSingleNetworkFeedback(message: String = FeedbackText.PageOffline) {
         compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.onAllNodesWithTag("read-unavailable").assertCountEquals(0)
         compose.onNodeWithText(message).assertIsDisplayed()
+        compose.onAllNodesWithText(message).assertCountEquals(1)
+        compose.onNodeWithTag("page-network-error").assert(!hasClickAction())
+        compose.onNode(hasClickAction() and hasAnyAncestor(hasTestTag("page-network-error"))).assertDoesNotExist()
     }
 
     @Test fun cachedMyIdentityBalanceAndSummaryNetworkFailuresShareOneInlineError() {
@@ -439,31 +586,40 @@ class ReadFeedbackUiTest {
                     false, {}, false, false, {}, {}) }
             }
         }
-        assertSingleNetworkFeedback("资料、余额、概览更新失败，请下拉刷新")
+        assertSingleNetworkFeedback("资料、余额、本月概览更新失败，显示上次数据，请下拉刷新")
         compose.onNodeWithText("¥ ${money(payment.account!!.balanceCents)}").assertIsDisplayed()
         compose.onNodeWithTag("my-summary-card").assertExists()
         capture("my-cache-network-error")
     }
 
-    @Test fun paymentNetworkFailureKeepsBalanceAndUsesTheCenteredPaymentStatus() {
+    @Test fun paymentNetworkFailureKeepsBalanceAndUsesCenteredPaymentStatus() {
         val settings = ThemeSettings(compose.activity.application)
-        val payment = PreviewData.paymentState(false).copy(code = null, error = networkError, errorKind = ReadFailureKind.Network)
+        var payment by mutableStateOf(PreviewData.paymentState(false).copy(error = networkError, errorKind = ReadFailureKind.Network))
         compose.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) {
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides true) {
                 AppTheme { PaymentPage(payment, settings, 0.dp, {}) }
             }
         }
         compose.onNodeWithTag("page-network-error").assertDoesNotExist()
         compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
+        compose.onNodeWithTag("payment-status-group").assertIsDisplayed()
         compose.onNodeWithTag("payment-status-group").assert(hasAnyAncestor(hasTestTag("payment-code-card")))
         compose.onNodeWithText("付款码暂不可用").assertIsDisplayed()
-        compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
+        compose.onAllNodesWithText(FeedbackText.PageOffline).assertCountEquals(1)
         compose.onNodeWithContentDescription("付款条形码").assertDoesNotExist()
         compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
         compose.onNodeWithText("解挂").assertDoesNotExist()
         compose.onNodeWithTag("payment-code-card").assertExists()
         compose.onNodeWithText("¥ ${money(payment.account!!.balanceCents)}").assertIsDisplayed()
         capture("payment-cache-network-error")
+        compose.runOnIdle { payment = payment.copy(busy = true, refreshing = true, error = null, errorKind = null, code = null) }
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithTag("payment-status-group").assertIsDisplayed()
+        compose.onNodeWithText("正在确认卡状态").assertIsDisplayed()
+        compose.onNodeWithText("¥ ${money(payment.account!!.balanceCents)}").assertIsDisplayed()
+        compose.runOnIdle { payment = payment.copy(busy = false, refreshing = false, error = networkError, errorKind = ReadFailureKind.Network) }
+        compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+        compose.onNodeWithText("付款码暂不可用").assertIsDisplayed()
     }
 
     @Test fun pageNetworkNoticeMovesCachedContentGraduallyAndLeavesNoGapAfterRecovery() {
@@ -491,7 +647,7 @@ class ReadFeedbackUiTest {
         val shown = cardTop()
         assertEquals("Inserting the notice must not jump the first card", before, start, 1f)
         assertTrue("The notice and its spacing should expand gradually", entering > before && entering < shown)
-        compose.onNodeWithText("水电费、校园网更新失败，请下拉刷新").assertIsDisplayed()
+        compose.onNodeWithText(cachedOffline).assertIsDisplayed()
 
         compose.runOnIdle { state = ready }
         compose.waitForIdle()
@@ -501,7 +657,7 @@ class ReadFeedbackUiTest {
         val exiting = cardTop()
         assertTrue("Recovery should shrink the notice gradually: before=$before, shown=$shown, exiting=$exiting",
             exiting > before && exiting < shown)
-        compose.onNodeWithText("水电费、校园网更新失败，请下拉刷新").assertExists()
+        compose.onNodeWithText(cachedOffline).assertExists()
         // A new failure while the old notice exits must resume without an empty banner.
         compose.runOnIdle { state = failed }
         compose.waitForIdle()
@@ -541,7 +697,7 @@ class ReadFeedbackUiTest {
             for (step in 1..5) {
                 compose.mainClock.advanceTimeBy(64)
                 assertEquals("Retry must retain the cached notice in frame $step", original, cardTop(), 1f)
-                assertSingleNetworkFeedback("水电费、校园网更新失败，请下拉刷新")
+                assertSingleNetworkFeedback(cachedOffline)
             }
             compose.runOnIdle { state = failed }
             compose.waitForIdle()
@@ -599,7 +755,7 @@ class ReadFeedbackUiTest {
                 }
             }
         }
-        assertSingleNetworkFeedback("趋势、分类、排行更新失败，请下拉刷新")
+        assertSingleNetworkFeedback(cachedOffline)
         compose.onNodeWithTag("bill-stats-overview").assertIsDisplayed()
         capture("stats-cache-network-large-dark")
     }

@@ -80,17 +80,6 @@ fun BillPage(
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
         (state.stats.period.trendSupported && state.stats.dailyLoaded)
-    val networkError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
-        state.typeId, state.amountFromCents, state.amountToCents) {
-        rememberPageNetworkError(if (state.statsVisible) FeedbackText.mergedNetworkError(
-            "趋势" to readError(state.stats.dailyError, state.stats.dailyErrorKind), "分类" to readError(state.stats.categoriesError, state.stats.categoriesErrorKind), "排行" to readError(state.stats.rankingError, state.stats.rankingErrorKind))
-            else FeedbackText.mergedNetworkError(
-                "明细" to FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
-                "概览" to FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))),
-            if (state.statsVisible) state.stats.loading else state.loading || state.refreshing,
-            if (state.statsVisible) statsHasContent else listHasContent,
-            offline = LocalReadOffline.current)
-    }
     val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {
         rememberInitialReadError(if (state.statsVisible) statsHasContent else listHasContent,
@@ -98,6 +87,19 @@ fun BillPage(
                 readError(state.stats.categoriesError, state.stats.categoriesErrorKind), readError(state.stats.dailyError, state.stats.dailyErrorKind), readError(state.stats.rankingError, state.stats.rankingErrorKind))
             else FeedbackText.firstError(readError(state.error, state.errorKind), readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
             if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
+    }
+    val networkError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
+        state.typeId, state.amountFromCents, state.amountToCents) {
+        if (state.statsVisible) rememberPageNetworkError(state.stats.loading, statsHasContent, initialError,
+            *listOfNotNull(
+                ReadRegion("每日趋势", readError(state.stats.dailyError, state.stats.dailyErrorKind), state.stats.dailyLoaded).takeIf { state.stats.period.trendSupported },
+                ReadRegion("分类统计", readError(state.stats.categoriesError, state.stats.categoriesErrorKind), state.stats.categoriesLoaded),
+                ReadRegion("账单排行", readError(state.stats.rankingError, state.stats.rankingErrorKind), state.stats.rankingLoaded)).toTypedArray())
+        else rememberPageNetworkError(state.loading || state.refreshing || state.loadingMore, listHasContent, initialError,
+            ReadRegion("账单明细", FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
+                state.listAvailable || state.items.isNotEmpty()),
+            ReadRegion("账单概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
+                state.summary != null || state.counts != null))
     }
     val detailBar = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberTopAppBarState() }
     val statsBar = key(state.stats.period) { rememberTopAppBarState() }
@@ -204,7 +206,14 @@ fun BillPage(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item(key = "mode") {
-                            Column {
+                            PageReadNotice(networkError.takeIf { initialError == null }, 12.dp, errorMaxLines = Int.MAX_VALUE,
+                                loading = !showFailure && !state.needsLogin && if (state.statsVisible)
+                                    state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
+                                    else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
+                                        (state.loaded || state.displayRestored),
+                                failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
+                                    state.stats.categoriesError != null || state.stats.rankingError != null
+                                    else state.error != null || state.summaryError != null || state.countsError != null) {
                             updateNotice()
                             Box(Modifier.width(180.dp).testTag("bill-mode-tabs")) {
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
@@ -226,32 +235,24 @@ fun BillPage(
                             }
                         } else {
                             item(key = "date") {
-                                PageReadNotice(networkError, 12.dp, loading = if (state.statsVisible)
-                                    state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
-                                    else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
-                                        (state.loaded || state.displayRestored),
-                                    failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
-                                        state.stats.categoriesError != null || state.stats.rankingError != null
-                                        else state.error != null || state.summaryError != null || state.countsError != null) {
-                                    BillDateSelector(
-                                        filter = state.dateFilter,
-                                        minimumDate = BillListMinimumDate,
-                                        onDateSelected = onDateSelected,
-                                        isActive = isActive,
-                                    ) {
-                                        if (!state.statsVisible) Box {
-                                            IconButton(
-                                                onClick = { showFilter = true },
-                                            ) {
-                                                Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                            }
-                                            if (state.activeFilterCount > 0) {
-                                                Badge(
-                                                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                                        .size(7.dp),
-                                                    containerColor = MiuixTheme.colorScheme.primary,
-                                                )
-                                            }
+                                BillDateSelector(
+                                    filter = state.dateFilter,
+                                    minimumDate = BillListMinimumDate,
+                                    onDateSelected = onDateSelected,
+                                    isActive = isActive,
+                                ) {
+                                    if (!state.statsVisible) Box {
+                                        IconButton(
+                                            onClick = { showFilter = true },
+                                        ) {
+                                            Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        }
+                                        if (state.activeFilterCount > 0) {
+                                            Badge(
+                                                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
+                                                    .size(7.dp),
+                                                containerColor = MiuixTheme.colorScheme.primary,
+                                            )
                                         }
                                     }
                                 }
@@ -484,8 +485,10 @@ private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
                     Spacer(Modifier.width(10.dp))
                     Text("加载更多", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
-                "error" -> InlineError(if (error?.kind == ReadFailureKind.Network)
-                    "网络连接失败，更多账单未加载，请再次上拉" else "更多账单加载失败，请再次上拉")
+                "error" -> if (error?.kind == ReadFailureKind.Network && LocalPageNetworkError.current != null)
+                    Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    else InlineError(if (error?.kind == ReadFailureKind.Network)
+                        "网络连接失败，更多账单未加载，请再次上拉" else "更多账单加载失败，请再次上拉")
                 "more" -> Text("继续上拉加载更多", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 "end" -> Text("没有更多了", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }

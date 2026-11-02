@@ -34,11 +34,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Message and category travel together, including retained animation and retry snapshots. */
 internal data class ReadError(val message: String, val kind: ReadFailureKind = ReadFailureKind.Other)
+internal data class ReadRegion(val name: String, val error: ReadError?, val hasContent: Boolean)
 
 internal fun readError(message: String?, kind: ReadFailureKind?) = message?.let { ReadError(it, kind ?: ReadFailureKind.Other) }
 
 internal object FeedbackText {
     const val Offline = "网络连接失败"
+    const val PageOffline = "网络连接失败，请下拉刷新"
     fun read(error: ReadError, cached: Boolean = false): String {
         if (error.kind == ReadFailureKind.Authentication) return "登录已失效，请重新登录"
         val reason = if (error.kind == ReadFailureKind.Network) "网络连接失败" else if (cached) "暂时无法更新" else "暂时无法加载"
@@ -48,9 +50,13 @@ internal object FeedbackText {
     fun firstError(vararg errors: ReadError?): ReadError? =
         errors.firstOrNull { it != null && it.kind != ReadFailureKind.Network } ?: errors.firstOrNull { it != null }
     fun networkError(vararg errors: ReadError?): ReadError? = errors.firstOrNull { it?.kind == ReadFailureKind.Network }
-    fun mergedNetworkError(vararg regions: Pair<String, ReadError?>): String? {
-        val affected = regions.filter { (_, error) -> error?.kind == ReadFailureKind.Network }.map { it.first }.distinct()
-        return affected.takeIf { it.size > 1 }?.joinToString("、")?.plus("更新失败，请下拉刷新")
+    fun pageNetworkError(vararg regions: ReadRegion): String? {
+        val affected = regions.filter { it.error?.kind == ReadFailureKind.Network }
+        if (affected.isEmpty()) return null
+        val cached = affected.any { it.hasContent }
+        val reason = if (affected.size == regions.size) Offline else
+            affected.map { it.name }.distinct().joinToString("、") + if (cached) "更新失败" else "获取失败"
+        return "$reason，" + (if (cached) "显示上次数据，" else "") + "请下拉刷新"
     }
 }
 
@@ -71,16 +77,17 @@ internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
 internal val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
 private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 
-/** An existing merged failure stays put until the current retry has a settled result. */
+/** Every main page has one network hint, retained until its refresh settles. */
 @Composable
-internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasContent: Boolean,
-    offline: Boolean = false): String? {
+internal fun rememberPageNetworkError(refreshing: Boolean, hasContent: Boolean, initialError: ReadError?,
+    vararg regions: ReadRegion): String? {
     var previous by remember { mutableStateOf<String?>(null) }
     val displayed = when {
-        !hasContent -> null
-        offline -> FeedbackText.read(ReadError(FeedbackText.Offline, ReadFailureKind.Network), cached = true)
+        LocalReadOffline.current -> if (hasContent) "网络连接失败，显示上次数据，请下拉刷新" else FeedbackText.PageOffline
         refreshing && previous != null -> previous
-        else -> error
+        !hasContent && initialError?.kind == ReadFailureKind.Network -> FeedbackText.PageOffline
+        else -> FeedbackText.pageNetworkError(*regions)
+            ?: FeedbackText.PageOffline.takeIf { initialError?.kind == ReadFailureKind.Network }
     }
     SideEffect { previous = displayed }
     return displayed
@@ -107,6 +114,7 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     errorTag: String = "page-network-error",
     failed: Boolean = error != null,
     topSpacing: Dp = 0.dp,
+    errorMaxLines: Int = 1,
     content: @Composable () -> Unit) {
     val userRefresh = LocalUserRefresh.current
     val offline = LocalReadOffline.current
@@ -136,7 +144,7 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
         FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = spacing) {
             Box(Modifier.fillMaxWidth().readContentSize()) {
                 if (displayedError.isNotEmpty()) {
-                    ContentFade(displayedError) { InlineError(it, Modifier.testTag(errorTag)) }
+                    ContentFade(displayedError) { InlineError(it, Modifier.testTag(errorTag), maxLines = errorMaxLines) }
                     if (displayedProgress) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
                 } else ReadProgress(Modifier, completion.value)
             }
