@@ -15,6 +15,9 @@ Apache-2.0 components and adaptation references:
 Individual source headers have been retained. Upstream project links are
 available in the app's About → Open-source projects page.
 
+MaterialKolor (a transitive dependency) is licensed under the MIT License.
+Its license and the Apache-2.0 text are bundled through app/config/aboutlibraries.
+
 CaiXiaoTong is an unofficial personal client for the user's own campus-card account.
 It is not affiliated with the university or the campus-card service provider.
 No account credentials, tokens or actual payment codes are included in source,
