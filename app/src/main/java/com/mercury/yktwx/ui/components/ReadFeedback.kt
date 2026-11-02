@@ -83,9 +83,11 @@ private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 /** Every main page has one network hint, retained until its refresh settles. */
 @Composable
 internal fun rememberPageNetworkError(refreshing: Boolean, hasContent: Boolean, initialError: ReadError?,
-    vararg regions: ReadRegion): String? {
+    vararg regions: ReadRegion, restoringDisplay: Boolean = false): String? {
     var previous by remember { mutableStateOf<String?>(null) }
     val displayed = when {
+        // Do not replace a known page notice with feedback derived from an unread local snapshot.
+        restoringDisplay -> previous
         LocalReadOffline.current -> if (hasContent) "网络连接失败，显示上次数据，请下拉刷新" else FeedbackText.PageOffline
         refreshing && previous != null -> previous
         !hasContent && initialError?.kind == ReadFailureKind.Network -> FeedbackText.PageOffline
