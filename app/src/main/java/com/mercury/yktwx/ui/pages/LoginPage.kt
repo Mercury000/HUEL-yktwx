@@ -56,7 +56,9 @@ fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
 }
 
 @Composable
-fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (FormField) -> Unit = {}, onLogin: (String, String) -> Unit) {
+fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (FormField) -> Unit = {},
+    updateNotice: @Composable () -> Unit = {}, updateDialog: @Composable () -> Unit = {},
+    onLogin: (String, String) -> Unit) {
     var noticeVisible by remember(consent) { mutableStateOf(false) }
     var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -98,6 +100,7 @@ fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (For
                 verticalArrangement = Arrangement.spacedBy(28.dp),
             ) {
                 LoginForm(state, onLogin, consent?.accepted != false, onInputEdited,
+                    updateNotice = updateNotice,
                     consentRow = {
                         if (consent != null) ConsentRow(consent.accepted, enabled = !state.busy && !saving,
                             onToggle = { if (consent.accepted) consent.revoke() else readNotice() }, onRead = ::readNotice)
@@ -110,6 +113,7 @@ fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (For
         }
         if (consent != null) UsageNoticeSheet(noticeVisible, onDismiss = { if (!saving) noticeVisible = false },
             onAgree = if (consent.accepted) null else ::acceptNotice, saving = saving, error = consentError)
+        updateDialog()
     }
 }
 
@@ -133,6 +137,7 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
 
 @Composable
 private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
+    updateNotice: @Composable () -> Unit,
     consentRow: (@Composable () -> Unit)? = null) {
     var username by remember { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
@@ -155,11 +160,14 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("登录校园一卡通", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
         Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        TextField(value = username, onValueChange = {
-            val next = it.filter { c -> c in '0'..'9' }.take(24)
-            if (next != username) { username = next; onInputEdited(FormField.Username) }
-        }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Username })
+        Column(Modifier.fillMaxWidth()) {
+            updateNotice()
+            TextField(value = username, onValueChange = {
+                val next = it.filter { c -> c in '0'..'9' }.take(24)
+                if (next != username) { username = next; onInputEdited(FormField.Username) }
+            }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Username })
+        }
         TextField(value = password, onValueChange = { if (it != password) { password = it; onInputEdited(FormField.Password) } }, label = "密码", singleLine = true, enabled = !state.busy,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),

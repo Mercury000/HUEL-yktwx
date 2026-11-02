@@ -12,7 +12,7 @@ import com.mercury.yktwx.UpdateFeedback
 import com.mercury.yktwx.R
 
 @Composable
-internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allowed: Boolean, safeToPrompt: Boolean) {
+internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allowed: Boolean) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
     LaunchedEffect(model, lifecycle) {
@@ -32,11 +32,9 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allo
     }
     val currentAutomatic by rememberUpdatedState(automatic)
     val currentAllowed by rememberUpdatedState(allowed)
-    val currentSafeToPrompt by rememberUpdatedState(safeToPrompt)
     DisposableEffect(model, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
             model.configure(currentAutomatic, currentAllowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-            model.presentIfAllowed(currentSafeToPrompt)
         }
         lifecycle.addObserver(observer)
         onDispose {
@@ -46,6 +44,5 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allo
     }
     LaunchedEffect(model, automatic, allowed) {
         model.configure(automatic, allowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-        model.presentIfAllowed(currentSafeToPrompt)
     }
 }

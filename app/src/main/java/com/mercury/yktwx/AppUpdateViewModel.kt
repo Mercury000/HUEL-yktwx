@@ -21,6 +21,7 @@ internal data class AppUpdateUiState(
     val checking: Boolean = false,
     val release: UpdateRelease? = null, val visible: Boolean = false,
     val noticeVisible: Boolean = false,
+    val detailsPending: Boolean = false,
 )
 
 internal class AppUpdateViewModel internal constructor(
@@ -42,7 +43,6 @@ internal class AppUpdateViewModel internal constructor(
     private var networkAllowed = false
     private var foreground = false
     private var manualRequest = false
-    private var pendingPrompt = false
 
     fun configure(automatic: Boolean, allowed: Boolean, inForeground: Boolean) {
         automaticEnabled = automatic
@@ -51,9 +51,8 @@ internal class AppUpdateViewModel internal constructor(
         if (!allowed || !inForeground || !automatic && !manualRequest) {
             generation++
             job?.cancel(); job = null
-            pendingPrompt = false
             manualRequest = false
-            mutable.value = state.value.copy(checking = false, visible = false)
+            mutable.value = state.value.copy(checking = false, visible = false, detailsPending = false)
         }
         refreshNotice()
         if (allowed && inForeground && automatic && job == null && store.automaticDue(now())) check(manual = false)
@@ -78,11 +77,10 @@ internal class AppUpdateViewModel internal constructor(
             return
         }
         manualRequest = manual
-        pendingPrompt = false
         val attempt = ++generation
         // Reserve the short cooldown while a request is pending or cancelled.
         store.checked(now(), successful = false)
-        mutable.value = state.value.copy(checking = manual, visible = false)
+        mutable.value = state.value.copy(checking = manual, visible = false, detailsPending = false)
         viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = checkUpdate()
@@ -91,14 +89,14 @@ internal class AppUpdateViewModel internal constructor(
                 store.checked(now(), successful = true)
                 store.cacheRelease(result.release)
                 // Only a user-requested check can open a dialog. Automatic checks update the inline notice.
-                pendingPrompt = result.release != null && manualRequest
                 val message = if (!manualRequest) null else when (result.reason) {
                     UpdateCheckReason.CurrentOrNewer -> UpdateFeedback.Current
                     UpdateCheckReason.NoPublishedRelease -> UpdateFeedback.NoRelease
                     UpdateCheckReason.NoCompatibleRelease -> UpdateFeedback.Incompatible
                     UpdateCheckReason.UpdateAvailable -> null
                 }
-                mutable.value = AppUpdateUiState(release = result.release)
+                mutable.value = AppUpdateUiState(release = result.release,
+                    detailsPending = result.release != null && manualRequest)
                 refreshNotice()
                 message?.let { feedback.tryEmit(it) }
             } catch (cancelled: CancellationException) {
@@ -121,15 +119,13 @@ internal class AppUpdateViewModel internal constructor(
             return
         }
         val release = state.value.release ?: return
-        if (!foreground || !networkAllowed || !pendingPrompt) return
-        pendingPrompt = false
-        mutable.value = state.value.copy(visible = true)
+        if (!foreground || !networkAllowed || !state.value.detailsPending) return
+        mutable.value = state.value.copy(visible = true, detailsPending = false)
     }
 
     fun openDetails() {
         if (!foreground || !networkAllowed || !state.value.noticeVisible) return
-        pendingPrompt = false
-        mutable.value = state.value.copy(visible = true)
+        mutable.value = state.value.copy(visible = true, detailsPending = false)
     }
 
     fun dismissNotice() {
@@ -143,8 +139,7 @@ internal class AppUpdateViewModel internal constructor(
     }
 
     fun dismiss() {
-        pendingPrompt = false
-        mutable.value = state.value.copy(visible = false)
+        mutable.value = state.value.copy(visible = false, detailsPending = false)
     }
 
     companion object {
