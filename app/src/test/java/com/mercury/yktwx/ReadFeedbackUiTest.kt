@@ -333,7 +333,8 @@ class ReadFeedbackUiTest {
             val notice = compose.onNodeWithTag("page-network-error").fetchSemanticsNode().boundsInRoot
             val update = compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot
             assertTrue(notice.bottom <= update.top)
-            assertTrue(update.bottom <= compose.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.top)
+            assertTrue("Page $index update ${update.bottom} must stay above content ${compose.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.top}",
+                update.bottom <= compose.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.top)
             capture("cached-$index-with-update")
         }
     }

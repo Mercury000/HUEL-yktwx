@@ -2,9 +2,8 @@ package com.mercury.yktwx.ui
 
 import com.mercury.yktwx.data.BalanceChange
 import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.TransactionUpdate
-
-internal enum class ReadPage { Payment, Hall, Bill, My, Profile, Account }
 
 /** Routes read invalidation; the shell supplies the current owner and eligible visible page. */
 internal class TransactionReadCoordinator(

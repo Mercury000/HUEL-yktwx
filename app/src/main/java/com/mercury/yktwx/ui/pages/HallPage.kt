@@ -74,7 +74,8 @@ fun HallPage(
             ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { ReadFailureKind.Network in dorm.projectErrorKinds.values },
             *dorm.rooms.flatMap { room -> room.meters.map { readError(it.error, it.errorKind) } }.toTypedArray()),
             dorm.roomsAvailable || dorm.rooms.isNotEmpty()),
-        ReadRegion("校园网信息", readError(dorm.networkError, dorm.networkErrorKind), dorm.network != null))
+        ReadRegion("校园网信息", readError(dorm.networkError, dorm.networkErrorKind), dorm.network != null),
+        restoringDisplay = dorm.restoringDisplay)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {

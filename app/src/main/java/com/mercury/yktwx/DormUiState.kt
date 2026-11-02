@@ -11,7 +11,8 @@ class DormUiState(val rooms: List<DormRoom> = emptyList(), val loading: Boolean 
     val displayRestored: Boolean = false,
     val projectErrorKinds: Map<FeeProject, ReadFailureKind> = emptyMap(),
     val networkErrorKind: ReadFailureKind? = null,
-    val errorKind: ReadFailureKind? = null) {
+    val errorKind: ReadFailureKind? = null,
+    val restoringDisplay: Boolean = false) {
     val selectedRoom get() = rooms.getOrNull(selectedIndex) ?: rooms.firstOrNull()
     override fun toString() = "DormUiState([redacted])"
 }

@@ -122,7 +122,8 @@ class PersonalDataViewModelTest {
         await { model.state.value.loaded && !model.state.value.loading }
         assertNotNull(model.state.value.profileError)
         assertNotNull(model.state.value.summaryError)
-        offline = false; model.onActivate()
+        model.setPageVisible(false)
+        offline = false; model.setPageVisible(true)
         await { summaryEntered && model.state.value.profile != null }
         assertEquals(2, profileReads)
         assertNull(model.state.value.profileError)

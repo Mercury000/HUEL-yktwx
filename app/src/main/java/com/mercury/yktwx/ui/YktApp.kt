@@ -1,8 +1,5 @@
 package com.mercury.yktwx.ui
 
-import com.mercury.yktwx.data.ReadFailureKind
-import com.mercury.yktwx.data.hasNetworkFailure
-
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
@@ -39,6 +36,8 @@ import com.mercury.yktwx.data.FeeRoomBinding
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.data.ReadEnvironment
+import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.merge
@@ -145,7 +144,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             passwordModel.passwordChanges.collect { username -> viewModel.cardPasswordChanged(username) }
         }
         LaunchedEffect(cardModel) {
-            cardModel.cardChanges.collect { viewModel.cardStateChanged(); myModel.refresh() }
+            cardModel.cardChanges.collect { viewModel.cardStateChanged(); myModel.invalidateProfile(); myModel.refresh() }
         }
         LaunchedEffect(feeModel, dormModel) {
             feeModel.roomChanges.collect { dormModel.invalidate(); dormModel.refresh() }
@@ -302,8 +301,11 @@ private fun MainContent(
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
-    LaunchedEffect(isActive, billState.needsLogin, myState.needsLogin, dormState.needsLogin) {
-        if (isActive && (billState.needsLogin || myState.needsLogin || dormState.needsLogin)) viewModel.refresh(manual = true)
+    LaunchedEffect(isActive, billState.authenticationFailed, myState.needsLogin, dormState.needsLogin,
+        state.needsLogin, state.restoringLogin) {
+        val authenticated = !state.needsLogin && !state.restoringLogin
+        if (isActive && authenticated && (billState.authenticationFailed || myState.needsLogin || dormState.needsLogin))
+            viewModel.logout()
     }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
@@ -311,11 +313,9 @@ private fun MainContent(
         (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
-    LaunchedEffect(viewModel, paymentPageSelected, paymentPageCovered, accountPageSelected) {
-        viewModel.setPageVisible(paymentPageSelected && !paymentPageCovered, preserveDisplay = paymentPageCovered)
-        viewModel.setAccountPageVisible(accountPageSelected)
-    }
-    val availability by rememberNetworkReadAvailability(state.preview)
+    val network by rememberNetworkState(state.preview)
+    val foregroundState by rememberForegroundState()
+    val foreground = foregroundState.active
     val readPage = when {
         !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
@@ -324,7 +324,18 @@ private fun MainContent(
         layers.isNotEmpty() -> null
         else -> ReadPage.entries[pagerState.currentPage]
     }
-    val activeReadPage = readPage.takeIf { availability.foreground && availability.online }
+    val activeReadPage = readPage.takeIf { foreground }
+    val readEnvironment = ReadEnvironment(
+        page = activeReadPage,
+        foreground = foreground,
+        online = network.online,
+        epoch = network.epoch,
+        paymentVisible = paymentPageSelected && !paymentPageCovered,
+        paymentCovered = paymentPageCovered,
+        accountVisible = accountPageSelected,
+        resumeEpoch = foregroundState.epoch,
+    )
+
     val currentOwner by rememberUpdatedState(state.username.takeUnless { state.needsLogin })
     val currentReadPage by rememberUpdatedState(activeReadPage)
     val transactionReads = remember(viewModel, billViewModel, myModel, dormModel) {
@@ -348,75 +359,20 @@ private fun MainContent(
             transactionReads.onBalanceChange(change, currentOwner, currentReadPage)
         }
     }
-    // When an overlay closes, apply any invalidation deferred while it covered the page.
-    LaunchedEffect(activeReadPage, state.username) {
-        viewModel.setReadPageVisible(activeReadPage in setOf(ReadPage.Payment, ReadPage.My, ReadPage.Account))
-        myModel.setPageVisible(activeReadPage == ReadPage.My)
-        dormModel.setPageVisible(activeReadPage == ReadPage.Hall)
-        when (activeReadPage) {
-            ReadPage.My -> viewModel.refreshAccount()
-            ReadPage.Profile -> myModel.onActivate()
-            ReadPage.Account -> viewModel.refreshAccount()
-            else -> Unit
-        }
-    }
-    LaunchedEffect(readPage, availability.foreground, availability.online, availability.recoveryId,
-        billState.readIdentity, state.username) {
-        billViewModel.setPageVisible(readPage == ReadPage.Bill && availability.foreground,
-            online = availability.online, recoveryId = availability.recoveryId)
-    }
-    val myNetworkFailed = hasNetworkFailure(myState.profileError to myState.profileErrorKind,
-        myState.homeIdentityError to myState.homeIdentityErrorKind, myState.avatarError to myState.avatarErrorKind,
-        myState.summaryError to myState.summaryErrorKind, myState.countsError to myState.countsErrorKind)
-    val accountNetworkFailed = hasNetworkFailure(state.accountError to state.accountErrorKind,
-        state.cardStatusError to state.cardStatusErrorKind)
-    val readLoading = when (readPage) {
-        ReadPage.Payment -> state.busy
-        ReadPage.Hall -> dormState.loading || dormState.managing
-        ReadPage.Bill -> if (billState.statsVisible) billState.stats.loading else
-            billState.loading || billState.refreshing || billState.loadingMore
-        ReadPage.My -> myState.loading || state.accountLoading || state.balanceLoading || state.cardStatusLoading
-        ReadPage.Profile -> myState.loading
-        ReadPage.Account -> state.accountLoading || state.balanceLoading || state.cardStatusLoading
-        null -> false
-    }
-    val networkFailed = when (readPage) {
-        ReadPage.Payment -> hasNetworkFailure(state.error to state.errorKind)
-        ReadPage.Hall -> dormState.projectErrorKinds.values.any { it == ReadFailureKind.Network } ||
-            hasNetworkFailure(dormState.networkError to dormState.networkErrorKind) ||
-            dormState.rooms.any { room -> room.meters.any { hasNetworkFailure(it.error to it.errorKind) } }
-        ReadPage.Bill -> if (billState.statsVisible) with(billState.stats) {
-            hasNetworkFailure(error to errorKind, dailyError to dailyErrorKind,
-                categoriesError to categoriesErrorKind, rankingError to rankingErrorKind)
-        } else with(billState) {
-            hasNetworkFailure(error to errorKind, summaryError to summaryErrorKind,
-                countsError to countsErrorKind, loadMoreError to loadMoreErrorKind)
-        }
-        ReadPage.My -> myNetworkFailed || accountNetworkFailed
-        ReadPage.Profile -> hasNetworkFailure(myState.profileError to myState.profileErrorKind,
-            myState.avatarError to myState.avatarErrorKind)
-        ReadPage.Account -> accountNetworkFailed
-        null -> false
-    }
-    val recoveryPage = if (readPage == ReadPage.Bill) listOf(readPage, billState.readIdentity) else readPage
-    ReadRecoveryEffect(availability, recoveryPage, readLoading, networkFailed) {
-        when (readPage) {
-            ReadPage.Payment -> viewModel.refresh()
-            ReadPage.Hall -> dormModel.refresh()
-            ReadPage.Bill -> billViewModel.recoverRead(availability.recoveryId)
-            ReadPage.My -> {
-                if (myNetworkFailed) myModel.refresh()
-                if (accountNetworkFailed) viewModel.refreshAccount()
-            }
-            ReadPage.Profile -> myModel.refresh()
-            ReadPage.Account -> viewModel.refreshAccount()
-            null -> Unit
-        }
+    // One shell-owned snapshot drives every ViewModel read decision.
+    LaunchedEffect(readEnvironment, state.username, billState.readIdentity) {
+        viewModel.onReadEnvironment(readEnvironment)
+        myModel.onReadEnvironment(readEnvironment)
+        dormModel.onReadEnvironment(readEnvironment)
+        billViewModel.onReadEnvironment(readEnvironment)
     }
     DisposableEffect(viewModel, billViewModel, myModel, dormModel) {
         onDispose {
-            viewModel.setReadPageVisible(false); viewModel.setPageVisible(false); viewModel.setAccountPageVisible(false)
-            billViewModel.setPageVisible(false); myModel.setPageVisible(false); dormModel.setPageVisible(false)
+            val inactive = ReadEnvironment.Inactive
+            viewModel.onReadEnvironment(inactive)
+            billViewModel.onReadEnvironment(inactive)
+            myModel.onReadEnvironment(inactive)
+            dormModel.onReadEnvironment(inactive)
         }
     }
     val feeActive = isActive && dormPaymentVisible
@@ -545,7 +501,7 @@ private fun MainContent(
 
     val useRail = shouldShowMainNavigationRail(settings)
     val blurRootForBack = !useRail && (settings.predictiveBack.value || settings.floatingBottomBar.value)
-    CompositionLocalProvider(LocalReadOffline provides !availability.online) {
+    CompositionLocalProvider(LocalReadOffline provides (network.online == false)) {
     BarBlurHost(
         bottomBarBlurEnabled = settings.blurBottomBar.value,
         topBarBlurEnabled = false,
