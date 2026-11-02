@@ -83,7 +83,12 @@ data class BillUiState(
     val errorKind: ReadFailureKind? = null,
     val summaryErrorKind: ReadFailureKind? = null,
     val countsErrorKind: ReadFailureKind? = null,
+    val restoringDisplay: Boolean = false,
 ) {
+    val readIdentity: List<Any?>
+        get() = if (statsVisible) listOf("stats", stats.period, stats.type)
+            else listOf("details", dateFilter, typeId, amountFromCents, amountToCents, info)
+
     val activeFilterCount: Int
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
 }
@@ -105,6 +110,10 @@ class BillViewModel internal constructor(
     private var loginCheck: Job? = null
     private var initializationJob: Job? = null
     private var displayJob: Job? = null
+    private var displayJobKey: String? = null
+    private var statsDisplayJob: Job? = null
+    private var statsDisplayJobKey: String? = null
+    private var statsDisplayKey: String? = null
     private var preparedDisplayKey: String? = null
     private var accountOwner: String? = null
     private var lastLoadedAt = 0L
@@ -115,6 +124,11 @@ class BillViewModel internal constructor(
     private val listCache = RecentReadCache<String, CachedList>()
     private var listUpdateId = 0L
     private var pageVisible = false
+    private var readContextManaged = false
+    private var online = true
+    private var recoveryId = 0L
+    private var lastNetworkRead: Pair<List<Any?>, Long>? = null
+    private val networkReadAllowed get() = online && (!readContextManaged || pageVisible)
     private val pendingStatsTypes = mutableSetOf<Int>()
     private fun summaryKey(state: BillUiState = mutable.value) = DisplayKeys.summary(state.dateFilter.timeFrom, state.dateFilter.timeTo)
     private fun countsKey(state: BillUiState = mutable.value) = DisplayKeys.counts(state.dateFilter.timeFrom, state.dateFilter.timeTo)
@@ -132,8 +146,11 @@ class BillViewModel internal constructor(
         needsRefresh = { statsPending() }, isReading = { statsJob?.isActive == true },
         retry = { loadStats(transactionRetry = true, silent = true) })
 
-    fun setPageVisible(visible: Boolean) {
+    fun setPageVisible(visible: Boolean, online: Boolean = true, recoveryId: Long = 0) {
+        readContextManaged = true
         pageVisible = visible
+        this.online = online
+        this.recoveryId = recoveryId
         updateReadVisibility()
         if (visible) onActivate()
         else {
@@ -149,8 +166,18 @@ class BillViewModel internal constructor(
         }
     }
     private fun updateReadVisibility() {
-        listRefresh.setVisible(pageVisible && !preview && !mutable.value.statsVisible)
-        statsRefresh.setVisible(pageVisible && !preview && mutable.value.statsVisible)
+        listRefresh.setVisible(pageVisible && online && !preview && !mutable.value.statsVisible)
+        statsRefresh.setVisible(pageVisible && online && !preview && mutable.value.statsVisible)
+    }
+
+    /** Activation and recovery share one attempt for the selected query and connection event. */
+    fun recoverRead(recoveryId: Long) {
+        if (!networkReadAllowed || lastNetworkRead == (mutable.value.readIdentity to recoveryId)) return
+        if (!mutable.value.statsVisible && mutable.value.loadMoreError != null) {
+            load()
+            return
+        }
+        onActivate()
     }
 
     fun initialize(uiPreview: Boolean = false) {
@@ -175,12 +202,15 @@ class BillViewModel internal constructor(
         if (accountOwner == username) return
         initializationJob?.cancel()
         displayJob?.cancel()
+        statsDisplayJob?.cancel()
         cancelListJobs()
         statsJob?.cancel()
         loginCheck?.cancel()
         loginCheck = null
         accountOwner = username
         preparedDisplayKey = null
+        statsDisplayKey = null
+        lastNetworkRead = null
         lastLoadedAt = 0L
         summaryReadAt = 0L; countsReadAt = 0L
         statsCache.clear(); listCache.clear()
@@ -189,6 +219,8 @@ class BillViewModel internal constructor(
             else BillUiState(needsLogin = username == null)
         if (!preview && username != null) {
             val snapshot = mutable.value
+            displayJobKey = listKey(snapshot)
+            mutable.value = snapshot.copy(restoringDisplay = true)
             displayJob = viewModelScope.launch { restoreListDisplay(username, snapshot) }
         }
     }
@@ -211,11 +243,16 @@ class BillViewModel internal constructor(
 
     fun onActivate() {
         if (mutable.value.statsVisible) { openStats(); return }
-        if (!initialized || preview || loginCheck?.isActive == true || loadJob?.isActive == true) return
+        if (loadJob?.isActive == true || loadMoreJob?.isActive == true) return
+        if (!networkReadAllowed) {
+            if (pageVisible) loadListQuery()
+            return
+        }
+        if (!initialized || preview || loginCheck?.isActive == true) return
         val activatedVisiblePage = pageVisible
         loginCheck = viewModelScope.launch {
             val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-            if (activatedVisiblePage && !pageVisible || mutable.value.statsVisible) return@launch
+            if (!networkReadAllowed || activatedVisiblePage && !pageVisible || mutable.value.statsVisible) return@launch
             val current = mutable.value
             if (!exists) {
                 clearAuthenticatedData()
@@ -302,6 +339,7 @@ class BillViewModel internal constructor(
 
     fun loadMore() {
         val current = mutable.value
+        if (!networkReadAllowed || current.statsVisible) return
         if (UiPreview.enabled && preview || current.listLoading || !current.listLoaded || !current.paginationReady || current.loadingMore || current.needsLogin) return
         if (current.currentPage <= 0 || current.currentPage >= current.pages) return
         val next = current.currentPage + 1
@@ -313,6 +351,11 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(loadingMore = true, loadMoreErrorKind = null, loadMoreError = null)
         loadMoreJob = viewModelScope.launch {
             try {
+                if (!networkReadAllowed) {
+                    mutable.value = mutable.value.copy(loadingMore = false)
+                    return@launch
+                }
+                lastNetworkRead = current.readIdentity to recoveryId
                 val page = withContext(Dispatchers.IO) {
                     repository.bills(
                         next, PAGE_SIZE, dateFilter.timeFrom, dateFilter.timeTo,
@@ -351,15 +394,22 @@ class BillViewModel internal constructor(
 
     fun openStats() {
         val current = mutable.value
+        if (!current.statsVisible) {
+            cancelListJobs()
+            loginCheck?.cancel(); loginCheck = null
+        }
         val samePeriod = current.stats.period == current.dateFilter
-        mutable.value = current.copy(statsVisible = true, stats = if (samePeriod) current.stats else statisticsFor(current.dateFilter, current.stats.type))
+        mutable.value = current.copy(statsVisible = true, loading = false, refreshing = false, listLoading = false,
+            loadingMore = false, stats = if (samePeriod) current.stats else statisticsFor(current.dateFilter, current.stats.type))
         updateReadVisibility()
         if (samePeriod && current.stats.loading) return
         loadStatsIfNeeded()
     }
 
     fun showDetails() {
-        mutable.value = mutable.value.copy(statsVisible = false)
+        statsJob?.cancel()
+        mutable.value = mutable.value.copy(statsVisible = false,
+            stats = mutable.value.stats.copy(loading = false))
         updateReadVisibility()
         onActivate()
     }
@@ -407,6 +457,10 @@ class BillViewModel internal constructor(
     private fun loadStatsIfNeeded() {
         val stats = mutable.value.stats
         if (statsJob?.isActive == true || stats.loading) return
+        if (!networkReadAllowed) {
+            if (pageVisible) prepareStatsDisplay()
+            return
+        }
         val readAt = statsCache[statsKey(stats.period, stats.type)]?.readAt ?: 0
         if (statsPending(stats) || !statsReadSucceeded(stats) || !ReadCachePolicy.isFresh(readAt, now())) loadStats()
     }
@@ -437,6 +491,7 @@ class BillViewModel internal constructor(
 
     private fun loadListQuery(queryChanged: Boolean = false) {
         val current = mutable.value
+        if (current.needsLogin || preview || current.statsVisible) return
         val cached = listCache[listKey(current)]
         if (cached != null) {
             val fresh = !listPending(current) && ReadCachePolicy.isFresh(cached.readAt, now())
@@ -460,15 +515,62 @@ class BillViewModel internal constructor(
             lastLoadedAt = cached.readAt
             if (fresh && listReadSucceeded(restored) && overviewIsFresh()) return
         }
-        load(queryChanged = queryChanged)
+        if (networkReadAllowed) load(queryChanged = queryChanged)
+        else if (pageVisible) prepareListDisplay()
+    }
+
+    private fun prepareListDisplay() {
+        val current = mutable.value
+        if (current.listAvailable || current.items.isNotEmpty() || preparedDisplayKey == listKey(current)) return
+        if (displayJob?.isActive == true && displayJobKey == listKey(current)) {
+            mutable.value = current.copy(restoringDisplay = true)
+            return
+        }
+        displayJob?.cancel()
+        displayJobKey = listKey(current)
+        mutable.value = current.copy(restoringDisplay = true)
+        displayJob = viewModelScope.launch { restoreListDisplay(accountOwner.orEmpty(), current) }
+    }
+
+    private fun prepareStatsDisplay() {
+        val stats = mutable.value.stats
+        val key = statsKey(stats.period, stats.type)
+        if (stats.loaded || statsDisplayKey == key) return
+        if (statsDisplayJob?.isActive == true && statsDisplayJobKey == key) {
+            mutable.value = mutable.value.copy(stats = stats.copy(restoringDisplay = true))
+            return
+        }
+        statsDisplayJob?.cancel()
+        statsDisplayJobKey = key
+        mutable.value = mutable.value.copy(stats = stats.copy(restoringDisplay = true))
+        statsDisplayJob = viewModelScope.launch {
+            val username = accountOwner.orEmpty()
+            val daily = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), DisplayCodecs.Daily)
+            val categories = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), DisplayCodecs.Categories)
+            val ranking = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), DisplayCodecs.Records)
+            currentCoroutineContext().ensureActive()
+            val latest = mutable.value
+            if (accountOwner.orEmpty() != username || latest.stats.period != stats.period || latest.stats.type != stats.type) return@launch
+            statsDisplayKey = key
+            mutable.value = latest.copy(stats = latest.stats.copy(daily = daily.orEmpty(), categories = categories.orEmpty(), ranking = ranking.orEmpty(),
+                dailyLoaded = daily != null, categoriesLoaded = categories != null, rankingLoaded = ranking != null,
+                loaded = daily != null || categories != null || ranking != null,
+                displayRestored = daily != null || categories != null || ranking != null, restoringDisplay = false))
+            rememberStats(statsCache[key]?.readAt ?: 0)
+        }
     }
 
     private fun load(manualRefresh: Boolean = false, queryChanged: Boolean = false,
         transactionRetry: Boolean = false, silent: Boolean = false) {
         val current = mutable.value
         if (current.needsLogin && !manualRefresh) return
+        if (!networkReadAllowed) {
+            if (pageVisible && !current.needsLogin) prepareListDisplay()
+            return
+        }
         loadJob?.cancel()
         loadMoreJob?.cancel()
+        if (displayJobKey != listKey(current)) displayJob?.cancel()
         val read = listRefresh.started()
         listCache.invalidate(listKey(current))
         lastLoadedAt = 0L
@@ -495,6 +597,7 @@ class BillViewModel internal constructor(
             loadMoreErrorKind = current.loadMoreErrorKind.takeUnless { readList }, loadMoreError = current.loadMoreError.takeUnless { readList },
             listLoading = readList, loadingMore = false,
             listOnlyRead = queryChanged && !readSummary && !readCounts,
+            restoringDisplay = !current.listAvailable && preparedDisplayKey != listKey(current),
         )
         loadJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
@@ -506,6 +609,10 @@ class BillViewModel internal constructor(
                     latest.amountToCents == amountTo && latest.info == info) mutable.value = change(latest)
             }
             try {
+                if (!networkReadAllowed) {
+                    publish { it.copy(loading = false, refreshing = false, listLoading = false) }
+                    return@launch
+                }
                 if (manualRefresh) {
                     val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
                     if (!exists) {
@@ -514,6 +621,11 @@ class BillViewModel internal constructor(
                     }
                     mutable.value = mutable.value.copy(needsLogin = false)
                 }
+                if (!networkReadAllowed) {
+                    publish { it.copy(loading = false, refreshing = false, listLoading = false) }
+                    return@launch
+                }
+                lastNetworkRead = current.readIdentity to recoveryId
                 coroutineScope {
                     if (readList) launch {
                         try {
@@ -605,6 +717,10 @@ class BillViewModel internal constructor(
             return
         }
         if (mutable.value.needsLogin) return
+        if (!networkReadAllowed) {
+            if (pageVisible) prepareStatsDisplay()
+            return
+        }
         statsJob?.cancel()
         val stats = mutable.value.stats
         val read = statsRefresh.started()
@@ -615,27 +731,27 @@ class BillViewModel internal constructor(
         val readCategories = !transactionRetry || statsRefresh.needsRead(categoriesKey)
         val readRanking = !transactionRetry || statsRefresh.needsRead(rankingKey)
         statsCache.invalidate(statsKey(stats.period, stats.type))
-        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, restoringDisplay = !stats.loaded, errorKind = null, error = null,
+        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent,
+            restoringDisplay = !stats.loaded && statsDisplayKey != statsKey(stats.period, stats.type), errorKind = null, error = null,
             dailyErrorKind = stats.dailyErrorKind.takeUnless { readDaily }, dailyError = stats.dailyError.takeUnless { readDaily },
             categoriesErrorKind = stats.categoriesErrorKind.takeUnless { readCategories }, categoriesError = stats.categoriesError.takeUnless { readCategories },
             rankingErrorKind = stats.rankingErrorKind.takeUnless { readRanking }, rankingError = stats.rankingError.takeUnless { readRanking }))
         statsJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
-            if (!stats.loaded) {
-                val daily = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "daily"), DisplayCodecs.Daily)
-                val categories = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "categories"), DisplayCodecs.Categories)
-                val ranking = repository.cachedDisplay(username, DisplayKeys.stats(stats.period, stats.type, "ranking"), DisplayCodecs.Records)
-                mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(daily = daily.orEmpty(), categories = categories.orEmpty(), ranking = ranking.orEmpty(),
-                    dailyLoaded = daily != null, categoriesLoaded = categories != null, rankingLoaded = ranking != null,
-                    loaded = daily != null || categories != null || ranking != null,
-                    displayRestored = daily != null || categories != null || ranking != null, restoringDisplay = false))
-            }
+            prepareStatsDisplay()
+            statsDisplayJob?.join()
+            currentCoroutineContext().ensureActive()
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
                 if (statsRefresh.accepts(read) && latest.stats.period == stats.period && latest.stats.type == stats.type)
                     mutable.value = latest.copy(stats = change(latest.stats))
             }
             try {
+                if (!networkReadAllowed) {
+                    publish { it.copy(loading = false) }
+                    return@launch
+                }
+                lastNetworkRead = listOf("stats", stats.period, stats.type) to recoveryId
                 coroutineScope {
                     if (readDaily) launch {
                         val result = optionalData {
@@ -685,16 +801,20 @@ class BillViewModel internal constructor(
     private suspend fun restoreListDisplay(username: String, snapshot: BillUiState) {
         val period = snapshot.dateFilter
         val displayKey = DisplayKeys.bills(period, snapshot.typeId, snapshot.amountFromCents, snapshot.amountToCents, snapshot.info)
-        if (preparedDisplayKey == displayKey) return
+        if (preparedDisplayKey == displayKey) {
+            mutable.value = mutable.value.copy(restoringDisplay = false)
+            return
+        }
         val page = repository.cachedDisplay(username, displayKey, DisplayCodecs.Page)
         val summary = repository.cachedDisplay(username, DisplayKeys.summary(period.timeFrom, period.timeTo), DisplayCodecs.Summary)
         val counts = repository.cachedDisplay(username, DisplayKeys.counts(period.timeFrom, period.timeTo), DisplayCodecs.Counts)
+        currentCoroutineContext().ensureActive()
         val latest = mutable.value
-        if (accountOwner != username || latest.dateFilter != period || latest.typeId != snapshot.typeId ||
+        if (accountOwner.orEmpty() != username || latest.dateFilter != period || latest.typeId != snapshot.typeId ||
             latest.amountFromCents != snapshot.amountFromCents || latest.amountToCents != snapshot.amountToCents || latest.info != snapshot.info) return
         preparedDisplayKey = displayKey
         mutable.value = latest.copy(items = page?.items.orEmpty(), currentPage = page?.current ?: 0, pages = page?.pages ?: 0,
-            listAvailable = page != null, listLoaded = page != null, paginationReady = false,
+            listAvailable = page != null, listLoaded = page != null, paginationReady = false, restoringDisplay = false,
             summary = latest.summary ?: summary, counts = latest.counts ?: counts,
             summaryLoaded = summary != null || latest.summaryLoaded, countsLoaded = counts != null || latest.countsLoaded,
             listUpdate = BillListUpdate.Restore, listUpdateId = ++listUpdateId, animatedOrderIds = emptySet(),
@@ -720,6 +840,9 @@ class BillViewModel internal constructor(
     private fun clearAuthenticatedData() {
         // A metric can fail authentication after the list has already started another page.
         cancelListJobs(); statsJob?.cancel()
+        displayJob?.cancel(); statsDisplayJob?.cancel()
+        statsDisplayKey = null
+        lastNetworkRead = null
         lastLoadedAt = 0L; statsCache.clear(); listCache.clear()
         summaryReadAt = 0L; countsReadAt = 0L
         listRefresh.clear(); statsRefresh.clear(); pendingStatsTypes.clear()

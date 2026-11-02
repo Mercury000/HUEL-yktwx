@@ -92,8 +92,7 @@ fun BillPage(
     }
     fun selectType(type: Int) = motion.select(if (type == 2) 1 else 2) { onStatsTypeChange(type) }
     val currentSelectType by rememberUpdatedState(::selectType)
-    val readIdentity = if (state.statsVisible) listOf("stats", state.stats.period, state.stats.type)
-        else listOf("details", state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info)
+    val readIdentity = state.readIdentity
     val readStartedAt = remember(readIdentity, isActive) { android.os.SystemClock.uptimeMillis() }
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
@@ -106,7 +105,7 @@ fun BillPage(
                 readError(state.stats.categoriesError, state.stats.categoriesErrorKind), readError(state.stats.dailyError, state.stats.dailyErrorKind), readError(state.stats.rankingError, state.stats.rankingErrorKind))
             else FeedbackText.firstError(readError(state.error, state.errorKind), readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
             if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
-            .takeUnless { state.statsVisible && state.stats.restoringDisplay }
+            .takeUnless { if (state.statsVisible) state.stats.restoringDisplay else state.restoringDisplay }
     }
     // The common statistics notice survives type retries; content/progress still use readIdentity.
     val networkFeedbackIdentity = if (state.statsVisible) listOf("stats", state.stats.period, state.needsLogin)
@@ -124,7 +123,7 @@ fun BillPage(
             ReadRegion("账单明细", FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
                 state.listAvailable || state.items.isNotEmpty()),
             ReadRegion("账单概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
-                state.summary != null || state.counts != null))
+                state.summary != null || state.counts != null), restoringDisplay = state.restoringDisplay)
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current
@@ -233,7 +232,7 @@ fun BillPage(
                     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp,
                         top = padding.calculateTopPadding() + 10.dp)) {
                         PageReadNotice(networkError.takeIf { initialError == null }, 12.dp, errorMaxLines = Int.MAX_VALUE,
-                            loading = initialError == null && !state.needsLogin && if (state.statsVisible)
+                            loading = !LocalReadOffline.current && initialError == null && !state.needsLogin && if (state.statsVisible)
                                 state.stats.loading && (state.stats.loaded || state.stats.displayRestored)
                                 else !state.listOnlyRead && (state.loading || state.refreshing || isActive && !state.loaded) &&
                                     (state.loaded || state.displayRestored),

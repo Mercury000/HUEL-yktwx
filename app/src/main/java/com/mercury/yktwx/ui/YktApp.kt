@@ -349,9 +349,8 @@ private fun MainContent(
         }
     }
     // When an overlay closes, apply any invalidation deferred while it covered the page.
-    LaunchedEffect(activeReadPage, billState.statsVisible, state.username) {
+    LaunchedEffect(activeReadPage, state.username) {
         viewModel.setReadPageVisible(activeReadPage in setOf(ReadPage.Payment, ReadPage.My, ReadPage.Account))
-        billViewModel.setPageVisible(activeReadPage == ReadPage.Bill)
         myModel.setPageVisible(activeReadPage == ReadPage.My)
         dormModel.setPageVisible(activeReadPage == ReadPage.Hall)
         when (activeReadPage) {
@@ -361,6 +360,11 @@ private fun MainContent(
             else -> Unit
         }
     }
+    LaunchedEffect(readPage, availability.foreground, availability.online, availability.recoveryId,
+        billState.readIdentity, state.username) {
+        billViewModel.setPageVisible(readPage == ReadPage.Bill && availability.foreground,
+            online = availability.online, recoveryId = availability.recoveryId)
+    }
     val myNetworkFailed = hasNetworkFailure(myState.profileError to myState.profileErrorKind,
         myState.homeIdentityError to myState.homeIdentityErrorKind, myState.avatarError to myState.avatarErrorKind,
         myState.summaryError to myState.summaryErrorKind, myState.countsError to myState.countsErrorKind)
@@ -369,7 +373,8 @@ private fun MainContent(
     val readLoading = when (readPage) {
         ReadPage.Payment -> state.busy
         ReadPage.Hall -> dormState.loading || dormState.managing
-        ReadPage.Bill -> if (billState.statsVisible) billState.stats.loading else billState.loading || billState.refreshing
+        ReadPage.Bill -> if (billState.statsVisible) billState.stats.loading else
+            billState.loading || billState.refreshing || billState.loadingMore
         ReadPage.My -> myState.loading || state.accountLoading || state.balanceLoading || state.cardStatusLoading
         ReadPage.Profile -> myState.loading
         ReadPage.Account -> state.accountLoading || state.balanceLoading || state.cardStatusLoading
@@ -393,11 +398,12 @@ private fun MainContent(
         ReadPage.Account -> accountNetworkFailed
         null -> false
     }
-    ReadRecoveryEffect(availability, readPage, readLoading, networkFailed) {
+    val recoveryPage = if (readPage == ReadPage.Bill) listOf(readPage, billState.readIdentity) else readPage
+    ReadRecoveryEffect(availability, recoveryPage, readLoading, networkFailed) {
         when (readPage) {
             ReadPage.Payment -> viewModel.refresh()
             ReadPage.Hall -> dormModel.refresh()
-            ReadPage.Bill -> billViewModel.refresh()
+            ReadPage.Bill -> billViewModel.recoverRead(availability.recoveryId)
             ReadPage.My -> {
                 if (myNetworkFailed) myModel.refresh()
                 if (accountNetworkFailed) viewModel.refreshAccount()

@@ -41,6 +41,157 @@ class BillViewModelTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
+    @Test fun offlineSwitchesAndPullsReuseEachQueryWithoutNetworkReads() {
+        model.initialize()
+        service.pages = 2
+        loadExistingBills()
+        model.openStats(); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.selectStatsType(1); await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.showDetails(); await { !model.state.value.loading && !model.state.value.refreshing }
+        val listReads = service.requests
+        val statsReads = service.statsRequests.size
+        service.queries.clear()
+        now += 120_000
+        model.setPageVisible(true, online = false)
+        model.loadMore()
+        model.refresh()
+        model.openStats()
+        model.selectStatsType(2)
+        model.refresh()
+        model.selectStatsType(1)
+        model.refreshStats()
+        model.showDetails()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listReads, service.requests)
+        assertEquals(statsReads, service.statsRequests.size)
+        assertTrue(service.queries.isEmpty())
+        assertEquals(listOf(record), model.state.value.items)
+        assertFalse(model.state.value.refreshing)
+        assertFalse(model.state.value.loadingMore)
+        assertFalse(model.state.value.stats.loading)
+    }
+
+    @Test fun offlineUnknownQueriesDoNotReadAndReconnectChecksOnlyTheSelectedQueryOnce() {
+        model.initialize()
+        loadExistingBills()
+        model.setPageVisible(true, online = false)
+        service.queries.clear()
+        val listReads = service.requests
+        model.search("商户")
+        await { !model.state.value.restoringDisplay }
+        model.applyFilters("4", 100, 2000)
+        await { !model.state.value.restoringDisplay }
+        model.openStats()
+        await { !model.state.value.stats.restoringDisplay }
+        model.selectStatsType(1)
+        await { !model.state.value.stats.restoringDisplay }
+        model.selectDate(BillDateFilter.month(java.time.YearMonth.from(model.state.value.dateFilter.start).minusMonths(1)))
+        await { !model.state.value.stats.restoringDisplay }
+        model.refresh(); model.refreshStats(); model.loadMore()
+        assertEquals(listReads, service.requests)
+        assertTrue(service.queries.isEmpty())
+        assertTrue(service.statsRequests.isEmpty())
+        model.setPageVisible(true, online = true, recoveryId = 1)
+        model.recoverRead(1)
+        await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        model.recoverRead(1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listReads, service.requests)
+        assertEquals(3, service.statsRequests.size)
+        assertTrue(service.statsRequests.all { it.second == 1 })
+        assertEquals(setOf("trend", "categories", "ranking"), service.queries.toSet())
+        model.showDetails()
+        await { model.state.value.loaded && !model.state.value.loading && !model.state.value.refreshing }
+        assertEquals(listReads + 1, service.requests)
+    }
+
+    @Test fun aFailedReconnectAttemptDoesNotCauseASecondRecoveryRead() {
+        model.initialize()
+        loadExistingBills()
+        model.setPageVisible(true, online = false)
+        model.openStats(); await { !model.state.value.stats.restoringDisplay }
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        model.setPageVisible(true, online = true, recoveryId = 1)
+        await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        assertNotNull(model.state.value.stats.dailyError)
+        model.recoverRead(1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(3, service.statsRequests.size)
+        model.setPageVisible(true, online = false, recoveryId = 1)
+        service.queryFailures = emptyMap()
+        model.setPageVisible(true, online = true, recoveryId = 2)
+        await { !model.state.value.stats.loading }
+        assertEquals(6, service.statsRequests.size)
+        assertNull(model.state.value.stats.dailyError)
+    }
+
+    @Test fun reconnectWaitsForAnOlderReadThenRetriesOnlyItsFailure() {
+        model.initialize()
+        loadExistingBills()
+        model.setPageVisible(true, recoveryId = 0)
+        service.queryGates["trend"] = CompletableDeferred()
+        service.queryFailures = mapOf("trend" to NetworkFailure())
+        model.openStats()
+        await { service.statsRequests.size == 3 }
+        model.setPageVisible(true, online = false)
+        model.setPageVisible(true, recoveryId = 1)
+        model.recoverRead(1)
+        assertEquals(3, service.statsRequests.size)
+        service.queryGates.getValue("trend").complete(Unit)
+        await { !model.state.value.stats.loading }
+        service.queryFailures = emptyMap()
+        model.recoverRead(1)
+        await { !model.state.value.stats.loading }
+        assertEquals(6, service.statsRequests.size)
+        model.recoverRead(1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(6, service.statsRequests.size)
+    }
+
+    @Test fun hiddenBillQueriesWaitForSelectionBeforeReading() {
+        model.initialize()
+        loadExistingBills()
+        val listReads = service.requests
+        model.setPageVisible(false)
+        model.search("商户")
+        model.refresh()
+        model.openStats()
+        model.selectStatsType(1)
+        model.refreshStats()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listReads, service.requests)
+        assertTrue(service.statsRequests.isEmpty())
+        model.setPageVisible(true)
+        await { model.state.value.stats.loaded && !model.state.value.stats.loading }
+        assertEquals(3, service.statsRequests.size)
+        assertTrue(service.statsRequests.all { it.second == 1 })
+    }
+
+    @Test fun reconnectWaitsForPaginationAndRecoversItsFailureWithoutDuplicatingTheRefresh() {
+        model.initialize()
+        service.pages = 2
+        loadExistingBills()
+        model.setPageVisible(true)
+        service.requestGate = CompletableDeferred()
+        service.failure = NetworkFailure()
+        model.loadMore(); await { service.requests == 2 }
+        model.setPageVisible(true, online = false)
+        model.setPageVisible(true, recoveryId = 1)
+        model.recoverRead(1)
+        assertEquals(2, service.requests)
+        service.requestGate.complete(Unit)
+        await { !model.state.value.loadingMore }
+        assertNotNull(model.state.value.loadMoreError)
+        service.failure = null
+        model.recoverRead(1)
+        await { !model.state.value.loading && !model.state.value.refreshing }
+        model.recoverRead(1)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(3, service.requests)
+        assertNull(model.state.value.loadMoreError)
+        assertEquals(listOf(record), model.state.value.items)
+    }
+
     @Test fun refreshIsBusyBeforeCredentialCheckAndIgnoresRepeatedPulls() {
         vault.credentialsGate = CountDownLatch(1)
         model.refresh()
