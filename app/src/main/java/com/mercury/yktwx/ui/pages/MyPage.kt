@@ -68,7 +68,7 @@ internal fun MyPage(
         "余额" to FeedbackText.networkError(readError(payment.accountError, payment.accountErrorKind), balanceError),
         "卡状态" to readError(payment.cardStatusError, payment.cardStatusErrorKind),
         "概览" to FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))),
-        state.loading || balancePending || cardPending, hasContent) }
+        state.loading || balancePending || cardPending, hasContent, offline = LocalReadOffline.current) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -300,7 +300,8 @@ internal fun PersonalProfilePage(state: MyUiState, settings: ThemeSettings, onBa
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false) {
     val initialError = rememberInitialReadError(state.profile != null, readError(state.profileError, state.profileErrorKind), !state.loading)
     val pending = state.profile == null && (initialError != null || !state.profileLoaded && state.profileError == null)
-    val error = rememberCachedReadError(FeedbackText.firstError(readError(state.profileError, state.profileErrorKind), readError(state.avatarError, state.avatarErrorKind)), state.loading, state.profile != null)
+    val error = rememberCachedReadError(FeedbackText.firstError(readError(state.profileError, state.profileErrorKind), readError(state.avatarError, state.avatarErrorKind)), state.loading, state.profile != null,
+        offline = LocalReadOffline.current)
     ProfileDetailScaffold("个人信息", settings, onBack, state.loading, onRefresh, initialError, state.displayRestored) {
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,
@@ -335,7 +336,8 @@ internal fun AccountDetailPage(payment: PaymentUiState, settings: ThemeSettings,
     val balancePending = payment.balanceLoading || payment.accountLoading
     val reading = balancePending || payment.cardStatusLoading
     val initialError = rememberInitialReadError(payment.account != null, readError(payment.accountError, payment.accountErrorKind), !balancePending)
-    val error = rememberCachedReadError(FeedbackText.firstError(readError(payment.accountError, payment.accountErrorKind), readError(payment.cardStatusError, payment.cardStatusErrorKind)), reading, payment.account != null)
+    val error = rememberCachedReadError(FeedbackText.firstError(readError(payment.accountError, payment.accountErrorKind), readError(payment.cardStatusError, payment.cardStatusErrorKind)), reading, payment.account != null,
+        offline = LocalReadOffline.current)
     ProfileDetailScaffold("账户详情", settings, onBack, reading, onRefresh, initialError) {
         item {
             PageReadNotice(error?.let { FeedbackText.read(it, cached = true) }, 14.dp,

@@ -87,9 +87,16 @@ internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasCo
 }
 
 @Composable
-internal fun rememberCachedReadError(error: ReadError?, refreshing: Boolean, hasContent: Boolean): ReadError? {
+internal fun rememberCachedReadError(error: ReadError?, refreshing: Boolean, hasContent: Boolean,
+    offline: Boolean = false): ReadError? {
     var previous by remember { mutableStateOf<ReadError?>(null) }
-    val displayed = if (!hasContent) null else if (refreshing && previous != null) previous else error
+    val retained = if (refreshing && previous != null) previous else error
+    val displayed = when {
+        !hasContent -> null
+        offline && (retained == null || retained.kind == ReadFailureKind.Network) ->
+            ReadError(FeedbackText.Offline, ReadFailureKind.Network)
+        else -> retained
+    }
     SideEffect { previous = displayed }
     return displayed
 }
