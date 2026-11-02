@@ -27,6 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -49,6 +50,7 @@ class BillOfflineTypeSwitchUiTest {
 
     private fun firstOfflineSwitch(cacheReadFrames: Int, reverse: Boolean = false, incomeCached: Boolean = true) {
         val holdRead = AtomicBoolean(false)
+        val networkReads = AtomicInteger()
         val releaseRead = CountDownLatch(1)
         val cache = DisplayCache(folder.root, { bytes, _ -> bytes }, { bytes, _ ->
             if (holdRead.get()) check(releaseRead.await(30, TimeUnit.SECONDS))
@@ -63,12 +65,15 @@ class BillOfflineTypeSwitchUiTest {
             override fun clear() = Unit
         }
         val service = object : YktService by FakeAccountService() {
-            override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> =
-                throw NetworkFailure()
-            override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> =
-                throw NetworkFailure()
-            override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> =
-                throw NetworkFailure()
+            override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+                networkReads.incrementAndGet(); throw NetworkFailure()
+            }
+            override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+                networkReads.incrementAndGet(); throw NetworkFailure()
+            }
+            override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+                networkReads.incrementAndGet(); throw NetworkFailure()
+            }
         }
         val repository = AccountRepository(service, vault, displayCache = cache)
         val period = BillDateFilter.currentMonth()
@@ -88,6 +93,7 @@ class BillOfflineTypeSwitchUiTest {
         fun frame() { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
         try {
             model.accountChanged("fictional-user")
+            model.setPageVisible(true, online = false)
             model.openStats()
             compose.setContent {
                 val state by model.state.collectAsState()
@@ -137,7 +143,7 @@ class BillOfflineTypeSwitchUiTest {
             try {
                 compose.waitUntil(5_000) {
                     shadowOf(Looper.getMainLooper()).idle()
-                    model.state.value.stats.type == 1 && model.state.value.stats.loaded && !model.state.value.stats.loading
+                    model.state.value.stats.type == 1 && !model.state.value.stats.restoringDisplay && !model.state.value.stats.loading
                 }
             } catch (error: ComposeTimeoutException) {
                 val stats = model.state.value.stats
@@ -161,6 +167,7 @@ class BillOfflineTypeSwitchUiTest {
                 compose.onNodeWithTag("bill-stats-amount").assertDoesNotExist()
             }
             assertFalse(model.state.value.stats.restoringDisplay)
+            assertEquals("Offline type changes must not start network reads", 0, networkReads.get())
             compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
         } finally {
             releaseRead.countDown()

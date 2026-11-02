@@ -11,11 +11,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -25,12 +27,17 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowNetworkCapabilities
 import org.robolectric.shadows.ShadowNetworkInfo
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NetworkRecoveryNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val folder = TemporaryFolder()
     @Volatile private var online = false
     @Volatile private var failureMessage = "网络连接失败，请检查网络后刷新"
     private val paymentReads = AtomicInteger()
@@ -67,6 +74,139 @@ class NetworkRecoveryNavigationTest {
     }
     private fun visibleTag(tag: String, page: String = "hall-page-list") =
         hasTestTag(tag) and hasAnyAncestor(hasTestTag(page))
+
+    @Test fun billInternalTabsShareShellRecoveryDuringSlowCacheReadsWithoutDuplicateOrHiddenRequests() {
+        val app = compose.activity.application
+        val holdCache = AtomicBoolean(false)
+        val cacheEntered = CountDownLatch(1)
+        val releaseCache = CountDownLatch(1)
+        val cache = DisplayCache(folder.root, { bytes, _ -> bytes }, { bytes, _ ->
+            if (holdCache.get()) {
+                cacheEntered.countDown()
+                check(releaseCache.await(30, TimeUnit.SECONDS))
+            }
+            bytes
+        })
+        val incomeReads = AtomicInteger()
+        val expenseReads = AtomicInteger()
+        val listReads = AtomicInteger()
+        val summaryReads = AtomicInteger()
+        val failStats = AtomicBoolean(true)
+        val vault = object : Vault {
+            override fun credentials() = Credentials("fake-user", "fake-password")
+            override fun session() = Session("fake-token", Long.MAX_VALUE)
+            override fun saveCredentials(value: Credentials) = Unit
+            override fun saveSession(value: Session) = Unit
+            override fun clearSession() = Unit
+            override fun clear() = Unit
+        }
+        val period = BillDateFilter.currentMonth()
+        val display = PreviewData.billState(period)
+        fun statsRead(type: Int) {
+            (if (type == 1) incomeReads else expenseReads).incrementAndGet()
+            requireOnline()
+            if (failStats.get()) throw NetworkFailure()
+        }
+        val service = object : YktService by FakeAccountService() {
+            override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
+                paymentReads.incrementAndGet(); requireOnline()
+                return PaymentBatch(emptyList(), 60, PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 0))
+            }
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
+                listReads.incrementAndGet(); requireOnline()
+                return BillPageData(display.items, current, 1)
+            }
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
+                summaryReads.incrementAndGet(); requireOnline(); return requireNotNull(display.summary)
+            }
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
+                requireOnline(); return 1
+            }
+            override suspend fun billTypes(token: String) = emptyList<BillType>()
+            override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+                statsRead(type); return PreviewData.billStats(filter, type).daily
+            }
+            override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+                statsRead(type); return PreviewData.billStats(period, type).categories
+            }
+            override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+                statsRead(type); return PreviewData.billStats(period, type).ranking
+            }
+        }
+        val repository = AccountRepository(service, vault, displayCache = cache)
+        runBlocking {
+            repository.username()
+            repository.saveDisplay("fake-user", DisplayKeys.bills(period, null, null, null, ""), BillPageData(display.items, 1, 1), DisplayCodecs.Page)
+            repository.saveDisplay("fake-user", DisplayKeys.summary(period.timeFrom, period.timeTo), requireNotNull(display.summary), DisplayCodecs.Summary)
+            repository.saveDisplay("fake-user", DisplayKeys.counts(period.timeFrom, period.timeTo), requireNotNull(display.counts), DisplayCodecs.Counts)
+            for (type in 1..2) {
+                val stats = PreviewData.billStats(period, type)
+                repository.saveDisplay("fake-user", DisplayKeys.stats(period, type, "daily"), stats.daily, DisplayCodecs.Daily)
+                repository.saveDisplay("fake-user", DisplayKeys.stats(period, type, "categories"), stats.categories, DisplayCodecs.Categories)
+                repository.saveDisplay("fake-user", DisplayKeys.stats(period, type, "ranking"), stats.ranking, DisplayCodecs.Records)
+            }
+        }
+        payment = PaymentViewModel(app, repository)
+        val bills = BillViewModel(app, repository).also { it.initialize() }
+        for (model in listOf(payment, bills, MyViewModel(app, repository), HallViewModel(app, repository))) {
+            compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
+        }
+        try {
+            compose.runOnIdle { connection(false); payment.initialize() }
+            await { !payment.state.value.restoringLogin }
+            compose.runOnIdle { payment.onForeground() }
+            await { !payment.state.value.busy }
+            compose.setContent {
+                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+            }
+            compose.onNode(hasText("账单") and hasClickAction()).performClick()
+            await { bills.state.value.listAvailable && !bills.state.value.restoringDisplay }
+            compose.onNode(hasText("统计") and hasClickAction()).performClick()
+            await { bills.state.value.stats.loaded && !bills.state.value.stats.restoringDisplay }
+            compose.mainClock.advanceTimeBy(400)
+            val originalPaymentReads = paymentReads.get()
+            holdCache.set(true)
+            compose.onNode(hasText("收入") and hasClickAction()).performClick()
+            await { cacheEntered.count == 0L && bills.state.value.stats.restoringDisplay }
+            compose.runOnIdle { connection(true) }
+            await { bills.state.value.stats.loading }
+            assertEquals(0, incomeReads.get())
+            assertEquals(0, expenseReads.get())
+            releaseCache.countDown()
+            await { !bills.state.value.stats.loading && bills.state.value.stats.dailyError != null }
+            compose.mainClock.advanceTimeBy(1_000)
+            compose.waitForIdle()
+            assertEquals("Activation and recovery must share one failed attempt", 3, incomeReads.get())
+            assertEquals(0, expenseReads.get())
+            assertEquals(0, listReads.get())
+            assertEquals(0, summaryReads.get())
+            compose.onNode(visibleTag("page-network-error", "bill-scroll-surface")).assertIsDisplayed()
+            compose.runOnIdle { connection(false); failStats.set(false) }
+            compose.runOnIdle { connection(true) }
+            await { !bills.state.value.stats.loading && bills.state.value.stats.dailyError == null }
+            assertEquals(6, incomeReads.get())
+            compose.mainClock.advanceTimeBy(400)
+            compose.onNode(visibleTag("page-network-error", "bill-scroll-surface")).assertDoesNotExist()
+            compose.runOnIdle { connection(false) }
+            compose.onNode(hasText("支出") and hasClickAction()).performClick()
+            await { bills.state.value.stats.type == 2 && !bills.state.value.stats.restoringDisplay }
+            compose.mainClock.advanceTimeBy(400)
+            compose.onNode(hasText("明细") and hasClickAction()).performClick()
+            await { !bills.state.value.statsVisible && !bills.state.value.restoringDisplay }
+            assertEquals(0, expenseReads.get())
+            assertEquals(0, listReads.get())
+            compose.runOnIdle { connection(true) }
+            await { bills.state.value.loaded && !bills.state.value.refreshing && !bills.state.value.loading }
+            assertEquals(1, listReads.get())
+            assertEquals(1, summaryReads.get())
+            assertEquals(6, incomeReads.get())
+            assertEquals(0, expenseReads.get())
+            assertEquals(originalPaymentReads, paymentReads.get())
+        } finally {
+            releaseCache.countDown()
+        }
+    }
 
     @Test fun hallRecoversInPlaceAndCachedMyPageRecoversOnReconnectAndForegroundWithoutFetchingPaymentCodes() {
         val app = compose.activity.application

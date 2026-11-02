@@ -41,18 +41,18 @@ internal fun DormUiState.offlineDisplay() = DormUiState(
 )
 
 internal fun BillUiState.offlineDisplay() = copy(
-    error = offlineError(error, items.isEmpty() && !listAvailable && !listLoaded),
-    summaryError = offlineError(summaryError, summary == null && !summaryLoaded),
-    countsError = offlineError(countsError, counts == null && !countsLoaded),
-    errorKind = offlineKind(error, errorKind, items.isEmpty() && !listAvailable && !listLoaded),
-    summaryErrorKind = offlineKind(summaryError, summaryErrorKind, summary == null && !summaryLoaded),
-    countsErrorKind = offlineKind(countsError, countsErrorKind, counts == null && !countsLoaded),
+    error = offlineError(error, !restoringDisplay && items.isEmpty() && !listAvailable && !listLoaded),
+    summaryError = offlineError(summaryError, !restoringDisplay && summary == null && !summaryLoaded),
+    countsError = offlineError(countsError, !restoringDisplay && counts == null && !countsLoaded),
+    errorKind = offlineKind(error, errorKind, !restoringDisplay && items.isEmpty() && !listAvailable && !listLoaded),
+    summaryErrorKind = offlineKind(summaryError, summaryErrorKind, !restoringDisplay && summary == null && !summaryLoaded),
+    countsErrorKind = offlineKind(countsError, countsErrorKind, !restoringDisplay && counts == null && !countsLoaded),
     stats = stats.copy(
-        dailyError = offlineError(stats.dailyError, !stats.dailyLoaded && stats.period.trendSupported),
-        categoriesError = offlineError(stats.categoriesError, !stats.categoriesLoaded),
-        rankingError = offlineError(stats.rankingError, !stats.rankingLoaded),
-        dailyErrorKind = offlineKind(stats.dailyError, stats.dailyErrorKind, !stats.dailyLoaded && stats.period.trendSupported),
-        categoriesErrorKind = offlineKind(stats.categoriesError, stats.categoriesErrorKind, !stats.categoriesLoaded),
-        rankingErrorKind = offlineKind(stats.rankingError, stats.rankingErrorKind, !stats.rankingLoaded),
+        dailyError = offlineError(stats.dailyError, !stats.restoringDisplay && !stats.dailyLoaded && stats.period.trendSupported),
+        categoriesError = offlineError(stats.categoriesError, !stats.restoringDisplay && !stats.categoriesLoaded),
+        rankingError = offlineError(stats.rankingError, !stats.restoringDisplay && !stats.rankingLoaded),
+        dailyErrorKind = offlineKind(stats.dailyError, stats.dailyErrorKind, !stats.restoringDisplay && !stats.dailyLoaded && stats.period.trendSupported),
+        categoriesErrorKind = offlineKind(stats.categoriesError, stats.categoriesErrorKind, !stats.restoringDisplay && !stats.categoriesLoaded),
+        rankingErrorKind = offlineKind(stats.rankingError, stats.rankingErrorKind, !stats.restoringDisplay && !stats.rankingLoaded),
     ),
 )
