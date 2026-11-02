@@ -56,7 +56,7 @@ class UsageNoticeUiTest {
         capture("login-initial-light")
         compose.onNodeWithTag("usage-consent-checkbox").performClick()
         capture("notice-light-top")
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("不同意").performClick()
         assertFalse(consent.accepted)
         compose.onNodeWithText("学号 / 工号").performTextInput("202600000001")
@@ -67,7 +67,7 @@ class UsageNoticeUiTest {
         compose.onNodeWithText("密码").performImeAction()
         assertEquals(0, requests)
         compose.onNodeWithTag("usage-consent-checkbox").assertIsOff().performClick()
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         end()
         assertFalse(consent.accepted)
         capture("notice-light-end")
@@ -83,7 +83,7 @@ class UsageNoticeUiTest {
         compose.onNodeWithText("密码").performSemanticsAction(SemanticsActions.OnImeAction) { it() }
         assertEquals(0, requests)
         compose.onNodeWithTag("usage-consent-row").performClick()
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         assertFalse(consent.accepted)
     }
@@ -96,15 +96,15 @@ class UsageNoticeUiTest {
         } }
         compose.onNodeWithTag("usage-consent-checkbox").performClick()
         compose.onNodeWithText("不同意").assertIsDisplayed()
-        compose.onNodeWithText("同意并继续").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsDisplayed().assertIsNotEnabled()
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
-        compose.onNodeWithText("同意并继续").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        compose.onNodeWithText("上滑并阅读").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertEquals(1, layouts.single().lineCount)
         capture("notice-narrow-large-dark")
         end(); capture("notice-narrow-large-dark-end")
         compose.onNodeWithText("不同意").performClick()
         compose.onNodeWithTag("usage-consent-row").performClick()
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         compose.onNodeWithTag("usage-notice-paragraph-0").assertIsDisplayed()
         assertFalse(consent.accepted)
     }
@@ -169,12 +169,12 @@ class UsageNoticeUiTest {
     fun actualScrollRequiresAnExplicitButtonPressAndReturningUpDisablesConfirmation() {
         var accepted = 0
         compose.setContent { AppTheme { Scaffold { UsageNoticeSheet(true, {}, { accepted++ }) } } }
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         repeat(5) { compose.onNodeWithTag("usage-notice-body").performTouchInput { swipeUp(durationMillis = 300) } }
         compose.onNodeWithText("同意并继续").assertIsEnabled()
         assertEquals(0, accepted)
         compose.onNodeWithTag("usage-notice-body").performTouchInput { swipeDown(durationMillis = 300) }
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         assertEquals(0, accepted)
     }
 }

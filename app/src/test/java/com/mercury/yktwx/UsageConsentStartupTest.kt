@@ -58,7 +58,7 @@ class UsageConsentStartupTest {
         assertEquals("使用须知已更新，请重新阅读并同意后登录。", ShadowToast.getTextOfLatestToast())
         compose.onNodeWithText("使用须知已更新，请重新阅读并同意后登录。").assertDoesNotExist()
         compose.onNodeWithTag("usage-consent-checkbox").performClick()
-        compose.onNodeWithText("同意并继续").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         assertFalse(UsageConsent(compose.activity).accepted)
         compose.onNodeWithTag("usage-notice-paragraph-0").assertIsDisplayed()
         compose.onNodeWithText("付款").assertDoesNotExist()
