@@ -65,7 +65,7 @@ internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (()
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
                             val sideBySide = with(density) { ((maxWidth - 12.dp) / 2 - 32.dp).toPx() >= width }
                             val confirm: @Composable (Modifier) -> Unit = { modifier ->
-                                TextButton(if (saving) "保存中" else "同意并继续",
+                                TextButton(if (saving) "保存中" else if (readToEnd) "同意并继续" else "上滑并阅读",
                                     { if (show && readToEnd && !saving) currentAgree?.invoke() }, modifier,
                                     enabled = show && readToEnd && !saving, colors = ButtonDefaults.textButtonColorsPrimary())
                             }
