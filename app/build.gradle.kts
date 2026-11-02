@@ -89,6 +89,10 @@ dependencies {
 
 aboutLibraries {
     offlineMode = true
-    collect { includePlatform = false }
+    collect {
+        includePlatform = false
+        // Bundle license texts without fetching them during the build.
+        configPath.set(layout.projectDirectory.dir("config/aboutlibraries"))
+    }
     export { prettyPrint = true }
 }
