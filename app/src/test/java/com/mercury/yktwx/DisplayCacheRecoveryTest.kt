@@ -23,6 +23,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -181,6 +183,100 @@ class DisplayCacheRecoveryTest {
         val persisted = runBlocking { repository.cachedDisplay("fake-owner", DisplayKeys.bills(period, null, null, null, ""), DisplayCodecs.Page) }!!
         assertEquals(1, persisted.current)
         assertEquals(listOf("new", "old"), persisted.items.map { it.orderId })
+    }
+
+    @Test fun expenseReconnectDoesNotWaitForHiddenIncomeCacheRead() =
+        selectedBillQueryDoesNotWaitForHiddenCache(statistics = true)
+
+    @Test fun detailsReconnectDoesNotWaitForHiddenSearchCacheRead() =
+        selectedBillQueryDoesNotWaitForHiddenCache(statistics = false)
+
+    private fun selectedBillQueryDoesNotWaitForHiddenCache(statistics: Boolean) {
+        val decoding = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val holdCache = AtomicBoolean(false)
+        val selectedReads = AtomicInteger()
+        val hiddenReads = AtomicInteger()
+        var clock = 10_000L
+        val slowCache = DisplayCache(folder.root, { bytes, _ -> bytes }, { bytes, _ ->
+            if (holdCache.get()) {
+                decoding.countDown()
+                check(finish.await(30, TimeUnit.SECONDS))
+            }
+            bytes
+        })
+        val display = PreviewData.billState()
+        val period = display.dateFilter
+        val service = object : YktService by FakeAccountService() {
+            override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
+                typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?): BillPageData {
+                if (info != "当前查询") hiddenReads.incrementAndGet()
+                val version = selectedReads.incrementAndGet()
+                return BillPageData(listOf(display.items.first().copy(orderId = "selected-$version")), current, 1)
+            }
+            override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(1, 2)
+            override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 1
+            override suspend fun billTypes(token: String) = emptyList<BillType>()
+            override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
+                if (type != 2) hiddenReads.incrementAndGet()
+                return emptyList()
+            }
+            override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
+                if (type != 2) hiddenReads.incrementAndGet()
+                val version = selectedReads.incrementAndGet()
+                return listOf(BillCategory("selected-$version", version * 100L))
+            }
+            override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
+                if (type != 2) hiddenReads.incrementAndGet()
+                return emptyList()
+            }
+        }
+        val repository = AccountRepository(service, vault, displayCache = slowCache)
+        runBlocking {
+            repository.username()
+            if (statistics) {
+                repository.saveDisplay("fake-owner", DisplayKeys.stats(period, 1, "daily"), emptyList<BillDailyPoint>(), DisplayCodecs.Daily)
+                repository.saveDisplay("fake-owner", DisplayKeys.stats(period, 1, "categories"), listOf(BillCategory("hidden", 300)), DisplayCodecs.Categories)
+                repository.saveDisplay("fake-owner", DisplayKeys.stats(period, 1, "ranking"), emptyList<BillRecord>(), DisplayCodecs.Records)
+            } else {
+                repository.saveDisplay("fake-owner", DisplayKeys.bills(period, null, null, null, "旧查询"),
+                    BillPageData(listOf(display.items.first().copy(orderId = "hidden")), 1, 1), DisplayCodecs.Page)
+            }
+        }
+        val model = BillViewModel(app, repository, { clock })
+        store.put("bill", model)
+        try {
+            model.setPageVisible(false, online = false)
+            model.initialize(); model.accountChanged("fake-owner")
+            await { !model.state.value.restoringDisplay }
+            if (statistics) model.openStats() else model.search("当前查询")
+            model.setPageVisible(true, online = true)
+            await { if (statistics) model.state.value.stats.loaded && !model.state.value.stats.loading
+                else model.state.value.loaded && !model.state.value.loading && !model.state.value.refreshing }
+            assertEquals(1, selectedReads.get())
+            clock += 120_000
+            model.setPageVisible(true, online = false)
+            holdCache.set(true)
+            if (statistics) model.selectStatsType(1) else model.search("旧查询")
+            await { decoding.count == 0L }
+            if (statistics) model.selectStatsType(2) else model.search("当前查询")
+            model.setPageVisible(true, online = true, recoveryId = 1)
+            await { selectedReads.get() == 2 }
+            assertEquals("Only the visible query may read the network", 0, hiddenReads.get())
+            holdCache.set(false)
+            finish.countDown()
+            await { if (statistics) !model.state.value.stats.loading else !model.state.value.loading && !model.state.value.refreshing }
+            if (statistics) {
+                assertEquals(2, model.state.value.stats.type)
+                assertEquals(listOf(BillCategory("selected-2", 200)), model.state.value.stats.categories)
+            } else {
+                assertEquals("当前查询", model.state.value.info)
+                assertEquals(listOf("selected-2"), model.state.value.items.map { it.orderId })
+            }
+        } finally {
+            holdCache.set(false)
+            finish.countDown()
+        }
     }
 
     @Test fun cachedBalanceDoesNotBecomeAPaymentCodeOrAnUnverifiedSuccessBaseline() {

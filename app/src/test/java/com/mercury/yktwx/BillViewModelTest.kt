@@ -192,6 +192,21 @@ class BillViewModelTest {
         assertEquals(listOf(record), model.state.value.items)
     }
 
+    @Test fun changingQueryOfflineClearsTheCancelledPaginationState() {
+        model.initialize()
+        service.pages = 2
+        loadExistingBills()
+        service.requestGate = CompletableDeferred()
+        model.loadMore(); await { service.requests == 2 }
+        model.setPageVisible(true, online = false)
+        model.applyFilters("4", null, null)
+        await { !model.state.value.restoringDisplay }
+        assertFalse("A cancelled page must not keep the new offline query busy", model.state.value.loadingMore)
+        assertFalse(model.state.value.listLoading)
+        assertFalse(model.state.value.refreshing)
+        assertEquals(2, service.requests)
+    }
+
     @Test fun refreshIsBusyBeforeCredentialCheckAndIgnoresRepeatedPulls() {
         vault.credentialsGate = CountDownLatch(1)
         model.refresh()
