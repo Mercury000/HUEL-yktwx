@@ -6,7 +6,8 @@
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name" android:theme="@style/Theme.YktWx" android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true">
-        <activity android:name=".MainActivity" android:exported="true" android:configChanges="uiMode"
+        <activity android:name=".MainActivity" android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
