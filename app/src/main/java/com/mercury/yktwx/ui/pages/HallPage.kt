@@ -72,7 +72,8 @@ fun HallPage(
         "水电费" to FeedbackText.networkError(readError(dorm.error, dorm.errorKind),
             ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { ReadFailureKind.Network in dorm.projectErrorKinds.values },
             *dorm.rooms.flatMap { room -> room.meters.map { readError(it.error, it.errorKind) } }.toTypedArray()),
-        "校园网" to readError(dorm.networkError, dorm.networkErrorKind)), dorm.loading, hasContent)
+        "校园网" to readError(dorm.networkError, dorm.networkErrorKind)), dorm.loading, hasContent,
+        offline = LocalReadOffline.current)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -392,9 +393,10 @@ private fun PendingMeterPanel(slot: DormMeterSlot, modifier: Modifier) {
             }
         }
         Box(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            if (offline) Text(FeedbackText.Offline, fontSize = 13.sp, lineHeight = 18.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            else DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
+            if (offline) {
+                if (LocalPageNetworkError.current == null) Text(FeedbackText.Offline, fontSize = 13.sp, lineHeight = 18.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            } else DashboardPlaceholder(13.sp, Modifier.fillMaxWidth(), lineHeight = 18.sp)
         }
     }
 }

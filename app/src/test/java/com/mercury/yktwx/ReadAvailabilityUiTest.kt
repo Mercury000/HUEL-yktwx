@@ -14,9 +14,11 @@ import com.mercury.yktwx.data.DormRoom
 import com.mercury.yktwx.data.FeeLevel
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.FeeRoomBinding
+import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.pages.BillPage
 import com.mercury.yktwx.ui.pages.HallPage
 import org.junit.Rule
 import org.junit.Test
@@ -31,6 +33,42 @@ import top.yukonga.miuix.kmp.basic.Text
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadAvailabilityUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun cachedHallAndBillShowOneOfflineNoticeOnEntryAndClearItAfterReconnect() {
+        val settings = ThemeSettings(compose.activity.application)
+        val hall = PreviewData.hallState()
+        val bill = PreviewData.billState()
+        var page by mutableIntStateOf(0)
+        var offline by mutableStateOf(true)
+        compose.setContent {
+            AppTheme {
+                CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides offline) {
+                    key(page) {
+                        when (page) {
+                            0 -> HallPage(settings, 0.dp, dorm = hall, isActive = true)
+                            else -> BillPage(bill.copy(statsVisible = page == 2), settings,
+                                {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                        }
+                    }
+                }
+            }
+        }
+        for (index in 0..2) {
+            val billContentTag = if (index == 2) "bill-stats-overview" else "bill-summary"
+            compose.runOnIdle { page = index; offline = true }
+            compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+            compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+            compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
+            compose.onAllNodesWithTag("read-unavailable").assertCountEquals(0)
+            compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+            if (index == 0) compose.onNodeWithText("86.4").assertIsDisplayed()
+            else compose.onNodeWithTag(billContentTag).assertIsDisplayed()
+            compose.runOnIdle { offline = false }
+            compose.onNodeWithTag("page-network-error").assertDoesNotExist()
+            if (index == 0) compose.onNodeWithText("86.4").assertIsDisplayed()
+            else compose.onNodeWithTag(billContentTag).assertIsDisplayed()
+        }
+    }
 
     @Test fun offlineFirstEntryClearsItsDisplayFailureWhenReadingBecomesPossible() {
         var offline by mutableStateOf(true)
@@ -63,7 +101,10 @@ class ReadAvailabilityUiTest {
             }
         }
         compose.onNodeWithText("缓存套餐").assertIsDisplayed()
-        compose.onNodeWithTag("read-unavailable").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+        compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
+        compose.onNodeWithText("—").assertIsDisplayed()
         compose.onNodeWithContentDescription("正在读取房间").assertDoesNotExist()
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
     }
@@ -92,7 +133,9 @@ class ReadAvailabilityUiTest {
         compose.runOnIdle { offline = true }
         compose.onNodeWithText("86.4").assertIsDisplayed()
         compose.onNodeWithText("—").assertIsDisplayed()
-        compose.onNodeWithText(FeedbackText.Offline).assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，显示上次数据").assertIsDisplayed()
+        compose.onNodeWithText(FeedbackText.Offline).assertDoesNotExist()
+        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
         compose.runOnIdle {
             offline = false
