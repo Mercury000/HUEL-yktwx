@@ -31,7 +31,8 @@
     <string name="payment_motion_detection">转回检测支付</string>
     <string name="payment_motion_detection_summary">展示付款码后转回手机，静默查询余额；仅余额减少时提示支付成功</string>
     <string name="automatic_updates">自动检查更新</string>
-    <string name="automatic_updates_summary">打开应用时检查新版本</string>
+    <string name="automatic_updates_summary">静默检查新版本，在页面内提示</string>
+    <string name="update_notice_dismiss">24 小时内不再提醒此版本</string>
     <string name="check_updates">检查更新</string>
     <string name="update_current">已是最新版本</string>
     <string name="update_no_release">暂无已发布版本</string>

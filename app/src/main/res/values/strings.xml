@@ -31,7 +31,8 @@
     <string name="payment_motion_detection">Turn-back Payment Detection</string>
     <string name="payment_motion_detection_summary">After turning the phone back, silently check the balance. Show payment success only when it decreases.</string>
     <string name="automatic_updates">Automatically Check for Updates</string>
-    <string name="automatic_updates_summary">Check for new versions when the app is opened</string>
+    <string name="automatic_updates_summary">Check silently and show an inline notice when a new version is available</string>
+    <string name="update_notice_dismiss">Dismiss update reminder for 24 hours</string>
     <string name="check_updates">Check for Updates</string>
     <string name="update_current">You are up to date</string>
     <string name="update_no_release">No published version is available</string>

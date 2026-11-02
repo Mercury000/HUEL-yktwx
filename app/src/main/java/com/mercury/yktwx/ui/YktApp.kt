@@ -418,18 +418,17 @@ private fun MainContent(
         }
     }
     val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
-    // Offer automatic updates on informational pages, after active forms and navigation settle.
-    val updatePromptAllowed = isActive && !pagerState.isScrollInProgress && motion.none {
-        it.predictiveActive || it.coveredDepth.isRunning || it.progress.isRunning
-    } && !dormPaymentVisible && !rechargeState.visible && !cardState.visible && !passwordState.visible &&
-        !rechargeState.loading && !cardState.loading && !passwordState.loading && feeOpening == null &&
-        paymentSuccess == null && !avatarState.visible &&
-        (layers.lastOrNull() in listOf(Screen.Settings, Screen.About) || layers.isEmpty() && pagerState.currentPage == 3)
+    // Automatic results stay inline; user-opened details are confined to pages with an update entry.
+    val updatePromptAllowed = isActive &&
+        (layers.lastOrNull() == Screen.Settings || layers.isEmpty())
     AppUpdateEffect(updateModel, settings.automaticUpdates.value,
         allowed = isActive && !state.needsLogin && !state.preview && !LocalInspectionMode.current,
         safeToPrompt = updatePromptAllowed)
     LaunchedEffect(updatePromptAllowed, updateState.release, updateState.checking) {
         updateModel.presentIfAllowed(updatePromptAllowed)
+    }
+    val updateNotice: @Composable () -> Unit = {
+        InlineUpdateNotice(updateState, updateModel::openDetails, updateModel::dismissNotice)
     }
     val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
     fun open(screen: Screen) {
@@ -565,6 +564,7 @@ private fun MainContent(
                             when (page) {
                                 0 -> PaymentPage(
                                     state, settings, bottom,
+                                    updateNotice = updateNotice,
                                     onRefresh = { if (isActive) viewModel.refresh(manual = true) },
                                     onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
@@ -583,6 +583,7 @@ private fun MainContent(
                                     unlostEnabled = feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading,
                                 )
                                 1 -> HallPage(
+                                    updateNotice = updateNotice,
                                     settings = settings,
                                     bottomPadding = bottom,
                                     onOpenFee = { openFee(it) },
@@ -597,6 +598,7 @@ private fun MainContent(
                                     othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
                                 )
                                 2 -> BillPage(
+                                    updateNotice = updateNotice,
                                     state = billState,
                                     settings = settings,
                                     onBack = { tabs.animateToPage(0) },
@@ -615,6 +617,7 @@ private fun MainContent(
                                     bottomPadding = bottom,
                                 )
                                 3 -> MyPage(
+                                    updateNotice = updateNotice,
                                     state = myState, payment = state, settings = settings, bottomPadding = bottom,
                                     customAvatar = customAvatar,
                                     avatarImage = avatarImage, avatarPending = avatarPending,
@@ -738,7 +741,7 @@ private fun SecondaryPage(
                 val contentPadding = PaddingValues(top = padding.calculateTopPadding(),
                     bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp)
                 when (screen) {
-                    Screen.Settings -> LazyColumn(modifier = modifier, contentPadding = contentPadding) {
+                    Screen.Settings -> LazyColumn(modifier = modifier.testTag("settings-page-list"), contentPadding = contentPadding) {
                         item {
                             Card(Modifier.fillMaxWidth()) {
                                 ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)

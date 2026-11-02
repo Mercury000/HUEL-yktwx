@@ -153,21 +153,109 @@ class AppUpdateViewModelTest {
         assertFalse(model.state.value.visible)
     }
 
-    @Test fun promptsWaitForASafePageAndAreNotRepeatedButManualChecksStillShowThem() = runTest(dispatcher) {
+    @Test fun automaticResultsOnlyShowANoticeAndDetailsRequireATap() = runTest(dispatcher) {
         val model = model()
         model.configure(true, true, true); runCurrent()
+        assertTrue(model.state.value.noticeVisible)
+        assertTrue(events.isEmpty())
         model.presentIfAllowed(false)
         assertFalse(model.state.value.visible)
+        model.presentIfAllowed(true)
+        assertFalse(model.state.value.visible)
+        model.openDetails()
+        assertTrue(model.state.value.visible)
+        model.presentIfAllowed(false)
+        assertFalse("Details close when leaving a page with an update entry", model.state.value.visible)
         model.configure(true, true, false)
+        model.openDetails()
         model.presentIfAllowed(true)
         assertFalse(model.state.value.visible)
         model.configure(true, true, true)
         model.presentIfAllowed(true)
-        assertTrue(model.state.value.visible)
-        model.dismiss()
-        model.presentIfAllowed(true)
         assertFalse(model.state.value.visible)
+        model.openDetails()
+        assertTrue(model.state.value.visible)
+        model.dismiss(); model.presentIfAllowed(true)
+        assertFalse(model.state.value.visible)
+        assertTrue("Closing details keeps the notice available", model.state.value.noticeVisible)
+    }
+
+    @Test fun dismissedNoticesStayHiddenAcrossRestartsFor24HoursButManualChecksStillShowDetails() = runTest(dispatcher) {
+        val model = model()
+        model.configure(true, true, true); runCurrent()
+        model.dismissNotice()
+        assertFalse(model.state.value.noticeVisible)
+        val restarted = model()
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(update.release, restarted.state.value.release)
+        assertFalse(restarted.state.value.noticeVisible)
+        time += UpdateCheckStore.DAY - 1
+        restarted.configure(true, true, true); runCurrent()
+        assertFalse(restarted.state.value.noticeVisible)
+        restarted.checkManually(); runCurrent()
+        restarted.presentIfAllowed(true)
+        assertTrue(restarted.state.value.visible)
+        assertFalse(restarted.state.value.noticeVisible)
+        restarted.dismiss()
+        time++
+        restarted.configure(true, true, true); runCurrent()
+        assertTrue(restarted.state.value.noticeVisible)
+        assertFalse(restarted.state.value.visible)
+    }
+
+    @Test fun aDifferentReleaseIsNotHiddenByThePreviousDismissal() = runTest(dispatcher) {
+        var result = update
+        val model = model { result }
+        model.configure(true, true, true); runCurrent()
+        model.dismissNotice()
+        result = update.copy(release = update.release!!.copy(versionCode = 5, versionName = "1.3.0"))
         model.checkManually(); runCurrent()
+        assertTrue(model.state.value.noticeVisible)
+    }
+
+    @Test fun cachedReleaseSurvivesRestartAndFailureButACurrentResultClearsIt() = runTest(dispatcher) {
+        model().configure(true, true, true); runCurrent()
+        var fail = true
+        val restarted = model {
+            count++
+            if (fail) throw java.io.IOException("offline")
+            UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
+        }
+        restarted.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        assertEquals(update.release, restarted.state.value.release)
+        assertTrue(restarted.state.value.noticeVisible)
+        restarted.checkManually(); runCurrent()
+        assertEquals(update.release, restarted.state.value.release)
+        assertTrue(restarted.state.value.noticeVisible)
+        fail = false
+        restarted.checkManually(); runCurrent()
+        assertNull(restarted.state.value.release)
+        assertFalse(restarted.state.value.noticeVisible)
+        assertNull(model().state.value.release)
+        assertNull(model("v4").state.value.release)
+    }
+
+    @Test fun invalidCachedDataIsIgnoredAndNoticesRespectTheAutomaticSwitchAndPreview() = runTest(dispatcher) {
+        prefs.edit().putString("v3:release", "invalid json").commit()
+        val model = model()
+        assertNull(model.state.value.release)
+        model.configure(true, true, true); runCurrent()
+        assertTrue(model.state.value.noticeVisible)
+        model.configure(false, true, true)
+        assertFalse(model.state.value.noticeVisible)
+        model.configure(true, true, true)
+        assertTrue(model.state.value.noticeVisible)
+        model.configure(true, false, true)
+        assertFalse(model.state.value.noticeVisible)
+    }
+
+    @Test fun manualDialogsWaitForAPageWithAnUpdateEntry() = runTest(dispatcher) {
+        val model = model()
+        model.configure(false, true, true)
+        model.checkManually(); runCurrent()
+        model.presentIfAllowed(false)
+        assertFalse(model.state.value.visible)
         model.presentIfAllowed(true)
         assertTrue(model.state.value.visible)
     }
