@@ -115,7 +115,7 @@ class AppUpdateUiTest {
         compose.setContent {
             AppTheme(ColorSchemeMode.Light) {
                 val state by model.state.collectAsState()
-                AppUpdateEffect(model, false, true, true)
+                AppUpdateEffect(model, false, true)
                 Scaffold { padding ->
                     Box(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                         UpdateSettingsCard(state, false, {}, model::checkManually)

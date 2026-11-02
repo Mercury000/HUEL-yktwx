@@ -87,6 +87,11 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
     AppTheme(mode, settings.accentMode.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
         val agreed = consent?.accepted != false
+        val updateModel: AppUpdateViewModel = viewModel()
+        val updateState by updateModel.state.collectAsStateWithLifecycle()
+        // Release metadata needs consent, but never a campus account or successful login.
+        AppUpdateEffect(updateModel, settings.automaticUpdates.value,
+            allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current)
         val keepLoginWhileInitializing = remember(consent) { consent?.accepted == false }
         LaunchedEffect(agreed) {
             // An Activity can retain its models while a changed notice is restored.
@@ -160,6 +165,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             state.needsLogin -> AuthPage.Login
             else -> AuthPage.Main
         }
+        LaunchedEffect(authPage) { updateModel.dismiss() }
         AnimatedContent(
             // Route-only target: never retain a payment batch, code or password
             // as an animation snapshot. Normal refreshes do not change screens.
@@ -198,7 +204,15 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                         CircularProgressIndicator()
                     }
                     AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
-                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) }, consent = consent, onInputEdited = viewModel::loginInputEdited)
+                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) },
+                        consent = consent, onInputEdited = viewModel::loginInputEdited,
+                        updateNotice = {
+                            InlineUpdateNotice(updateState.copy(noticeVisible = interactive && agreed && updateState.noticeVisible),
+                                updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
+                        },
+                        updateDialog = {
+                            AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
+                        })
                     AuthPage.Main -> {
                         // Keep only shell identity for the outgoing animation.
                         // Latest logged-out state has already removed payment codes.
@@ -212,6 +226,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
                                     viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
                                     isActive = interactive,
                                     onLogout = { consent?.revoke(); viewModel.logout() },
+                                    updateModel = updateModel, updateState = updateState,
                                 )
                             }
                         }
@@ -259,11 +274,11 @@ private fun MainContent(
     avatarModel: AvatarViewModel,
     isActive: Boolean,
     onLogout: () -> Unit,
+    updateModel: AppUpdateViewModel,
+    updateState: AppUpdateUiState,
 ) {
     val context = LocalContext.current
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
-    val updateModel: AppUpdateViewModel = viewModel()
-    val updateState by updateModel.state.collectAsStateWithLifecycle()
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
     val cardState by cardModel.state.collectAsStateWithLifecycle()
@@ -421,10 +436,7 @@ private fun MainContent(
     // Automatic results stay inline; user-opened details are confined to pages with an update entry.
     val updatePromptAllowed = isActive &&
         (layers.lastOrNull() == Screen.Settings || layers.isEmpty())
-    AppUpdateEffect(updateModel, settings.automaticUpdates.value,
-        allowed = isActive && !state.needsLogin && !state.preview && !LocalInspectionMode.current,
-        safeToPrompt = updatePromptAllowed)
-    LaunchedEffect(updatePromptAllowed, updateState.release, updateState.checking) {
+    LaunchedEffect(updatePromptAllowed, updateState.detailsPending) {
         updateModel.presentIfAllowed(updatePromptAllowed)
     }
     val updateNotice: @Composable () -> Unit = {
@@ -705,7 +717,7 @@ private fun MainContent(
         }
     }
     }
-    AppUpdateDialog(updateState, updateModel::dismiss)
+    AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible), updateModel::dismiss)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
             avatarState.owner == state.username && avatarState.preview == state.preview)
