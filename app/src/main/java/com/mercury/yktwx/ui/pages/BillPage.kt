@@ -106,6 +106,7 @@ fun BillPage(
                 readError(state.stats.categoriesError, state.stats.categoriesErrorKind), readError(state.stats.dailyError, state.stats.dailyErrorKind), readError(state.stats.rankingError, state.stats.rankingErrorKind))
             else FeedbackText.firstError(readError(state.error, state.errorKind), readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
             if (state.statsVisible) !state.stats.loading else !state.loading && !state.refreshing)
+            .takeUnless { state.statsVisible && state.stats.restoringDisplay }
     }
     // The common statistics notice survives type retries; content/progress still use readIdentity.
     val networkFeedbackIdentity = if (state.statsVisible) listOf("stats", state.stats.period, state.needsLogin)
@@ -115,9 +116,10 @@ fun BillPage(
             *listOfNotNull(
                 ReadRegion("每日趋势", readError(state.stats.dailyError, state.stats.dailyErrorKind), state.stats.dailyLoaded).takeIf { state.stats.period.trendSupported },
                 ReadRegion("分类统计", readError(state.stats.categoriesError, state.stats.categoriesErrorKind), state.stats.categoriesLoaded),
-                ReadRegion("账单排行", readError(state.stats.rankingError, state.stats.rankingErrorKind), state.stats.rankingLoaded)).toTypedArray())
+                ReadRegion("账单排行", readError(state.stats.rankingError, state.stats.rankingErrorKind), state.stats.rankingLoaded)).toTypedArray(),
+            restoringDisplay = state.stats.restoringDisplay)
             // Keep retry memory during disk restoration without claiming an uncached page has old data.
-            .takeIf { statsHasContent || !state.stats.loading }
+            .takeIf { statsHasContent || state.stats.restoringDisplay || !state.stats.loading }
         else rememberPageNetworkError(state.loading || state.refreshing || state.loadingMore, listHasContent, initialError,
             ReadRegion("账单明细", FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
                 state.listAvailable || state.items.isNotEmpty()),

@@ -37,6 +37,8 @@ data class BillStatsState(
     val dailyErrorKind: ReadFailureKind? = null,
     val categoriesErrorKind: ReadFailureKind? = null,
     val rankingErrorKind: ReadFailureKind? = null,
+    /** Cache availability is unknown until local snapshot reads finish. */
+    val restoringDisplay: Boolean = false,
 )
 
 enum class BillListUpdate { Initial, Restore, Refresh, Append, Query }
@@ -142,7 +144,7 @@ class BillViewModel internal constructor(
             }
             if (statsPending()) {
                 statsJob?.cancel()
-                mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(loading = false))
+                mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(loading = false, restoringDisplay = false))
             }
         }
     }
@@ -204,7 +206,7 @@ class BillViewModel internal constructor(
         lastLoadedAt = 0L; statsCache.invalidate(); listCache.invalidate()
         summaryReadAt = 0L; countsReadAt = 0L
         mutable.value = mutable.value.copy(loading = false, refreshing = false, listLoading = false, loadingMore = false,
-            stats = mutable.value.stats.copy(loading = false))
+            stats = mutable.value.stats.copy(loading = false, restoringDisplay = false))
     }
 
     fun onActivate() {
@@ -613,7 +615,7 @@ class BillViewModel internal constructor(
         val readCategories = !transactionRetry || statsRefresh.needsRead(categoriesKey)
         val readRanking = !transactionRetry || statsRefresh.needsRead(rankingKey)
         statsCache.invalidate(statsKey(stats.period, stats.type))
-        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, errorKind = null, error = null,
+        mutable.value = mutable.value.copy(stats = stats.copy(loading = !silent, restoringDisplay = !stats.loaded, errorKind = null, error = null,
             dailyErrorKind = stats.dailyErrorKind.takeUnless { readDaily }, dailyError = stats.dailyError.takeUnless { readDaily },
             categoriesErrorKind = stats.categoriesErrorKind.takeUnless { readCategories }, categoriesError = stats.categoriesError.takeUnless { readCategories },
             rankingErrorKind = stats.rankingErrorKind.takeUnless { readRanking }, rankingError = stats.rankingError.takeUnless { readRanking }))
@@ -626,7 +628,7 @@ class BillViewModel internal constructor(
                 mutable.value = mutable.value.copy(stats = mutable.value.stats.copy(daily = daily.orEmpty(), categories = categories.orEmpty(), ranking = ranking.orEmpty(),
                     dailyLoaded = daily != null, categoriesLoaded = categories != null, rankingLoaded = ranking != null,
                     loaded = daily != null || categories != null || ranking != null,
-                    displayRestored = daily != null || categories != null || ranking != null))
+                    displayRestored = daily != null || categories != null || ranking != null, restoringDisplay = false))
             }
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
