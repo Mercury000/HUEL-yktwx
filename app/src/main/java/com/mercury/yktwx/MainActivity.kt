@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                         statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
                         navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
                     )
+                    window.isNavigationBarContrastEnforced = false
                     onDispose {}
                 }
                 YktApp(settings, viewModel, billViewModel, consent = consent.takeUnless { preview })

@@ -81,4 +81,18 @@ class MainActivityConfigurationTest {
         compose.onNodeWithText("主题").assertIsDisplayed()
     }
 
+    @Test fun navigationBarContrastProtectionStaysDisabledAcrossThemeChanges() {
+        val activity = controller.get()
+        assertFalse(activity.window.isNavigationBarContrastEnforced)
+        for (night in listOf(Configuration.UI_MODE_NIGHT_YES, Configuration.UI_MODE_NIGHT_NO)) {
+            compose.runOnIdle {
+                controller.configurationChange(Configuration(activity.resources.configuration).apply {
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+                })
+            }
+            compose.waitForIdle()
+            assertFalse("Theme changes must not restore the system navigation scrim",
+                controller.get().window.isNavigationBarContrastEnforced)
+        }
+    }
 }
