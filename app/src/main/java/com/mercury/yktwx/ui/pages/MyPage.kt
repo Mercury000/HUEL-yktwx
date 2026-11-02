@@ -407,7 +407,7 @@ private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack
                     }
                 }
                 if (onRefresh != null) DashboardPullToRefresh(loading, onRefresh, Modifier.fillMaxSize(),
-                    PaddingValues(top = padding.calculateTopPadding() + 16.dp), scroll, list)
+                    PaddingValues(top = padding.calculateTopPadding() + 16.dp), scroll, content = list)
                 else list()
             }
         }
