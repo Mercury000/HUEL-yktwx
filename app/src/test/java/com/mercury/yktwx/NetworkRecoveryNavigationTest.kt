@@ -198,7 +198,7 @@ class NetworkRecoveryNavigationTest {
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
         assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
         assertEquals(ReadFailureKind.Network, payment.state.value.accountErrorKind)
-        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+        compose.onAllNodes(visibleTag("page-network-error")).assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.onNodeWithText("¥ 64.96").assertIsDisplayed()
         compose.runOnIdle { connection(true) }
@@ -214,7 +214,7 @@ class NetworkRecoveryNavigationTest {
         await { mine.state.value.profileError != null && payment.state.value.accountError != null && !mine.state.value.loading }
         assertEquals(failureMessage, mine.state.value.profileError)
         assertEquals(ReadFailureKind.Network, mine.state.value.profileErrorKind)
-        compose.onAllNodesWithTag("page-network-error").assertCountEquals(1)
+        compose.onAllNodes(visibleTag("page-network-error")).assertCountEquals(1)
         compose.onAllNodesWithTag("read-notice").assertCountEquals(0)
         compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
         online = true

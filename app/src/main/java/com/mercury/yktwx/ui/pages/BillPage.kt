@@ -87,7 +87,8 @@ fun BillPage(
                 "明细" to FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
                 "概览" to FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind))),
             if (state.statsVisible) state.stats.loading else state.loading || state.refreshing,
-            if (state.statsVisible) statsHasContent else listHasContent)
+            if (state.statsVisible) statsHasContent else listHasContent,
+            offline = LocalReadOffline.current)
     }
     val initialError = key(state.dateFilter, state.statsVisible, state.stats.type, state.info,
         state.typeId, state.amountFromCents, state.amountToCents) {

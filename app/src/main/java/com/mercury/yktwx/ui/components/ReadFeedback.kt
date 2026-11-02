@@ -68,14 +68,20 @@ internal fun BalanceReadIndicator(loading: Boolean) {
 
 private val LocalSkeletonActive = staticCompositionLocalOf { true }
 internal val LocalSkeletonDelayEnabled = staticCompositionLocalOf { false }
-private val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
+internal val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
 private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 
 /** An existing merged failure stays put until the current retry has a settled result. */
 @Composable
-internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasContent: Boolean): String? {
+internal fun rememberPageNetworkError(error: String?, refreshing: Boolean, hasContent: Boolean,
+    offline: Boolean = false): String? {
     var previous by remember { mutableStateOf<String?>(null) }
-    val displayed = if (!hasContent) null else if (refreshing && previous != null) previous else error
+    val displayed = when {
+        !hasContent -> null
+        offline -> FeedbackText.read(ReadError(FeedbackText.Offline, ReadFailureKind.Network), cached = true)
+        refreshing && previous != null -> previous
+        else -> error
+    }
     SideEffect { previous = displayed }
     return displayed
 }
