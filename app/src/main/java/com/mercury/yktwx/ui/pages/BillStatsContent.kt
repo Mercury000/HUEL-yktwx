@@ -116,14 +116,17 @@ private fun StatsOverview(stats: BillStatsState) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             UpdatedText(heading, numeric = false, fontSize = 13.sp, lineHeight = 18.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            ReadContent(amountPending to total, pending = { it.first }, contentKey = { it.first }) { (reading, amount) ->
-            if (reading) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
-            else UpdatedText(
-                amount?.let(::money) ?: "—", prefix = "¥ ", identity = listOf(stats.period, stats.type),
-                fontSize = 30.sp, lineHeight = 38.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-            )
+            // Reset the outer snapshot as well as the number when changing queries.
+            key(stats.period, stats.type) {
+                ReadContent(amountPending to total, pending = { it.first }, contentKey = { it.first }) { (reading, amount) ->
+                    if (reading) DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .58f, lineHeight = 38.sp, sample = "¥ 0.00")
+                    else UpdatedText(
+                        amount?.let(::money) ?: "—", Modifier.testTag("bill-stats-amount"), prefix = "¥ ",
+                        fontSize = 30.sp, lineHeight = 38.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (stats.type == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                    )
+                }
             }
             ReadText(
                 if (detailPending) null else detail, Modifier.fillMaxWidth(), fraction = .68f,
