@@ -43,6 +43,7 @@ class ContentMotionUiTest {
     @Test fun statisticsReuseShowsNoProgressUntilExpiredAndKeepsTheModeTabsStill() {
         var now = 10_000L
         var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var expenseCents = 800L
         val service = object : YktService by YktApi({ error("Unexpected live request") }) {
             override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
                 typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?) =
@@ -54,7 +55,7 @@ class ContentMotionUiTest {
                 gate.await(); return PreviewData.billStats(filter, type).daily
             }
             override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
-                gate.await(); return listOf(BillCategory(if (type == 2) "支出" else "收入", if (type == 2) 800 else 1200))
+                gate.await(); return listOf(BillCategory(if (type == 2) "支出" else "收入", if (type == 2) expenseCents else 1200))
             }
             override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
                 gate.await(); return emptyList()
@@ -92,25 +93,46 @@ class ContentMotionUiTest {
             }
             waitForRead(false)
             selectTab("统计"); waitForRead(true)
+            val expenseAmount = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
             selectTab("收入"); waitForRead(true)
+            val incomeAmount = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
             compose.mainClock.autoAdvance = false
             val tabs = compose.onNodeWithTag("bill-mode-tabs")
             val pixels = tabs.captureToImage().asAndroidBitmap()
+            val tabNode = tabs.fetchSemanticsNode()
             selectTab("支出")
             repeat(12) {
                 frames(1)
                 compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
                 assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
+                val currentAmount = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
+                assertTrue("Cached expenses must display the final amount in every frame", expenseAmount.sameAs(currentAmount))
             }
             assertEquals(800L, model.state.value.stats.categories.single().amountCents)
             selectTab("收入")
-            compose.runOnIdle { now += 60_000; gate = CompletableDeferred() }
+            repeat(16) {
+                frames(1)
+                compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+                assertTrue("Cached income must display the final amount in every frame",
+                    incomeAmount.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
+            }
+            compose.runOnIdle { now += 60_000; expenseCents = 900; gate = CompletableDeferred() }
             selectTab("支出")
             frames(3)
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             assertEquals(800L, model.state.value.stats.categories.single().amountCents)
-            assertTrue(pixels.sameAs(tabs.captureToImage().asAndroidBitmap()))
+            // Revalidation inserts progress above the tabs without recreating them.
+            val refreshingTabs = tabs.fetchSemanticsNode()
+            assertEquals(tabNode.id, refreshingTabs.id)
+            assertEquals(tabNode.boundsInRoot.width, refreshingTabs.boundsInRoot.width, 1f)
+            assertEquals(tabNode.boundsInRoot.height, refreshingTabs.boundsInRoot.height, 1f)
             compose.runOnIdle { gate.complete(Unit) }; waitForRead(true)
+            frames(2)
+            val updating = compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()
+            compose.onNodeWithTag("bill-stats-amount").assertTextEquals("¥ 9.00")
+            frames(20)
+            assertFalse("A real amount update within the same query must still animate",
+                updating.sameAs(compose.onNodeWithTag("bill-stats-amount").captureToImage().asAndroidBitmap()))
         } finally {
             gate.complete(Unit); store.clear(); compose.mainClock.autoAdvance = true
         }
@@ -134,7 +156,7 @@ class ContentMotionUiTest {
             compose.onNodeWithText(if (type == 1) "收入" else "支出").performClick()
             frames(2)
             compose.runOnIdle {
-                state = state.copy(stats = PreviewData.billStats(state.stats.period, type).copy(loading = true, displayRestored = true))
+                state = state.copy(stats = PreviewData.billStats(state.stats.period, type).copy(displayRestored = true))
             }
             repeat(16) { frame ->
                 frames(1)
