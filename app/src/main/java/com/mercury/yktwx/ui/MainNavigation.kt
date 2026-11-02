@@ -49,7 +49,7 @@ internal fun MainNavigationScaffold(
     settings: ThemeSettings,
     selected: Int,
     onSelected: (Int) -> Unit,
-    floatingBarVisible: Boolean = true,
+    bottomBarVisible: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
@@ -60,15 +60,11 @@ internal fun MainNavigationScaffold(
         }
     } else {
         Scaffold(bottomBar = {
-            if (settings.floatingBottomBar.value) {
-                AnimatedVisibility(
-                    visible = floatingBarVisible,
-                    enter = slideInVertically(tween(260)) { it } + fadeIn(tween(180)),
-                    exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(140)),
-                ) {
-                    BottomNavigation(settings, selected, onSelected)
-                }
-            } else {
+            AnimatedVisibility(
+                visible = bottomBarVisible,
+                enter = slideInVertically(tween(260)) { it } + fadeIn(tween(180)),
+                exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(140)),
+            ) {
                 BottomNavigation(settings, selected, onSelected)
             }
         }, content = content)
