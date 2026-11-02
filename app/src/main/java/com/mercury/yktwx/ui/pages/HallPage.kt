@@ -59,6 +59,7 @@ fun HallPage(
     onSelectRoom: (Int) -> Unit = {},
     onRemoveRoom: (DormRoom) -> Unit = {},
     onAddRoom: (FeeProject) -> Unit = onOpenFee,
+    updateNotice: @Composable () -> Unit = {},
 ) {
     val dorm = if (LocalReadOffline.current) dorm.offlineDisplay() else dorm
     var targets by remember { mutableStateOf(false) }
@@ -96,7 +97,7 @@ fun HallPage(
                         dorm.loading && !dorm.roomsAvailable && dorm.rooms.isEmpty() && dorm.network == null))
                         DormUiState(loading = true) else dorm
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical().imePadding(),
+                    modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("hall-page-list"),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 10.dp,
                         bottom = bottomPadding + 24.dp,
@@ -105,17 +106,25 @@ fun HallPage(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     if (showFailure) {
-                        item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
+                        item {
+                            Column {
+                                updateNotice()
+                                ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
+                            }
+                        }
                     } else {
                     item {
-                        PageReadNotice(networkError, 14.dp,
-                            loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
-                            failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
-                            UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
-                                onSwitch = { targetTab = 0; targetAdding = false; targets = true },
-                                onAdd = { targetTab = 0; targetAdding = true; targets = true },
-                                onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
-                                onPay = onOpenDormFee)
+                        Column {
+                            updateNotice()
+                            PageReadNotice(networkError, 14.dp,
+                                loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
+                                failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
+                                UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
+                                    onSwitch = { targetTab = 0; targetAdding = false; targets = true },
+                                    onAdd = { targetTab = 0; targetAdding = true; targets = true },
+                                    onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
+                                    onPay = onOpenDormFee)
+                            }
                         }
                     }
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }

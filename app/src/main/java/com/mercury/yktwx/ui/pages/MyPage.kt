@@ -50,6 +50,7 @@ internal fun MyPage(
     onSettings: () -> Unit, onAbout: () -> Unit,
     customAvatar: Boolean = false,
     avatarImage: android.graphics.Bitmap? = null, avatarPending: Boolean = false,
+    updateNotice: @Composable () -> Unit = {},
 ) {
     val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val payment = if (LocalReadOffline.current) payment.offlineDisplay() else payment
@@ -91,14 +92,20 @@ internal fun MyPage(
                         state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
                     val summaryPending = !state.summaryLoaded && state.summary == null && state.summaryError == null
                     val countsPending = !state.countsLoaded && state.counts == null && state.countsError == null
-                    LazyColumn(Modifier.fillMaxSize().overScrollVertical(),
+                    LazyColumn(Modifier.fillMaxSize().overScrollVertical().testTag("my-page-list"),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (showFailure) {
-                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
+                            item {
+                                Column {
+                                    updateNotice()
+                                    ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
+                                }
+                            }
                         } else {
                         item {
                             Column {
+                            updateNotice()
                             PageReadNotice(networkError, 10.dp, loading =
                                 (state.loading || balancePending || cardPending || isActive && !state.loaded) && (state.loaded || state.displayRestored),
                                 failed = state.profileError != null || state.homeIdentityError != null || state.avatarError != null ||

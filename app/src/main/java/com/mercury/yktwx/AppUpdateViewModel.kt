@@ -20,6 +20,7 @@ internal enum class UpdateFeedback { Current, NoRelease, Incompatible, Network, 
 internal data class AppUpdateUiState(
     val checking: Boolean = false,
     val release: UpdateRelease? = null, val visible: Boolean = false,
+    val noticeVisible: Boolean = false,
 )
 
 internal class AppUpdateViewModel internal constructor(
@@ -31,7 +32,7 @@ internal class AppUpdateViewModel internal constructor(
     private constructor(app: Application, request: UpdateRequest) : this(app,
         UpdateCheckStore(app, request), { AppUpdateApi().check(request) })
 
-    private val mutable = MutableStateFlow(AppUpdateUiState())
+    private val mutable = MutableStateFlow(AppUpdateUiState(release = store.cachedRelease()))
     val state = mutable.asStateFlow()
     private val feedback = MutableSharedFlow<UpdateFeedback>(extraBufferCapacity = 1)
     val messages = feedback.asSharedFlow()
@@ -50,9 +51,11 @@ internal class AppUpdateViewModel internal constructor(
         if (!allowed || !inForeground || !automatic && !manualRequest) {
             generation++
             job?.cancel(); job = null
-            if (!allowed || !automatic && !manualRequest) pendingPrompt = false
+            pendingPrompt = false
+            manualRequest = false
             mutable.value = state.value.copy(checking = false, visible = false)
         }
+        refreshNotice()
         if (allowed && inForeground && automatic && job == null && store.automaticDue(now())) check(manual = false)
     }
 
@@ -79,15 +82,16 @@ internal class AppUpdateViewModel internal constructor(
         val attempt = ++generation
         // Reserve the short cooldown while a request is pending or cancelled.
         store.checked(now(), successful = false)
-        mutable.value = AppUpdateUiState(checking = manual)
+        mutable.value = state.value.copy(checking = manual, visible = false)
         viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = checkUpdate()
                 currentCoroutineContext().ensureActive()
                 if (generation != attempt) return@launch
                 store.checked(now(), successful = true)
-                pendingPrompt = result.release != null && (manualRequest || automaticEnabled &&
-                    store.canPrompt(result.release.versionCode, now()))
+                store.cacheRelease(result.release)
+                // Only a user-requested check can open a dialog. Automatic checks update the inline notice.
+                pendingPrompt = result.release != null && manualRequest
                 val message = if (!manualRequest) null else when (result.reason) {
                     UpdateCheckReason.CurrentOrNewer -> UpdateFeedback.Current
                     UpdateCheckReason.NoPublishedRelease -> UpdateFeedback.NoRelease
@@ -95,27 +99,47 @@ internal class AppUpdateViewModel internal constructor(
                     UpdateCheckReason.UpdateAvailable -> null
                 }
                 mutable.value = AppUpdateUiState(release = result.release)
+                refreshNotice()
                 message?.let { feedback.tryEmit(it) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 if (generation == attempt) {
                     store.checked(now(), successful = false)
-                    mutable.value = AppUpdateUiState()
+                    mutable.value = state.value.copy(checking = false, visible = false)
                     if (manualRequest) feedback.tryEmit(if (error is java.io.IOException) UpdateFeedback.Network else UpdateFeedback.Failed)
                 }
             } finally {
-                if (generation == attempt) job = null
+                if (generation == attempt) { job = null; manualRequest = false }
             }
         }.also { job = it; it.start() }
     }
 
     fun presentIfAllowed(safeToPrompt: Boolean) {
+        if (!safeToPrompt) {
+            mutable.value = state.value.copy(visible = false)
+            return
+        }
         val release = state.value.release ?: return
-        if (!safeToPrompt || !foreground || !networkAllowed || !pendingPrompt) return
+        if (!foreground || !networkAllowed || !pendingPrompt) return
         pendingPrompt = false
-        store.prompted(release.versionCode, now())
         mutable.value = state.value.copy(visible = true)
+    }
+
+    fun openDetails() {
+        if (!foreground || !networkAllowed || !state.value.noticeVisible) return
+        pendingPrompt = false
+        mutable.value = state.value.copy(visible = true)
+    }
+
+    fun dismissNotice() {
+        state.value.release?.let { store.dismissNotice(it.versionCode, now()) }
+        refreshNotice()
+    }
+
+    private fun refreshNotice() {
+        mutable.value = state.value.copy(noticeVisible = automaticEnabled && networkAllowed &&
+            state.value.release?.let { store.canNotify(it.versionCode, now()) } == true)
     }
 
     fun dismiss() {

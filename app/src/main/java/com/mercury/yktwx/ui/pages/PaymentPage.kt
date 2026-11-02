@@ -38,7 +38,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true, updateNotice: @Composable () -> Unit = {}) {
     val displayCode = state.code.takeIf { state.problem == null && !state.busy && state.error == null }
     PaymentCodePresentationEffect(isActive && displayCode != null)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
@@ -89,15 +89,22 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && initialError != null) state.copy(error = null, busy = true) else state
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().overScrollVertical().imePadding(),
-                        contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
+                        modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("payment-page-list"),
+                        contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (showFailure) {
-                            item { ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight()) }
+                            item {
+                                Column {
+                                    updateNotice()
+                                    ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
+                                }
+                            }
                         } else {
                         item {
+                            Column {
+                            updateNotice()
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     Row(Modifier.fillMaxWidth().height(paymentHeaderHeight()), verticalAlignment = Alignment.CenterVertically) {
@@ -161,6 +168,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         }
                                     }
                                 }
+                            }
                             }
                         }
                         item {

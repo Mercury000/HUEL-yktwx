@@ -8,6 +8,14 @@ import androidx.compose.ui.unit.dp
 
 object AppIcons {
 
+    val Close = ImageVector.Builder("Close", 16.dp, 16.dp, 16f, 16f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round) {
+            moveTo(4f, 4f); lineTo(12f, 12f)
+            moveTo(12f, 4f); lineTo(4f, 12f)
+        }
+    }.build()
+
     val DateDropdown = ImageVector.Builder("DateDropdown", 16.dp, 16.dp, 16f, 16f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {

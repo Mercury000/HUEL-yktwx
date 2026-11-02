@@ -73,6 +73,7 @@ fun BillPage(
     onShowDetails: () -> Unit = {},
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
+    updateNotice: @Composable () -> Unit = {},
 ) {
     val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
@@ -195,7 +196,7 @@ fun BillPage(
                         state = listState,
                         modifier = Modifier.fillMaxSize().testTag(if (state.statsVisible) "bill-stats-list" else "bill-list").overScrollVertical(),
                         contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 8.dp,
+                            top = padding.calculateTopPadding() + 10.dp,
                             bottom = maxOf(padding.calculateBottomPadding() + 28.dp, bottomPadding + 24.dp),
                             start = 16.dp,
                             end = 16.dp,
@@ -203,6 +204,8 @@ fun BillPage(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item(key = "mode") {
+                            Column {
+                            updateNotice()
                             Box(Modifier.width(180.dp).testTag("bill-mode-tabs")) {
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
                                     onTabSelected = { if (it == 0) onShowDetails() else onOpenStats() },
@@ -212,6 +215,7 @@ fun BillPage(
                                         contentColor = DashboardPalette.muted,
                                         selectedBackgroundColor = if (androidx.compose.foundation.isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryVariant else DashboardPalette.card,
                                         selectedContentColor = DashboardPalette.ink))
+                            }
                             }
                         }
                         if (showFailure && !state.needsLogin) {
