@@ -191,10 +191,11 @@ internal class DormMeterDiscovery(private val service: FeeService) {
             return matches.sortedBy { kind(it.name).ordinal } to
                 if (matches.size == 1) "同宿舍未检测到另一类电表，当前仅显示已绑定电表" else null
         }
-        // Only the exact observed textual unit is normalized. Unknown formats stay as official display text.
+        // Only the exact observed textual unit is normalized; numeric text keeps its original decimal places.
+        // Unknown formats stay as official display text.
         internal fun remainingKwh(text: String): String? {
             val match = Regex("^当前剩余电量为[：:]?\\s*(-?\\d+(?:\\.\\d+)?)\\s*度[。.]?$|^(-?\\d+(?:\\.\\d+)?)\\s*度$").matchEntire(text.trim()) ?: return null
-            return (match.groupValues[1].ifBlank { match.groupValues[2] }).toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString()
+            return match.groupValues[1].ifBlank { match.groupValues[2] }
         }
     }
 }

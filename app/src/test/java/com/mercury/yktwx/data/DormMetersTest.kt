@@ -41,7 +41,7 @@ class DormMetersTest {
         val room = DormMeterDiscovery(fees).discover("fake-token", config(official))!!
         assertSame(official, room.binding)
         assertEquals(listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning), room.meters.map { it.kind })
-        assertEquals(listOf("86.4", "32.8"), room.meters.map { it.readings.firstOrNull()?.value })
+        assertEquals(listOf("86.40", "32.800"), room.meters.map { it.readings.firstOrNull()?.value })
         assertEquals(listOf(lighting.id, ac.id), fees.details.map { it["room"] })
         assertTrue(fees.details.all { it["campus"] == "campus-a" && it["building"] == "building-a" && it["floor"] == "floor-a" })
         assertEquals("示例A栋-房间A", room.label)
@@ -65,7 +65,7 @@ class DormMetersTest {
     @Test fun oneMeterFailureDoesNotEraseOtherMeterOrInventZero() = runBlocking {
         val fees = FakeFees().apply { failure = NetworkFailure() }
         val room = DormMeterDiscovery(fees).discover("fake-token", config(binding(lighting)))!!
-        assertEquals("86.4", room.meters[0].readings.firstOrNull()?.value)
+        assertEquals("86.40", room.meters[0].readings.firstOrNull()?.value)
         assertNull(room.meters[1].readings.firstOrNull()?.value)
         assertNotNull(room.meters[1].error)
         assertEquals(ReadFailureKind.Network, room.meters[1].errorKind)
@@ -89,9 +89,11 @@ class DormMetersTest {
             }
         }
     }
-    @Test fun onlyObservedElectricityUnitsAreNormalized() {
-        assertEquals("0", DormMeterDiscovery.remainingKwh("当前剩余电量为0.00度"))
-        assertEquals("-1.5", DormMeterDiscovery.remainingKwh("-1.50 度"))
+    @Test fun onlyObservedElectricityUnitsAreNormalizedAndDecimalPlacesArePreserved() {
+        assertEquals("0.00", DormMeterDiscovery.remainingKwh("当前剩余电量为0.00度"))
+        assertEquals("-1.50", DormMeterDiscovery.remainingKwh("-1.50 度"))
+        assertEquals("100", DormMeterDiscovery.remainingKwh("100度"))
+        assertEquals("32.800", DormMeterDiscovery.remainingKwh(" 当前剩余电量为： 32.800 度。 "))
         assertNull(DormMeterDiscovery.remainingKwh("账户余额为86.4元"))
         assertNull(DormMeterDiscovery.remainingKwh("86.4 kWh"))
         assertNull(DormMeterDiscovery.remainingKwh("剩余电量未知"))
@@ -260,7 +262,7 @@ class DormMetersTest {
     @Test fun readingsRetainEachReturnedQuantityAndNeverConvertWaterToCurrency() {
         assertEquals(DormMeterReading("剩余水量", "28.60", "吨"), meterReading("剩余水量(吨)", "28.60"))
         assertEquals(DormMeterReading("账户余额", "12.50", "元"), meterReading("账户余额（元）", "12.50"))
-        assertEquals(DormMeterReading("剩余电量", "86.4", "度"), meterReading("信息", "当前剩余电量为86.40度"))
+        assertEquals(DormMeterReading("剩余电量", "86.40", "度"), meterReading("信息", "当前剩余电量为86.40度"))
         assertEquals(DormMeterReading("说明", "计量器状态未知", ""), meterReading("说明", "计量器状态未知"))
         assertEquals(DormMeterReading("剩余水量(吨)", "未知", ""), meterReading("剩余水量(吨)", "未知"))
         val meter = DormMeter(DormMeterKind.Other, binding(lighting), FeeQuery(display =
