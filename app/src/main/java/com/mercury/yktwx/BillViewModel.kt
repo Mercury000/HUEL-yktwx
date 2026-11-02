@@ -286,6 +286,7 @@ class BillViewModel internal constructor(
         mutable.value = current.copy(
             dateFilter = filter, items = emptyList(), summary = null, counts = null, currentPage = 0, pages = 0,
             loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
+            loadingMore = false,
             listLoaded = false, listAvailable = false, summaryLoaded = false, countsLoaded = false, listLoading = false,
             summaryErrorKind = null, summaryError = null, countsErrorKind = null, countsError = null,
             displayRestored = false,
@@ -310,6 +311,7 @@ class BillViewModel internal constructor(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
             items = emptyList(), currentPage = 0, pages = 0,
             loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
+            loadingMore = false,
             listLoaded = false, listAvailable = false, listLoading = false,
         )
         if (!preview && !mutable.value.needsLogin) loadListQuery(queryChanged = true)
@@ -322,6 +324,7 @@ class BillViewModel internal constructor(
         mutable.value = mutable.value.copy(
             info = value, items = emptyList(), currentPage = 0, pages = 0,
             loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null, loading = false, refreshing = false,
+            loadingMore = false,
             listLoaded = false, listAvailable = false, listLoading = false,
         )
         if (!preview && !mutable.value.needsLogin) loadListQuery(queryChanged = true)
@@ -333,7 +336,7 @@ class BillViewModel internal constructor(
         cancelListJobs()
         mutable.value = current.copy(typeId = null, amountFromCents = null, amountToCents = null, info = "",
             items = emptyList(), currentPage = 0, pages = 0, loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null,
-            loading = false, refreshing = false, listLoaded = false, listAvailable = false, listLoading = false)
+            loading = false, refreshing = false, loadingMore = false, listLoaded = false, listAvailable = false, listLoading = false)
         if (!preview && !current.needsLogin) loadListQuery(queryChanged = true)
     }
 
@@ -601,7 +604,7 @@ class BillViewModel internal constructor(
         )
         loadJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
-            displayJob?.join()
+            if (displayJobKey == listKey(current)) displayJob?.join()
             if (!mutable.value.listAvailable && mutable.value.items.isEmpty()) restoreListDisplay(username, current)
             fun publish(change: (BillUiState) -> BillUiState) {
                 val latest = mutable.value
@@ -739,7 +742,7 @@ class BillViewModel internal constructor(
         statsJob = viewModelScope.launch {
             val username = accountOwner.orEmpty()
             prepareStatsDisplay()
-            statsDisplayJob?.join()
+            if (statsDisplayJobKey == statsKey(stats.period, stats.type)) statsDisplayJob?.join()
             currentCoroutineContext().ensureActive()
             fun publish(change: (BillStatsState) -> BillStatsState) {
                 val latest = mutable.value
