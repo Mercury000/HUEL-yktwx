@@ -68,7 +68,6 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var accountRequest: Job? = null
     private var accountReadVersion = 0L
     private var accountReadAt = 0L
-    private var cardReadAt = 0L
     private var accountPageVisible = false
     private var logoutJob: Job? = null
     private var preview = false
@@ -135,10 +134,21 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 else if (AccountResource.Data.Balance in resources) invalidateBalance()
             }
         }
+        viewModelScope.launch { repository.cardReads.revision.collect { syncCard() } }
+    }
+
+    private fun syncCard() {
+        val state = mutable.value
+        val account = state.account ?: return
+        if (preview || state.needsLogin) return
+        val snapshot = repository.cardSnapshot(state.username, account.account)
+        val card = snapshot.value ?: return
+        if (!snapshot.fresh() || card.status < 0) return
+        mutable.value = state.copy(accountCard = card, cardStatusErrorKind = null, cardStatusError = null)
     }
 
     private fun clearPaymentData(cancelLogin: Boolean = true) {
-        accountReadAt = 0L; cardReadAt = 0L
+        accountReadAt = 0L
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
         cancelAccountRead()
@@ -362,7 +372,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val readBalance = manual || current.account == null || current.accountError != null || balanceRefresh.needsRead(balanceKey(current.account)) ||
             !ReadCachePolicy.isFresh(accountReadAt)
         val readCard = !balanceOnly && (manual || current.accountCard == null || current.accountCard.account != current.account?.account ||
-            current.cardStatusError != null || !ReadCachePolicy.isFresh(cardReadAt))
+            current.cardStatusError != null || !repository.cardSnapshot(current.username, current.account.account).fresh())
         if (!readBalance && !readCard) return
         val query = accountReadKey()
         val readTrigger = if (trigger.automatic && balancePending()) ReadTrigger.Transaction else trigger
@@ -395,10 +405,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                     problem = if (sameAccount) mutable.value.problem else PaymentCodeProblem.StatusUnverified)
                 if (readBalance) repository.saveDisplay(username, DisplayKeys.Account, account, DisplayCodecs.Account)
                 if (readCard || !sameAccount && !balanceOnly) {
-                    val card = withContext(Dispatchers.IO) { repository.paymentCard(username, account.account) }
+                    val card = withContext(Dispatchers.IO) { repository.paymentCard(username, account.account, force = manual) }
                     if (!isCurrent() || !repository.ownsAccount(username)) return@launch
                     if (card.account != account.account || card.status < 0) throw YktException("校园卡状态数据异常")
-                    cardReadAt = SystemClock.elapsedRealtime()
                     mutable.value = mutable.value.copy(accountCard = card, cardStatusLoading = false, cardStatusErrorKind = null, cardStatusError = null)
                 }
                 cancelled = false

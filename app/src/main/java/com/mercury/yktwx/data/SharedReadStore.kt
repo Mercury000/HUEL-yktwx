@@ -19,9 +19,10 @@ internal class SharedReadStore(scope: CoroutineScope = CoroutineScope(Dispatcher
     data class Snapshot<T>(val value: T?, val readAt: Long, val pending: Boolean, val error: Throwable?) {
         fun fresh(now: Long = ReadCachePolicy.now()) = !pending && error == null && ReadCachePolicy.isFresh(readAt, now)
     }
-    private class Flight(val job: Deferred<Any>, var readers: Int = 0)
+    private class Flight(val job: Deferred<Any>, val valueRevision: Long, var readers: Int = 0)
     private class Entry(var stamp: Long) {
         var value: Any? = null
+        var valueRevision = 0L
         var baseline: Any? = null
         var readAt = 0L
         var pending = stamp != 0L
@@ -62,9 +63,21 @@ internal class SharedReadStore(scope: CoroutineScope = CoroutineScope(Dispatcher
         return Snapshot(entry.value as T?, entry.readAt, entry.pending || entry.error != null && entry.stamp != 0L, entry.error)
     }
 
+    /** A server-confirmed result from another endpoint supersedes an older concurrent read. */
+    @Synchronized fun <T : Any> put(owner: AccountIdentity?, key: String, stamp: Long, value: T, readAt: Long) {
+        if (owner == null || owner != identity) return
+        val entry = entry(key, stamp)
+        entry.value = value
+        entry.valueRevision++
+        entry.readAt = readAt
+        entry.pending = false
+        entry.error = null
+        mutableRevision.value++
+    }
+
     @Suppress("UNCHECKED_CAST")
     suspend fun <T : Any> read(owner: AccountIdentity, key: String, stamp: Long, force: Boolean,
-        now: () -> Long = ReadCachePolicy::now, currentStamp: () -> Long = { stamp }, load: suspend () -> T): T {
+        now: () -> Long = ReadCachePolicy::now, currentStamp: () -> Long = { stamp }, waitForChange: Boolean = true, load: suspend () -> T): T {
         currentCoroutineContext().ensureActive()
         val flight: Flight
         synchronized(this) {
@@ -72,7 +85,7 @@ internal class SharedReadStore(scope: CoroutineScope = CoroutineScope(Dispatcher
             val entry = entry(key, stamp)
             if (!force && !entry.pending && entry.error == null && ReadCachePolicy.isFresh(entry.readAt, now()))
                 entry.value?.let { return it as T }
-            flight = entry.flight ?: Flight(scope.async(start = CoroutineStart.LAZY) { load() }).also { entry.flight = it }
+            flight = entry.flight ?: Flight(scope.async(start = CoroutineStart.LAZY) { load() }, entry.valueRevision).also { entry.flight = it }
             flight.readers++
         }
         try {
@@ -81,6 +94,8 @@ internal class SharedReadStore(scope: CoroutineScope = CoroutineScope(Dispatcher
             synchronized(this) {
                 val entry = entries[key]
                 if (identity == owner && entry?.flight === flight && entry.stamp == stamp) {
+                    if (entry.valueRevision != flight.valueRevision && entry.value != null) return entry.value as T
+                    if (!waitForChange) entry.pending = false
                     if (entry.pending) {
                         if (entry.baseline != null && entry.baseline != value) entry.pending = false
                         else if (entry.baseline == null) entry.baseline = value
