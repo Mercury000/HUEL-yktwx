@@ -64,10 +64,10 @@
 | Android 最低版本 | Android 14 / API 34 |
 | compileSdk / targetSdk | 37 / 37 |
 | JDK toolchain | 22 |
-| Gradle Wrapper | 9.7.1 |
-| Android Gradle Plugin | 9.4.0 |
-| Kotlin | 2.4.20 |
-| miuix | 0.9.4-rc01 |
+| Gradle Wrapper | 9.8.2 |
+| Android Gradle Plugin | 9.5.0 |
+| Kotlin | 2.4.21 |
+| miuix | 0.9.4 |
 
 用 Android Studio 打开仓库，安装 Android SDK Platform 37，设置 SDK 路径并同步 Gradle。`local.properties` 由本机生成，**不要提交**。项目使用 Foojay toolchain resolver，首次构建可能需要联网下载 JDK 和依赖。
 

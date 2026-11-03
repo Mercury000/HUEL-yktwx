@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
-    id("com.mikepenz.aboutlibraries.plugin.android") version "15.2.0"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
+    id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 android {
     namespace = "com.mercury.yktwx"
@@ -64,7 +64,7 @@ tasks.withType<Test>().configureEach {
 java { toolchain { languageVersion = JavaLanguageVersion.of(22) } }
 kotlin { jvmToolchain(22) }
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
@@ -72,19 +72,19 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.google.zxing:core:3.5.4")
-    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-rc01")
-    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-rc01")
-    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-rc01")
-    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4-rc01")
-    implementation("com.mikepenz:aboutlibraries-core:15.2.0")
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
+    implementation("com.mikepenz:aboutlibraries-core:15.3.0")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-    testImplementation("org.json:json:20250517")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.json:json:20260814")
 }
 
 aboutLibraries {
