@@ -101,6 +101,18 @@ class ReadLayoutMotionUiTest {
         assertTrue(binding.sameTarget(paid))
     }
 
+    @Test @Config(qualifiers = "zh-rCN-w320dp-h740dp-xxhdpi", fontScale = 1.5f)
+    fun unboundValueLabelsWrapInsteadOfBeingClipped() {
+        val settings = ThemeSettings(compose.activity.application)
+        content { HallPage(settings, 0.dp, dorm = DormUiState(loaded = true)) }
+        val layout = textLayout("尚未添加")
+        assertTrue("Large text must be allowed to wrap", layout.lineCount > 1)
+        assertFalse("Wrapped value labels must not be clipped", layout.hasVisualOverflow)
+        val card = bounds("hall-utility-card")
+        val label = compose.onNodeWithText("尚未添加").fetchSemanticsNode().boundsInRoot
+        assertTrue("Label must stay inside the utility card", label.bottom <= card.bottom + .5f)
+    }
+
     @Test fun twoMeterButtonsAlignWhenOnlyOneDescriptionWraps() {
         val settings = ThemeSettings(compose.activity.application)
         val room = ready.rooms.first()

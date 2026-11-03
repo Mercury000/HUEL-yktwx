@@ -102,8 +102,17 @@ class DashboardLoadingTest {
             compose.runOnIdle { state = DormUiState(listOf(DormRoom(room.project, room.binding, room.meters.take(1), 0)),
                 loaded = true, network = ready.network) }
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            val boundUtility = bounds("hall-utility-card")
+            val beforeNetwork = bounds("hall-network-card").top
+            val beforeOthers = bounds("hall-others-card").top
             compose.runOnIdle { state = DormUiState(loaded = true) }
-            stable(network, "hall-network-card"); stable(others, "hall-others-card")
+            // The unbound panels can need a few more pixels at large font scales. That growth
+            // is size-animated by ReadLayout; following cards may only follow its delta.
+            val grown = bounds("hall-utility-card").height - boundUtility.height
+            assertEquals("Following cards must follow the utility card height", grown,
+                bounds("hall-network-card").top - beforeNetwork, 1f)
+            assertEquals("Following cards must follow the utility card height", grown,
+                bounds("hall-others-card").top - beforeOthers, 1f)
             compose.onNodeWithText("尚未添加").assertExists()
         }
     }
