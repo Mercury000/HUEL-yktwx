@@ -27,7 +27,7 @@ class BillViewModelTest {
     private val service = FakeService()
     private var now = 10_000L
     private val model = BillViewModel(
-        ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault), { now },
+        ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault, readNow = { now }), { now },
     )
     private val store = ViewModelStore().apply { put("bills", model) }
 

@@ -221,6 +221,26 @@ class TransactionDataRefreshTest {
         await { bill.state.value.items.size == 2 && bill.state.value.summary?.incomeCents == 1000L && !bill.state.value.loading }
     }
 
+    @Test fun billAndMyShareLiveOverviewAndManualRefreshPublishesToBothPages() {
+        val bill = bills()
+        bill.setPageVisible(false)
+        val mine = MyViewModel(app, repository, delays)
+        store.put("mine", mine)
+        mine.accountChanged("fake-user"); mine.setPageVisible(true)
+        await { mine.state.value.loaded && !mine.state.value.loading }
+        assertEquals(1, count("summary"))
+        assertEquals(1, count("count:1"))
+        summaryUpdated = true; countsUpdated = true
+        mine.refresh()
+        await { mine.state.value.summary?.incomeCents == 1000L && bill.state.value.summary?.incomeCents == 1000L &&
+            bill.state.value.counts?.income == 1 && !mine.state.value.loading }
+        assertEquals(2, count("summary"))
+        assertEquals(2, count("count:1"))
+        mine.setPageVisible(false); bill.setPageVisible(true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(2, count("summary"))
+    }
+
     private fun assertTransactionBudgetWithoutOrdinaryRetry(key: String, settled: () -> Boolean) {
         val initial = count(key)
         shadowOf(Looper.getMainLooper()).idleFor(600, TimeUnit.MILLISECONDS)

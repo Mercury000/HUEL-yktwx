@@ -14,12 +14,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Reads share authenticated snapshots; session changes and non-replayable operations stay exclusive. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null) : SessionAuthority {
+class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null, private val readNow: () -> Long = ReadCachePolicy::now) : SessionAuthority {
     internal val dataChanges = AccountDataChanges()
+    internal val overviewReads = SharedReadStore()
     internal fun identity(username: String): AccountIdentity? = sessionState.value.let {
         AccountIdentity(username, it.generation).takeIf { _ -> it.username == username }
     }
     private fun publishSession(state: SessionState) {
+        overviewReads.reset(state.username?.let { AccountIdentity(it, state.generation) })
         dataChanges.reset(state)
         mutableSession.value = state
     }
@@ -226,6 +228,44 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         info: String?,
     ): BillPageData = withSession {
         service.bills(it, current, size, timeFrom, timeTo, typeId, amountFromCents, amountToCents, info)
+    }
+    internal data class BillOverview(
+        val summary: SharedReadStore.Snapshot<BillSummary>,
+        val counts: SharedReadStore.Snapshot<BillCounts>,
+        private val checkedAt: Long,
+    ) {
+        val pending get() = summary.pending || counts.pending
+        val summaryFresh get() = summary.fresh(checkedAt)
+        val countsFresh get() = counts.fresh(checkedAt)
+        val fresh get() = summaryFresh && countsFresh
+    }
+    private fun overviewStamp(period: BillDateFilter): Long {
+        val today = java.time.LocalDate.now()
+        if (today.isBefore(period.start) || today.isAfter(period.end)) return 0L
+        val versions = dataChanges.state.value.versions
+        return maxOf(versions[AccountResource.Data.IncomeBills] ?: 0L, versions[AccountResource.Data.ExpenseBills] ?: 0L)
+    }
+    internal fun billOverview(username: String, period: BillDateFilter): BillOverview {
+        val owner = identity(username)
+        val stamp = overviewStamp(period)
+        return BillOverview(overviewReads.snapshot(owner, DisplayKeys.summary(period.timeFrom, period.timeTo), stamp),
+            overviewReads.snapshot(owner, DisplayKeys.counts(period.timeFrom, period.timeTo), stamp), readNow())
+    }
+    internal suspend fun readBillSummary(username: String, period: BillDateFilter, force: Boolean = false): BillSummary {
+        restoreSession()
+        val owner = identity(username) ?: throw AuthenticationRequired()
+        val key = DisplayKeys.summary(period.timeFrom, period.timeTo)
+        return overviewReads.read(owner, key, overviewStamp(period), force, now = readNow, currentStamp = { overviewStamp(period) }) {
+            billSummary(period.timeFrom, period.timeTo, username).also { saveDisplay(username, key, it, DisplayCodecs.Summary) }
+        }
+    }
+    internal suspend fun readBillCounts(username: String, period: BillDateFilter, force: Boolean = false): BillCounts {
+        restoreSession()
+        val owner = identity(username) ?: throw AuthenticationRequired()
+        val key = DisplayKeys.counts(period.timeFrom, period.timeTo)
+        return overviewReads.read(owner, key, overviewStamp(period), force, now = readNow, currentStamp = { overviewStamp(period) }) {
+            billCounts(period.timeFrom, period.timeTo, username).also { saveDisplay(username, key, it, DisplayCodecs.Counts) }
+        }
     }
     suspend fun billSummary(timeFrom: String, timeTo: String, username: String? = null): BillSummary = withSession(expectedUsername = username) {
         service.billSummary(it, timeFrom, timeTo)

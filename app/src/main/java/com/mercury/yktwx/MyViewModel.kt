@@ -54,10 +54,9 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private var refreshedAt = 0L
     private val reads = ReadController(viewModelScope, MY_PAGES, initialEnvironment, ::onActivate)
     private fun period() = BillDateFilter.month(YearMonth.now())
-    private fun summaryKey() = DisplayKeys.summary(period().timeFrom, period().timeTo)
-    private fun countsKey() = DisplayKeys.counts(period().timeFrom, period().timeTo)
-    private fun transactionPending(): Boolean = !preview && owner.isNotBlank() && transactionRefresh.affects(period()) &&
-        listOf(summaryKey(), countsKey()).any(transactionRefresh::needsRead)
+    private var ledgerVersion = 0L
+    private var invalidatingLocally = false
+    private fun transactionPending(): Boolean = !preview && owner.isNotBlank() && repository.billOverview(owner, period()).pending
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
         retry = { refreshData(metricsOnly = true, silent = true, trigger = ReadTrigger.Transaction) })
@@ -69,10 +68,23 @@ class MyViewModel internal constructor(app: Application, private val repository:
             if (!preview && owner.isNotBlank()) {
                 val ledger = AccountResource.Data.IncomeBills in resources || AccountResource.Data.ExpenseBills in resources
                 val profile = AccountResource.Data.Profile in resources
-                if (ledger) invalidate() else if (profile) invalidateProfile()
-                if (reads.isVisible && (profile || ledger && reads.environment.page == ReadPage.My)) onActivate()
+                val invalidated = if (ledger) applyInvalidation() else if (profile) { invalidateProfile(); true } else false
+                if (invalidated && !invalidatingLocally && reads.isVisible && (profile || ledger && reads.environment.page == ReadPage.My)) onActivate()
             }
         }
+        viewModelScope.launch { repository.overviewReads.revision.collect { syncOverview() } }
+    }
+
+    private fun syncOverview() {
+        if (preview || owner.isBlank()) return
+        val overview = repository.billOverview(owner, BillDateFilter.month(mutable.value.month))
+        val current = mutable.value
+        mutable.value = current.copy(summary = overview.summary.value ?: current.summary, counts = overview.counts.value ?: current.counts,
+            summaryLoaded = current.summaryLoaded || overview.summary.value != null, countsLoaded = current.countsLoaded || overview.counts.value != null,
+            summaryError = current.summaryError.takeIf { overview.summary.value == null || overview.summary.error != null },
+            summaryErrorKind = current.summaryErrorKind.takeIf { overview.summary.value == null || overview.summary.error != null },
+            countsError = current.countsError.takeIf { overview.counts.value == null || overview.counts.error != null },
+            countsErrorKind = current.countsErrorKind.takeIf { overview.counts.value == null || overview.counts.error != null })
     }
 
     fun accountChanged(username: String, uiPreview: Boolean = false, renewed: Boolean = false) {
@@ -81,6 +93,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
         generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         transactionRefresh.clear()
         reads.clear()
+        ledgerVersion = 0L
         owner = username; preview = enabledPreview
         displayPreparedMonth = null
         mutable.value = MyUiState(restoringDisplay = username.isNotBlank() && !preview)
@@ -92,8 +105,20 @@ class MyViewModel internal constructor(app: Application, private val repository:
         }
     }
     fun invalidate() {
+        invalidatingLocally = true
+        try {
+            repository.dataChanges.invalidate(repository.identity(owner), setOf(AccountResource.Data.IncomeBills, AccountResource.Data.ExpenseBills))
+            applyInvalidation()
+        } finally { invalidatingLocally = false }
+    }
+    private fun applyInvalidation(): Boolean {
+        val versions = repository.dataChanges.state.value.versions
+        val version = maxOf(versions[AccountResource.Data.IncomeBills] ?: 0L, versions[AccountResource.Data.ExpenseBills] ?: 0L)
+        if (version != 0L && ledgerVersion == version) return false
+        ledgerVersion = version
         transactionRefresh.invalidate()
         invalidateProfile()
+        return true
     }
 
     fun invalidateProfile() {
@@ -176,10 +201,10 @@ class MyViewModel internal constructor(app: Application, private val repository:
         val month = YearMonth.now()
         val current = mutable.value
         val read = transactionRefresh.started()
-        val summaryKey = DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString())
-        val countsKey = DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString())
-        val readSummary = !metricsOnly || transactionRefresh.needsRead(summaryKey) || current.summary == null
-        val readCounts = !metricsOnly || transactionRefresh.needsRead(countsKey) || current.counts == null
+        val overview = repository.billOverview(username, BillDateFilter.month(month))
+        val forceOverview = trigger == ReadTrigger.Pull
+        val readSummary = forceOverview || !overview.summaryFresh
+        val readCounts = forceOverview || !overview.countsFresh
         val sameMonth = current.month == month
         mutable.value = current.copy(
             month = month, loading = !silent,
@@ -255,27 +280,21 @@ class MyViewModel internal constructor(app: Application, private val repository:
                 }
                 if (readSummary) launch {
                     try {
-                        val summary = repository.billSummary(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
-                        transactionRefresh.observe(read, summaryKey, summary)
+                        val summary = repository.readBillSummary(username, BillDateFilter.month(month), forceOverview)
                         publish { it.copy(summary = summary, summaryErrorKind = null, summaryError = null, summaryLoaded = true) }
-                        repository.saveDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), summary, DisplayCodecs.Summary)
                     }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
-                        transactionRefresh.failed(read, summaryKey)
                         publish { it.copy(summaryErrorKind = e.readFailureKind(), summaryError = message(e), summaryLoaded = true) }
                     }
                 }
                 if (readCounts) launch {
                     try {
-                        val counts = repository.billCounts(month.atDay(1).toString(), month.atEndOfMonth().toString(), username)
-                        transactionRefresh.observe(read, countsKey, counts)
+                        val counts = repository.readBillCounts(username, BillDateFilter.month(month), forceOverview)
                         publish { it.copy(counts = counts, countsErrorKind = null, countsError = null, countsLoaded = true) }
-                        repository.saveDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), counts, DisplayCodecs.Counts)
                     }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
-                        transactionRefresh.failed(read, countsKey)
                         publish { it.copy(countsErrorKind = e.readFailureKind(), countsError = message(e), countsLoaded = true) }
                     }
                 }
@@ -302,9 +321,9 @@ class MyViewModel internal constructor(app: Application, private val repository:
         if (displayPreparedMonth == month) return
         val profile = repository.cachedDisplay(username, DisplayKeys.Profile, DisplayCodecs.Profile)
         val identity = profile?.let { repository.cachedDisplay(username, DisplayKeys.identity(it.sno), DisplayCodecs.Identity) }
-        val summary = repository.cachedDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Summary)
+        val summary = repository.billOverview(username, BillDateFilter.month(month)).summary.value ?: repository.cachedDisplay(username, DisplayKeys.summary(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Summary)
         val avatar = profile?.avatarPath?.let { repository.cachedDisplay(username, DisplayKeys.avatar(profile.sno, it), DisplayCodecs.Avatar) }
-        val counts = repository.cachedDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Counts)
+        val counts = repository.billOverview(username, BillDateFilter.month(month)).counts.value ?: repository.cachedDisplay(username, DisplayKeys.counts(month.atDay(1).toString(), month.atEndOfMonth().toString()), DisplayCodecs.Counts)
         currentCoroutineContext().ensureActive()
         if (owner != username || mutable.value.month != month) return
         displayPreparedMonth = month
