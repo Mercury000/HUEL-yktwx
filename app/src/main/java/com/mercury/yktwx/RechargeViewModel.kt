@@ -42,8 +42,7 @@ class RechargeViewModel internal constructor(
     val events = launches.receiveAsFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
-    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
-    val transactionUpdates = updates.receiveAsFlow()
+    private var operationIdentity: AccountIdentity? = null
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
@@ -63,11 +62,13 @@ class RechargeViewModel internal constructor(
         // Opening recharge is always a new amount selection, never an old result.
         endAttempt()
         owner = username
+        operationIdentity = repository.identity(username)
         val current = attempt
         mutable.value = RechargeUiState(loading = true, preview = UiPreview.enabled && preview)
         task = viewModelScope.launch {
             try {
                 val config = if (UiPreview.enabled && preview) PreviewData.rechargeConfiguration() else repository.rechargeConfiguration(preferredCard)
+                if (attempt == current && !preview) operationIdentity = repository.identity(username)
                 if (attempt == current) mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -84,6 +85,7 @@ class RechargeViewModel internal constructor(
         if (config.recipient == null) return
         endAttempt()
         owner = username
+        operationIdentity = repository.identity(username)
         mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
     }
 
@@ -104,6 +106,9 @@ class RechargeViewModel internal constructor(
         task = viewModelScope.launch {
             try {
                 // No automatic retry of either POST. Only retain this live attempt in memory.
+                repository.restoreSession()
+                if (current != attempt) return@launch
+                operationIdentity = repository.identity(pending.username)
                 val order = repository.createRecharge(pending.username, config, amountCents)
                 if (current != attempt) return@launch
                 val created = pending.withOrder(order.orderId, order.payId)
@@ -188,7 +193,7 @@ class RechargeViewModel internal constructor(
         val previous = mutable.value
         update(visible = true, loading = false, phase = phase, error = error)
         if (phase == RechargePhase.Paid && previous.phase != RechargePhase.Paid && !previous.preview && repository.ownsAccount(owner))
-            updates.trySend(TransactionUpdate(owner, balance = previous.pending?.recipient == null,
+            repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = previous.pending?.recipient == null,
                 income = true.takeIf { previous.pending?.recipient == null }))
     }
     private fun requestError(message: String) {

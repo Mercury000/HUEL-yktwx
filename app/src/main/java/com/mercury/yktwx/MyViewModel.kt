@@ -65,6 +65,14 @@ class MyViewModel internal constructor(app: Application, private val repository:
         repository.observeAccount(viewModelScope) { username, renewed ->
             if (!preview) accountChanged(username.orEmpty(), renewed = renewed)
         }
+        repository.dataChanges.observe(viewModelScope) { resources ->
+            if (!preview && owner.isNotBlank()) {
+                val ledger = AccountResource.Data.IncomeBills in resources || AccountResource.Data.ExpenseBills in resources
+                val profile = AccountResource.Data.Profile in resources
+                if (ledger) invalidate() else if (profile) invalidateProfile()
+                if (reads.isVisible && (profile || ledger && reads.environment.page == ReadPage.My)) onActivate()
+            }
+        }
     }
 
     fun accountChanged(username: String, uiPreview: Boolean = false, renewed: Boolean = false) {

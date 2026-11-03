@@ -295,11 +295,11 @@ class FeeViewModelTest {
         await { model.state.value.resultPhase == RechargePhase.Paid }
         model.checkResult()
         model.dismiss()
-        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
-        assertNotNull(event)
-        assertTrue(event!!.hall)
-        assertTrue(event.balance)
-        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
+        val versions = repository.dataChanges.state.value.versions
+        assertTrue(versions.keys.any { it is AccountResource.Hall })
+        assertTrue(AccountResource.Data.Balance in versions)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(versions, repository.dataChanges.state.value.versions)
         assertEquals(1, fees.payments)
     }
 
@@ -311,10 +311,9 @@ class FeeViewModelTest {
         await { model.state.value.resultPhase == RechargePhase.AwaitingPayment }
         model.checkResult()
         await { model.state.value.resultPhase == RechargePhase.Paid }
-        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
-        assertNotNull(event)
-        assertTrue(event!!.hall)
-        assertFalse(event.balance)
+        val resources = repository.dataChanges.state.value.versions.keys
+        assertTrue(AccountResource.Hall(FeeProject.Network) in resources)
+        assertFalse(AccountResource.Data.Balance in resources)
         assertEquals(0, fees.payments)
     }
 

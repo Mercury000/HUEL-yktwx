@@ -420,14 +420,13 @@ class CardServiceViewModelTest {
     private fun assertOneResult(message: String) {
         runBlocking {
             assertEquals(message, withTimeout(1_000) { model.messages.first() })
-            withTimeout(1_000) { model.cardChanges.first() }
+            assertTrue(AccountResource.Data.Cards in repository.dataChanges.state.value.versions)
         }
         assertNoResult()
     }
     private fun assertNoResult() {
         runBlocking {
             assertNull(withTimeoutOrNull(50) { model.messages.first() })
-            assertNull(withTimeoutOrNull(50) { model.cardChanges.first() })
         }
     }
     private fun assertNoRechargeRequest() {

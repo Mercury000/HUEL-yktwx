@@ -15,6 +15,14 @@ import kotlinx.coroutines.withContext
 
 /** Reads share authenticated snapshots; session changes and non-replayable operations stay exclusive. */
 class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null) : SessionAuthority {
+    internal val dataChanges = AccountDataChanges()
+    internal fun identity(username: String): AccountIdentity? = sessionState.value.let {
+        AccountIdentity(username, it.generation).takeIf { _ -> it.username == username }
+    }
+    private fun publishSession(state: SessionState) {
+        dataChanges.reset(state)
+        mutableSession.value = state
+    }
     private val mutex = Mutex()
     private val mutableSession = MutableStateFlow(SessionState())
     override val sessionState = mutableSession.asStateFlow()
@@ -56,7 +64,7 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         AccountSnapshot(credentials, if (credentials != null) session() else null)
     }.also {
         cachedAccount = it
-        mutableSession.value = SessionState(restored = true, username = it.credentials?.username, generation = accountGeneration)
+        publishSession(SessionState(restored = true, username = it.credentials?.username, generation = accountGeneration))
     }
     suspend fun login(username: String, password: String): PaymentBatch = mutex.withLock {
         account()
@@ -74,7 +82,7 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
             cachedAccount = AccountSnapshot(credentials, session)
             accountGeneration++
             sessionRevision++; unverifiedSessionRevision = sessionRevision
-            mutableSession.value = SessionState(restored = true, username = credentials.username, generation = accountGeneration)
+            publishSession(SessionState(restored = true, username = credentials.username, generation = accountGeneration))
         }
         currentCoroutineContext().ensureActive()
         // Don't re-login if the newly issued token is rejected; present a login error instead.
@@ -196,12 +204,12 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         accountGeneration++; sessionRevision++; unverifiedSessionRevision = null
         cachedAccount = AccountSnapshot(null, null)
         val revoked = SessionState(restored = true, generation = accountGeneration, clearing = true, endReason = reason)
-        mutableSession.value = revoked
+        publishSession(revoked)
         try {
             try { if (previousOwner != null) withContext(Dispatchers.IO) { displayCache?.clear(previousOwner) } }
             finally { onVaultThread { clear() } }
         } finally {
-            mutableSession.value = revoked.copy(clearing = false)
+            publishSession(revoked.copy(clearing = false))
         }
     }
     /** Android Keystore operations are synchronous Binder calls; never run them on a UI caller. */
@@ -247,7 +255,11 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun feeQuery(username: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
         withSession(expectedUsername = username) { feeService.feeQuery(it, project, level, selections, detail) }
     suspend fun setFeeRoom(username: String, project: FeeProject, room: FeeRoomBinding?) =
-        withSession(retryAuthentication = false, expectedUsername = username) { feeService.setFeeRoom(it, project, room) }
+        withSession(retryAuthentication = false, expectedUsername = username) {
+            val identity = identity(username)
+            try { feeService.setFeeRoom(it, project, room) }
+            finally { dataChanges.invalidate(identity, setOf(AccountResource.Data.Rooms)) }
+        }
     suspend fun createFee(username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long) =
         withSession(retryAuthentication = false, expectedUsername = username) { feeService.createFee(it, username, config, query, amountCents) }
     suspend fun prepareFeeAccount(order: PendingRecharge, method: FeeMethod) =
@@ -266,7 +278,17 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         }
     suspend fun cardConfiguration(username: String) = withSession(expectedUsername = username) { cardService.cardConfiguration(it) }
     suspend fun changeCardState(username: String, card: CampusCard, action: CampusCardAction, password: String) =
-        withSession(retryAuthentication = false, expectedUsername = username) { cardService.changeCardState(it, card, action, password) }
+        withSession(retryAuthentication = false, expectedUsername = username) {
+            val identity = identity(username)
+            try {
+                cardService.changeCardState(it, card, action, password).also {
+                    dataChanges.invalidate(identity, setOf(AccountResource.Data.Cards, AccountResource.Data.Profile))
+                }
+            } catch (e: CardOperationUnconfirmed) {
+                dataChanges.invalidate(identity, setOf(AccountResource.Data.Cards, AccountResource.Data.Profile))
+                throw e
+            }
+        }
     suspend fun recipientCaptcha(username: String) = withSession(expectedUsername = username) { cardService.recipientCaptcha(it) }
     suspend fun rechargeRecipients(username: String, type: RecipientQueryType, value: String, captcha: RecipientCaptcha, code: String) =
         withSession(retryAuthentication = false, expectedUsername = username) { cardService.rechargeRecipients(it, type, value, captcha, code) }

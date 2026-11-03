@@ -81,7 +81,8 @@ class PaymentViewModelTest {
             return PaymentBatch(listOf(payments.toString().padStart(20, '0')), 60, account)
         }
     }
-    private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault))
+    private val repository = AccountRepository(service, vault)
+    private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
     private val store = ViewModelStore().apply { put("payment", model) }
 
     @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
@@ -736,15 +737,15 @@ class PaymentViewModelTest {
         assertEquals(1, accountQueries)
         assertEquals(2, payments)
         assertNotEquals(first, model.state.value.code)
-        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
-        assertNotNull(event)
-        assertFalse(event!!.balance)
-        assertFalse(event.hall)
+        val versions = repository.dataChanges.state.value.versions
+        assertTrue(AccountResource.Data.ExpenseBills in versions)
+        assertFalse(AccountResource.Data.Balance in versions)
+        assertFalse(versions.keys.any { it is AccountResource.Hall })
         model.dismissPaymentSuccess()
         model.paymentTurnStarted(); model.paymentTurnReturned()
         await { accountQueries == 2 }
         assertNull(model.paymentSuccess.value)
-        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
+        assertEquals(versions, repository.dataChanges.state.value.versions)
     }
     @Test fun unchangedOrIncreasedBalanceAndErrorsKeepThePageSilent() {
         readyForTurn()
