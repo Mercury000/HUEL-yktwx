@@ -34,11 +34,15 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
     val state = mutable.asStateFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
-    private val changed = Channel<String>(Channel.BUFFERED)
-    val passwordChanges = changed.receiveAsFlow()
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
+
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) reset()
+        }
+    }
 
     fun open(username: String, preview: Boolean) {
         if (username.isBlank() || task?.isActive == true) return
@@ -88,7 +92,6 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
                 repository.modifyCardPassword(username, card, oldPassword, newPassword, confirmation)
                 if (current == attempt) {
                     mutable.value = CardPasswordUiState()
-                    changed.send(username)
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -104,7 +107,6 @@ class CardPasswordViewModel internal constructor(app: Application, private val r
         task?.cancel(); task = null; owner = ""
         mutable.value = CardPasswordUiState()
         while (notifications.tryReceive().isSuccess) { }
-        // Success events are account-checked by PaymentViewModel, not dropped on navigation.
     }
     private fun safeError(e: Exception) = if (e is YktException) e.message ?: "修改查询密码失败"
         else "修改查询密码失败"

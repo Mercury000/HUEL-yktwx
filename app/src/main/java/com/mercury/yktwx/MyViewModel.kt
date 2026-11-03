@@ -21,7 +21,6 @@ data class MyUiState(
     val summary: BillSummary? = null, val counts: BillCounts? = null,
     val month: YearMonth = YearMonth.now(), val loading: Boolean = false,
     val profileError: String? = null, val summaryError: String? = null,
-    val needsLogin: Boolean = false,
     val homeIdentity: HomeCardIdentity? = null,
     val homeIdentityError: String? = null,
     val loaded: Boolean = false,
@@ -57,14 +56,20 @@ class MyViewModel internal constructor(app: Application, private val repository:
     private fun period() = BillDateFilter.month(YearMonth.now())
     private fun summaryKey() = DisplayKeys.summary(period().timeFrom, period().timeTo)
     private fun countsKey() = DisplayKeys.counts(period().timeFrom, period().timeTo)
-    private fun transactionPending(): Boolean = !preview && !mutable.value.needsLogin && transactionRefresh.affects(period()) &&
+    private fun transactionPending(): Boolean = !preview && owner.isNotBlank() && transactionRefresh.affects(period()) &&
         listOf(summaryKey(), countsKey()).any(transactionRefresh::needsRead)
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
         retry = { refreshData(metricsOnly = true, silent = true, trigger = ReadTrigger.Transaction) })
-    fun accountChanged(username: String, uiPreview: Boolean = false) {
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!preview) accountChanged(username.orEmpty(), renewed = renewed)
+        }
+    }
+
+    fun accountChanged(username: String, uiPreview: Boolean = false, renewed: Boolean = false) {
         val enabledPreview = UiPreview.enabled && uiPreview
-        if (owner == username && preview == enabledPreview) return
+        if (!renewed && owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         transactionRefresh.clear()
         reads.clear()
@@ -169,7 +174,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
         val readCounts = !metricsOnly || transactionRefresh.needsRead(countsKey) || current.counts == null
         val sameMonth = current.month == month
         mutable.value = current.copy(
-            month = month, loading = !silent, needsLogin = false,
+            month = month, loading = !silent,
             summary = current.summary.takeIf { sameMonth }, counts = current.counts.takeIf { sameMonth },
             profileErrorKind = current.profileErrorKind.takeIf { metricsOnly }, profileError = current.profileError.takeIf { metricsOnly }, homeIdentityErrorKind = current.homeIdentityErrorKind.takeIf { metricsOnly }, homeIdentityError = current.homeIdentityError.takeIf { metricsOnly },
             avatarErrorKind = current.avatarErrorKind.takeIf { metricsOnly }, avatarError = current.avatarError.takeIf { metricsOnly },
@@ -204,8 +209,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     val fresh = try { repository.personalProfile(username) }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
-                        publish { it.copy(profileErrorKind = e.readFailureKind(), profileError = message(e), profileLoaded = true, homeIdentityLoaded = true,
-                            needsLogin = it.needsLogin || e.isAuthenticationFailure()) }
+                        publish { it.copy(profileErrorKind = e.readFailureKind(), profileError = message(e), profileLoaded = true, homeIdentityLoaded = true) }
                         return@identity
                     }
                     if (attempt != generation) return@identity
@@ -228,8 +232,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                                 if (avatar != null) repository.saveDisplay(username, DisplayKeys.avatar(fresh.sno, requireNotNull(fresh.avatarPath)), avatar, DisplayCodecs.Avatar)
                             }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { publish { it.copy(avatarErrorKind = e.readFailureKind(), avatarError = message(e),
-                                needsLogin = it.needsLogin || e.isAuthenticationFailure()) } }
+                            catch (e: Exception) { publish { it.copy(avatarErrorKind = e.readFailureKind(), avatarError = message(e)) } }
                         }
                         launch {
                             try {
@@ -238,8 +241,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                                 repository.saveDisplay(username, DisplayKeys.identity(fresh.sno), identity, DisplayCodecs.Identity)
                             }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { publish { it.copy(homeIdentityErrorKind = e.readFailureKind(), homeIdentityError = message(e), homeIdentityLoaded = true,
-                                needsLogin = it.needsLogin || e.isAuthenticationFailure()) } }
+                            catch (e: Exception) { publish { it.copy(homeIdentityErrorKind = e.readFailureKind(), homeIdentityError = message(e), homeIdentityLoaded = true) } }
                         }
                     }
                 }
@@ -253,8 +255,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
                         transactionRefresh.failed(read, summaryKey)
-                        publish { it.copy(summaryErrorKind = e.readFailureKind(), summaryError = message(e), summaryLoaded = true,
-                            needsLogin = it.needsLogin || e.isAuthenticationFailure()) }
+                        publish { it.copy(summaryErrorKind = e.readFailureKind(), summaryError = message(e), summaryLoaded = true) }
                     }
                 }
                 if (readCounts) launch {
@@ -267,8 +268,7 @@ class MyViewModel internal constructor(app: Application, private val repository:
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
                         transactionRefresh.failed(read, countsKey)
-                        publish { it.copy(countsErrorKind = e.readFailureKind(), countsError = message(e), countsLoaded = true,
-                            needsLogin = it.needsLogin || e.isAuthenticationFailure()) }
+                        publish { it.copy(countsErrorKind = e.readFailureKind(), countsError = message(e), countsLoaded = true) }
                     }
                 }
             }

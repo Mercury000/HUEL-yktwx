@@ -453,4 +453,91 @@ class AccountRepositoryTest {
         val v = MemoryVault(); AccountRepository(FakeService(), v).logout()
         assertNull(v.credentials()); assertNull(v.session())
     }
+
+    @Test fun restorationAndRenewalPublishOneAccountLifetime() = runBlocking {
+        val service = FakeService()
+        val repo = AccountRepository(service, MemoryVault())
+        assertFalse(repo.sessionState.value.restored)
+        val restored = repo.restoreSession()
+        assertEquals("123", restored.username)
+        assertEquals(restored, repo.restoreSession())
+        service.paymentFailures.add(AuthenticationRequired())
+        repo.refresh()
+        assertEquals(restored, repo.sessionState.value)
+        assertEquals(1, service.logins)
+        repo.login("123", "changed-password")
+        assertEquals("123", repo.sessionState.value.username)
+        assertTrue(repo.sessionState.value.generation > restored.generation)
+    }
+
+    @Test fun revocationIsVisibleBeforeSlowStorageClearingFinishes() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        val stored = MemoryVault()
+        val vault = object : Vault by stored {
+            override fun clear() {
+                entered.complete(Unit)
+                check(release.await(5, TimeUnit.SECONDS))
+                stored.clear()
+            }
+        }
+        val repo = AccountRepository(FakeService(), vault)
+        val before = repo.restoreSession()
+        val logout = async { repo.logout() }
+        try {
+            withTimeout(1000) { entered.await() }
+            val revoked = repo.sessionState.value
+            assertNull(revoked.username)
+            assertTrue(revoked.clearing)
+            assertTrue(revoked.generation > before.generation)
+            assertFalse(repo.ownsAccount("123"))
+            assertNotNull(stored.credentials())
+        } finally { release.countDown() }
+        logout.await()
+        assertFalse(repo.sessionState.value.clearing)
+        assertEquals(SessionEndReason.Logout, repo.sessionState.value.endReason)
+        assertNull(stored.credentials())
+    }
+
+    @Test fun terminalEndpointRejectionsUseTheSameAuthorityAsLoginRejections() = runBlocking {
+        for (rejection in listOf(InvalidCredentials(), CaptchaRequired())) {
+            val vault = MemoryVault()
+            val repo = AccountRepository(FakeService(), vault)
+            repo.restoreSession()
+            fails(rejection.javaClass) { repo.withSession { throw rejection } }
+            assertNull(repo.sessionState.value.username)
+            assertEquals(rejection.sessionEndReason(), repo.sessionState.value.endReason)
+            assertFalse(repo.sessionState.value.clearing)
+            assertNull(vault.credentials())
+        }
+    }
+
+    @Test fun aLateRetryRejectionCannotPublishRevocationForANewerToken() = runBlocking {
+        val retryEntered = CompletableDeferred<Unit>()
+        val releaseRetry = CompletableDeferred<Unit>()
+        val repo = AccountRepository(FakeService(), MemoryVault())
+        val identity = repo.restoreSession()
+        val old = async {
+            runCatching {
+                repo.withSession { token ->
+                    if (token == "old") throw AuthenticationRequired()
+                    retryEntered.complete(Unit)
+                    releaseRetry.await()
+                    throw AuthenticationRequired()
+                }
+            }
+        }
+        try {
+            withTimeout(1000) { retryEntered.await() }
+            repo.withSession { Unit }
+            // A non-replayable rejection drops the new token; the following read renews it.
+            fails(AuthenticationRequired::class.java) {
+                repo.withSession(retryAuthentication = false) { throw AuthenticationRequired() }
+            }
+            repo.refresh()
+        } finally { releaseRetry.complete(Unit) }
+        assertTrue(old.await().exceptionOrNull() is YktException)
+        assertEquals("123", repo.sessionState.value.username)
+        assertEquals(identity, repo.sessionState.value)
+    }
 }

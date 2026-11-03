@@ -85,6 +85,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
     }
     AppTheme(mode, settings.accentMode.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
+        val session by viewModel.sessionState.collectAsStateWithLifecycle()
+        val authenticated = if (state.preview) !state.needsLogin else session.username != null
         val agreed = consent?.accepted != false
         val updateModel: AppUpdateViewModel = viewModel()
         val updateState by updateModel.state.collectAsStateWithLifecycle()
@@ -92,16 +94,16 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         AppUpdateEffect(updateModel, settings.automaticUpdates.value,
             allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current)
         val keepLoginWhileInitializing = remember(consent) { consent?.accepted == false }
-        LaunchedEffect(agreed) {
+        LaunchedEffect(agreed, authenticated) {
             // An Activity can retain its models while a changed notice is restored.
             // Revoke that old login before consent can expose the shell again.
-            if (!agreed && !viewModel.state.value.needsLogin) viewModel.logout()
+            if (!agreed && authenticated) viewModel.logout()
         }
         var hadLogin by remember { mutableStateOf(false) }
-        LaunchedEffect(state.needsLogin, state.restoringLogin) {
+        LaunchedEffect(authenticated, state.restoringLogin) {
             if (!state.restoringLogin) {
-                if (hadLogin && state.needsLogin) consent?.revoke()
-                hadLogin = !state.needsLogin
+                if (hadLogin && !authenticated) consent?.revoke()
+                hadLogin = authenticated
             }
         }
         val billState by billViewModel.state.collectAsStateWithLifecycle()
@@ -113,17 +115,21 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val avatarModel: AvatarViewModel = viewModel()
         val dormModel: HallViewModel = viewModel()
         val context = LocalContext.current
-        LaunchedEffect(agreed, state.restoringLogin, state.needsLogin, state.username, state.preview) {
+        var previewWasActive by remember { mutableStateOf(false) }
+        LaunchedEffect(agreed, session, state.restoringLogin, state.needsLogin, state.username, state.preview) {
             if ((agreed || state.needsLogin) && !state.restoringLogin) {
-                val owner = state.username.takeUnless { state.needsLogin }
-                rechargeModel.accountChanged(owner.orEmpty())
-                feeModel.accountChanged(owner.orEmpty())
-                cardModel.accountChanged(owner.orEmpty())
-                passwordModel.accountChanged(owner.orEmpty())
-                billViewModel.accountChanged(owner)
-                myModel.accountChanged(owner.orEmpty(), state.preview)
-                avatarModel.accountChanged(owner.orEmpty(), state.preview)
-                dormModel.accountChanged(owner.orEmpty(), state.preview)
+                val owner = if (state.preview) state.username.takeUnless { state.needsLogin } else session.username
+                avatarModel.accountChanged(owner.orEmpty(), state.preview, session.generation)
+                if (state.preview || previewWasActive) {
+                    rechargeModel.accountChanged(owner.orEmpty())
+                    feeModel.accountChanged(owner.orEmpty())
+                    cardModel.accountChanged(owner.orEmpty())
+                    passwordModel.accountChanged(owner.orEmpty())
+                    billViewModel.accountChanged(owner)
+                    myModel.accountChanged(owner.orEmpty(), state.preview)
+                    dormModel.accountChanged(owner.orEmpty(), state.preview)
+                }
+                previewWasActive = state.preview
             }
         }
         WechatLaunchEffect(rechargeModel.events, rechargeModel::canLaunchWechat, rechargeModel::wechatLaunched, rechargeModel::launchFailed)
@@ -139,9 +145,6 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         }
         LaunchedEffect(passwordModel) {
             passwordModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(passwordModel, viewModel) {
-            passwordModel.passwordChanges.collect { username -> viewModel.cardPasswordChanged(username) }
         }
         LaunchedEffect(cardModel) {
             cardModel.cardChanges.collect { viewModel.cardStateChanged(); myModel.invalidateProfile(); myModel.refresh() }
@@ -161,7 +164,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val authPage = when {
             !agreed -> AuthPage.Login
             state.restoringLogin -> if (keepLoginWhileInitializing) AuthPage.Login else AuthPage.Restoring
-            state.needsLogin -> AuthPage.Login
+            !authenticated -> AuthPage.Login
             else -> AuthPage.Main
         }
         LaunchedEffect(authPage) { updateModel.dismiss() }
@@ -301,12 +304,6 @@ private fun MainContent(
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
-    LaunchedEffect(isActive, billState.authenticationFailed, myState.needsLogin, dormState.needsLogin,
-        state.needsLogin, state.restoringLogin) {
-        val authenticated = !state.needsLogin && !state.restoringLogin
-        if (isActive && authenticated && (billState.authenticationFailed || myState.needsLogin || dormState.needsLogin))
-            viewModel.logout()
-    }
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&

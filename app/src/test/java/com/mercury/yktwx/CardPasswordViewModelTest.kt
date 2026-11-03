@@ -83,7 +83,7 @@ class CardPasswordViewModelTest {
     }
     private fun open() { model.open("fake-user", false); await { model.state.value.visible && !model.state.value.loading } }
     private fun submit() = model.submit("123456", "654321", "654321")
-    private fun noSuccess() = assertNull(runBlocking { withTimeoutOrNull(100) { model.passwordChanges.first() } })
+    private fun noSuccess() = assertNotEquals(SessionEndReason.PasswordChanged, repository.sessionState.value.endReason)
 
     @Test fun confirmedSuccessClearsCredentialsAndReturnsToLoginWithOneToast() {
         payment.initialize(); await { !payment.state.value.restoringLogin }
@@ -92,8 +92,7 @@ class CardPasswordViewModelTest {
         assertFalse(model.state.value.visible)
         assertNull(vault.credentials()); assertNull(vault.session())
         assertEquals(1, vault.clears)
-        val username = runBlocking { withTimeout(1000) { model.passwordChanges.first() } }
-        payment.cardPasswordChanged(username)
+        assertEquals(SessionEndReason.PasswordChanged, repository.sessionState.value.endReason)
         await { payment.state.value.needsLogin && !payment.state.value.busy }
         assertNull(payment.state.value.code); assertNull(payment.state.value.account)
         assertEquals("查询密码修改成功，请重新登录", runBlocking { withTimeout(1000) { payment.messages.first() } })
@@ -101,7 +100,6 @@ class CardPasswordViewModelTest {
         assertEquals(0, logins)
         assertEquals(1, writes)
         submit(); assertEquals(1, writes)
-        payment.cardPasswordChanged(username)
         assertNull(runBlocking { withTimeoutOrNull(100) { payment.messages.first() } })
     }
     @Test fun businessFailureKeepsDialogAndOriginalMessageWithoutClearingLogin() {
@@ -142,7 +140,7 @@ class CardPasswordViewModelTest {
         submit(); model.dismiss()
         assertEquals(1, writes); assertTrue(model.state.value.visible); assertTrue(model.state.value.submitting)
         writeGate.complete(Unit); await { !model.state.value.loading }
-        assertEquals("fake-user", runBlocking { withTimeout(1000) { model.passwordChanges.first() } })
+        assertEquals(SessionEndReason.PasswordChanged, repository.sessionState.value.endReason)
         assertNull(vault.credentials())
     }
     @Test fun closingPendingReadDoesNotReopenDialogWithLateResponse() {
@@ -162,10 +160,14 @@ class CardPasswordViewModelTest {
         submit(); await { !model.state.value.loading }
         assertEquals(0, writes); assertEquals("new-user", vault.credentials()!!.username); noSuccess()
     }
-    @Test fun successForDifferentAccountCannotLogoutCurrentAccount() {
+    @Test fun passwordWriteForDifferentAccountCannotLogoutCurrentAccount() {
         payment.initialize(); await { !payment.state.value.restoringLogin }
-        payment.cardPasswordChanged("other-user")
+        try {
+            runBlocking { repository.modifyCardPassword("other-user", card, "123456", "654321", "654321") }
+            fail("Expected account mismatch")
+        } catch (_: YktException) { }
         assertFalse(payment.state.value.needsLogin); assertNotNull(vault.credentials())
+        assertEquals(0, writes)
     }
     @Test fun queuedRefreshSeesClearedCredentialsInsteadOfReloggingIn() {
         open(); writeGate = CompletableDeferred()

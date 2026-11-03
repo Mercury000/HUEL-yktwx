@@ -41,8 +41,11 @@ internal class AvatarViewModel internal constructor(
     private var session = 0L
     private fun storageOwner(state: AvatarUiState) = if (state.preview) "preview:${state.owner}" else state.owner
 
-    fun accountChanged(owner: String, preview: Boolean = false) {
-        if (state.value.owner == owner && state.value.preview == preview) return
+    private var accountGeneration = 0L
+
+    fun accountChanged(owner: String, preview: Boolean = false, accountGeneration: Long = this.accountGeneration) {
+        if (state.value.owner == owner && state.value.preview == preview && this.accountGeneration == accountGeneration) return
+        this.accountGeneration = accountGeneration
         generation++; session++; restoreJob?.cancel(); editJob?.cancel()
         mutable.value = AvatarUiState(owner, preview, restoring = owner.isNotBlank())
         if (owner.isBlank()) return

@@ -214,16 +214,17 @@ class RechargeViewModelTest {
         assertEquals(1, service.creations)
     }
 
-    @Test fun ownerIsCheckedAgainAfterAnInFlightSuccessfulResponse() {
+    @Test fun accountSwitchClosesTheOldOrderAndRejectsItsLateSuccessfulResponse() {
         prepareOrder()
         service.resultGate = CompletableDeferred()
         model.checkResult()
         await { service.resultQueries == 1 }
         runBlocking { repository.login("other-user", "fake-password") }
-        // Even before the UI delivers accountChanged, the old owner's result must be rejected.
+        // The authority delivers account changes without waiting for UI composition.
         service.resultGate.complete(Unit)
-        await { !model.state.value.loading }
-        assertEquals(RechargePhase.Checking, model.state.value.phase)
+        await { !model.state.value.loading && !model.state.value.visible }
+        assertEquals(RechargePhase.Amount, model.state.value.phase)
+        assertNull(model.state.value.pending)
         assertEquals(1, service.resultQueries)
         assertFalse(model.canLaunchWechat())
     }

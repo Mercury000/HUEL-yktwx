@@ -88,6 +88,12 @@ class FeeViewModel internal constructor(
         { !accountPaymentSubmitted && mutable.value.loading && mutable.value.stage == FeeStage.Result &&
             mutable.value.resultPhase == RechargePhase.Checking }, ::checkResult)
 
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+        }
+    }
+
     fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null) {
         dismiss()
         fixedHallTarget = requestedRoom != null

@@ -44,7 +44,7 @@ class HallViewModel internal constructor(
     private val transactionProjects = mutableSetOf<FeeProject>()
     private fun transactionKey(project: FeeProject) = "hall:${project.id}"
     private fun transactionProjectPending(project: FeeProject) = transactionRefresh.needsRead(transactionKey(project))
-    private fun transactionPending(): Boolean = !preview && !mutable.value.needsLogin &&
+    private fun transactionPending(): Boolean = !preview && owner.isNotBlank() &&
         transactionProjects.any(::transactionProjectPending)
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
@@ -64,9 +64,15 @@ class HallViewModel internal constructor(
         FeeProject.FamilyElectric, FeeProject.FamilyWater -> 2
         else -> 3
     }
-    fun accountChanged(username: String, uiPreview: Boolean = false) {
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!preview) accountChanged(username.orEmpty(), renewed = renewed)
+        }
+    }
+
+    fun accountChanged(username: String, uiPreview: Boolean = false, renewed: Boolean = false) {
         val enabledPreview = UiPreview.enabled && uiPreview
-        if (owner == username && preview == enabledPreview) return
+        if (!renewed && owner == username && preview == enabledPreview) return
         generation++; task?.cancel(); task = null; displayTask?.cancel(); refreshedAt = 0L
         transactionRefresh.clear(); transactionProjects.clear()
         reads.clear()
@@ -227,7 +233,6 @@ class HallViewModel internal constructor(
             val completed = (FeeProject.entries - projects.toSet()).toMutableSet()
             var bindingsAvailable = previous.roomsAvailable
             var bindingsKnown = false
-            var needsLogin = false
             var network: FeeQuery? = previous.network
             fun publish(finished: Boolean = false) {
                 if (attempt != generation) return
@@ -241,7 +246,7 @@ class HallViewModel internal constructor(
                     current.bindings.any { it.project == old.project && it.binding.sameTarget(old.binding) }
                 } == true }
                 mutable.value = DormUiState(merged, loading = !finished && !silent, loaded = previous.loaded || finished,
-                    error = blockError(), errorKind = blockErrorKind(), needsLogin = needsLogin,
+                    error = blockError(), errorKind = blockErrorKind(),
                     selectedIndex = if (exactIndex >= 0) exactIndex else rememberedRoomIndex(merged).coerceAtLeast(0),
                     network = network, networkError = networkError, bindingProjects = bindingProjects.toSet(),
                     networkErrorKind = networkErrorKind, projectErrorKinds = errorKinds.toMap(),
@@ -301,7 +306,6 @@ class HallViewModel internal constructor(
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             transactionRefresh.failed(read, transactionKey(project))
-                            needsLogin = needsLogin || e.isAuthenticationFailure()
                             networkError = (e as? YktException)?.message ?: "校园网读取失败"
                             networkErrorKind = e.readFailureKind()
                         }
@@ -355,7 +359,6 @@ class HallViewModel internal constructor(
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
                             transactionRefresh.failed(read, transactionKey(project))
-                            needsLogin = needsLogin || e.isAuthenticationFailure()
                             errors[project] = (e as? YktException)?.message ?: "读取失败，请重试"
                             errorKinds[project] = e.readFailureKind()
                             val old = rooms[project]
@@ -433,7 +436,7 @@ class HallViewModel internal constructor(
         networkError: String? = mutable.value.networkError, errorKind: ReadFailureKind? = mutable.value.errorKind,
         networkErrorKind: ReadFailureKind? = mutable.value.networkErrorKind) {
         val s = mutable.value
-        mutable.value = DormUiState(rooms, loading, s.loaded, error, s.needsLogin,
+        mutable.value = DormUiState(rooms, loading, s.loaded, error,
             selectedIndex.coerceIn(0, (rooms.size - 1).coerceAtLeast(0)), s.network, networkError, managing, s.bindingProjects,
             s.roomsLoaded, s.networkLoaded, s.roomsAvailable, s.displayRestored, s.projectErrorKinds,
             networkErrorKind.takeIf { networkError != null }, errorKind.takeIf { error != null }, s.restoringDisplay)
