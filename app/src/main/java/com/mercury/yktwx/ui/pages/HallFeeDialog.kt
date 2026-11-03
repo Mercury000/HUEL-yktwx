@@ -232,7 +232,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     OverlayDialog(show = confirmingRoom, title = if (replacing) "替换已绑定房间" else "绑定房间",
         summary = roomSummary,
         onDismissRequest = { bindingPending = false; onDismissRoomDialog() }, renderInRootScaffold = true) {
-        Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { bindingPending = false; onDismissRoomDialog() }, enabled = confirmingRoom, modifier = Modifier.weight(1f)) { Text("取消") }
             Button(onClick = onConfirmRoomAction, enabled = confirmingRoom && !state.roomBusy,
                 modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) {
