@@ -79,9 +79,10 @@ class ExperienceUiTest {
         compose.mainClock.advanceTimeBy(200)
         assertTrue(searches.isEmpty())
         field.performTextInput("厅 ")
-        compose.mainClock.advanceTimeByFrame()
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
         field.performTextInputSelection(androidx.compose.ui.text.TextRange(1))
         compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         assertEquals(androidx.compose.ui.text.TextRange(1), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
         compose.mainClock.advanceTimeBy(200)
         assertTrue(searches.isEmpty())
@@ -101,7 +102,8 @@ class ExperienceUiTest {
         compose.onNodeWithContentDescription("移除条件：≥ ¥ 1").performClick()
         assertNull(state.amountFromCents)
         assertEquals("4", state.typeId)
-        compose.onNodeWithContentDescription("移除条件：搜索：餐厅").performClick()
+        compose.onNodeWithContentDescription("移除条件：搜索：餐厅").assertDoesNotExist()
+        compose.onNodeWithContentDescription("清除搜索").performClick()
         assertEquals("", searches.last())
         assertEquals("", field.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }

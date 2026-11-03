@@ -2,6 +2,7 @@ package com.mercury.yktwx
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.*
@@ -10,6 +11,9 @@ import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.pages.BillPage
+import com.mercury.yktwx.ui.pages.BillQueryMotion
+import com.mercury.yktwx.ui.pages.rememberBillQueryMotion
+import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +28,24 @@ class BillContentDisabledMotionUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>(effectContext = object : MotionDurationScale {
         override val scaleFactor = 0f
     })
+
+    @Test fun disabledMotionReplacesQueryResultsWithoutAnOutgoingSnapshot() {
+        val base = PreviewData.billState()
+        var state by mutableStateOf(base)
+        lateinit var motion: BillQueryMotion
+        compose.setContent { AppTheme {
+            motion = rememberBillQueryMotion(state, rememberLazyListState(), true, false)
+        } }
+        compose.runOnIdle { state = base.copy(info = "餐厅", items = emptyList(), listLoaded = false) }
+        compose.waitForIdle()
+        assertEquals(state, motion.displayed)
+        assertTrue(motion.accepts(state))
+        assertEquals(1f, motion.opacity.value, 0f)
+        compose.runOnIdle { state = base.copy(info = "餐厅", items = base.items.take(1)) }
+        compose.waitForIdle()
+        assertEquals(state, motion.displayed)
+        assertFalse(motion.running)
+    }
 
     @Test fun disabledMotionSwitchesImmediatelyWithoutRetainingTheOldContents() {
         var state by mutableStateOf(PreviewData.billState())
