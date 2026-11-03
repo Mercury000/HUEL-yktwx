@@ -39,21 +39,26 @@ import java.util.Locale
 
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true, updateNotice: @Composable () -> Unit = {}) {
-    val displayCode = state.code.takeIf { state.problem == null && !state.busy && state.error == null }
+    // Restoring an account precedes the shell's read effect. An unverified account
+    // without a failed read is still waiting; keep this presentation local to the UI.
+    val awaitingVerification = !state.needsLogin && state.code == null && state.error == null &&
+        (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
+    val displayState = if (awaitingVerification && !LocalReadOffline.current) state.copy(busy = true) else state
+    val displayCode = displayState.code.takeIf { displayState.problem == null && !displayState.busy && displayState.error == null }
     PaymentCodePresentationEffect(isActive && displayCode != null)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
     LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
-    val readError = readError(state.error, state.errorKind)
+    val readError = readError(displayState.error, displayState.errorKind)
         ?: ReadError(FeedbackText.Offline, com.mercury.yktwx.data.ReadFailureKind.Network)
-            .takeIf { LocalReadOffline.current && displayCode == null && state.problem !in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen) }
-        ?: ReadError("暂时无法确认卡状态").takeIf { state.problem == PaymentCodeProblem.StatusUnverified }
-    val initialError = rememberInitialReadError(state.account != null || displayCode != null,
-        readError, !state.busy)
-    val networkError = rememberPageNetworkError(state.busy || state.refreshing || state.accountLoading || state.balanceLoading || state.cardStatusLoading,
-        state.account != null || displayCode != null, null,
-        ReadRegion("余额", readError(state.accountError, state.accountErrorKind), state.account != null),
-        ReadRegion("卡状态", readError(state.cardStatusError, state.cardStatusErrorKind), state.accountCard != null))
-        .takeIf { initialError == null && readError == null && !state.busy }
+            .takeIf { LocalReadOffline.current && displayCode == null && displayState.problem !in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen) }
+        ?: ReadError("暂时无法确认卡状态").takeIf { displayState.problem == PaymentCodeProblem.StatusUnverified && !displayState.busy }
+    val initialError = rememberInitialReadError(displayState.account != null || displayCode != null,
+        readError, !displayState.busy)
+    val networkError = rememberPageNetworkError(displayState.busy || displayState.refreshing || displayState.accountLoading || displayState.balanceLoading || displayState.cardStatusLoading,
+        displayState.account != null || displayCode != null, null,
+        ReadRegion("余额", readError(displayState.accountError, displayState.accountErrorKind), displayState.account != null),
+        ReadRegion("卡状态", readError(displayState.cardStatusError, displayState.cardStatusErrorKind), displayState.accountCard != null))
+        .takeIf { initialError == null && readError == null && !displayState.busy }
     val showEnlarged = isActive && displayCode != null && enlarged != null
     // Only the format survives exit. The popup may still compose its previous content
     // after the close action clears enlarged, so it must not unwrap that live state.
@@ -95,7 +100,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                 InitialReadTransition(initialError, networkError) { displayedError ->
                     val showFailure = displayedError != null
                     // Only an empty pending shell is retained for the outgoing skeleton.
-                    val state = if (!showFailure && initialError != null) state.copy(error = null, busy = true) else state
+                    val state = if (!showFailure && initialError != null) displayState.copy(error = null, busy = true) else displayState
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("payment-page-list"),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
