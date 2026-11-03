@@ -93,7 +93,9 @@ class DashboardLoadingTest {
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
             capture(if (fontScale == 1f) "hall-loaded" else "hall-loaded-large-dark")
             compose.runOnIdle { state = DormUiState(ready.rooms, loading = true, loaded = true, network = ready.network) }
-            compose.mainClock.advanceTimeBy(450)
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag("page-read-progress").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             stable(network, "hall-network-card"); stable(others, "hall-others-card")
             val room = ready.rooms.single()
@@ -147,7 +149,9 @@ class DashboardLoadingTest {
             compose.runOnIdle { rechargeLoading = true
                 state = MyUiState(ready.profile, summary = ready.summary, counts = ready.counts,
                     homeIdentity = ready.homeIdentity, loaded = true, loading = true) }
-            compose.mainClock.advanceTimeBy(450)
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag("page-read-progress").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             stable(balance, "my-balance-card"); stable(summary, "my-summary-card")
             compose.onNodeWithText("+ 充值").assertIsNotEnabled()

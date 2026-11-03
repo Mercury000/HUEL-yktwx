@@ -55,6 +55,11 @@ class UiSmokeTest {
         compose.waitForIdle()
         return model
     }
+    private fun awaitCode(description: String) {
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
     @Test fun firstLaunchShowsLoginAndSystemPasswordField() {
         content(false)
         compose.onNodeWithText("登录校园一卡通").assertIsDisplayed()
@@ -78,6 +83,8 @@ class UiSmokeTest {
     @Test fun paymentPreviewShowsCodesWithoutRefreshButton() {
         content()
         compose.onNodeWithContentDescription("刷新付款码").assertDoesNotExist()
+        awaitCode("付款条形码")
+        awaitCode("付款二维码")
         compose.onNodeWithContentDescription("付款条形码").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertExists()
     }
@@ -154,6 +161,7 @@ class UiSmokeTest {
             val image = compose.onRoot().captureToImage().asAndroidBitmap()
             File("../tools/hall-tab-style-$style.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
             compose.onNode((hasText("付款") or hasContentDescription("付款")) and hasClickAction()).performClick()
+            awaitCode("付款条形码")
             compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
             compose.onAllNodes((hasText("水电费") or hasText("校园网")) and
                 hasAnyAncestor(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange) and hasAnyDescendant(hasText("付款码")))).assertCountEquals(0)
@@ -163,10 +171,12 @@ class UiSmokeTest {
     @Test fun billTabOpensBillsAndPaymentTabReturnsToCodes() {
         content()
         // Adjacent pager pages can already exist: verify visibility, not just existence.
+        awaitCode("付款条形码")
         compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
         compose.onNode(hasText("账单") and hasClickAction()).performClick()
         compose.onNodeWithText("统计").assertIsDisplayed()
         compose.onNode(hasText("付款") and hasClickAction()).performClick()
+        awaitCode("付款条形码")
         compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
     }
     @Test fun aboutSettingsThemeNavigateAndPersist() {

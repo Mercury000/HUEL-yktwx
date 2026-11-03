@@ -215,6 +215,8 @@ class AppUpdateUiTest {
             compose.waitForIdle()
         }
         fun notice(list: String) = compose.onNode(hasTestTag("app-update-notice") and hasAnyAncestor(hasTestTag(list)))
+        // The bill notice lives in the shared scroll header, not inside either list.
+        fun noticeParent(list: String) = if (list.startsWith("bill-")) "bill-scroll-surface" else list
         var expectedTop: Float? = null
         for ((label, list, imageName) in listOf(
             Triple("付款", "payment-page-list", "payment"),
@@ -224,9 +226,9 @@ class AppUpdateUiTest {
         )) {
             tab(label)
             compose.onNodeWithTag(list).performScrollToIndex(0)
-            notice(list).assertIsDisplayed()
+            notice(noticeParent(list)).assertIsDisplayed()
             compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
-            val bounds = notice(list).fetchSemanticsNode().boundsInRoot
+            val bounds = notice(noticeParent(list)).fetchSemanticsNode().boundsInRoot
             if (expectedTop == null) expectedTop = bounds.top
             else assertEquals("All four tabs place the notice at the same top position", expectedTop!!, bounds.top, 1f)
             capture("inline-$imageName-light")
@@ -237,9 +239,9 @@ class AppUpdateUiTest {
         // Switching the bill mode keeps the shared notice above its content.
         tab("账单")
         compose.onNodeWithText("统计").performClick()
-        notice("bill-stats-list").assertIsDisplayed()
+        notice("bill-scroll-surface").assertIsDisplayed()
         compose.onNodeWithText("明细").performClick()
-        notice("bill-list").performClick()
+        notice("bill-scroll-surface").performClick()
         compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
         compose.onNodeWithText("稍后").performClick()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()

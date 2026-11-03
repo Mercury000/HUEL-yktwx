@@ -224,12 +224,21 @@ internal fun delayedSkeletonModifier(active: Boolean = true, enabled: Boolean = 
     val painting = LocalSkeletonActive.current && active
     val startedAt = LocalReadStartedAt.current
     val switching = LocalContentSwitchActive.current
+    var wasPainting by remember { mutableStateOf(false) }
     LaunchedEffect(painting, switching) {
         if (painting && !switching) {
             val elapsed = startedAt?.let { android.os.SystemClock.uptimeMillis() - it } ?: 0L
-            delay((250L - elapsed).coerceAtLeast(0))
+            val remaining = (250L - elapsed).coerceAtLeast(0)
+            // A new paint starts hidden; keeping the previous read's fully revealed
+            // skeleton would flash it before this read's delay has elapsed.
+            if (!wasPainting && remaining > 0) opacity.snapTo(0f)
+            wasPainting = true
+            delay(remaining)
             opacity.animateTo(1f, tween(ContentMotion.Fade))
-        } else opacity.stop()
+        } else {
+            opacity.stop()
+            wasPainting = painting
+        }
     }
     return Modifier.graphicsLayer { alpha = opacity.value }
 }

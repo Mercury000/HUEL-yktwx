@@ -257,7 +257,7 @@ private fun UnboundUtilityPanel(temporary: Boolean, enabled: Boolean, onClick: (
 
 @Composable
 private fun UtilityValueRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = with(LocalDensity.current) { 38.sp.toDp() }),
+    Row(Modifier.fillMaxWidth().height(with(LocalDensity.current) { 38.sp.toDp() }),
         verticalAlignment = Alignment.Bottom, content = content)
 }
 

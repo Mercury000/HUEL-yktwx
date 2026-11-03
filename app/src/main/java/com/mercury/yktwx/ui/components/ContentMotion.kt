@@ -226,10 +226,10 @@ internal fun <T> ReadContent(state: T, modifier: Modifier = Modifier,
 internal fun ReadText(text: String?, modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified, lineHeight: TextUnit = TextUnit.Unspecified,
     fontWeight: FontWeight? = null, color: Color = MiuixTheme.colorScheme.onSurface,
-    textAlign: TextAlign = TextAlign.Start, fraction: Float = .6f) {
+    textAlign: TextAlign = TextAlign.Start, fraction: Float = .6f, sample: String = "读取") {
     ReadContent(text, modifier, pending = { it == null }) { displayed ->
         if (displayed == null) DashboardPlaceholder(fontSize, Modifier.fillMaxWidth(),
-            fraction = fraction, lineHeight = lineHeight)
+            fraction = fraction, lineHeight = lineHeight, sample = sample)
         else Text(displayed, Modifier.fillMaxWidth(), fontSize = fontSize, lineHeight = lineHeight,
             fontWeight = fontWeight, color = color, textAlign = textAlign)
     }

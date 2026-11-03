@@ -67,7 +67,10 @@ class MainNavigationLayoutTest {
             hasAnyDescendant(hasTestTag("payment-code-card")))
         val balance = compose.onNodeWithText("¥ 128.60")
         val recharge = compose.onNodeWithText("充值")
-        val title = compose.onNode(hasText("付款") and !isSelectable() and !hasAnyAncestor(isSelectable()))
+        val titles = compose.onAllNodes(hasText("付款") and !isSelectable() and !hasAnyAncestor(isSelectable()))
+        // The unified top bar keeps both the collapsed and the large title; scrolling
+        // collapses the large one, so only the small title must stay on screen.
+        fun collapsedTitle() = titles.fetchSemanticsNodes().minBy { it.boundsInRoot.height }
         for (style in listOf(-1, 0, 1)) {
             compose.runOnIdle {
                 settings.setFloating(style >= 0)
@@ -75,7 +78,6 @@ class MainNavigationLayoutTest {
             }
             list.performScrollToIndex(0)
             val barTop = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot.top
-            val titleTop = title.fetchSemanticsNode().boundsInRoot.top
             assertTrue("Fixture must reproduce a balance covered by the bar (style $style)",
                 balance.fetchSemanticsNode().boundsInRoot.bottom > barTop)
             assertTrue("Bottom-bar padding must contribute to scroll range",
@@ -90,7 +92,9 @@ class MainNavigationLayoutTest {
                 balance.fetchSemanticsNode().boundsInRoot.bottom <= barTop)
             assertTrue("Recharge must clear the bar after scrolling",
                 recharge.fetchSemanticsNode().boundsInRoot.bottom <= barTop)
-            assertEquals("Payment title stays fixed", titleTop, title.fetchSemanticsNode().boundsInRoot.top, 1f)
+            val title = collapsedTitle().boundsInRoot
+            assertTrue("Payment title stays on screen after scrolling",
+                title.top >= 0f && title.bottom <= barTop)
             list.performScrollToIndex(0)
             list.performTouchInput {
                 swipe(start = center.copy(y = height * .3f), end = center.copy(y = height * .9f), durationMillis = 600)
