@@ -17,11 +17,14 @@ import kotlinx.coroutines.withContext
 class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null, private val readNow: () -> Long = ReadCachePolicy::now) : SessionAuthority {
     internal val dataChanges = AccountDataChanges()
     internal val overviewReads = SharedReadStore()
+    internal val cardReads = SharedReadStore()
     internal fun identity(username: String): AccountIdentity? = sessionState.value.let {
         AccountIdentity(username, it.generation).takeIf { _ -> it.username == username }
     }
     private fun publishSession(state: SessionState) {
-        overviewReads.reset(state.username?.let { AccountIdentity(it, state.generation) })
+        val identity = state.username?.let { AccountIdentity(it, state.generation) }
+        overviewReads.reset(identity)
+        cardReads.reset(identity)
         dataChanges.reset(state)
         mutableSession.value = state
     }
@@ -99,8 +102,22 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun paymentAccount(username: String): PaymentAccount = withSession(expectedUsername = username) {
         service.paymentAccount(it)
     }
-    suspend fun paymentCard(username: String, account: String): CampusCard = withSession(expectedUsername = username) {
-        service.paymentCard(it, account)
+    private fun cardStamp() = dataChanges.state.value.versions[AccountResource.Data.Cards] ?: 0L
+    internal fun cardSnapshot(username: String, account: String): SharedReadStore.Snapshot<CampusCard> =
+        cardReads.snapshot(identity(username), "card:$account", cardStamp())
+    private fun publishCards(owner: AccountIdentity?, cards: List<CampusCard>, stamp: Long) {
+        if (stamp != cardStamp()) return
+        cards.forEach { card -> cardReads.put(owner, "card:${card.account}", stamp, card, if (card.status >= 0) readNow() else 0L) }
+    }
+    suspend fun paymentCard(username: String, account: String, force: Boolean = false): CampusCard {
+        restoreSession()
+        val owner = identity(username) ?: throw AuthenticationRequired()
+        return cardReads.read(owner, "card:$account", cardStamp(), force, now = readNow,
+            currentStamp = ::cardStamp, waitForChange = false) {
+            withSession(expectedUsername = username) { service.paymentCard(it, account) }.also {
+                if (it.account != account || it.status < 0) throw YktException("校园卡状态数据异常")
+            }
+        }
     }
     suspend fun personalProfile(username: String): PersonalProfile = withSession(expectedUsername = username) { profileService.profile(it) }
     suspend fun homeIdentity(username: String, sno: String): HomeCardIdentity? = withSession(expectedUsername = username) { profileService.homeIdentity(it, sno) }
@@ -309,20 +326,29 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
     suspend fun launchFeeWechat(order: PendingRecharge, method: FeeMethod) =
         withSession(retryAuthentication = false, expectedUsername = order.username) { feeService.launchFeeWechat(it, order, method) }
     suspend fun feeResult(order: PendingRecharge) = withSession(expectedUsername = order.username) { feeService.feeResult(it, order) }
-    suspend fun passwordConfiguration(username: String) = withSession(expectedUsername = username) { cardService.passwordConfiguration(it) }
+    suspend fun passwordConfiguration(username: String) = withSession(expectedUsername = username) {
+        val owner = identity(username)
+        val stamp = cardStamp()
+        cardService.passwordConfiguration(it).also { configuration -> publishCards(owner, configuration.cards, stamp) }
+    }
     suspend fun modifyCardPassword(username: String, card: CampusCard, oldPassword: String, newPassword: String, confirmation: String) =
         withSession(retryAuthentication = false, expectedUsername = username) {
             cardService.modifyCardPassword(it, card, oldPassword, newPassword, confirmation)
             // Clear under the same session lock before a queued refresh can re-login with old credentials.
             clearCredentials(SessionEndReason.PasswordChanged)
         }
-    suspend fun cardConfiguration(username: String) = withSession(expectedUsername = username) { cardService.cardConfiguration(it) }
+    suspend fun cardConfiguration(username: String) = withSession(expectedUsername = username) {
+        val owner = identity(username)
+        val stamp = cardStamp()
+        cardService.cardConfiguration(it).also { configuration -> publishCards(owner, configuration.cards, stamp) }
+    }
     suspend fun changeCardState(username: String, card: CampusCard, action: CampusCardAction, password: String) =
         withSession(retryAuthentication = false, expectedUsername = username) {
             val identity = identity(username)
             try {
-                cardService.changeCardState(it, card, action, password).also {
+                cardService.changeCardState(it, card, action, password).also { cards ->
                     dataChanges.invalidate(identity, setOf(AccountResource.Data.Cards, AccountResource.Data.Profile))
+                    publishCards(identity, cards, cardStamp())
                 }
             } catch (e: CardOperationUnconfirmed) {
                 dataChanges.invalidate(identity, setOf(AccountResource.Data.Cards, AccountResource.Data.Profile))

@@ -56,6 +56,17 @@ class SharedReadStoreTest {
         assertTrue(store.snapshot<Int>(owner, "counts", 0).fresh(10_000L))
     }
 
+    @Test fun aNewerConfirmedEndpointResultSupersedesAnOlderConcurrentRead() = runTest {
+        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val gate = CompletableDeferred<String>()
+        val old = async { store.read(owner, "card", 0, false, now = { 10_000L }) { gate.await() } }
+        runCurrent()
+        store.put(owner, "card", 0, "new", 10_000L)
+        gate.complete("old")
+        assertEquals("new", old.await())
+        assertEquals("new", store.snapshot<String>(owner, "card", 0).value)
+    }
+
     @Test fun generationsAndQueryRangesHaveIndependentValues() = runTest {
         val store = SharedReadStore(backgroundScope).apply { reset(owner) }
         store.read(owner, "summary:october", 0, false) { "october" }

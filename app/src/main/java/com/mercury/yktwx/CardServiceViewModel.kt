@@ -59,6 +59,17 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         repository.observeAccount(viewModelScope) { username, renewed ->
             if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
         }
+        viewModelScope.launch { repository.cardReads.revision.collect { syncCards() } }
+    }
+
+    private fun syncCards() {
+        val current = mutable.value
+        if (current.preview || current.loading || owner.isBlank()) return
+        val cards = current.cards.map { old ->
+            repository.cardSnapshot(owner, old.account).let { if (it.fresh()) it.value ?: old else old }
+        }
+        val selected = current.selectedCard?.let { old -> cards.singleOrNull { it.account == old.account && !it.frozen && it.status == 0 } }
+        mutable.value = current.copy(cards = cards, selectedCard = selected)
     }
 
     fun open(action: CampusCardAction, username: String, preview: Boolean) {
