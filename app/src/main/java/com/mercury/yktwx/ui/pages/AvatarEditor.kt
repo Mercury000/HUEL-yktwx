@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.AvatarUiState
 import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.ui.components.InlineErrorGroup
+import com.mercury.yktwx.ui.components.ReadProgressOverlay
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import com.mercury.yktwx.ui.components.rememberOverlaySession
@@ -78,12 +79,17 @@ internal fun AvatarEditor(model: AvatarViewModel, state: AvatarUiState, official
                         ProfileAvatar(content.bytes ?: official, 88.dp, custom = content.bytes != null,
                             prepared = content.image, pending = content.restoring)
                         Text("仅在本机显示", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                        if (content.loading || content.restoring) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
-                        InlineErrorGroup(content.error, 16.dp) {
-                            TextButton("从相册选择", ::pick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.textButtonColorsPrimary())
-                            if (content.bytes != null) TextButton(if (content.saving) "恢复中" else "恢复校园头像",
-                                model::restoreOfficial, enabled = enabled, modifier = Modifier.fillMaxWidth())
+                        Box(Modifier.fillMaxWidth()) {
+                            InlineErrorGroup(content.error, 16.dp) {
+                                TextButton("从相册选择", ::pick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.textButtonColorsPrimary())
+                                if (content.bytes != null) TextButton(if (content.saving) "恢复中" else "恢复校园头像",
+                                    model::restoreOfficial, enabled = enabled, modifier = Modifier.fillMaxWidth())
+                            }
+                            Box(Modifier.matchParentSize()) {
+                                ReadProgressOverlay(content.loading || content.restoring,
+                                    modifier = Modifier.align(Alignment.TopCenter).offset(y = (-8).dp))
+                            }
                         }
                     } else {
                         val crop by rememberUpdatedState(content.crop)

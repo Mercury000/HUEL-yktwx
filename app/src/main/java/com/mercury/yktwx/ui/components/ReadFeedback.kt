@@ -113,7 +113,7 @@ internal fun rememberCachedReadError(error: ReadError?, refreshing: Boolean, has
     return displayed
 }
 
-/** Keep the first content item stable and animate the notice together with its spacing. */
+/** Overlay progress in the existing gap; only errors occupy space above the content. */
 @Composable
 internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = false,
     errorTag: String = "page-network-error",
@@ -121,31 +121,29 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
     topSpacing: Dp = 0.dp,
     errorMaxLines: Int = 1,
     readIdentity: Any? = Unit,
-    stableProgress: Boolean = false,
+    progressOffset: Dp = (-6).dp,
     deferFeedback: Boolean = false,
     content: @Composable () -> Unit) {
     val userRefresh = LocalUserRefresh.current
     val offline = LocalReadOffline.current
     val requestedRead = loading && !userRefresh && !offline
-    val reading = if (stableProgress) {
-        var delayedRead by remember(readIdentity) { mutableStateOf(false) }
-        var admittedRead by remember(readIdentity) { mutableStateOf(false) }
-        LaunchedEffect(requestedRead, readIdentity) {
-            if (requestedRead) delay(250)
-            delayedRead = requestedRead
-        }
-        SideEffect {
-            if (!requestedRead) admittedRead = false
-            else if (delayedRead && !deferFeedback) admittedRead = true
-        }
-        // Existing progress can finish normally; a short read during navigation never flashes in.
-        requestedRead && delayedRead && (admittedRead || !deferFeedback)
-    } else requestedRead
+    var delayedRead by remember(readIdentity) { mutableStateOf(false) }
+    var admittedRead by remember(readIdentity) { mutableStateOf(false) }
+    LaunchedEffect(requestedRead, readIdentity) {
+        if (requestedRead) delay(250)
+        delayedRead = requestedRead
+    }
+    SideEffect {
+        if (!requestedRead) admittedRead = false
+        else if (delayedRead && !deferFeedback) admittedRead = true
+    }
+    // Existing progress can finish normally; a short read during navigation never flashes in.
+    val reading = requestedRead && delayedRead && (admittedRead || !deferFeedback)
     // Switching queries cancels completion; it is not a successful response from the old query.
     var finishing by remember(readIdentity) { mutableStateOf(false) }
     val completion = remember(readIdentity) { Animatable(0f) }
     var wasReading by remember(readIdentity) { mutableStateOf(reading) }
-    // Retain the error while the whole slot exits; a new read can replace its snapshot.
+    // A retained failure prevents a retry from claiming successful completion.
     val displayedError = rememberWhileShown(error != null || reading, error.orEmpty())
     val completing = !reading && wasReading && !failed && !userRefresh && !offline && displayedError.isEmpty()
     LaunchedEffect(reading, error, failed, userRefresh, offline, readIdentity) {
@@ -160,38 +158,26 @@ internal fun PageReadNotice(error: String?, spacing: Dp, loading: Boolean = fals
             finishing = false
         } else finishing = false
     }
-    // Cached failures are already present on entry; only a new visibility change animates.
-    val showing = error != null || reading || completing || finishing
-    val displayedProgress = rememberWhileShown(showing, reading || completing || finishing)
-    if (stableProgress) {
-        // Progress uses the existing gap above the first item, so reads never move the tab row.
-        // Error height changes wait for the content switch; the network request remains immediate.
-        var settledError by remember { mutableStateOf(error) }
-        LaunchedEffect(error, deferFeedback) { if (!deferFeedback) settledError = error }
-        val errorText = rememberWhileShown(settledError != null, settledError.orEmpty())
-        val progressVisible = reading || completing || finishing
-        Column(Modifier.fillMaxWidth()) {
-            FeedbackTransition(settledError != null, topSpacing = topSpacing, bottomSpacing = spacing) {
+    // Error height changes wait for the content switch; the network request remains immediate.
+    var settledError by remember { mutableStateOf(error) }
+    LaunchedEffect(error, deferFeedback) { if (!deferFeedback) settledError = error }
+    val errorText = rememberWhileShown(settledError != null, settledError.orEmpty())
+    val progressVisible = reading || completing || finishing
+    Column(Modifier.fillMaxWidth()) {
+        FeedbackTransition(settledError != null, topSpacing = topSpacing, bottomSpacing = spacing) {
+            Box(Modifier.fillMaxWidth().readContentSize()) {
                 ContentFade(errorText) { InlineError(it, Modifier.testTag(errorTag), maxLines = errorMaxLines) }
             }
-            Box(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth()) { content() }
-                StableReadProgress(progressVisible, completion.value,
-                    Modifier.align(Alignment.TopCenter).offset(y = (-6).dp))
+        }
+        Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) { content() }
+            // Matching the content's size keeps even an empty local progress anchor at zero height.
+            Box(Modifier.matchParentSize()) {
+                ReadProgressOverlay(progressVisible, completion.value,
+                    Modifier.align(Alignment.TopCenter).offset(y = progressOffset)
+                        .wrapContentHeight(Alignment.Top, unbounded = true))
             }
         }
-        return
-    }
-    Column(Modifier.fillMaxWidth()) {
-        FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = spacing) {
-            Box(Modifier.fillMaxWidth().readContentSize()) {
-                if (displayedError.isNotEmpty()) {
-                    ContentFade(displayedError) { InlineError(it, Modifier.testTag(errorTag), maxLines = errorMaxLines) }
-                    if (displayedProgress) ReadProgress(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp), completion.value)
-                } else ReadProgress(Modifier, completion.value)
-            }
-        }
-        content()
     }
 }
 
@@ -205,7 +191,7 @@ private fun ReadProgress(modifier: Modifier, completion: Float) {
 }
 
 @Composable
-private fun StableReadProgress(visible: Boolean, completion: Float, modifier: Modifier) {
+internal fun ReadProgressOverlay(visible: Boolean, completion: Float = 0f, modifier: Modifier = Modifier) {
     AnimatedVisibility(visible, modifier,
         enter = fadeIn(tween(ContentMotion.Fade)), exit = fadeOut(tween(ContentMotion.Fade))) {
         ReadProgress(Modifier, completion)
