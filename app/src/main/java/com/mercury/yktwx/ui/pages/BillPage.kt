@@ -239,7 +239,7 @@ fun BillPage(
                             failed = if (state.statsVisible) state.stats.error != null || state.stats.dailyError != null ||
                                 state.stats.categoriesError != null || state.stats.rankingError != null
                                 else state.error != null || state.summaryError != null || state.countsError != null,
-                            readIdentity = readIdentity, stableProgress = true, deferFeedback = motion.running) {
+                            readIdentity = readIdentity, deferFeedback = motion.running) {
                             updateNotice()
                             Box(Modifier.width(180.dp).testTag("bill-mode-tabs")) {
                                 TabRowWithContour(tabs = listOf("明细", "统计"), selectedTabIndex = if (state.statsVisible) 1 else 0,
@@ -401,7 +401,7 @@ fun BillPage(
                                                         // A cached query is checked below the stable overview and search field.
                                                         PageReadNotice(null, 0.dp,
                                                             loading = !requestedState.statsVisible && state.listOnlyRead && state.listLoading && state.listAvailable,
-                                                            failed = state.error != null, topSpacing = 12.dp, readIdentity = readIdentity) {}
+                                                            failed = state.error != null, progressOffset = 6.dp, readIdentity = readIdentity) {}
                                                         ReadNotice(readError(state.error.takeIf { state.items.isNotEmpty() }, state.errorKind), cached = true, topSpacing = 20.dp)
                                                     }
                                                 }

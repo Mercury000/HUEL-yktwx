@@ -93,25 +93,60 @@ class ReadStatusUiTest {
         assertEquals(0, disposals)
     }
 
-    @Test fun pendingReadCompletesAndCollapsesWithoutChangingCachedContent() {
-        var loading by mutableStateOf(true)
+    @Test fun pendingReadAppearsAndCompletesWithoutMovingCachedContent() {
+        var loading by mutableStateOf(false)
         compose.mainClock.autoAdvance = false
-        compose.setContent { AppTheme { PageReadNotice(null, 12.dp, loading) {
+        compose.setContent { AppTheme { Column(Modifier.padding(top = 12.dp)) { PageReadNotice(null, 12.dp, loading) {
             Box(Modifier.size(100.dp).testTag("content").background(Color.Black))
-        } } }
+        } } } }
         fun top() = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
         val pendingTop = top()
+        compose.runOnIdle { loading = true }
+        repeat(28) {
+            frame()
+            assertEquals("Progress must not move cached content during entry", pendingTop, top(), 1f)
+        }
         compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
         compose.runOnIdle { loading = false }
         repeat(2) { frame() }
         compose.mainClock.advanceTimeBy(80)
         compose.onNodeWithTag("page-read-progress").assertExists()
         assertEquals(pendingTop, top(), 1f)
-        compose.mainClock.advanceTimeBy(600)
+        repeat(40) {
+            frame()
+            assertEquals("Completion and fade-out must not move cached content", pendingTop, top(), 1f)
+        }
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
-        assertEquals(0f, top(), 1f)
         val bitmap = compose.onNodeWithTag("content").captureToImage().asAndroidBitmap()
         assertEquals(android.graphics.Color.BLACK, bitmap.getPixel(30, 30))
+    }
+
+    @Test fun shortReadNeverShowsProgressOrMovesFollowingContentAtAnEmptyAnchor() {
+        var loading by mutableStateOf(false)
+        compose.mainClock.autoAdvance = false
+        compose.setContent { AppTheme { Column(Modifier.padding(top = 12.dp)) {
+            PageReadNotice(null, 0.dp, loading, progressOffset = 6.dp) {}
+            Box(Modifier.padding(top = 14.dp).size(100.dp).testTag("following-content"))
+        } } }
+        val before = compose.onNodeWithTag("following-content").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { loading = true }
+        repeat(8) { frame() }
+        compose.runOnIdle { loading = false }
+        repeat(30) {
+            frame()
+            compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+            assertEquals(before, compose.onNodeWithTag("following-content").fetchSemanticsNode().boundsInRoot)
+        }
+        compose.runOnIdle { loading = true }
+        repeat(28) { frame() }
+        compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+        assertEquals(before, compose.onNodeWithTag("following-content").fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { loading = false }
+        repeat(40) {
+            frame()
+            assertEquals(before, compose.onNodeWithTag("following-content").fetchSemanticsNode().boundsInRoot)
+        }
+        compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
     }
 
     @Test fun failureUsesTheSameRegionAndRetryDoesNotCloseThenReopenIt() {
@@ -135,14 +170,14 @@ class ReadStatusUiTest {
         compose.onNodeWithTag("page-network-error").assertIsDisplayed()
         compose.runOnIdle { loading = true; error = null }
         repeat(3) { frame() }
-        compose.mainClock.advanceTimeBy(300)
+        compose.mainClock.advanceTimeBy(450)
         assertEquals(failureTop, top(), 1f)
         compose.onNodeWithTag("page-network-error").assertIsDisplayed()
         compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
         capture("retry")
     }
 
-    @Test fun successfulRetryCollapsesErrorAndProgressTogetherWithoutFlashing() {
+    @Test fun successfulRetryCollapsesErrorWithoutAnExtraLayoutChangeForProgress() {
         var loading by mutableStateOf(true)
         var error by mutableStateOf<String?>("资料、余额、本月概览更新失败，显示上次数据，请下拉刷新")
         compose.mainClock.autoAdvance = false
@@ -159,15 +194,13 @@ class ReadStatusUiTest {
             }
         }
         repeat(3) { frame() }
+        compose.mainClock.advanceTimeBy(450)
         compose.onNodeWithTag("page-network-error").assertIsDisplayed()
         compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
         var previousTop = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
         compose.runOnIdle { loading = false; error = null }
-        repeat(40) { step ->
+        repeat(40) {
             frame()
-            val errors = compose.onAllNodesWithTag("page-network-error").fetchSemanticsNodes().size
-            val progress = compose.onAllNodesWithTag("page-read-progress").fetchSemanticsNodes().size
-            assertEquals("The error and its progress must exit together in frame $step", errors, progress)
             val currentTop = compose.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot.top
             assertTrue("The notice must not expand again during exit: $previousTop -> $currentTop", currentTop <= previousTop + 1f)
             previousTop = currentTop
@@ -210,6 +243,7 @@ class ReadStatusUiTest {
         val bounds = compose.onNodeWithTag("bill-summary").fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { state = state.copy(info = "食堂", loading = true, listLoading = true,
             listOnlyRead = true, listAvailable = true) }
+        compose.mainClock.advanceTimeBy(450)
         compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
         assertEquals(bounds, compose.onNodeWithTag("bill-summary").fetchSemanticsNode().boundsInRoot)
         assertTrue(before.sameAs(compose.onNodeWithTag("bill-summary").captureToImage().asAndroidBitmap()))
@@ -247,9 +281,10 @@ class ReadStatusUiTest {
         }
     }
 
-    @Test fun cachedDashboardReadsUseOneQuietNoticeInLightAndNarrowLargeDarkLayouts() {
+    @Test fun cachedPageReadsKeepContentStillInLightAndNarrowLargeDarkLayouts() {
         var page by mutableIntStateOf(0)
         var dark by mutableStateOf(false)
+        var refreshing by mutableStateOf(false)
         val hall = PreviewData.hallState()
         val bill = PreviewData.billState()
         val my = PreviewData.myState()
@@ -262,34 +297,82 @@ class ReadStatusUiTest {
                     Box(Modifier.width(if (dark) 320.dp else 411.dp).fillMaxHeight()) {
                         key(page, dark) {
                             when (page) {
-                                0 -> HallPage(settings, 0.dp, dorm = DormUiState(hall.rooms, loading = true,
+                                0 -> HallPage(settings, 0.dp, dorm = DormUiState(hall.rooms, loading = refreshing, loaded = true,
                                     network = hall.network, roomsAvailable = true, displayRestored = true))
-                                1 -> MyPage(my.copy(loading = true, displayRestored = true), PreviewData.paymentState(false),
+                                1 -> MyPage(my.copy(loading = refreshing, displayRestored = true), PreviewData.paymentState(false),
                                     settings, 0.dp, true, {}, {}, {}, {}, {}, false, {}, false, false, {}, {})
                                 2 -> BillPage(bill.copy(statsVisible = true,
-                                    stats = bill.stats.copy(loading = true, displayRestored = true)), settings,
+                                    stats = bill.stats.copy(loading = refreshing, displayRestored = true)), settings,
                                     {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
+                                3 -> PersonalProfilePage(my.copy(loading = refreshing), settings, {}, {})
+                                4 -> AccountDetailPage(PreviewData.paymentState(false).copy(balanceLoading = refreshing),
+                                    settings, {}, {}, onRefresh = {})
                             }
                         }
                     }
                 }
             }
         }
-        for (night in listOf(false, true)) for (index in 0..2) {
-            compose.runOnIdle { dark = night; page = index }
-            if (index == 2) {
-                // Bill tab switches reserve the progress gap and delay paint for short reads.
-                compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
-                val bounds = compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot
-                compose.mainClock.advanceTimeBy(450)
-                compose.waitForIdle()
-                assertEquals(bounds, compose.onNodeWithTag("bill-mode-tabs").fetchSemanticsNode().boundsInRoot)
+        for (night in listOf(false, true)) for (index in 0..4) {
+            compose.runOnIdle { dark = night; page = index; refreshing = false }
+            fun content() = when (index) {
+                0 -> compose.onNodeWithTag("hall-network-card")
+                1 -> compose.onNodeWithTag("my-balance-card")
+                2 -> compose.onNodeWithTag("bill-mode-tabs")
+                3 -> compose.onNodeWithTag("profile-details-card")
+                else -> compose.onNodeWithText("账户")
+            }
+            val bounds = content().fetchSemanticsNode().boundsInRoot
+            compose.mainClock.autoAdvance = false
+            compose.runOnIdle { refreshing = true }
+            compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+            repeat(28) {
+                frame()
+                assertEquals("Page $index moved during refresh entry", bounds, content().fetchSemanticsNode().boundsInRoot)
             }
             compose.onAllNodesWithTag("page-read-progress").assertCountEquals(1)
             compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
             compose.onNodeWithTag("page-network-error").assertDoesNotExist()
             compose.onNodeWithText("更新中").assertDoesNotExist()
             capture("cached-$index-${if (night) "narrow-large-dark" else "light"}")
+            compose.runOnIdle { refreshing = false }
+            repeat(40) {
+                frame()
+                assertEquals("Page $index moved during refresh completion", bounds, content().fetchSemanticsNode().boundsInRoot)
+            }
+            compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test fun avatarReadProgressDoesNotMoveTheSheetActions() {
+        val model = AvatarViewModel(compose.activity.application)
+        var state by mutableStateOf(AvatarUiState(visible = true))
+        compose.setContent { AppTheme {
+            top.yukonga.miuix.kmp.basic.Scaffold {
+                AvatarEditor(model, state, official = null, active = true)
+            }
+        } }
+        repeat(2) { compose.mainClock.advanceTimeBy(600); compose.waitForIdle() }
+        val action = compose.onNodeWithText("从相册选择")
+        action.assertIsDisplayed()
+        val bounds = action.fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        for (restoring in listOf(false, true)) {
+            compose.runOnIdle { state = state.copy(loading = !restoring, restoring = restoring) }
+            repeat(20) {
+                frame()
+                assertEquals(bounds, action.fetchSemanticsNode().boundsInRoot)
+            }
+            compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
+            action.assertIsNotEnabled()
+            compose.runOnIdle { state = state.copy(loading = false, restoring = false) }
+            repeat(20) {
+                frame()
+                assertEquals(bounds, action.fetchSemanticsNode().boundsInRoot)
+            }
+            compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
+            action.assertIsEnabled()
         }
     }
 }
