@@ -127,7 +127,8 @@ class PaymentLostUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
-                    PaymentPage(PaymentUiState(needsLogin = false, problem = PaymentCodeProblem.StatusUnverified),
+                    PaymentPage(PaymentUiState(needsLogin = false, problem = PaymentCodeProblem.StatusUnverified,
+                        error = "示例卡状态读取失败"),
                         settings, 0.dp, onRefresh = {})
                 }
             }

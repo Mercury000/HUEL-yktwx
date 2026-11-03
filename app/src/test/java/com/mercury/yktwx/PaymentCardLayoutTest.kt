@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.PaymentAccount
 import com.mercury.yktwx.data.PaymentCodeProblem
+import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.pages.PaymentPage
@@ -147,7 +148,7 @@ class PaymentCardLayoutTest {
     @Test
     @Config(qualifiers = "zh-rCN-w360dp-h800dp-xxhdpi", fontScale = 1.5f)
     fun largeFontReadFailureUsesSingleLineStatusAndRetainsTheBalanceInDarkTheme() {
-        content(mutableStateOf(state(error = "网络连接失败")), dark = true)
+        content(mutableStateOf(state(error = "网络连接失败").copy(errorKind = ReadFailureKind.Network)), dark = true)
         val body = bounds("payment-code-content")
         val group = bounds("payment-status-group")
         assertEquals(body.center.y, group.center.y, 1f)
