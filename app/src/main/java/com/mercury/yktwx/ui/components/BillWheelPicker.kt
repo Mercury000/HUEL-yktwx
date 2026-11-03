@@ -1,3 +1,6 @@
+// Copyright 2025, compose-miuix-ui contributors
+// SPDX-License-Identifier: Apache-2.0
+//
 // Adapted from compose-miuix-ui NumberPicker, Apache-2.0.
 package com.mercury.yktwx.ui.components
 
@@ -20,12 +23,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -36,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
+import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
@@ -47,43 +54,91 @@ internal fun BillWheelPicker(
     selectableRange: IntRange,
     displayRange: IntRange,
     modifier: Modifier = Modifier,
-    label: (Int) -> String,
+    enabled: Boolean = true,
+    label: (Int) -> String = { it.toString() },
     visibleItemCount: Int = 5,
     selectedColor: Color = MiuixTheme.colorScheme.primary,
     unselectedColor: Color = MiuixTheme.colorScheme.primary.copy(alpha = 0.55f),
+    disabledSelectedColor: Color = MiuixTheme.colorScheme.disabledOnSecondary,
+    disabledUnselectedColor: Color = MiuixTheme.colorScheme.disabledOnSecondary,
+    wrapAround: Boolean = false,
     textStyle: TextStyle = MiuixTheme.textStyles.title1,
     itemHeight: Dp = 45.dp,
 ) {
-    require(visibleItemCount % 2 == 1 && visibleItemCount >= 3)
-    require(selectableRange.first >= displayRange.first && selectableRange.last <= displayRange.last)
-    require(value in selectableRange)
+    require(visibleItemCount % 2 == 1 && visibleItemCount >= 3) {
+        "visibleItemCount must be odd and at least 3, but was $visibleItemCount"
+    }
+    require(selectableRange.first <= selectableRange.last) {
+        "selectableRange must not be empty"
+    }
+    require(selectableRange.first >= displayRange.first && selectableRange.last <= displayRange.last) {
+        "selectableRange must be contained in displayRange"
+    }
 
     val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val currentIndex = value - displayRange.first
+    val coercedValue = value.coerceIn(selectableRange)
+    val currentIndex = coercedValue - displayRange.first
     val minIndex = selectableRange.first - displayRange.first
     val maxIndex = selectableRange.last - displayRange.first
+    val selectableCount = selectableRange.last - selectableRange.first + 1
     val minOffset = (minIndex - currentIndex).toFloat()
     val maxOffset = (maxIndex - currentIndex).toFloat()
     val halfVisibleCount = visibleItemCount / 2
     val totalHeight = itemHeight * visibleItemCount
+    val hapticFeedback = LocalHapticFeedback.current
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val flingOffset = remember { Animatable(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var isUserScrolling by remember { mutableStateOf(false) }
     var itemHeightPx by remember { mutableIntStateOf(0) }
     val totalOffset by remember { derivedStateOf { dragOffset + flingOffset.value } }
 
-    LaunchedEffect(value) {
+    LaunchedEffect(coercedValue) {
         if (!isDragging && dragOffset == 0f) flingOffset.snapTo(0f)
+    }
+
+    val latestCurrentIndex by rememberUpdatedState(currentIndex)
+    val latestMinIndex by rememberUpdatedState(minIndex)
+    val latestMaxIndex by rememberUpdatedState(maxIndex)
+    val latestSelectableCount by rememberUpdatedState(selectableCount)
+    val latestWrapAround by rememberUpdatedState(wrapAround)
+    val effectiveIndex by remember {
+        derivedStateOf {
+            val rawIndex = latestCurrentIndex + totalOffset.fastRoundToInt()
+            if (latestWrapAround) {
+                wrapIndex(rawIndex, latestMinIndex, latestSelectableCount)
+            } else {
+                rawIndex.coerceIn(latestMinIndex, latestMaxIndex)
+            }
+        }
+    }
+    var lastHapticIndex by remember { mutableIntStateOf(currentIndex) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { effectiveIndex }
+            .distinctUntilChanged()
+            .collect { index ->
+                if (index != lastHapticIndex) {
+                    if (isUserScrolling) {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    lastHapticIndex = index
+                }
+            }
     }
 
     val draggableState = rememberDraggableState { delta ->
         if (itemHeightPx > 0) {
-            dragOffset = rubberBand(
-                value = dragOffset - delta / itemHeightPx,
-                minimum = minOffset,
-                maximum = maxOffset,
-            )
+            val newOffset = dragOffset - delta / itemHeightPx
+            dragOffset = if (wrapAround) {
+                newOffset
+            } else {
+                rubberBand(
+                    value = newOffset,
+                    minimum = minOffset,
+                    maximum = maxOffset,
+                )
+            }
         }
     }
     val resolvedTextStyle = if (textStyle.fontWeight == null) {
@@ -99,17 +154,19 @@ internal fun BillWheelPicker(
             .clipToBounds()
             .semantics {
                 contentDescription =
-                    "${label(value)}, ${selectableRange.first} - ${selectableRange.last}"
+                    "${label(coercedValue)}, ${selectableRange.first} - ${selectableRange.last}"
             }
             .onSizeChanged { itemHeightPx = it.height / visibleItemCount }
             .draggable(
                 orientation = Orientation.Vertical,
+                enabled = enabled,
                 state = draggableState,
                 onDragStarted = {
                     flingOffset.stop()
                     dragOffset += flingOffset.value
                     flingOffset.snapTo(0f)
                     isDragging = true
+                    isUserScrolling = true
                 },
                 onDragStopped = { velocity ->
                     isDragging = false
@@ -117,12 +174,36 @@ internal fun BillWheelPicker(
                         val currentDragOffset = dragOffset
                         dragOffset = 0f
                         flingOffset.snapTo(currentDragOffset)
-                        if (currentDragOffset < minOffset) {
+                        if (wrapAround) {
+                            flingOffset.updateBounds(
+                                Float.NEGATIVE_INFINITY,
+                                Float.POSITIVE_INFINITY,
+                            )
+                            val velocityInItems = -velocity / itemHeightPx
+                            flingOffset.animateDecay(
+                                velocityInItems,
+                                exponentialDecay(frictionMultiplier = 2f),
+                            )
+                            val snapped = flingOffset.value
+                                .fastRoundToInt()
+                                .toFloat()
+                            flingOffset.animateTo(
+                                snapped,
+                                spring(dampingRatio = 1f, stiffness = 400f),
+                            )
+                            val newIndex = wrapIndex(
+                                index = currentIndex + flingOffset.value.fastRoundToInt(),
+                                minIndex = minIndex,
+                                count = selectableCount,
+                            )
+                            val newValue = displayRange.first + newIndex
+                            if (newValue != coercedValue) currentOnValueChange(newValue)
+                        } else if (currentDragOffset < minOffset) {
                             flingOffset.animateTo(
                                 targetValue = minOffset,
                                 animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
                             )
-                            if (value != selectableRange.first) {
+                            if (coercedValue != selectableRange.first) {
                                 currentOnValueChange(selectableRange.first)
                             }
                         } else if (currentDragOffset > maxOffset) {
@@ -130,25 +211,36 @@ internal fun BillWheelPicker(
                                 targetValue = maxOffset,
                                 animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
                             )
-                            if (value != selectableRange.last) {
+                            if (coercedValue != selectableRange.last) {
                                 currentOnValueChange(selectableRange.last)
                             }
                         } else {
                             val velocityInItems = -velocity / itemHeightPx
                             flingOffset.updateBounds(minOffset, maxOffset)
-                            flingOffset.animateDecay(velocityInItems, exponentialDecay(frictionMultiplier = 2f))
+                            flingOffset.animateDecay(
+                                velocityInItems,
+                                exponentialDecay(frictionMultiplier = 2f),
+                            )
                             val snapped = flingOffset.value
                                 .fastRoundToInt()
                                 .toFloat()
                                 .coerceIn(minOffset, maxOffset)
-                            flingOffset.animateTo(snapped, spring(dampingRatio = 1f, stiffness = 400f))
-                            val newIndex = (currentIndex + flingOffset.value.fastRoundToInt()).coerceIn(minIndex, maxIndex)
+                            flingOffset.animateTo(
+                                snapped,
+                                spring(dampingRatio = 1f, stiffness = 400f),
+                            )
+                            val newIndex = (currentIndex + flingOffset.value.fastRoundToInt())
+                                .coerceIn(minIndex, maxIndex)
                             val newValue = displayRange.first + newIndex
-                            if (newValue != value) currentOnValueChange(newValue)
-                            flingOffset.updateBounds(Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY)
+                            if (newValue != coercedValue) currentOnValueChange(newValue)
+                            flingOffset.updateBounds(
+                                Float.NEGATIVE_INFINITY,
+                                Float.POSITIVE_INFINITY,
+                            )
                         }
                         flingOffset.snapTo(0f)
                     }
+                    isUserScrolling = false
                 },
             ),
         contentAlignment = Alignment.Center,
@@ -157,9 +249,16 @@ internal fun BillWheelPicker(
             val offset = totalOffset
             val centerOffset = offset - offset.fastRoundToInt()
             val roundedOffset = offset.fastRoundToInt()
+            val resolvedSelectedColor = if (enabled) selectedColor else disabledSelectedColor
+            val resolvedUnselectedColor = if (enabled) unselectedColor else disabledUnselectedColor
             for (i in -halfVisibleCount - 1..halfVisibleCount + 1) {
-                val itemIndex = currentIndex + i + roundedOffset
-                if (itemIndex !in 0 until displayRange.count()) continue
+                val rawItemIndex = currentIndex + i + roundedOffset
+                val itemIndex = if (wrapAround) {
+                    wrapIndex(rawItemIndex, minIndex, selectableCount)
+                } else {
+                    if (rawItemIndex !in 0 until displayRange.count()) continue
+                    rawItemIndex
+                }
                 val displayValue = displayRange.first + itemIndex
                 val distance = i.toFloat() - centerOffset
                 val normalized = (abs(distance) / (halfVisibleCount + 0.5f)).coerceIn(0f, 1f)
@@ -175,10 +274,10 @@ internal fun BillWheelPicker(
                     },
                     style = resolvedTextStyle,
                     color = Color(
-                        red = lerp(selectedColor.red, unselectedColor.red, normalized),
-                        green = lerp(selectedColor.green, unselectedColor.green, normalized),
-                        blue = lerp(selectedColor.blue, unselectedColor.blue, normalized),
-                        alpha = lerp(selectedColor.alpha, unselectedColor.alpha, normalized),
+                        red = lerp(resolvedSelectedColor.red, resolvedUnselectedColor.red, normalized),
+                        green = lerp(resolvedSelectedColor.green, resolvedUnselectedColor.green, normalized),
+                        blue = lerp(resolvedSelectedColor.blue, resolvedUnselectedColor.blue, normalized),
+                        alpha = lerp(resolvedSelectedColor.alpha, resolvedUnselectedColor.alpha, normalized),
                     ),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -188,6 +287,9 @@ internal fun BillWheelPicker(
         }
     }
 }
+
+private fun wrapIndex(index: Int, minIndex: Int, count: Int): Int =
+    ((index - minIndex) % count + count) % count + minIndex
 
 private fun rubberBand(value: Float, minimum: Float, maximum: Float): Float = when {
     value < minimum -> minimum - edgeResistance(minimum - value)
