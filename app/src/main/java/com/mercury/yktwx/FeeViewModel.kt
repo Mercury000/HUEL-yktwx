@@ -73,10 +73,7 @@ class FeeViewModel internal constructor(
     val state = mutable.asStateFlow()
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
     val events = launches.receiveAsFlow()
-    private val roomUpdates = Channel<Unit>(Channel.CONFLATED)
-    val roomChanges = roomUpdates.receiveAsFlow()
-    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
-    val transactionUpdates = updates.receiveAsFlow()
+    private var operationIdentity: AccountIdentity? = null
     private var task: Job? = null
     private var checkDeadline: Job? = null
     private var owner = ""
@@ -98,6 +95,7 @@ class FeeViewModel internal constructor(
         dismiss()
         fixedHallTarget = requestedRoom != null
         owner = username
+        operationIdentity = repository.identity(username)
         mutable.value = FeeUiState(loading = true, preview = UiPreview.enabled && preview)
         val generation = attempt
         launchTask {
@@ -105,6 +103,7 @@ class FeeViewModel internal constructor(
                 val config = if (UiPreview.enabled && preview) PreviewData.feeConfiguration(project)
                     else repository.feeConfiguration(username, project)
                 if (attempt != generation) return@launchTask
+                if (!preview) operationIdentity = repository.identity(username)
                 val initial = if (UiPreview.enabled && preview) PreviewData.feeQuery(project, false, 0, emptyMap())
                     else repository.feeQuery(username, project, 0, emptyMap(), false)
                 if (attempt != generation) return@launchTask
@@ -430,13 +429,11 @@ class FeeViewModel internal constructor(
                 if (confirmation != null && !confirmation.bindingKnown) throw YktException("房间绑定状态无法确认")
                 val fresh = if (UiPreview.enabled && state.preview) target else confirmation?.binding
                 val confirmed = confirmation?.confirmed ?: true
-                roomUpdates.trySend(Unit)
                 mutable.value = copy(mutable.value, roomBusy = false, roomBinding = fresh, roomBindingKnown = true,
                     error = if (confirmed) null else confirmation.writeFailure?.let(::message) ?: "房间绑定未更新，请稍后重试",
                     roomNotice = if (confirmed) (if (target == null) "已解绑" else "已保存为我的房间") else null)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                roomUpdates.trySend(Unit)
                 if (generation == attempt) mutable.value = copy(mutable.value, roomBusy = false, roomBindingKnown = false,
                     error = "无法确认保存或解绑结果，请重新打开页面核实，勿重复提交")
             }
@@ -698,7 +695,7 @@ class FeeViewModel internal constructor(
             order = if (retry != null) null else s.order,
             method = if (retry != null) null else s.method, paymentRetry = retry)
         if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
-            updates.trySend(TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
+            repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
     }
     private fun requestError(message: String) {
         checkDeadline?.cancel()

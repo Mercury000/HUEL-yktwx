@@ -63,11 +63,10 @@ class RechargeViewModelTest {
         await { model.state.value.phase == RechargePhase.Paid }
         model.checkResult()
         model.dismiss()
-        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
-        assertNotNull(event)
-        assertTrue(event!!.balance)
-        assertFalse(event.hall)
-        assertNull(runBlocking { withTimeoutOrNull(100) { model.transactionUpdates.first() } })
+        val versions = repository.dataChanges.state.value.versions
+        assertEquals(setOf(AccountResource.Data.Balance, AccountResource.Data.IncomeBills, AccountResource.Data.Profile), versions.keys)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(versions, repository.dataChanges.state.value.versions)
         assertEquals(1, service.creations)
     }
 
@@ -253,9 +252,9 @@ class RechargeViewModelTest {
         model.checkResult()
         await { model.state.value.phase == RechargePhase.Paid }
         assertEquals(1, service.resultQueries)
-        val event = runBlocking { withTimeoutOrNull(1_000) { model.transactionUpdates.first() } }
-        assertNotNull(event)
-        assertFalse(event!!.balance)
+        val resources = repository.dataChanges.state.value.versions.keys
+        assertFalse(AccountResource.Data.Balance in resources)
+        assertTrue(AccountResource.Data.Profile in resources)
     }
 
     private fun prepareOrder() {

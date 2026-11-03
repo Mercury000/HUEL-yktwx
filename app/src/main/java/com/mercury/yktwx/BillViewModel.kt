@@ -197,6 +197,16 @@ class BillViewModel internal constructor(
         repository.observeAccount(viewModelScope) { username, renewed ->
             if (!preview) accountChanged(username, renewed)
         }
+        repository.dataChanges.observe(viewModelScope) { resources ->
+            if (!preview && accountOwner != null) {
+                val income = AccountResource.Data.IncomeBills in resources
+                val expense = AccountResource.Data.ExpenseBills in resources
+                if (income || expense) {
+                    invalidate(if (income && expense) null else income)
+                    if (reads.isVisible) onActivate()
+                }
+            }
+        }
     }
 
     fun initialize(uiPreview: Boolean = false) {

@@ -40,7 +40,6 @@ import com.mercury.yktwx.data.ReadEnvironment
 import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.merge
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -145,12 +144,6 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         }
         LaunchedEffect(passwordModel) {
             passwordModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(cardModel) {
-            cardModel.cardChanges.collect { viewModel.cardStateChanged(); myModel.invalidateProfile(); myModel.refresh() }
-        }
-        LaunchedEffect(feeModel, dormModel) {
-            feeModel.roomChanges.collect { dormModel.invalidate(); dormModel.refresh() }
         }
         LaunchedEffect(cardModel, rechargeModel) {
             cardModel.rechargeRequests.collect { request ->
@@ -333,29 +326,6 @@ private fun MainContent(
         resumeEpoch = foregroundState.epoch,
     )
 
-    val currentOwner by rememberUpdatedState(state.username.takeUnless { state.needsLogin })
-    val currentReadPage by rememberUpdatedState(activeReadPage)
-    val transactionReads = remember(viewModel, billViewModel, myModel, dormModel) {
-        TransactionReadCoordinator(viewModel::invalidateBalance, billViewModel::invalidate,
-            myModel::invalidate, dormModel::invalidateTransaction) { page ->
-            when (page) {
-                ReadPage.Bill -> billViewModel.onActivate()
-                ReadPage.My, ReadPage.Profile -> myModel.onActivate()
-                ReadPage.Hall -> dormModel.onActivate()
-                else -> Unit
-            }
-        }
-    }
-    LaunchedEffect(rechargeModel, feeModel, viewModel, transactionReads) {
-        merge(rechargeModel.transactionUpdates, feeModel.transactionUpdates, viewModel.transactionUpdates).collect { update ->
-            transactionReads.onTransaction(update, currentOwner, currentReadPage)
-        }
-    }
-    LaunchedEffect(viewModel, transactionReads) {
-        viewModel.balanceChanges.collect { change ->
-            transactionReads.onBalanceChange(change, currentOwner, currentReadPage)
-        }
-    }
     // One shell-owned snapshot drives every ViewModel read decision.
     LaunchedEffect(readEnvironment, state.username, billState.readIdentity) {
         viewModel.onReadEnvironment(readEnvironment)

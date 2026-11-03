@@ -68,6 +68,15 @@ class HallViewModel internal constructor(
         repository.observeAccount(viewModelScope) { username, renewed ->
             if (!preview) accountChanged(username.orEmpty(), renewed = renewed)
         }
+        repository.dataChanges.observe(viewModelScope) { resources ->
+            if (!preview && owner.isNotBlank()) {
+                val projects = resources.filterIsInstance<AccountResource.Hall>()
+                projects.forEach { invalidateTransaction(it.project) }
+                val rooms = AccountResource.Data.Rooms in resources
+                if (rooms) invalidate()
+                if (reads.isVisible && (rooms || projects.isNotEmpty())) onActivate()
+            }
+        }
     }
 
     fun accountChanged(username: String, uiPreview: Boolean = false, renewed: Boolean = false) {

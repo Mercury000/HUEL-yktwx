@@ -50,8 +50,6 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     val rechargeRequests = ready.receiveAsFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
-    private val changed = Channel<Unit>(Channel.BUFFERED)
-    val cardChanges = changed.receiveAsFlow()
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
@@ -95,7 +93,8 @@ class CardServiceViewModel internal constructor(app: Application, private val re
                         ?: throw YktException("付款账户对应的校园卡已变更，请刷新卡状态"))
                 if (targetAccount != null && !cards.single().lost) {
                     mutable.value = mutable.value.copy(visible = false, loading = false, cards = cards)
-                    changed.send(Unit)
+                    if (!preview) repository.dataChanges.invalidate(repository.identity(username),
+                        setOf(AccountResource.Data.Cards, AccountResource.Data.Profile))
                     notifications.send("校园卡已解挂，正在更新付款状态")
                     return@launch
                 }
@@ -153,7 +152,6 @@ class CardServiceViewModel internal constructor(app: Application, private val re
                 } else {
                     mutable.value = mutable.value.copy(visible = false, loading = false, cards = refreshed.ifEmpty { s.cards }, selectedCard = null, error = null, errorFields = emptySet())
                     // Clear stale payment codes and require a fresh read before another write.
-                    changed.send(Unit)
                     notifications.send(safeError(e) + "。操作结果待确认，请重新查看卡状态")
                 }
             }
@@ -162,7 +160,6 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     private suspend fun completeCardChange(cards: List<CampusCard>, operation: CampusCardAction) {
         // Do not call dismiss(): it would cancel this task and drain the result events.
         mutable.value = mutable.value.copy(visible = false, loading = false, cards = cards, selectedCard = null, completed = true, error = null, errorFields = emptySet())
-        changed.send(Unit)
         notifications.send(operation.label + "成功")
     }
     fun clearRecipient() {
@@ -276,7 +273,6 @@ class CardServiceViewModel internal constructor(app: Application, private val re
         recipientConfigs.clear()
         mutable.value = CardServiceUiState()
         while (ready.tryReceive().isSuccess) { }
-        while (changed.tryReceive().isSuccess) { }
         while (notifications.tryReceive().isSuccess) { }
     }
     private fun safeError(e: Exception) = if (e is YktException) e.message ?: "校园卡服务暂不可用" else "校园卡服务暂不可用，请稍后重试"

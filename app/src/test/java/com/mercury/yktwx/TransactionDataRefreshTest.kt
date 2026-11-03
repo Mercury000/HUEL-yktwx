@@ -5,6 +5,9 @@ import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
@@ -163,8 +166,18 @@ class TransactionDataRefreshTest {
         }
         fail("Timed out waiting for transaction refresh")
     }
-    private fun balanceEvent(model: PaymentViewModel) = runBlocking {
-        withTimeoutOrNull(100) { model.balanceChanges.first() }
+    private var observedBalanceVersions = emptyMap<AccountResource, Long>()
+    private fun balanceEvent(model: PaymentViewModel): BalanceChange? {
+        val versions = repository.dataChanges.state.value.versions
+        val income = versions[AccountResource.Data.IncomeBills]
+        val expense = versions[AccountResource.Data.ExpenseBills]
+        val result = when {
+            income != null && income != observedBalanceVersions[AccountResource.Data.IncomeBills] -> BalanceChange("fake-user", true)
+            expense != null && expense != observedBalanceVersions[AccountResource.Data.ExpenseBills] -> BalanceChange("fake-user", false)
+            else -> null
+        }
+        observedBalanceVersions = versions
+        return result
     }
 
     @Test fun ordinaryCodeAndAccountRefreshesNotifyBalanceChangesWithoutReportingPaymentSuccess() {
@@ -185,6 +198,27 @@ class TransactionDataRefreshTest {
         model.refreshAccount(manual = true)
         await { !model.state.value.accountLoading }
         assertNull(balanceEvent(model))
+    }
+
+    @Test fun sharedInvalidationRefreshesExistingPagesAndRemainsPendingWhileHidden() {
+        val bill = bills()
+        val mine = MyViewModel(app, repository, delays)
+        store.put("mine", mine)
+        mine.accountChanged("fake-user")
+        mine.setPageVisible(true)
+        await { mine.state.value.loaded && !mine.state.value.loading }
+        bill.setPageVisible(false)
+        mine.setPageVisible(false)
+        val initial = count("summary")
+        listUpdated = true; summaryUpdated = true; countsUpdated = true
+        repository.dataChanges.transaction(repository.identity("fake-user"), TransactionUpdate("fake-user", balance = false, income = true))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(initial, count("summary"))
+        mine.setPageVisible(true)
+        await { mine.state.value.summary?.incomeCents == 1000L && !mine.state.value.loading }
+        mine.setPageVisible(false)
+        bill.setPageVisible(true)
+        await { bill.state.value.items.size == 2 && bill.state.value.summary?.incomeCents == 1000L && !bill.state.value.loading }
     }
 
     private fun assertTransactionBudgetWithoutOrdinaryRetry(key: String, settled: () -> Boolean) {
@@ -449,8 +483,19 @@ class TransactionDataRefreshTest {
         val model = bills()
         val before = count("list")
         model.invalidate()
+        val leaseEntered = CompletableDeferred<Unit>()
+        val releaseLease = CompletableDeferred<Unit>().also(gates::add)
+        val blockedLease = CoroutineScope(Dispatchers.Default).launch {
+            repository.withSession(retryAuthentication = false) {
+                leaseEntered.complete(Unit)
+                releaseLease.await()
+            }
+        }
+        runBlocking { leaseEntered.await() }
         model.setPageVisible(true)
         model.setPageVisible(false)
+        releaseLease.complete(Unit)
+        runBlocking { blockedLease.join() }
         repeat(30) {
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(10)

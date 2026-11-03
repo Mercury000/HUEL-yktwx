@@ -78,10 +78,6 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var handledLoginGeneration: Long? = null
     private val mutableSuccess = MutableStateFlow<Long?>(null)
     val paymentSuccess = mutableSuccess.asStateFlow()
-    private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
-    val transactionUpdates = updates.receiveAsFlow()
-    private val balanceNotifications = Channel<BalanceChange>(Channel.BUFFERED)
-    val balanceChanges = balanceNotifications.receiveAsFlow()
     private data class Balance(val username: String, val account: String, val payacc: String,
         val paytype: String, val cents: Long)
     private var lastLiveBalance: Balance? = null
@@ -101,7 +97,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var motionActive = false
     private var balanceCheck: Job? = null
     private var detectionVersion = 0L
-    private data class PaymentTurn(val username: String, val account: PaymentAccount, val version: Long)
+    private data class PaymentTurn(val username: String, val account: PaymentAccount, val version: Long, val identity: AccountIdentity?)
     private var paymentTurn: PaymentTurn? = null
 
     init {
@@ -133,6 +129,12 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 }
             }
         }
+        repository.dataChanges.observe(viewModelScope) { resources ->
+            if (!preview && !mutable.value.needsLogin) {
+                if (AccountResource.Data.Cards in resources) cardStateChanged()
+                else if (AccountResource.Data.Balance in resources) invalidateBalance()
+            }
+        }
     }
 
     private fun clearPaymentData(cancelLogin: Boolean = true) {
@@ -161,7 +163,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (!networkReadAllowed || !foreground || !motionActive || preview || current.needsLogin || current.busy ||
             current.code == null || current.accountFromCache || current.problem != null || mutableSuccess.value != null || balanceCheck?.isActive == true) return
         val account = current.account ?: return
-        paymentTurn = PaymentTurn(current.username, account, ++detectionVersion)
+        paymentTurn = PaymentTurn(current.username, account, ++detectionVersion, repository.identity(current.username))
     }
     internal fun paymentTurnReturned() {
         val turn = paymentTurn ?: return
@@ -191,7 +193,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         recordBalance(turn.username, updated, balanceRefresh.started(), notify = false)
                         mutable.value = mutable.value.copy(account = updated, accountFromCache = false)
                         viewModelScope.launch { repository.saveDisplay(turn.username, DisplayKeys.Account, updated, DisplayCodecs.Account) }
-                        updates.trySend(TransactionUpdate(turn.username, balance = false, income = false))
+                        repository.dataChanges.transaction(turn.identity, TransactionUpdate(turn.username, balance = false, income = false))
                         requestVersion++; request?.cancel(); ticker?.cancel()
                         mutable.value = mutable.value.copy(busy = false)
                         refresh(trigger = ReadTrigger.Transaction)
@@ -660,7 +662,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val next = Balance(username, account.account, account.payacc, account.paytype, account.balanceCents)
         val previous = lastLiveBalance
         if (notify && previous != null && previous.copy(cents = next.cents) == next && previous.cents != next.cents)
-            balanceNotifications.trySend(BalanceChange(username, increased = next.cents > previous.cents))
+            repository.dataChanges.balance(repository.identity(username), BalanceChange(username, increased = next.cents > previous.cents))
         lastLiveBalance = next
         balanceRefresh.observe(read, balanceKey(account), account.balanceCents)
         accountReadAt = balanceRefresh.cacheReadAt(balanceKey(account), SystemClock.elapsedRealtime())
