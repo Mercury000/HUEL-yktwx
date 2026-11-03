@@ -732,7 +732,7 @@ private fun SecondaryPage(
             }
             OverlayDialog(show = showLogout, title = "退出登录", summary = "退出后将清除本机保存的登录信息。",
                 onDismissRequest = { showLogout = false }, renderInRootScaffold = true) {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = { showLogout = false }, modifier = Modifier.weight(1f)) { Text("取消") }
                     Button(onClick = { showLogout = false; onLogout() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text("确定") }
                 }

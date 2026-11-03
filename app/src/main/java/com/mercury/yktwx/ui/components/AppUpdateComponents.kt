@@ -59,7 +59,7 @@ internal fun AppUpdateDialog(state: AppUpdateUiState, onDismiss: () -> Unit) {
         if (release != null) {
             Column(Modifier.fillMaxWidth().testTag("app-update-dialog")) {
                 if (notes.isNotEmpty()) {
-                    Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(scroll).padding(top = 12.dp)
+                    Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(scroll)
                         .testTag("app-update-notes")) {
                         Text(notes, fontSize = 14.sp, lineHeight = 22.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
