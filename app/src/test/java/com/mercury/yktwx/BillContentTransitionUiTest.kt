@@ -416,6 +416,7 @@ class BillContentTransitionUiTest {
     @Test fun switchingAwayFromAQueryReadRemovesItsProgressWithoutReplayingCompletion() {
         state = state.copy(info = "食堂", listLoading = true, loading = true, listOnlyRead = true, listAvailable = true)
         content()
+        frame(30)
         compose.onNodeWithTag("page-read-progress").assertIsDisplayed()
         click("统计")
         frame(25)

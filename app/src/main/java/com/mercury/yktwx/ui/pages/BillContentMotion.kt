@@ -46,8 +46,8 @@ internal class BillContentMotion(initialSelection: Int) {
 
 @Composable
 internal fun rememberBillContentMotion(state: BillUiState, active: Boolean): BillContentMotion {
-    val identity = listOf(state.dateFilter, state.stats.period, state.info, state.typeId,
-        state.amountFromCents, state.amountToCents, state.needsLogin, active)
+    // Queries transition only the result paint, preserving the search field and condition slot.
+    val identity = listOf(state.dateFilter, state.stats.period, state.needsLogin, active)
     return remember(identity) { BillContentMotion(state.contentSelection()) }
 }
 

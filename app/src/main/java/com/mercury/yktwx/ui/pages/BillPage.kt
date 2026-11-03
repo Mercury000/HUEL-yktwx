@@ -4,6 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollable
@@ -23,7 +27,9 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.scrollToIndex
@@ -153,6 +159,8 @@ fun BillPage(
     }
     val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
+    val queryMotion = rememberBillQueryMotion(state, detailsState, isActive, motion.running)
+    val pendingResultHeight = with(LocalDensity.current) { queryMotion.pendingHeight.toDp() }
     val expenseState = key(state.stats.period) { rememberLazyListState() }
     val incomeState = key(state.stats.period) { rememberLazyListState() }
     val pageScroll = rememberBillPageScroll()
@@ -313,7 +321,8 @@ fun BillPage(
                                             summaryLoaded = false, countsLoaded = false, summaryError = null, countsError = null,
                                             stats = com.mercury.yktwx.BillStatsState(period = requestedState.stats.period, type = requestedState.stats.type))
                                         else requestedState
-                                    val groups = remember(state.items) { state.items.groupByDay() }
+                                    val resultState = if (switching) state else queryMotion.displayed
+                                    val groups = remember(resultState.items) { resultState.items.groupByDay() }
                                     // Crossfading failure and content must not share a lazy list's measurements.
                                     val failureState = rememberLazyListState()
                                     val bodyListState = if (showFailure) failureState else if (!state.statsVisible) detailsState
@@ -357,7 +366,7 @@ fun BillPage(
                                                             TextField(
                                                                 value = query,
                                                                 onValueChange = { query = it },
-                                                                modifier = Modifier.trackInputFocus().fillMaxWidth().testTag("bill-search")
+                                                                modifier = Modifier.trackInputFocus().fillMaxWidth().heightIn(min = 45.dp).testTag("bill-search")
                                                                     .semantics { contentDescription = "搜索商户或摘要" },
                                                                 insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
                                                                 label = "搜索商户或摘要",
@@ -403,34 +412,40 @@ fun BillPage(
                                                             loading = !requestedState.statsVisible && state.listOnlyRead && state.listLoading && state.listAvailable,
                                                             failed = state.error != null, progressOffset = 6.dp, readIdentity = readIdentity) {}
                                                         ReadNotice(readError(state.error.takeIf { state.items.isNotEmpty() }, state.errorKind), cached = true, topSpacing = 20.dp)
+                                                        BillQueryConditions(state, onFiltersApplied)
                                                     }
-                                                }
-                                                if (state.activeFilterCount > 0 || state.info.isNotBlank()) billMotionItem("conditions", motion) {
-                                                    BillQueryConditions(state, onFiltersApplied, onSearch)
                                                 }
                                                 when {
                                                     // Precomposed tabs and the credential check precede loading=true.
                                                     // An unread list is not a confirmed empty result.
-                                                    state.items.isEmpty() && (!state.listLoaded && state.error == null) ->
-                                                        billMotionItem("loading", motion) { BillLoadingCard() }
-                                                    state.error != null && state.items.isEmpty() -> billMotionItem("error", motion) {
-                                                        BillErrorCard(checkNotNull(readError(state.error, state.errorKind)))
+                                                    resultState.items.isEmpty() && (!resultState.listLoaded && resultState.error == null) ->
+                                                        billMotionItem("loading", motion) {
+                                                            Box(Modifier.fillMaxWidth().heightIn(min = pendingResultHeight)
+                                                                .billResultPaint(queryMotion, requestedState)) { BillLoadingCard() }
+                                                        }
+                                                    resultState.error != null && resultState.items.isEmpty() -> billMotionItem("error", motion) {
+                                                        Box(Modifier.billResultPaint(queryMotion, requestedState)) {
+                                                            BillErrorCard(checkNotNull(readError(resultState.error, resultState.errorKind)))
+                                                        }
                                                     }
-                                                    state.items.isEmpty() -> billMotionItem("empty", motion) {
-                                                        if (state.activeFilterCount > 0 || state.info.isNotBlank()) {
-                                                            BillEmptyCard("没有符合条件的账单", "试试调整搜索或筛选条件。")
-                                                        } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
+                                                    resultState.items.isEmpty() -> billMotionItem("empty", motion) {
+                                                        Box(Modifier.billResultPaint(queryMotion, requestedState)) {
+                                                            if (resultState.activeFilterCount > 0 || resultState.info.isNotBlank()) {
+                                                                BillEmptyCard("没有符合条件的账单", "试试调整搜索或筛选条件。")
+                                                            } else BillEmptyCard("当前时间段还没有账单", "试试切换日期范围。")
+                                                        }
                                                     }
                                                     else -> {
                                                         items(groups, key = { it.key }) { group ->
                                                             Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null,
-                                                                placementSpec = tween(ContentMotion.Insert, easing = ContentMotion.Easing))) {
+                                                                placementSpec = tween(ContentMotion.Insert, easing = ContentMotion.Easing))
+                                                                .billResultPaint(queryMotion, requestedState)) {
                                                                 Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
                                                                     verticalAlignment = Alignment.CenterVertically) {
                                                                     Text(billDayLabel(group.date), Modifier.weight(1f), fontSize = 11.sp,
                                                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                                                     // Only complete, unfiltered ranges can support full daily subtotals.
-                                                                    if (state.listLoaded && state.currentPage == state.pages && state.activeFilterCount == 0 && state.info.isBlank()) {
+                                                                    if (resultState.listLoaded && resultState.currentPage == resultState.pages && resultState.activeFilterCount == 0 && resultState.info.isBlank()) {
                                                                         val expense = group.records.filter { !it.income }.sumOf { it.amountCents }
                                                                         val income = group.records.filter { it.income }.sumOf { it.amountCents }
                                                                         if (expense > 0) Text("支出 ¥ ${money(expense)}", fontSize = 10.sp,
@@ -442,18 +457,20 @@ fun BillPage(
                                                                 Card(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
                                                                     group.records.forEachIndexed { index, record ->
                                                                         key(record.stableId) {
-                                                                            val arrives = remember(state.listUpdateId) {
-                                                                                record.stableId in state.animatedOrderIds &&
+                                                                            val arrives = remember(resultState.listUpdateId) {
+                                                                                record.stableId in resultState.animatedOrderIds &&
                                                                                 android.os.SystemClock.elapsedRealtime() - arrivalAt < 450
                                                                             }
-                                                                            val animateArrival = arrives && !motion.running
-                                                                            val appended = state.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
-                                                                            val visible = remember(state.listUpdateId) { MutableTransitionState(!animateArrival || appended) }
+                                                                            val animateArrival = arrives && !motion.running && !queryMotion.running
+                                                                            val appended = resultState.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
+                                                                            val visible = remember(resultState.listUpdateId) { MutableTransitionState(!animateArrival || appended) }
                                                                             visible.targetState = true
                                                                             AnimatedVisibility(visibleState = visible,
                                                                                 enter = expandVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing), expandFrom = Alignment.Top)) {
-                                                                                Column(recordArrivalModifier(state.listUpdateId, animateArrival, appended, index)) {
-                                                                                    BillRow(record) { onOpenDetail(record) }
+                                                                                Column(recordArrivalModifier(resultState.listUpdateId, animateArrival, appended, index)) {
+                                                                                    BillRow(record) {
+                                                                                        if (queryMotion.accepts(currentState)) onOpenDetail(record)
+                                                                                    }
                                                                                     if (index != group.records.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
                                                                                 }
                                                                             }
@@ -462,7 +479,11 @@ fun BillPage(
                                                                 }
                                                             }
                                                         }
-                                                        billMotionItem("footer", motion) { BillFooter(state, onLoadMore) }
+                                                        billMotionItem("footer", motion) {
+                                                            Box(Modifier.billResultPaint(queryMotion, requestedState)) {
+                                                                BillFooter(resultState) { if (queryMotion.accepts(currentState)) onLoadMore() }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                                 if (UiPreview.enabled && state.preview) billMotionItem("preview", motion) { PreviewNotes.Bill() }
@@ -676,23 +697,49 @@ private fun BillFilterSheet(
 }
 
 @Composable
-private fun BillQueryConditions(state: BillUiState, onFiltersApplied: (String?, Long?, Long?) -> Unit, onSearch: (String) -> Unit) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        state.typeId?.let { type ->
-            RemovableCondition(state.types.firstOrNull { it.id == type }?.name ?: "交易类型") {
-                onFiltersApplied(null, state.amountFromCents, state.amountToCents)
+private fun BillQueryConditions(state: BillUiState, onFiltersApplied: (String?, Long?, Long?) -> Unit) {
+    val showing = state.activeFilterCount > 0
+    // Keep the last labels intact while the whole slot exits; never show search twice.
+    val displayed = rememberWhileShown(showing, state)
+    FeedbackTransition(showing, modifier = Modifier.testTag("bill-conditions"), topSpacing = 12.dp) {
+        FlowRow(Modifier.fillMaxWidth().readContentSize(animate = !LocalContentSwitchActive.current),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val type = displayed.typeId
+            BillCondition(type != null, showing) {
+                val label = rememberWhileShown(type != null,
+                    displayed.types.firstOrNull { it.id == type }?.name ?: "交易类型")
+                RemovableCondition(label) {
+                    if (state.typeId != null) onFiltersApplied(null, state.amountFromCents, state.amountToCents)
+                }
             }
-        }
-        if (state.amountFromCents != null || state.amountToCents != null) {
-            val from = state.amountFromCents; val to = state.amountToCents
-            val label = when {
+            val from = displayed.amountFromCents; val to = displayed.amountToCents
+            val hasAmount = from != null || to != null
+            val amountLabel = when {
                 from != null && to != null -> "¥ ${moneyInput(from)}–${moneyInput(to)}"
                 from != null -> "≥ ¥ ${moneyInput(from)}"
-                else -> "≤ ¥ ${moneyInput(requireNotNull(to))}"
+                to != null -> "≤ ¥ ${moneyInput(to)}"
+                else -> ""
             }
-            RemovableCondition(label) { onFiltersApplied(state.typeId, null, null) }
+            val retainedAmountLabel = rememberWhileShown(hasAmount, amountLabel)
+            BillCondition(hasAmount, showing) {
+                RemovableCondition(retainedAmountLabel) {
+                    if (state.amountFromCents != null || state.amountToCents != null) onFiltersApplied(state.typeId, null, null)
+                }
+            }
         }
-        if (state.info.isNotBlank()) RemovableCondition("搜索：${state.info}") { onSearch("") }
+    }
+}
+
+@Composable
+private fun BillCondition(showing: Boolean, slotShowing: Boolean, content: @Composable () -> Unit) {
+    val visible = remember { MutableTransitionState(showing) }
+    visible.targetState = showing
+    AnimatedVisibility(visibleState = visible,
+        enter = fadeIn(tween(ContentMotion.Fade)) +
+            expandHorizontally(tween(ContentMotion.Layout, easing = ContentMotion.Easing), expandFrom = Alignment.Start),
+        exit = fadeOut(tween(ContentMotion.Fade)) +
+            shrinkHorizontally(tween(ContentMotion.Layout, easing = ContentMotion.Easing), shrinkTowards = Alignment.Start)) {
+        Box(if (showing && slotShowing) Modifier else Modifier.clearAndSetSemantics {}) { content() }
     }
 }
 
