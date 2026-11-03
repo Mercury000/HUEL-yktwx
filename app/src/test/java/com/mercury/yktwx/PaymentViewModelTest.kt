@@ -349,7 +349,7 @@ class PaymentViewModelTest {
         assertEquals(loginFailure!!.message, model.state.value.error)
         assertNull(model.state.value.account)
         assertEquals(1, logins); assertEquals(0, payments)
-        assertEquals("123", vault.credentials()!!.username)
+        assertNull(vault.credentials())
     }
 
     @Test fun firstEntryShowsBalanceEvenWhenBarcodeIsUnavailable() {

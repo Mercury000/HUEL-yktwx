@@ -54,6 +54,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
+    val sessionState = repository.sessionState
     private val notifications = Channel<String>(Channel.BUFFERED)
     val messages = notifications.receiveAsFlow()
     private var initialized = false
@@ -73,6 +74,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var preview = false
     private var previewLost = false
     private var requestVersion = 0L
+    private var loginInProgress = false
+    private var handledLoginGeneration: Long? = null
     private val mutableSuccess = MutableStateFlow<Long?>(null)
     val paymentSuccess = mutableSuccess.asStateFlow()
     private val updates = Channel<TransactionUpdate>(Channel.BUFFERED)
@@ -100,6 +103,49 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var detectionVersion = 0L
     private data class PaymentTurn(val username: String, val account: PaymentAccount, val version: Long)
     private var paymentTurn: PaymentTurn? = null
+
+    init {
+        viewModelScope.launch {
+            var previous: SessionState? = null
+            sessionState.collect { session ->
+                if (!session.restored || preview) return@collect
+                val old = previous
+                previous = session
+                if (session.username == null) {
+                    if (old == null && session.endReason == null) return@collect
+                    val preserveLogin = loginInProgress && session.endReason != SessionEndReason.Logout
+                    val ownLoginResult = session.generation == handledLoginGeneration
+                    if (!ownLoginResult && old?.generation != session.generation) clearPaymentData(cancelLogin = !preserveLogin)
+                    val username = mutable.value.username.takeUnless { session.endReason == SessionEndReason.Logout }.orEmpty()
+                    // A late lifecycle emission must preserve the submitted form's specific error.
+                    mutable.value = if (ownLoginResult) mutable.value.copy(needsLogin = true,
+                        busy = session.clearing, restoringLogin = false)
+                    else PaymentUiState(needsLogin = true, busy = session.clearing || preserveLogin,
+                        username = username, error = session.endReason?.message, errorKind = session.endReason?.errorKind)
+                    if (session.endReason == SessionEndReason.PasswordChanged && old?.generation != session.generation)
+                        notifications.trySend(session.endReason.message!!)
+                } else if (old != null && old.generation != session.generation && !loginInProgress &&
+                    session.generation != handledLoginGeneration) {
+                    clearPaymentData()
+                    mutable.value = PaymentUiState(needsLogin = false, username = session.username)
+                    if (initialized && foreground && pageVisible) refresh(trigger = ReadTrigger.Visible)
+                    else if (initialized && foreground && accountPageVisible) refreshAccount(trigger = ReadTrigger.Visible)
+                }
+            }
+        }
+    }
+
+    private fun clearPaymentData(cancelLogin: Boolean = true) {
+        accountReadAt = 0L; cardReadAt = 0L
+        balanceRefresh.clear(); lastLiveBalance = null
+        reads.clear()
+        cancelAccountRead()
+        setPaymentMotionActive(false); mutableSuccess.value = null
+        ticker?.cancel(); codeExpiresAt = 0L; resumeNeedsRefresh = false
+        if (cancelLogin) {
+            requestVersion++; request?.cancel(); request = null; loginInProgress = false
+        }
+    }
 
     internal fun setPaymentMotionActive(active: Boolean) {
         motionActive = active
@@ -359,14 +405,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (!isCurrent()) return@launch
                 cancelled = false
                 failure = e.readFailureKind()
-                val requiresLogin = e.isAuthenticationFailure()
-                if (requiresLogin) {
-                    requestVersion++; request?.cancel(); ticker?.cancel()
-                    cancelPaymentDetection(); mutableSuccess.value = null
-                    codeExpiresAt = 0L
-                    mutable.value = PaymentUiState(needsLogin = true, username = username,
-                        errorKind = ReadFailureKind.Authentication, error = "登录已失效，请重新登录")
-                } else if (balanceObtained) mutable.value = mutable.value.copy(accountCard = null,
+                if (balanceObtained) mutable.value = mutable.value.copy(accountCard = null,
                     cardStatusErrorKind = e.readFailureKind(), cardStatusError = (e as? YktException)?.message ?: "校园卡状态暂时无法加载")
                 else {
                     current.account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
@@ -436,17 +475,21 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val old = mutable.value
         val version = ++requestVersion
         val transactionRead = balanceRefresh.started()
+        loginInProgress = true
+        handledLoginGeneration = null
         mutable.value = PaymentUiState(true, true, username = username)
         request = viewModelScope.launch {
             try {
                 val batch = withContext(Dispatchers.IO) { repository.login(username, password) }
                 if (version != requestVersion) return@launch
+                handledLoginGeneration = sessionState.value.generation
                 notifications.send("登录成功")
                 show(batch, username.trim(), version, transactionRead)
                 repository.saveDisplay(username.trim(), DisplayKeys.Account, batch.account, DisplayCodecs.Account)
             } catch (e: CancellationException) { throw e
             } catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
+                handledLoginGeneration = sessionState.value.generation
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
                 mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
@@ -454,13 +497,16 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
                 if (version != requestVersion) return@launch
-                // Old credentials are not proof that this submitted login succeeded.
-                mutable.value = PaymentUiState(needsLogin = true, username = username,
+                handledLoginGeneration = sessionState.value.generation
+                mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = username,
                     errorKind = e.readFailureKind(), error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
-                mutable.value = PaymentUiState(needsLogin = true, username = old.username,
+                handledLoginGeneration = sessionState.value.generation
+                mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = old.username,
                     errorKind = ReadFailureKind.Other, error = "登录失败，请稍后重试")
+            } finally {
+                if (version == requestVersion) loginInProgress = false
             }
         }
     }
@@ -524,16 +570,15 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 cancelled = false
                 failure = e.readFailureKind()
-                val requireLogin = e.isAuthenticationFailure()
-                if (!requireLogin && !accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
+                if (!accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
                 mutable.value = PaymentUiState(
-                    needsLogin = requireLogin,
-                    errorKind = e.readFailureKind(), error = e.message ?: if (requireLogin) "登录已失效，请重新登录" else "服务异常，请稍后刷新",
-                    username = username, account = mutable.value.account.takeUnless { requireLogin },
-                    accountFromCache = !requireLogin && mutable.value.accountFromCache,
-                    accountErrorKind = e.readFailureKind().takeUnless { requireLogin || accountObtained },
-                    accountError = if (requireLogin || accountObtained) null else e.message,
-                    problem = PaymentCodeProblem.StatusUnverified.takeUnless { requireLogin },
+                    needsLogin = false,
+                    errorKind = e.readFailureKind(), error = e.message ?: "服务异常，请稍后刷新",
+                    username = username, account = mutable.value.account,
+                    accountFromCache = mutable.value.accountFromCache,
+                    accountErrorKind = e.readFailureKind().takeUnless { accountObtained },
+                    accountError = e.message.takeUnless { accountObtained },
+                    problem = PaymentCodeProblem.StatusUnverified,
                 )
             } catch (_: Exception) {
                 if (version != requestVersion) return@launch
@@ -597,21 +642,9 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             }
         }
     }
-    fun cardPasswordChanged(username: String) {
-        if (preview || mutable.value.username != username) return
-        notifications.trySend("查询密码修改成功，请重新登录")
-        logout()
-    }
     fun logout() {
         if (logoutJob?.isActive == true) return
-        accountReadAt = 0L
-        balanceRefresh.clear(); lastLiveBalance = null
-        reads.clear()
-        cancelAccountRead()
-        setPaymentMotionActive(false); mutableSuccess.value = null
-        requestVersion++
-        ticker?.cancel(); request?.cancel()
-        codeExpiresAt = 0L
+        clearPaymentData()
         // Revoke access and clear payment codes immediately; only an inert shell
         // may remain briefly for the page exit animation. Login waits for storage.
         mutable.value = PaymentUiState(busy = true)
@@ -619,7 +652,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             try { withContext(Dispatchers.IO) { repository.logout() } }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { notifications.send("清除登录信息失败，请稍后重试") }
-            finally { mutable.value = PaymentUiState() }
+            finally { if (mutable.value.busy) mutable.value = mutable.value.copy(busy = false) }
         }
     }
     private fun recordBalance(username: String, account: PaymentAccount, read: TransactionRefresh.Read, notify: Boolean = true) {

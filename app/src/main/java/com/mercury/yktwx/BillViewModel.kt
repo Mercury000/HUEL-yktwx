@@ -84,7 +84,6 @@ data class BillUiState(
     val summaryErrorKind: ReadFailureKind? = null,
     val countsErrorKind: ReadFailureKind? = null,
     val restoringDisplay: Boolean = false,
-    val authenticationFailed: Boolean = false,
 ) {
     val readIdentity: List<Any?>
         get() = if (statsVisible) listOf("stats", stats.period, stats.type)
@@ -109,7 +108,6 @@ class BillViewModel internal constructor(
     private var loadJob: Job? = null
     private var loadMoreJob: Job? = null
     private var statsJob: Job? = null
-    private var loginCheck: Job? = null
     private var initializationJob: Job? = null
     private var displayJob: Job? = null
     private var displayJobKey: String? = null
@@ -139,7 +137,7 @@ class BillViewModel internal constructor(
         .plus(if (stats.period.trendSupported) listOf("daily") else emptyList())
         .map { DisplayKeys.stats(stats.period, stats.type, it) }
     private val listRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
-        needsRefresh = { listPending() }, isReading = { loadJob?.isActive == true || loadMoreJob?.isActive == true || loginCheck?.isActive == true },
+        needsRefresh = { listPending() }, isReading = { loadJob?.isActive == true || loadMoreJob?.isActive == true },
         retry = { load(transactionRetry = true, silent = true, trigger = ReadTrigger.Transaction) })
     private val statsRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { statsPending() }, isReading = { statsJob?.isActive == true },
@@ -151,7 +149,6 @@ class BillViewModel internal constructor(
         pageVisible = visible
         updateReadVisibility(environment.online)
         if (!visible) {
-            loginCheck?.cancel(); loginCheck = null
             if (listPending()) {
                 cancelListJobs()
                 mutable.value = mutable.value.copy(loading = false, refreshing = false, listLoading = false)
@@ -196,6 +193,12 @@ class BillViewModel internal constructor(
         }
     }
 
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!preview) accountChanged(username, renewed)
+        }
+    }
+
     fun initialize(uiPreview: Boolean = false) {
         if (initialized) return
         initialized = true
@@ -208,21 +211,24 @@ class BillViewModel internal constructor(
             return
         }
         initializationJob = viewModelScope.launch {
-            val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-            mutable.value = mutable.value.copy(needsLogin = !exists)
+            repository.restoreSession()
         }
     }
 
     /** Authentication owns the cache lifetime, including logging back into the same ID. */
-    fun accountChanged(username: String?) {
-        if (accountOwner == username) return
+    fun accountChanged(username: String?, renewed: Boolean = false) {
+        if (!renewed && accountOwner == username && mutable.value.needsLogin == (username == null)) return
+        // A first read can restore the identity itself; binding it must not cancel that read.
+        if (!renewed && accountOwner == null && username != null && loadJob?.isActive == true) {
+            accountOwner = username
+            mutable.value = mutable.value.copy(needsLogin = false)
+            return
+        }
         initializationJob?.cancel()
         displayJob?.cancel()
         statsDisplayJob?.cancel()
         cancelListJobs()
         statsJob?.cancel(); statsJob = null
-        loginCheck?.cancel()
-        loginCheck = null
         accountOwner = username
         preparedDisplayKey = null
         statsDisplayKey = null
@@ -250,7 +256,7 @@ class BillViewModel internal constructor(
         }
         pendingStatsTypes += when (income) { true -> listOf(1); false -> listOf(2); null -> listOf(1, 2) }
         listRefresh.invalidate(); statsRefresh.invalidate()
-        cancelListJobs(); cancelStatsJob(); loginCheck?.cancel(); loginCheck = null
+        cancelListJobs(); cancelStatsJob()
         lastLoadedAt = 0L; statsCache.invalidate(); listCache.invalidate()
         summaryReadAt = 0L; countsReadAt = 0L
         mutable.value = mutable.value.copy(loading = false, refreshing = false, listLoading = false, loadingMore = false,
@@ -264,23 +270,10 @@ class BillViewModel internal constructor(
             if (pageVisible) loadListQuery()
             return
         }
-        if (!initialized || preview || loginCheck?.isActive == true) return
-        val activatedVisiblePage = pageVisible
-        loginCheck = viewModelScope.launch {
-            val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-            if (!networkReadAllowed || activatedVisiblePage && !pageVisible || mutable.value.statsVisible) return@launch
-            // A reconnect read may have started while credentials were being checked. It already
-            // covers the same query; starting a second list load would just supersede it.
-            if (loadJob?.isActive == true || loadMoreJob?.isActive == true || statsJob?.isActive == true) return@launch
-            val current = mutable.value
-            if (!exists) {
-                clearAuthenticatedData()
-                return@launch
-            }
-            mutable.value = current.copy(needsLogin = false, authenticationFailed = false)
-            if (!current.loaded || current.error != null || current.summaryError != null || current.countsError != null ||
-                listPending() || !ReadCachePolicy.isFresh(lastLoadedAt, now()) || !overviewIsFresh()) loadListQuery()
-        }
+        val current = mutable.value
+        if (!initialized || preview || current.needsLogin) return
+        if (!current.loaded || current.error != null || current.summaryError != null || current.countsError != null ||
+            listPending() || !ReadCachePolicy.isFresh(lastLoadedAt, now()) || !overviewIsFresh()) loadListQuery()
     }
 
     fun refresh() {
@@ -409,8 +402,6 @@ class BillViewModel internal constructor(
                 throw e
             } catch (e: YktException) {
                 cancelled = false
-                val auth = e.isAuthenticationFailure()
-                if (auth) { failure = ReadFailureKind.Authentication; clearAuthenticatedData(); return@launch }
                 failure = e.readFailureKind()
                 mutable.value = mutable.value.copy(
                     loadingMore = false, loadMoreErrorKind = e.readFailureKind(), loadMoreError = e.message ?: "加载更多失败，请重试",
@@ -429,7 +420,6 @@ class BillViewModel internal constructor(
         val current = mutable.value
         if (!current.statsVisible) {
             cancelListJobs()
-            loginCheck?.cancel(); loginCheck = null
         }
         val samePeriod = current.stats.period == current.dateFilter
         mutable.value = current.copy(statsVisible = true, loading = false, refreshing = false, listLoading = false,
@@ -660,14 +650,7 @@ class BillViewModel internal constructor(
                     publish { it.copy(loading = false, refreshing = false, listLoading = false) }
                     return@launch
                 }
-                if (manualRefresh) {
-                    val exists = withContext(Dispatchers.IO) { repository.hasCredentials() }
-                    if (!exists) {
-                        clearAuthenticatedData()
-                        return@launch
-                    }
-                    mutable.value = mutable.value.copy(needsLogin = false, authenticationFailed = false)
-                }
+                if (manualRefresh && repository.restoreSession().username == null) return@launch
                 if (!networkReadAllowed) {
                     publish { it.copy(loading = false, refreshing = false, listLoading = false) }
                     return@launch
@@ -747,12 +730,10 @@ class BillViewModel internal constructor(
                 throw e
             } catch (e: YktException) {
                 cancelled = false
-                val auth = e.isAuthenticationFailure()
                 failure = e.readFailureKind()
-                if (auth) { clearAuthenticatedData(); return@launch }
                 listRefresh.failed(read, listKey(current))
                 mutable.value = mutable.value.copy(
-                    needsLogin = false, loading = false, refreshing = false, listLoading = false,
+                    loading = false, refreshing = false, listLoading = false,
                     errorKind = e.readFailureKind(), error = e.message ?: "账单加载失败，请稍后重试", loaded = true, listLoaded = true,
                 )
             } catch (_: Exception) {
@@ -857,9 +838,7 @@ class BillViewModel internal constructor(
                 throw e
             } catch (e: YktException) {
                 cancelled = false
-                val auth = e.isAuthenticationFailure()
                 failure = e.readFailureKind()
-                if (auth) { clearAuthenticatedData(); return@launch }
                 mutable.value = mutable.value.copy(
                     stats = mutable.value.stats.copy(loading = false, errorKind = e.readFailureKind(), error = e.message ?: "统计数据加载失败"),
                 )
@@ -914,22 +893,6 @@ class BillViewModel internal constructor(
     }
 
     private fun message(e: Throwable) = (e as? YktException)?.message ?: "读取失败，请稍后重试"
-
-    private fun clearAuthenticatedData() {
-        // A metric can fail authentication after the list has already started another page.
-        cancelListJobs(); cancelStatsJob()
-        displayJob?.cancel(); statsDisplayJob?.cancel()
-        statsDisplayKey = null
-        reads.clear()
-        lastLoadedAt = 0L; statsCache.clear(); listCache.clear()
-        summaryReadAt = 0L; countsReadAt = 0L
-        listRefresh.clear(); statsRefresh.clear(); pendingStatsTypes.clear()
-        val current = mutable.value
-        mutable.value = BillUiState(needsLogin = true, authenticationFailed = true, dateFilter = current.dateFilter,
-            typeId = current.typeId, amountFromCents = current.amountFromCents, amountToCents = current.amountToCents,
-            info = current.info, statsVisible = current.statsVisible,
-            stats = BillStatsState(period = current.stats.period, type = current.stats.type))
-    }
 
     private fun cancelListJobs() {
         listRefresh.pause()

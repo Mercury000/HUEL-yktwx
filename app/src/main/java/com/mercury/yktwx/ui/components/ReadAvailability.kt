@@ -51,7 +51,7 @@ internal fun DormUiState.offlineDisplay(): DormUiState {
     val roomsUnread = !restoringDisplay && rooms.isEmpty() && !roomsAvailable && !roomsLoaded
     val networkUnread = !restoringDisplay && network == null && !networkLoaded
     return DormUiState(
-        rooms = rooms, loading = loading, loaded = loaded, needsLogin = needsLogin, selectedIndex = selectedIndex,
+        rooms = rooms, loading = loading, loaded = loaded, selectedIndex = selectedIndex,
         network = network, managing = managing, bindingProjects = bindingProjects,
         roomsLoaded = roomsLoaded, networkLoaded = networkLoaded, roomsAvailable = roomsAvailable,
         displayRestored = displayRestored,

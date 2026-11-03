@@ -57,6 +57,12 @@ class CardServiceViewModel internal constructor(app: Application, private val re
     private var attempt = 0L
     private var paymentAccount: String? = null
     private val recipientConfigs = mutableMapOf<RechargeRecipient, RechargeConfiguration>()
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+        }
+    }
+
     fun open(action: CampusCardAction, username: String, preview: Boolean) {
         if (task?.isActive == true) return
         dismiss()

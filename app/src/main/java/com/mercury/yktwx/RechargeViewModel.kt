@@ -53,6 +53,12 @@ class RechargeViewModel internal constructor(
         viewModelScope, { task }, { mutable.value.loading && mutable.value.phase == RechargePhase.Checking }, ::checkResult,
     )
 
+    init {
+        repository.observeAccount(viewModelScope) { username, renewed ->
+            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+        }
+    }
+
     fun open(username: String, preferredCard: String?, preview: Boolean) {
         // Opening recharge is always a new amount selection, never an old result.
         endAttempt()
