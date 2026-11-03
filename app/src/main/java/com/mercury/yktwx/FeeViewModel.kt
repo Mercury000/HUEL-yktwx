@@ -40,7 +40,7 @@ class FeeUiState(
     val hiddenLevels: Set<String> = emptySet(),
     val selecting: Boolean = false,
     val roomBinding: FeeRoomBinding? = config?.roomBinding,
-    val roomBindingKnown: Boolean = config?.invalidRoomBinding != true,
+    val roomBindingKnown: Boolean = config != null && config.invalidRoomBinding != true,
     val roomBusy: Boolean = false, val roomDialog: FeeRoomDialog? = null,
     val roomNotice: String? = null,
     val paymentRetry: FeePaymentRetry? = null,

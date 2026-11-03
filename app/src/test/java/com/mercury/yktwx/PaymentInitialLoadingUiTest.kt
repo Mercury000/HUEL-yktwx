@@ -106,6 +106,9 @@ class PaymentInitialLoadingUiTest {
             compose.onNodeWithText("¥ 128.60").assertIsDisplayed()
             compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
         } else {
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithContentDescription("付款二维码").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
             compose.onNodeWithText("正在确认卡状态").assertDoesNotExist()
         }

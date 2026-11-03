@@ -128,7 +128,7 @@ internal fun MyPage(
                                             ReadText(if (identityPending) null else state.homeIdentity?.sno
                                                 ?: state.profile?.sno?.takeIf { it.isNotBlank() } ?: payment.username,
                                                 Modifier.fillMaxWidth(), fontSize = 12.sp, lineHeight = 18.sp, fraction = .5f,
-                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary, sample = "000000000000")
                                             val study = state.homeIdentity?.let { listOf(it.thirdLevelDepartment, it.fourthLevelDepartment).filter(String::isNotBlank).joinToString(" · ") }
                                                 ?: state.profile?.professionName.orEmpty()
                                             ReadText(if (studyPending) null else study.ifBlank { "资料" },
