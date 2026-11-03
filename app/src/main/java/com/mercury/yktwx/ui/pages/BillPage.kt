@@ -374,7 +374,6 @@ fun BillPage(
                                                                 singleLine = true,
                                                                 enabled = !requestedState.statsVisible,
                                                                 cornerRadius = 14.dp,
-                                                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
                                                                 colors = TextFieldDefaults.textFieldColors(),
                                                                 leadingIcon = {
                                                                     Icon(
