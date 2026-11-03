@@ -9,7 +9,6 @@ import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -46,7 +45,7 @@ class RechargeViewModel internal constructor(
     private var task: Job? = null
     private var owner = ""
     private var attempt = 0L
-    private var resultQueriesCompleted = 0
+    private val resultPoller = OrderResultPoller(viewModelScope, checkDelayMillis)
     private var paymentExplicitlyRejected = false
     private val paymentReturn = PaymentReturnObserver(
         viewModelScope, { task }, { mutable.value.loading && mutable.value.phase == RechargePhase.Checking }, ::checkResult,
@@ -146,50 +145,28 @@ class RechargeViewModel internal constructor(
 
     fun checkResult() {
         val pending = mutable.value.pending ?: return
-        if (pending.orderId == null || mutable.value.preview ||
-            (paymentExplicitlyRejected || mutable.value.phase == RechargePhase.Paid) || task?.isActive == true) return
-        if (mutable.value.phase != RechargePhase.Checking || !mutable.value.loading) resultQueriesCompleted = 0
+        if (pending.orderId == null || mutable.value.preview || paymentExplicitlyRejected ||
+            mutable.value.phase == RechargePhase.Paid || task?.isActive == true) return
+        val newRound = mutable.value.phase != RechargePhase.Checking || !mutable.value.loading
         paymentReturn.consume()
         val current = attempt
         update(visible = true, loading = true, phase = RechargePhase.Checking, error = null)
-        task = viewModelScope.launch {
-            while (resultQueriesCompleted < 3) {
-                try {
-                    // Completed attempts keep their budget across pause/resume.
-                    // Interrupted read-only requests may be repeated, but no
-                    // create/pay POST is retried here.
-                    if (resultQueriesCompleted > 0) delay(checkDelayMillis)
-                    if (current != attempt) return@launch
-                    requireOwner(pending)
-                    val result = repository.rechargeResult(pending)
-                    if (current != attempt) return@launch
-                    requireOwner(pending)
-                    resultQueriesCompleted++
-                    if (result.paid) {
-                        showResult(RechargePhase.Paid)
-                        return@launch
-                    }
-                    if (resultQueriesCompleted == 3) {
-                        when (result.serverStatus) {
-                            0 -> showResult(RechargePhase.Failed, result.message)
-                            2 -> showResult(RechargePhase.TimedOut, result.message)
-                            else -> queryError(result.message ?: "订单状态异常")
-                        }
-                    }
-                } catch (e: CancellationException) { throw e }
-                catch (e: Exception) {
-                    if (current != attempt) return@launch
-                    queryError(resultError(e))
-                    return@launch
-                }
-            }
-        }
+        resultPoller.start(newRound, isCurrent = { current == attempt }, onJob = { task = it },
+            query = {
+                requireOwner(pending)
+                repository.rechargeResult(pending).also { requireOwner(pending) }
+            },
+            onResult = { outcome ->
+                if (outcome.phase == null) queryError(outcome.message ?: "订单状态异常")
+                else showResult(outcome.phase, outcome.message)
+            }, onError = { queryError(resultError(it)) })
     }
 
     private fun requireOwner(pending: PendingRecharge) {
         if (pending.username != owner || !repository.ownsAccount(pending.username)) throw YktException("账户已切换")
     }
     private fun showResult(phase: RechargePhase, error: String? = null) {
+        resultPoller.stop()
         val previous = mutable.value
         update(visible = true, loading = false, phase = phase, error = error)
         if (phase == RechargePhase.Paid && previous.phase != RechargePhase.Paid && !previous.preview && repository.ownsAccount(owner))
@@ -201,6 +178,7 @@ class RechargeViewModel internal constructor(
         update(visible = true, loading = false, phase = RechargePhase.Amount, pending = null, error = message)
     }
     private fun queryError(message: String) {
+        resultPoller.stop()
         paymentReturn.reset()
         // A request error is shown on the result page, not classified as a transaction outcome.
         update(visible = true, loading = false, phase = RechargePhase.Checking, error = message)
@@ -217,7 +195,7 @@ class RechargeViewModel internal constructor(
         attempt++
         task?.cancel()
         task = null
-        resultQueriesCompleted = 0
+        resultPoller.reset()
         paymentExplicitlyRejected = false
         paymentReturn.reset()
         owner = ""

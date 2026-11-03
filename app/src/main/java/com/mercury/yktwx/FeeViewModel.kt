@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -75,10 +74,9 @@ class FeeViewModel internal constructor(
     val events = launches.receiveAsFlow()
     private var operationIdentity: AccountIdentity? = null
     private var task: Job? = null
-    private var checkDeadline: Job? = null
     private var owner = ""
     private var attempt = 0L
-    private var completedChecks = 0
+    private val resultPoller = OrderResultPoller(viewModelScope, checkDelayMillis, checkTimeoutMillis)
     private var accountPaymentSubmitted = false
     private var fixedHallTarget = false
     private val paymentReturn = PaymentReturnObserver(viewModelScope, { task },
@@ -452,10 +450,8 @@ class FeeViewModel internal constructor(
         attempt++
         task?.cancel()
         task = null
-        checkDeadline?.cancel()
-        checkDeadline = null
+        resultPoller.reset()
         paymentReturn.reset()
-        completedChecks = 0
         accountPaymentSubmitted = false
         while (launches.tryReceive().isSuccess) { }
     }
@@ -621,35 +617,21 @@ class FeeViewModel internal constructor(
         }
     }
     fun checkResult() {
-        val pending=mutable.value.order?.pending ?: return
-        if(pending.orderId == null || task?.isActive==true)return
-        if(mutable.value.resultPhase!=RechargePhase.Checking || !mutable.value.loading)completedChecks=0
+        val pending = mutable.value.order?.pending ?: return
+        if (pending.orderId == null || task?.isActive == true || mutable.value.preview ||
+            mutable.value.resultPhase == RechargePhase.Paid) return
+        val newRound = mutable.value.resultPhase != RechargePhase.Checking || !mutable.value.loading
         paymentReturn.consume()
-        val generation=attempt
-        mutable.value=copy(mutable.value,loading=true,error=null,stage=FeeStage.Result,resultPhase=RechargePhase.Checking,preparation=null)
-        startCheckDeadline(generation)
-        launchTask {
-            while(completedChecks<3) {
-                try {
-                    if(completedChecks>0)delay(checkDelayMillis)
-                    if(generation!=attempt)return@launchTask
-                    val response=repository.feeResult(pending)
-                    if(generation!=attempt)return@launchTask
-                    completedChecks++
-                    if(response.paid){result(RechargePhase.Paid);return@launchTask}
-                    if (completedChecks == 3) when {
-                        response.serverStatus == 2 -> result(RechargePhase.TimedOut, response.message)
-                        response.serverStatus == 0 -> result(RechargePhase.Failed, response.message)
-                        else -> queryError(response.message ?: "订单状态异常")
-                    }
-                }catch(e:CancellationException){throw e}
-                catch(e:Exception){
-                    if(generation!=attempt)return@launchTask
-                    queryError(message(e))
-                    return@launchTask
-                }
-            }
-        }
+        val generation = attempt
+        mutable.value = copy(mutable.value, loading = true, error = null, stage = FeeStage.Result,
+            resultPhase = RechargePhase.Checking, preparation = null)
+        resultPoller.start(newRound,
+            isCurrent = { generation == attempt && mutable.value.loading && mutable.value.resultPhase == RechargePhase.Checking },
+            onJob = { task = it }, query = { repository.feeResult(pending) },
+            onResult = { outcome ->
+                if (outcome.phase == null) queryError(outcome.message ?: "订单状态异常")
+                else result(outcome.phase, outcome.message)
+            }, onError = { queryError(message(it)) }, onTimeout = { queryError("查询超时") })
     }
     private fun launchTask(block: suspend CoroutineScope.() -> Unit) {
         // Main.immediate may complete inline and launch a successor query before launch returns.
@@ -658,31 +640,25 @@ class FeeViewModel internal constructor(
         task = job
         job.start()
     }
-    private fun startCheckDeadline(generation: Long) {
-        if (checkDeadline?.isActive == true) return
-        checkDeadline = viewModelScope.launch {
-            delay(checkTimeoutMillis)
-            if (generation == attempt && mutable.value.loading && mutable.value.resultPhase == RechargePhase.Checking) {
-                // This independent UI deadline also covers a suspended query, shared lock or lost focus.
-                val query = task
-                queryError("查询超时")
-                query?.cancel()
-            }
-        }
-    }
     fun canLaunchWechat()=paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.resultPhase==RechargePhase.AwaitingPayment
     fun wechatLaunched()=paymentReturn.launched()
     fun launchFailed(){paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
     fun accountChanged(username:String){if(owner.isNotEmpty() && username!=owner)dismiss()}
-    fun dismiss(){attempt++;task?.cancel();task=null;checkDeadline?.cancel();checkDeadline=null;paymentReturn.reset();owner="";completedChecks=0;accountPaymentSubmitted=false;while(launches.tryReceive().isSuccess){};mutable.value=FeeUiState()}
+    fun dismiss() {
+        attempt++
+        task?.cancel(); task = null
+        resultPoller.reset(); paymentReturn.reset()
+        owner = ""; accountPaymentSubmitted = false
+        while (launches.tryReceive().isSuccess) { }
+        mutable.value = FeeUiState()
+    }
     fun onForeground()=paymentReturn.foreground()
     fun onResumed(focus:Boolean)=paymentReturn.resumed(focus)
     fun onPaused()=paymentReturn.paused()
     fun onWindowFocusChanged(focus:Boolean)=paymentReturn.focus(focus)
     fun onBackground()=paymentReturn.background()
     private fun result(phase: RechargePhase, error: String? = null, retryable: Boolean = false) {
-        checkDeadline?.cancel()
-        checkDeadline = null
+        resultPoller.stop()
         paymentReturn.reset()
         val s = mutable.value
         val retry = if (phase == RechargePhase.Failed && retryable && s.method != null) s.order?.let {
@@ -698,16 +674,14 @@ class FeeViewModel internal constructor(
             repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
     }
     private fun requestError(message: String) {
-        checkDeadline?.cancel()
-        checkDeadline = null
+        resultPoller.stop()
         paymentReturn.reset()
         mutable.value = copy(mutable.value, loading = false, error = message,
             stage = FeeStage.Query, resultPhase = RechargePhase.Amount,
             order = null, method = null, preparation = null, paymentRetry = null)
     }
     private fun queryError(message: String) {
-        checkDeadline?.cancel()
-        checkDeadline = null
+        resultPoller.stop()
         paymentReturn.reset()
         mutable.value = copy(mutable.value, loading = false, error = message,
             stage = FeeStage.Result, resultPhase = RechargePhase.Checking, preparation = null)
