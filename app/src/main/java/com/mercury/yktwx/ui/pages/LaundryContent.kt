@@ -222,15 +222,15 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
         key(overlaySession) {
             val display = rememberWhileShown(show, state)
             val quote = display.laundryQuote
-            val channels = quote?.channels.orEmpty()
-            var selected by remember { mutableIntStateOf(channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)) }
+            val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
+            var selected by remember(channels) { mutableIntStateOf(channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)) }
             Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState())
                 .padding(top = 8.dp, bottom = 20.dp).testTag("laundry-payment-sheet"),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(quote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—", Modifier.fillMaxWidth(), fontSize = 32.sp,
                     fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                 val method = channels.getOrNull(selected)
-                val reason = method?.laundryUnavailableReason()
+                val reason = if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
                 PaymentMethodActions(channels.map { it.name }, selected, { selected = it },
                     label = if (method?.method == "13") "支付宝支付" else "确认支付",
                     onSubmit = { method?.let { model.payLaundry(it.method) } }, enabled = show && !display.laundryBusy,

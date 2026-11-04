@@ -61,9 +61,11 @@ interface LifeLaundryService {
     suspend fun laundryStarted(orderNo: String, token: String): Boolean
 }
 
+val LifePayChannel.laundrySupported: Boolean get() = method == "2" || method == "13"
+
 fun LifePayChannel.laundryUnavailableReason(): String? = when {
     !available -> remark ?: "暂不可用"
     needsOpen -> "请先在胖乖生活开通"
-    method !in setOf("2", "13") -> "暂未接入，请在胖乖生活使用"
+    !laundrySupported -> "暂未接入，请在胖乖生活使用"
     else -> null
 }

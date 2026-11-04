@@ -123,7 +123,7 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 - 程序价格来自 skus，仅作为标价；应付价来自当前程序 preview.realPrice。skuInfo 在真实 preview 中是 JSON 字符串，也兼容对象；订单预计分钟仍读取 markMinutes。程序列表在选择前读取洗衣分类00的 markMinutes，缺失时用正整数 unit 作为预计分钟：抓包中的桶自洁 skus.unit=5、preview.skuInfo.unit=5.0、markMinutes=5，且订单预计起止相差5分钟，支持这一洗衣专用字段解释。其他程序按同分类字段语义推断，显示“预计”；不将饮水 unit 解释为分钟，不用它判定洗衣完成。
 - 当前主动不使用优惠：preview 的 promotions=[]、forbiddenPromotions=[]、isAutoSelectPromotion=0；create 的 promotions=[]。这是按字段含义选择的无优惠请求，未捕获同参数的真实服务器响应。不会硬编码本次 oldPromotionId；预览若仍返回使用优惠，或创建后订单价格与已确认价格不一致，会停止支付并给出说明。
 - 余额渠道2按服务器返回可用性启用，包括零元桶自洁；支付宝渠道13调用 `com.alipay.sdk:alipaysdk-android:15.8.42` 的 payV2，原样传递服务端签名串，不进行二次签名。SDK由阿里云 Maven 镜像取得。SDK结果不直接标记已支付，继续查询同订单 pay_status 与设备启动/订单状态。
-- 微信32、银联52、农行91等若返回则显示说明，暂不提供支付。微信抓包为 App 支付参数，与校园微信 URI 不同；官方文档明确校验 Android 应用包名与签名，需要原 AppID 所属方的应用配置，按用户要求搁置。银联抓包返回21位交易号，官方 Android SDK指南提供 TN 调用方式，但用户已要求先搁置银联接入；未添加银联 SDK或唤起代码。不会为未返回的渠道造选项。
+- 洗衣付款只展示服务端返回的余额2和支付宝13，并保留服务端可用性与开通限制；微信32、银联52、农行91等未接入渠道不显示。没有支持的渠道时提示并禁用付款。微信抓包为 App 支付参数，与校园微信 URI 不同；官方文档明确校验 Android 应用包名与签名，需要原 AppID 所属方的应用配置，按用户要求搁置。银联抓包返回21位交易号，官方 Android SDK指南提供 TN 调用方式，但用户已要求先搁置银联接入；未添加银联 SDK或唤起代码。不会为未返回的渠道造选项。
 - 已创建订单继续使用同一 orderNo；创建请求发送前保存 createSent，丢失创建响应后不重建订单。支付丢失响应时先读取服务器结果，不自动重复付款。会话按稳定 sessionId 分别加密保存，支持同时洗多台；旧版单条记录恢复后迁移到列表。换账号不会读取上一账号的记录。
 - UI 使用 miuix SmallTopAppBar、IconButton、Card、Surface、TextField、Button、CircularProgressIndicator、OverlayBottomSheet；复用现有 APP 的色板、间距、按压反馈及 ContentMotion 曲线。洗衣选择页沿原设计采用紧凑设备行、纵向程序列表；进度页大数字和完成页沿接水风格。
 - 页面进出沿应用原有页面动画；设备内容阶段使用淡入和轻微位移，离开的阶段保留自身快照并关闭操作。程序背景及按钮文字有短过渡；完成图标轻微放大。抽屉、选择标记及按压反馈沿 miuix/APP 共用实现，遵从系统动画时长设置。

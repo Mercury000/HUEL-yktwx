@@ -166,10 +166,18 @@ class LaundryUiTest {
     @Test fun capturedLaundryLightFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(false, false)
     @Test fun capturedLaundryDarkFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(true, false)
     @Test @Config(fontScale = 1.3f) fun capturedLaundryLargeFontKeepsActionsReachable() = renderCapturedFlow(false, true)
-    @Test fun paymentDrawerContainsOnlyReturnedChannelsAndUsesCapturedPrice() {
+    @Test fun paymentDrawerShowsOnlySupportedReturnedChannelsAndKeepsServerRestrictions() {
         val fixture = fixture(); val model = model()
+        val quote = fixture.quote.copy(channels = listOf(
+            LifePayChannel("32", "微信支付", true, false),
+            LifePayChannel("2", "余额支付", false, false, "余额不足"),
+            LifePayChannel("52", "银联支付", true, false),
+            LifePayChannel("13", "支付宝支付", true, false),
+            LifePayChannel("91", "农行掌银", true, false),
+            LifePayChannel("999", "其他支付", true, false)
+        ))
         val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = fixture.device,
-            selectedSkuId = fixture.quote.skuId, laundryQuote = fixture.quote)
+            selectedSkuId = quote.skuId, laundryQuote = quote)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
                 LaundryPaymentSheet(true, state, model)
@@ -179,10 +187,32 @@ class LaundryUiTest {
         compose.onNodeWithText("余额支付").assertIsDisplayed()
         compose.onNodeWithText("¥0.00").assertIsDisplayed()
         compose.onNodeWithText("微信支付").assertDoesNotExist()
-        compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed()
+        compose.onNodeWithText("银联支付").assertDoesNotExist()
+        compose.onNodeWithText("农行掌银").assertDoesNotExist()
+        compose.onNodeWithText("其他支付").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed().assertIsEnabled().assertTextContains("支付宝支付")
         compose.onNodeWithText("支付后自动读取设备启动结果，请先按设备说明做好准备。").assertDoesNotExist()
         compose.onNodeWithText("77 · 桶自洁").assertDoesNotExist()
         capture("laundry-light-05-payment-drawer")
+        compose.onNodeWithText("余额支付").performClick()
+        compose.onNodeWithText("余额不足").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled()
+    }
+    @Test fun paymentDrawerDisablesPaymentWhenNoSupportedChannelIsReturned() {
+        val model = model()
+        val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            laundryQuote = LaundryQuote("device", "sku", "5.00", 30,
+                listOf(LifePayChannel("32", "微信支付", true, false))))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(true, state, model)
+            } } }
+        }
+        compose.onNodeWithText("微信支付").assertDoesNotExist()
+        compose.onNodeWithText("余额支付").assertDoesNotExist()
+        compose.onNodeWithText("支付宝支付").assertDoesNotExist()
+        compose.onNodeWithText("暂无支持的支付方式").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled()
     }
     private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {
         override fun connect() {}
