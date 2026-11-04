@@ -585,6 +585,25 @@ class LifeDevicesViewModel internal constructor(
             laundryPaymentReturned(requestId, status)
         }
     }
+    fun cancelLaundry() {
+        val value = mutable.value
+        val session = value.laundry ?: return
+        if (value.feature != LifeFeature.Laundry || !session.canCancel || value.laundryBusy || value.quoteLoading ||
+            value.paymentLaunch != null || paymentInFlight != null) return
+        laundryWork(clearError = false) { token, service ->
+            if (readLaundryOrder(token, service, session.sessionId)) return@laundryWork
+            val latest = mutable.value.laundrySessions.firstOrNull { it.sessionId == session.sessionId } ?: return@laundryWork
+            if (!latest.canCancel) return@laundryWork
+            if (service.laundryPaid(latest.orderNo, latest.payMethod, token)) {
+                saveLaundrySession(latest.copy(paid = true, phase = LaundryPhase.Starting))
+                waitLaundryStart(token, service)
+                return@laundryWork
+            }
+            service.cancelLaundryOrder(latest.orderId, token)
+            // code=0 acknowledges cancellation; a lost/rejected response leaves the order queryable.
+            saveLaundrySession(latest.copy(phase = LaundryPhase.Closed))
+        }
+    }
     fun retryLaundry() {
         val session = mutable.value.laundry ?: return loadLaundryQuote()
         laundryWork { token, service ->

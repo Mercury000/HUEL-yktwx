@@ -58,6 +58,9 @@ class LaundryViewModelTest {
         var paidError = false
         var readyChecks = 0
         var createdAt: Long? = null
+        val cancelledOrderIds = mutableListOf<String>()
+        var cancelGate: CompletableDeferred<Unit>? = null
+        var cancelFailure: Exception? = null
         val balance = LifePayChannel("2", "余额支付", true, false)
         val alipay = LifePayChannel("13", "支付宝", true, false)
         var channels = listOf(balance, alipay)
@@ -96,6 +99,12 @@ class LaundryViewModelTest {
             orders[order.orderNo] = deviceId to skuId
             orderStatuses[order.orderNo] = 0
             return order
+        }
+        override suspend fun cancelLaundryOrder(orderId: String, token: String) {
+            cancelledOrderIds += orderId
+            cancelGate?.await()
+            cancelFailure?.let { throw it }
+            status = 1
         }
         override suspend fun laundryOrder(orderNo: String, token: String): LaundryReading {
             details++
@@ -416,6 +425,94 @@ class LaundryViewModelTest {
         assertFalse(model.state.value.laundry!!.paid)
         assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
         assertEquals("订单已关闭", model.state.value.paymentFeedback?.detail)
+    }
+    @Test fun cancellationUsesCurrentOrderIdOnceAndKeepsClosedRecordUntilManualRemoval() = runTest(dispatcher) {
+        val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash-1", orderId = "wash-id", createdAtMillis = 100_000L)
+        val other = pending.copy(sessionId = "other-session", orderNo = "wash-2", orderId = "wash-id-2",
+            phase = LaundryPhase.Ended, paid = true)
+        val api = Api().apply { cancelGate = CompletableDeferred() }
+        val store = Store(pending).apply { laundries = listOf(pending, other) }
+        val model = model(api, store)
+        runCurrent(); model.openSession(LifeFeature.Laundry, pending.sessionId)
+        model.cancelLaundry(); model.cancelLaundry(); runCurrent()
+        assertEquals(listOf("wash-id"), api.cancelledOrderIds)
+        assertTrue(model.state.value.laundryBusy)
+        assertEquals(LaundryPhase.Paying, model.state.value.laundry?.phase)
+        model.dismissSession(LifeFeature.Laundry, pending.sessionId)
+        assertEquals(2, model.state.value.laundrySessions.size)
+        api.cancelGate!!.complete(Unit); runCurrent()
+        assertEquals(LaundryPhase.Closed, model.state.value.laundry?.phase)
+        assertFalse(model.state.value.laundry!!.paid)
+        assertFalse(model.state.value.laundry!!.canCancel)
+        assertEquals(other, store.laundries.last())
+        val reads = api.details
+        model.environment(true); advanceTimeBy(20_000); runCurrent()
+        model.cancelLaundry(); runCurrent()
+        assertEquals(reads, api.details); assertEquals(1, api.cancelledOrderIds.size)
+        model.dismissSession(LifeFeature.Laundry, pending.sessionId); runCurrent()
+        assertEquals(listOf(other), store.laundries)
+    }
+    @Test fun cancellationRechecksServerClosureAndPaymentBeforeSendingAnyCancelCommand() = runTest(dispatcher) {
+        val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash-1", orderId = "wash-id")
+        for ((status, phase) in listOf(1 to LaundryPhase.Closed, 2 to LaundryPhase.Running, 3 to LaundryPhase.Ended,
+            0 to LaundryPhase.Running)) {
+            val api = Api().apply { this.status = status; paid = status == 0; started = true }
+            val model = model(api, Store(pending))
+            runCurrent(); model.open(LifeFeature.Laundry); model.cancelLaundry(); runCurrent()
+            assertEquals(phase, model.state.value.laundry?.phase)
+            assertTrue(api.cancelledOrderIds.isEmpty())
+            assertEquals(0, api.creates); assertEquals(0, api.balancePays); assertEquals(0, api.alipayPrepares)
+        }
+    }
+    @Test fun cancellationIsUnavailableForPaidMissingOrNonPendingOrders() = runTest(dispatcher) {
+        val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash-1", orderId = "wash-id")
+        val sessions = LaundryPhase.entries.filter { it != LaundryPhase.Paying }.map { pending.copy(phase = it) } +
+            listOf(pending.copy(paid = true), pending.copy(orderId = ""), pending.copy(orderNo = ""))
+        for (session in sessions) {
+            val api = Api(); val model = model(api, Store(session))
+            runCurrent(); model.open(LifeFeature.Laundry); model.cancelLaundry(); runCurrent()
+            assertEquals(session.phase, model.state.value.laundry?.phase)
+            assertEquals(0, api.details); assertTrue(api.cancelledOrderIds.isEmpty())
+        }
+    }
+    @Test fun cancellationRejectionKeepsOrderAndRetryFirstConfirmsWhetherItAlreadyClosed() = runTest(dispatcher) {
+        val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash-1", orderId = "wash-id")
+        val api = Api().apply { cancelFailure = LifeDeviceException("订单暂不可取消") }
+        val store = Store(pending); val model = model(api, store)
+        runCurrent(); model.open(LifeFeature.Laundry); model.cancelLaundry(); runCurrent()
+        assertEquals(LaundryPhase.Paying, store.washing?.phase)
+        assertEquals("订单暂不可取消", model.state.value.error)
+        assertEquals(1, api.cancelledOrderIds.size)
+        api.status = 1; api.cancelFailure = null
+        model.cancelLaundry(); runCurrent()
+        assertEquals(LaundryPhase.Closed, store.washing?.phase)
+        assertNull(model.state.value.error)
+        assertEquals(1, api.cancelledOrderIds.size)
+    }
+    @Test fun cancellationDoesNotProceedWhenPaymentQueryFailsOrOrderIdentityDoesNotMatch() = runTest(dispatcher) {
+        val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash-1", orderId = "wash-id")
+        val api = Api().apply { paidError = true }; val model = model(api, Store(pending))
+        runCurrent(); model.open(LifeFeature.Laundry); model.cancelLaundry(); runCurrent()
+        assertEquals(LaundryPhase.Paying, model.state.value.laundry?.phase)
+        assertNotNull(model.state.value.error); assertTrue(api.cancelledOrderIds.isEmpty())
+        api.paidError = false; api.readSku = "another-program"
+        model.cancelLaundry(); runCurrent()
+        assertEquals(LaundryPhase.Paying, model.state.value.laundry?.phase)
+        assertTrue(api.cancelledOrderIds.isEmpty())
+    }
+    @Test fun cancellationCannotCompeteWithQueuedOrClaimedAlipayLaunch() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        val launch = model.state.value.paymentLaunch!!
+        model.cancelLaundry(); runCurrent(); assertTrue(api.cancelledOrderIds.isEmpty())
+        assertTrue(model.claimLaundryPayment(launch.id))
+        model.cancelLaundry(); runCurrent(); assertTrue(api.cancelledOrderIds.isEmpty())
+        assertEquals(launch, model.state.value.paymentLaunch)
     }
     @Test fun restoredFinishedOrderAndForegroundPollingKeepExpectedTimeSeparateFromCompletion() = runTest(dispatcher) {
         val session = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running, true, "wash-1", "wash-id", true, true,

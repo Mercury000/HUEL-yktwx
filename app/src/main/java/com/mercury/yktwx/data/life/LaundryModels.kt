@@ -43,6 +43,7 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
     val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null,
     val sessionId: String = java.util.UUID.randomUUID().toString(), val createdAtMillis: Long? = null) {
     val active: Boolean get() = phase !in setOf(LaundryPhase.Ended, LaundryPhase.Closed)
+    val canCancel: Boolean get() = phase == LaundryPhase.Paying && !paid && orderNo.isNotBlank() && orderId.isNotBlank()
     val program: String get() = device.skus.firstOrNull { it.id == skuId }?.name.orEmpty()
     /** The user confirmed five minutes; its origin is always the server's createTime. */
     fun paymentRemainingSeconds(nowMillis: Long): Long? = createdAtMillis?.takeIf { phase == LaundryPhase.Paying && !paid }
@@ -60,6 +61,7 @@ interface LifeLaundryService {
     suspend fun checkLaundryDevice(deviceId: String, token: String): String
     suspend fun laundryMachineReady(messageId: String, token: String): Boolean
     suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder
+    suspend fun cancelLaundryOrder(orderId: String, token: String)
     suspend fun laundryOrder(orderNo: String, token: String): LaundryReading
     suspend fun laundryChannels(session: LaundrySession, token: String): List<LifePayChannel>
     suspend fun payLaundryBalance(orderNo: String, token: String)

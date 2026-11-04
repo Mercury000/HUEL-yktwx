@@ -120,6 +120,28 @@ class LifeDeviceApiTest {
     private fun orderPayload(status: Int = 0, price: String = "0.00", order: String = "wash-1") =
         """{"code":0,"data":{"id":"wash-id","orderNo":"$order","orderStatus":$status,"payPrice":"$price","machineFunctionName":"桶自洁","markMinutes":5,"payTime":"2026-11-04 12:41:47","completeTime":"2026-11-04 12:46:47","finishTime":"2026-11-04 12:48:48","tradeOrderItem":[{"goodsId":"77","skuId":"clean"}]}}"""
 
+    @Test fun laundryCancellationUsesOrderIdAndAcceptsObservedNullSuccessPayload() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf("/order/cancel" to """{"code":0,"msg":"成功","data":null}"""), calls)
+        service.cancelLaundryOrder("test-order-id", "test-token")
+        val call = calls.single()
+        assertEquals("/order/cancel", call.url.path)
+        assertEquals("POST", call.requestMethod)
+        assertEquals(mapOf("orderId" to "test-order-id", "token" to "test-token"), call.form())
+        assertTrue(call.closed)
+        assertNotNull(call.getRequestProperty("sign"))
+    }
+    @Test fun laundryCancellationPropagatesBackendRejection() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf("/order/cancel" to """{"code":7,"msg":"订单暂不可取消","data":null}"""), calls)
+        try {
+            service.cancelLaundryOrder("test-order-id", "test-token")
+            fail("Rejected cancellation must not be treated as closed")
+        } catch (e: LifeDeviceException) {
+            assertEquals("订单暂不可取消", e.message)
+        }
+        assertEquals(1, calls.size)
+    }
     @Test fun laundryUsesNqtAndOnlyActualProgramsThenLoadsQuoteAndNumericShopChannel() = runBlocking {
         val calls = mutableListOf<Response>()
         val service = api(mapOf(

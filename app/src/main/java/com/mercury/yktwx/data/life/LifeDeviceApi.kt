@@ -169,6 +169,9 @@ class LifeDeviceApi(
         val data = post("/trade/create", mapOf("items" to laundryItems(deviceId, skuId), "promotions" to "[]"), token).obj()
         return LaundryOrder(data.required("tradeNo"), data.required("orderId"))
     }
+    override suspend fun cancelLaundryOrder(orderId: String, token: String) {
+        post("/order/cancel", mapOf("orderId" to orderId), token)
+    }
     override suspend fun laundryOrder(orderNo: String, token: String): LaundryReading {
         val data = post("/order/detail", mapOf("orderNo" to orderNo), token).obj()
         val item = (data.opt("tradeOrderItem") as? JSONArray)?.objects()?.singleOrNull()

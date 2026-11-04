@@ -25,6 +25,7 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -193,6 +194,9 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
     val session = state.laundry
     val expired = rememberLaundryPaymentSeconds(session, active, nowMillis) == 0L
     val ended = session != null && !session.active
+    val canCancel = session?.canCancel == true && state.paymentLaunch == null
+    var cancelRequested by remember(session?.sessionId, active, state.paymentVisible, canCancel) { mutableStateOf(false) }
+    val confirmingCancel = cancelRequested && active && canCancel && !state.paymentVisible && !state.laundryBusy
     val retry = state.error != null
     val label = when {
         state.laundryBusy -> "正在处理…"
@@ -206,7 +210,12 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
         else -> "选择支付方式"
     }
     LifeDeviceActionFooter("laundry-action-footer") {
-        if (session != null) Text(if (ended) "本次服务已结束" else "离开页面不会停止设备",
+        if (session != null) Text(when {
+            session.phase == LaundryPhase.Closed -> "可重新扫码下单"
+            ended -> "本次服务已结束"
+            session.phase == LaundryPhase.Paying -> "离开页面不会取消订单"
+            else -> "离开页面不会停止设备"
+        },
             fontSize = 12.sp, color = DashboardPalette.muted)
         Button(onClick = {
             when {
@@ -224,7 +233,21 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
                 label = "laundry-button-label") { Text(it) }
         }
-        if (session != null) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
+        if (canCancel) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { cancelRequested = true }, modifier = Modifier.weight(1f).testTag("laundry-cancel-order"),
+                enabled = active && !state.laundryBusy && !state.quoteLoading && !state.paymentVisible) { Text("取消订单") }
+            Button(onClick = onBack, modifier = Modifier.weight(1f), enabled = active) { Text("返回") }
+        } else if (session != null) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
+    }
+    OverlayDialog(show = confirmingCancel, title = "取消洗衣订单", summary = "取消后需重新扫码下单。",
+        onDismissRequest = { cancelRequested = false }, renderInRootScaffold = true) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { cancelRequested = false }, modifier = Modifier.weight(1f), enabled = confirmingCancel) { Text("暂不取消") }
+            Button(onClick = {
+                if (confirmingCancel) { cancelRequested = false; model.cancelLaundry() }
+            }, modifier = Modifier.weight(1f).testTag("laundry-confirm-cancel"), enabled = confirmingCancel,
+                colors = ButtonDefaults.buttonColorsPrimary()) { Text("确认取消") }
+        }
     }
 }
 

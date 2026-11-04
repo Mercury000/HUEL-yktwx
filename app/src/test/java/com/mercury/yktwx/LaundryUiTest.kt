@@ -312,6 +312,43 @@ class LaundryUiTest {
         compose.onNodeWithText("完成").assertIsEnabled()
         capture("laundry-payment-timeout")
     }
+    @Test fun pendingOrderCancellationRequiresConfirmationAndDisappearsWhenOrderIsNoLongerPayable() {
+        val model = model()
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
+        val pending = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Paying,
+            orderNo = "test-order", orderId = "test-order-id")
+        val settings = ThemeSettings(compose.activity.application)
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            device = device, laundry = pending))
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            LifeDevicePage(state, settings, model, active = true, onBack = {})
+        } } } }
+        compose.onNodeWithTag("laundry-cancel-order").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("取消洗衣订单").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-confirm-cancel").assertIsDisplayed().assertIsEnabled()
+        capture("laundry-cancel-confirmation")
+        compose.onNodeWithText("暂不取消").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-confirm-cancel").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-cancel-order").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.runOnIdle { state = state.copy(laundry = pending.copy(phase = LaundryPhase.Running, paid = true)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-confirm-cancel").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-cancel-order").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(laundry = pending, laundryBusy = true) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-cancel-order").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(laundryBusy = false,
+            paymentLaunch = LifeAlipayLaunch(1, pending.orderNo, "test-payload")) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-cancel-order").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(paymentLaunch = null, laundry = pending.copy(phase = LaundryPhase.Closed)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-cancel-order").assertDoesNotExist()
+    }
     @Test fun closedOrderPageShowsClosureAndAllowsScanningAgain() {
         val model = model()
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
