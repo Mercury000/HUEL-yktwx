@@ -19,6 +19,7 @@
 *.aab
 *.apks
 *.aar
+!app/libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar
 *.dex
 *.class
 *.jar

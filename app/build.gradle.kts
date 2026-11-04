@@ -12,6 +12,7 @@ android {
         targetSdk = 37
         versionCode = 7
         versionName = "1.3.0"
+        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
@@ -23,8 +24,15 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        jniLibs.useLegacyPackaging = true
+    }
     testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
+    lint {
+        // Match the compilation JDK even when Gradle runs on an older JVM.
+        toolchain.languageVersion.set(JavaLanguageVersion.of(22))
+    }
     buildTypes {
         create("preview") {
             initWith(getByName("debug"))
@@ -73,7 +81,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // Payment QR and barcode generation; camera decoding uses wechat-qrcode-lite.
     implementation("com.google.zxing:core:3.5.4")
+    implementation(files("libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar"))
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")

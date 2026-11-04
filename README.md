@@ -6,7 +6,7 @@
 
 ## 下载与使用
 
-- 系统要求：**Android 14 / API 34 及以上**。
+- 系统要求：**Android 14 / API 34 及以上，仅支持 ARM64（arm64-v8a）设备**。
 - 更新检测：设置中可关闭默认开启的自动检查，并通过唯一的“检查更新”入口手动查询，右侧显示当前版本；发现更新后打开后端返回的下载页面。检查频率与接口说明见[应用更新检测](docs/app-updates.md)。
 - 安装包：[最新正式发布](https://github.com/Mercury000/HUEL-yktwx/releases/latest) · [全部版本](https://github.com/Mercury000/HUEL-yktwx/releases)。如尚无 Release，可按下方构建说明生成 APK。
 - 正式安装选择 `CaiXiaoTong-<版本>-release.apk`。`debug` 用于调试，`preview` 使用独立包名用于界面预览；本机 `personal` 使用 debug 签名。

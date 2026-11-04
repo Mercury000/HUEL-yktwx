@@ -1,0 +1,18 @@
+{
+  "uniqueId": "io.github.mercury000:wechat-qrcode-lite",
+  "artifactVersion": "0.1.0",
+  "name": "wechat-qrcode-lite",
+  "description": "Reduced OpenCV WeChatQRCode build with a standalone C/JNI bridge.",
+  "website": "https://github.com/Mercury000/wechat-qrcode-lite/blob/v0.1.0/NOTICE",
+  "developers": [
+    {
+      "name": "Mercury"
+    }
+  ],
+  "scm": {
+    "url": "https://github.com/Mercury000/wechat-qrcode-lite"
+  },
+  "licenses": [
+    "wechat-qrcode-lite-Apache-2.0"
+  ]
+}
