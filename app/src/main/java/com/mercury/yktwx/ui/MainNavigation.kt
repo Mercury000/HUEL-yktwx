@@ -1,11 +1,8 @@
 package com.mercury.yktwx.ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,9 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.mercury.yktwx.ui.components.AppIcons
@@ -32,6 +32,19 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private val mainNavigationIcons = listOf(MiuixIcons.Scan, MiuixIcons.GridView, AppIcons.Bill, MiuixIcons.Contacts)
 private val mainNavigationLabels = listOf("付款", "大厅", "账单", "我的")
+
+/** Navigation and payment islands move as one footer, retaining their full layout inset. */
+internal class MainNavigationMotion(
+    val visible: Boolean, private val hidden: Boolean,
+    private val displacement: State<Float>, private val opacity: State<Float>, private val height: Int,
+) {
+    fun modifier(): Modifier = Modifier.graphicsLayer {
+        translationY = displacement.value * height
+        alpha = opacity.value
+    }.then(if (hidden) Modifier.clearAndSetSemantics {} else Modifier)
+}
+
+internal val LocalMainNavigationMotion = staticCompositionLocalOf<MainNavigationMotion?> { null }
 
 @Composable
 internal fun shouldShowMainNavigationRail(settings: ThemeSettings): Boolean {
@@ -59,15 +72,23 @@ internal fun MainNavigationScaffold(
             Scaffold(Modifier.weight(1f).fillMaxHeight(), content = content)
         }
     } else {
-        Scaffold(bottomBar = {
-            AnimatedVisibility(
-                visible = bottomBarVisible,
-                enter = slideInVertically(tween(260)) { it } + fadeIn(tween(180)),
-                exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(140)),
-            ) {
-                BottomNavigation(settings, selected, onSelected)
-            }
-        }, content = content)
+        val transition = updateTransition(bottomBarVisible, label = "main-footer")
+        val displacement = transition.animateFloat(
+            transitionSpec = { tween(if (targetState) 260 else 200) }, label = "main-footer-slide",
+        ) { if (it) 0f else 1f }
+        val opacity = transition.animateFloat(
+            transitionSpec = { tween(if (targetState) 180 else 140) }, label = "main-footer-fade",
+        ) { if (it) 1f else 0f }
+        var height by remember { mutableIntStateOf(0) }
+        val motion = MainNavigationMotion(bottomBarVisible,
+            !transition.currentState && !transition.targetState, displacement, opacity, height)
+        CompositionLocalProvider(LocalMainNavigationMotion provides motion) {
+            Scaffold(bottomBar = {
+                Box(Modifier.onSizeChanged { height = it.height }.then(motion.modifier())) {
+                    BottomNavigation(settings, selected) { if (bottomBarVisible) onSelected(it) }
+                }
+            }, content = content)
+        }
     }
 }
 

@@ -35,6 +35,7 @@ import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.life.LifeFeature
 import com.mercury.yktwx.data.life.WaterSession
 import com.mercury.yktwx.data.life.LaundrySession
+import com.mercury.yktwx.ui.LocalMainNavigationMotion
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
@@ -94,10 +95,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val lifeStatus: @Composable () -> Unit = {
         InlineLifeLoginNotice(lifeLoginRequired, onLifeLogin, enabled = isActive)
-        LifeDeviceStatusCards(waterSessions, laundrySessions, onOpenLifeSession, onDismissLifeSession,
-            enabled = isActive && !lifeLoginRequired, nowMillis = lifeNowMillis)
     }
-    BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
+    val hasLifeSessions = waterSessions.isNotEmpty() || laundrySessions.isNotEmpty()
+    val navigationMotion = LocalMainNavigationMotion.current
+    BarBlurHost(bottomBarBlurEnabled = settings.blurBottomBar.value, topBarBlurEnabled = settings.blurTopBar.value) {
+        Box(Modifier.fillMaxSize()) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 DashboardTopBar("付款", scrollBehavior = scrollBehavior) {
@@ -127,7 +129,9 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     val state = if (!showFailure && initialError != null) displayState.copy(error = null, busy = true) else displayState
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("payment-page-list"),
-                        contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
+                        contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp,
+                            bottom = bottomPadding + 24.dp + if (hasLifeSessions) 64.dp else 0.dp,
+                            start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -254,6 +258,15 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                 }
             }
 
+        }
+        LifeDeviceStatusIslands(waterSessions, laundrySessions, onOpenLifeSession, onDismissLifeSession, settings,
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .then(navigationMotion?.modifier() ?: Modifier)
+                // The page receives the navigation inset plus the app's 28dp scroll margin.
+                .padding(bottom = (bottomPadding - 20.dp).coerceAtLeast(8.dp), start = 16.dp, end = 16.dp)
+                .imePadding().fillMaxWidth(),
+            enabled = isActive && !lifeLoginRequired && !showEnlarged && navigationMotion?.visible != false,
+            nowMillis = lifeNowMillis)
         }
     }
 }

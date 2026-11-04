@@ -5,7 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
@@ -16,10 +23,7 @@ import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.pages.*
-import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,10 +32,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.*
-import java.net.URL
-import java.security.Principal
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -41,30 +41,20 @@ class LifeDeviceStatusUiTest {
     private data class Sessions(val water: WaterSession, val laundry: LaundrySession) {
         val clock: () -> Long = { laundry.startedAtMillis!! + 46_000 }
     }
-    private fun sessions(): Sessions = runBlocking {
-        fun payload(name: String): JSONObject {
-            val file = File("../tools/$name.json")
-            assumeTrue("Optional sanitized local HAR fixture", file.isFile)
-            return JSONObject(file.readText())
-        }
-        fun api(payload: JSONObject) = LifeDeviceApi("test-secret", { url ->
-            OfflineResponse(url, payload.getJSONObject(if (url.path == "/order/detail") "/order/running" else url.path).toString())
-        })
-        val waterData = payload("life-device-capture")
-        val waterDevice = api(waterData).device("867369079842630", "test-token")
-        val water = WaterSession(waterDevice, waterDevice.skus.first().id, WaterPhase.Running,
-            startedAtMillis = waterData.getJSONObject("__waterSession").getLong("startedAt"))
-        val laundryData = payload("laundry-ui-capture")
-        val service = api(laundryData)
-        val device = service.laundryDevice(laundryData.getString("__code"), "test-token")
-        val reading = service.laundryOrder(laundryData.getJSONObject("/order/running").getJSONObject("data").getString("orderNo"), "test-token")
-        Sessions(water, LaundrySession(device, reading.skuId, reading.price, "2", LaundryPhase.Running,
-            true, reading.orderNo, reading.orderId, true, true, reading.minutes, reading.paidAtMillis, reading.expectedEndMillis))
+    private fun sessions(): Sessions {
+        val waterDevice = LifeDevice("water", "test-water", "雅5-1冷", "04", "org", "org", "shop", "imei",
+            "学校", "", "after", false, true, null, listOf(LifeSku("water-sku", "冷水", true)), emptyList())
+        val water = WaterSession(waterDevice, "water-sku", WaterPhase.Running, sessionId = "water-session")
+        val laundryDevice = waterDevice.copy(id = "laundry", name = "77", category = "00", payment = "before",
+            skus = listOf(LifeSku("laundry-sku", "桶自洁", true, "0.00", minutes = 5)))
+        val started = 1_700_000_000_000L
+        return Sessions(water, LaundrySession(laundryDevice, "laundry-sku", "0.00", "2", LaundryPhase.Running,
+            startedAtMillis = started, expectedEndMillis = started + 300_000, sessionId = "laundry-session"))
     }
     private fun capture(name: String, settle: Boolean = true) {
         if (settle) compose.mainClock.advanceTimeBy(1000)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }; compose.waitForIdle()
-        val file = File("../tools/life-device-ui/$name.png").absoluteFile
+        val file = File("../tools/life-device-ui/islands-$name.png").absoluteFile
         file.parentFile?.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -90,28 +80,35 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("payment-life-status").assertIsDisplayed()
         compose.onNodeWithText("接水中").assertIsDisplayed()
         compose.onNodeWithText("洗衣中").assertIsDisplayed()
-        compose.onNodeWithText("预计剩余").assertIsDisplayed()
+        compose.onNodeWithText("5分").performScrollTo().assertIsDisplayed()
         val status = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot
         val code = compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot
-        assertTrue(status.bottom <= code.top)
+        val navigation = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot
+        assertTrue("Islands stay below the payment code", code.bottom <= status.top)
+        assertTrue("Islands clear the navigation", status.bottom <= navigation.top)
         compose.onAllNodesWithTag("payment-scan-button").assertCountEquals(1)
         val scan = compose.onNodeWithTag("payment-scan-button").fetchSemanticsNode().boundsInRoot
         assertTrue(scan.center.x > status.center.x && scan.bottom <= status.top)
         compose.onNodeWithTag("payment-scan-button").performClick()
         assertEquals(1, scans)
-        compose.onNodeWithTag("life-status-water").performClick()
-        compose.onNodeWithTag("life-status-laundry").performClick()
+        compose.onNodeWithTag("life-status-water").performScrollTo().performClick()
+        compose.onNodeWithTag("life-status-laundry").performScrollTo().performClick()
         assertEquals(listOf(LifeFeature.Water to sessions.water.sessionId, LifeFeature.Laundry to sessions.laundry.sessionId), opened)
         capture("payment-progress-${if (dark) "dark-large" else "light"}")
         compose.runOnIdle { water = sessions.water.copy(phase = WaterPhase.Ended, finalized = true) }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("接水已结束").assertIsDisplayed()
+        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("life-device-icon-${sessions.water.sessionId}", useUnmergedTree = true)
+            .assertContentDescriptionEquals("接水设备")
+        compose.onNodeWithTag("life-progress-${sessions.water.sessionId}", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
+        capture("payment-completed-${if (dark) "dark-large" else "light"}")
         compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performClick()
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("接水已结束").assertDoesNotExist()
+        compose.onNodeWithText("已完成").assertDoesNotExist()
         compose.onNodeWithText("洗衣中").assertIsDisplayed()
     }
-    @Test fun paymentShowsBothProgressCardsAndOneScannerInTheTopRight() = payment()
+    @Test fun paymentShowsBothBottomIslandsAndOneScannerInTheTopRight() = payment()
     @Test @Config(fontScale = 1.3f)
     fun paymentProgressFitsLargeTextAndDarkFloatingNavigation() = payment(true, true)
 
@@ -148,7 +145,7 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("page-read-progress").assertDoesNotExist()
         assertTrue(bounds("page-network-error").bottom <= bounds("app-update-notice").top)
     }
-    @Test fun paymentStatusCardsAnimateWithThePaymentCode() {
+    @Test fun paymentIslandsAnimateWithoutMovingTheCodeAndCenterTheLastSession() {
         val sessions = sessions()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var water by mutableStateOf<WaterSession?>(null)
@@ -164,18 +161,23 @@ class LifeDeviceStatusUiTest {
         val originalCodeTop = compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top
         compose.runOnIdle { water = sessions.water; laundry = sessions.laundry }
         compose.mainClock.advanceTimeByFrame(); compose.waitForIdle(); compose.mainClock.advanceTimeBy(96)
-        val entering = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot.height
+        val entering = compose.onNodeWithTag("life-session-${sessions.water.sessionId}").fetchSemanticsNode().boundsInRoot.width
         compose.mainClock.advanceTimeBy(500)
-        val full = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot.height
-        assertTrue("Appearance animates its height", entering > 0 && entering < full)
+        val full = compose.onNodeWithTag("life-session-${sessions.water.sessionId}").fetchSemanticsNode().boundsInRoot.width
+        assertTrue("Appearance animates horizontally", entering > 0 && entering < full)
         val codeFull = compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top
+        assertEquals(originalCodeTop, codeFull, 1f)
         compose.runOnIdle { water = null }
+        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
         compose.mainClock.advanceTimeBy(96)
-        val shrinking = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot.height
+        val shrinking = compose.onNodeWithTag("life-session-${sessions.water.sessionId}").fetchSemanticsNode().boundsInRoot.width
         compose.mainClock.advanceTimeBy(500)
-        val single = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot.height
-        assertTrue(shrinking < full && shrinking > single)
-        assertTrue(compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top < codeFull)
+        assertTrue(shrinking > 0 && shrinking < full)
+        compose.onNodeWithTag("life-session-${sessions.water.sessionId}").assertDoesNotExist()
+        val single = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot
+        assertEquals("Single island is centered", viewport.center.x, single.center.x, 1f)
+        assertEquals(codeFull, compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.runOnIdle { laundry = null }
         compose.mainClock.advanceTimeBy(48)
         compose.onNodeWithTag("payment-life-status").assertExists()
@@ -199,10 +201,10 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
         compose.runOnIdle { waters = listOf(running.copy(phase = WaterPhase.Ended, finalized = false)) }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("接水已结束").assertIsDisplayed()
+        compose.onNodeWithText("已完成").assertIsDisplayed()
         compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertIsDisplayed().performClick()
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("接水已结束").assertDoesNotExist()
+        compose.onNodeWithText("已完成").assertDoesNotExist()
         assertTrue(waters.isEmpty())
     }
     @Test fun paymentKeepsMultipleCompletedRecordsUntilIndividualDismissal() {
@@ -227,24 +229,295 @@ class LifeDeviceStatusUiTest {
             }
         } } }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("洗衣中").assertIsDisplayed()
-        compose.onNodeWithText("洗衣已完成").assertIsDisplayed()
-        compose.onNodeWithText("接水已结束").assertIsDisplayed()
+        compose.onNodeWithText("洗衣中").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("已完成").assertCountEquals(2)
         compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
-        compose.onNodeWithTag("life-session-${finished.sessionId}").onChildAt(0).performClick()
+        compose.onNode(hasTestTag("life-status-laundry") and hasAnyAncestor(hasTestTag("life-session-${finished.sessionId}")))
+            .performScrollTo().performClick()
+        compose.onNodeWithTag("life-device-icon-${finished.sessionId}", useUnmergedTree = true)
+            .assertContentDescriptionEquals("洗衣设备")
+        compose.onNodeWithTag("life-progress-${finished.sessionId}", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
         assertEquals(listOf(LifeFeature.Laundry to finished.sessionId), opened)
         compose.onNodeWithTag("payment-scan-button").performClick(); assertEquals(1, scans)
         capture("payment-multiple-orders-and-completed")
-        compose.onNodeWithTag("dismiss-life-session-${finished.sessionId}").performClick()
+        compose.onNodeWithTag("dismiss-life-session-${finished.sessionId}").performScrollTo().performClick()
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("洗衣已完成").assertDoesNotExist()
-        compose.onNodeWithText("洗衣中").assertIsDisplayed()
-        compose.onNodeWithText("接水已结束").assertIsDisplayed(); assertEquals(1, opened.size)
-        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").performClick()
+        compose.onNodeWithTag("life-session-${finished.sessionId}").assertDoesNotExist()
+        compose.onNodeWithText("洗衣中").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("已完成").assertCountEquals(1); assertEquals(1, opened.size)
+        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").performScrollTo().performClick()
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("接水已结束").assertDoesNotExist()
+        compose.onNodeWithText("已完成").assertDoesNotExist()
         capture("payment-after-dismiss")
     }
+    @Test fun expiredEstimateDoesNotFillTheRingOrShowCompletionUntilTheServerEndsTheSession() {
+        val sessions = sessions()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        var laundry by mutableStateOf(sessions.laundry)
+        val clock: () -> Long = { sessions.laundry.expectedEndMillis!! + 1000 }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            MainNavigationScaffold(settings, 0, {}) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    laundrySessions = listOf(laundry), lifeNowMillis = clock)
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("洗衣中").assertIsDisplayed()
+        compose.onNodeWithText("已完成").assertDoesNotExist()
+        compose.onNodeWithTag("life-progress-${laundry.sessionId}", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo.Indeterminate))
+        compose.runOnIdle { laundry = laundry.copy(phase = LaundryPhase.Ended) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("已完成").assertIsDisplayed()
+        compose.onNodeWithTag("life-device-icon-${laundry.sessionId}", useUnmergedTree = true)
+            .assertContentDescriptionEquals("洗衣设备")
+        compose.onNodeWithTag("life-progress-${laundry.sessionId}", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
+        capture("laundry-completed-with-original-icon")
+    }
+
+    @Test fun coveredPaymentPageAndExitingIslandsCannotOpenOrDismissSessions() {
+        val sessions = sessions()
+        val water = sessions.water.copy(phase = WaterPhase.Ended)
+        var waters by mutableStateOf(listOf(water))
+        var active by mutableStateOf(false)
+        var opened = 0
+        var dismissed = 0
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            MainNavigationScaffold(settings, 0, {}) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    waterSessions = waters, isActive = active,
+                    onOpenLifeSession = { _, _ -> opened++ }, onDismissLifeSession = { _, _ -> dismissed++ })
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-status-water").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").assertIsNotEnabled().performClick()
+        assertEquals(0, opened); assertEquals(0, dismissed)
+        compose.runOnIdle { active = true }
+        compose.onNodeWithTag("life-status-water").assertIsEnabled()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { waters = emptyList() }
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithTag("life-status-water").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").assertIsNotEnabled().performClick()
+        assertEquals(0, opened); assertEquals(0, dismissed)
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+    }
+
+    @Test fun returningFromSecondaryPageMovesTheIslandTogetherWithClassicNavigation() =
+        navigationReturn(false)
+
+    @Test fun returningFromSecondaryPageMovesTheIslandTogetherWithFloatingNavigation() =
+        navigationReturn(true)
+
+    private fun navigationReturn(floating: Boolean) {
+        val sessions = sessions()
+        var covered by mutableStateOf(false)
+        val settings = ThemeSettings(compose.activity.application).apply {
+            setTheme(1); setFloating(floating); setFloatingStyle(1)
+        }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            MainNavigationScaffold(settings, 0, {}, bottomBarVisible = !covered) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    laundrySessions = listOf(sessions.laundry), isActive = !covered, lifeNowMillis = sessions.clock)
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        val original = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}", useUnmergedTree = true).fetchSemanticsNode()
+        val originalTop = original.boundsInRoot.top
+        val originalWidth = original.boundsInRoot.width
+        val navigationTop = compose.onNodeWithTag("main-bottom-navigation", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        compose.mainClock.autoAdvance = false
+        fun settle() {
+            repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+        }
+        fun movingFrames(count: Int): Float {
+            var displacement = 0f
+            repeat(count) {
+                compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+                val node = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}", useUnmergedTree = true).fetchSemanticsNode()
+                val navigation = compose.onNodeWithTag("main-bottom-navigation", useUnmergedTree = true).fetchSemanticsNode()
+                assertEquals("Returning must retain the same island", original.id, node.id)
+                // A footer fully below the root has empty clipped semantics bounds.
+                if (navigation.boundsInRoot.width == 0f || navigation.boundsInRoot.height == 0f) return@repeat
+                displacement = navigation.boundsInRoot.top - navigationTop
+                assertEquals("Island and navigation must have exactly the same displacement",
+                    displacement, node.boundsInRoot.top - originalTop, 1f)
+                assertEquals("Returning must not replay the island entry animation", originalWidth, node.boundsInRoot.width, 1f)
+            }
+            return displacement
+        }
+        compose.runOnIdle { covered = true }
+        assertTrue("The footer must slide down together", movingFrames(6) > 0f)
+        compose.onNodeWithTag("life-status-laundry").assertIsNotEnabled()
+        // Reverse mid-animation, then perform a full hide and return.
+        compose.runOnIdle { covered = false }
+        movingFrames(6)
+        settle()
+        assertEquals(originalTop,
+            compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.runOnIdle { covered = true }
+        settle()
+        compose.onNodeWithTag("main-bottom-navigation").assertDoesNotExist()
+        compose.onNodeWithTag("life-status-laundry").assertDoesNotExist()
+        compose.runOnIdle { covered = false }
+        assertTrue("Return must start with the footer below its resting position", movingFrames(6) > 0f)
+        movingFrames(24)
+        compose.onNodeWithTag("life-status-laundry").assertIsEnabled()
+        assertEquals(originalTop,
+            compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot.top, 1f)
+        capture("return-${if (floating) "floating" else "classic"}", settle = false)
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w360dp-h891dp-xxhdpi")
+    fun twoIslandsUseTheAvailableWidthAndCloseSmoothlyIntoOneCenteredIsland() {
+        val sessions = sessions()
+        var waters by mutableStateOf(listOf(sessions.water.copy(phase = WaterPhase.Ended)))
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        var density = 1f
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            density = LocalDensity.current.density
+            MainNavigationScaffold(settings, 0, {}) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    waterSessions = waters, laundrySessions = listOf(sessions.laundry), lifeNowMillis = sessions.clock,
+                    onDismissLifeSession = { _, _ -> waters = emptyList() })
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        fun bounds(id: String) = compose.onNodeWithTag("life-session-$id").fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot
+        val water = bounds(sessions.water.sessionId)
+        val laundry = bounds(sessions.laundry.sessionId)
+        assertTrue(water.left >= viewport.left && laundry.right <= viewport.right)
+        assertEquals("The pair must be centered", viewport.center.x, (water.left + laundry.right) / 2, 1f)
+        assertEquals(8f * density, laundry.left - water.right, 1f)
+        assertTrue("Small phones should fit both readable islands", water.width >= 144f * density)
+        val codeTop = compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performClick()
+        var previous = laundry.center.x
+        var moved = false
+        repeat(24) {
+            compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+            val current = bounds(sessions.laundry.sessionId).center.x
+            assertTrue("Remaining island moves continuously toward the center", current <= previous + 1f)
+            assertTrue("Closing must not jump at the final removal", previous - current < 25f * density)
+            if (previous - current > 1f) moved = true
+            previous = current
+        }
+        assertTrue(moved)
+        compose.onNodeWithTag("life-session-${sessions.water.sessionId}").assertDoesNotExist()
+        assertEquals(viewport.center.x, previous, 1f)
+        assertEquals(codeTop, compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top, 1f)
+        capture("compact-pair-after-close", settle = false)
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w600dp-h891dp-xxhdpi")
+    fun closingTheFirstMiddleOrLastIslandKeepsTheRemainingGroupCenteredWithoutASpacingJump() {
+        val sessions = sessions()
+        val original = (0..2).map { sessions.laundry.copy(sessionId = "laundry-$it", phase = LaundryPhase.Ended) }
+        var laundries by mutableStateOf(original)
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(true) }
+        var density = 1f
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            density = LocalDensity.current.density
+            MainNavigationScaffold(settings, 0, {}) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    laundrySessions = laundries, lifeNowMillis = sessions.clock,
+                    onDismissLifeSession = { _, id -> laundries = laundries.filterNot { it.sessionId == id } })
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000); compose.mainClock.autoAdvance = false
+        val viewport = compose.onNodeWithTag("payment-life-status").fetchSemanticsNode().boundsInRoot
+        fun bounds(id: String) = compose.onNodeWithTag("life-session-$id").fetchSemanticsNode().boundsInRoot
+        for (closedIndex in original.indices) {
+            compose.runOnIdle { laundries = original }
+            repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            val ordered = original.sortedBy { bounds(it.sessionId).left }
+            assertEquals(viewport.center.x,
+                (bounds(ordered.first().sessionId).left + bounds(ordered.last().sessionId).right) / 2, 1f)
+            val closed = ordered[closedIndex]
+            val remaining = original.filterNot { it == closed }
+            var previous = remaining.associate { it.sessionId to bounds(it.sessionId).center.x }
+            compose.onNodeWithTag("dismiss-life-session-${closed.sessionId}").performClick()
+            repeat(24) { frame ->
+                compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+                val current = remaining.associate { it.sessionId to bounds(it.sessionId).center.x }
+                remaining.forEach { session ->
+                    assertTrue("Closing ${closed.sessionId} must smoothly reposition ${session.sessionId}",
+                        kotlin.math.abs(current.getValue(session.sessionId) - previous.getValue(session.sessionId)) < 25f * density)
+                    if (frame >= 14) assertEquals("Removing the retained exit item must not cause a final spacing jump",
+                        previous.getValue(session.sessionId), current.getValue(session.sessionId), 2f * density)
+                }
+                previous = current
+            }
+            compose.onNodeWithTag("life-session-${closed.sessionId}").assertDoesNotExist()
+            val settled = remaining.sortedBy { bounds(it.sessionId).left }
+            assertEquals(viewport.center.x,
+                (bounds(settled.first().sessionId).left + bounds(settled.last().sessionId).right) / 2, 1f)
+            assertEquals(8f * density,
+                bounds(settled.last().sessionId).left - bounds(settled.first().sessionId).right, 1f)
+        }
+        capture("centered-group-after-close", settle = false)
+    }
+
+    @Test fun islandMaterialFollowsBottomBlurAndIosGlassAndRestoresTheOpaqueSurface() {
+        val sessions = sessions()
+        val settings = ThemeSettings(compose.activity.application).apply {
+            setTheme(1); setFloating(false); setBlurBottom(false)
+        }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            BarBlurHost(settings.blurBottomBar.value, false) {
+                Box(Modifier.fillMaxSize()) {
+                    BarBackdropContent(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxSize()) {
+                            listOf(Color(0xFFFF8C90), Color(0xFF89CAA3), Color(0xFF70A9FA)).forEach { color ->
+                                Box(Modifier.weight(1f).fillMaxHeight().background(color))
+                            }
+                        }
+                    }
+                    LifeDeviceStatusIslands(emptyList(), listOf(sessions.laundry), { _, _ -> }, { _, _ -> }, settings,
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth(), nowMillis = sessions.clock)
+                }
+            }
+        } } }
+        fun image(): Bitmap {
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            compose.runOnIdle { compose.activity.window.decorView.invalidate() }
+            return compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").captureToImage()
+                .asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
+        }
+        fun changed(a: Bitmap, b: Bitmap): Float {
+            assertEquals(a.width, b.width); assertEquals(a.height, b.height)
+            var changed = 0
+            for (y in 0 until a.height) for (x in 0 until a.width) {
+                val first = a.getPixel(x, y); val second = b.getPixel(x, y)
+                if (maxOf(kotlin.math.abs(android.graphics.Color.red(first) - android.graphics.Color.red(second)),
+                        kotlin.math.abs(android.graphics.Color.green(first) - android.graphics.Color.green(second)),
+                        kotlin.math.abs(android.graphics.Color.blue(first) - android.graphics.Color.blue(second))) > 10) changed++
+            }
+            return changed.toFloat() / (a.width * a.height)
+        }
+        for (style in listOf(0, 1, 2)) {
+            compose.runOnIdle { settings.setFloating(style != 0); settings.setFloatingStyle(if (style == 2) 1 else 0) }
+            val opaque = image()
+            val bounds = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot
+            compose.runOnIdle { settings.setBlurBottom(true) }
+            assertTrue("Bottom material must visibly change for style $style", changed(opaque, image()) > .03f)
+            assertEquals(bounds, compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot)
+            capture("material-$style")
+            compose.runOnIdle { settings.setBlurBottom(false) }
+            assertTrue("Disabling blur must restore the same opaque surface", changed(opaque, image()) < .01f)
+        }
+    }
+
     @Test fun inlineLoginReminderSharesUpdateStyleAndDisappearsAfterConnection() {
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
         var loginRequired by mutableStateOf(true)
@@ -270,18 +543,5 @@ class LifeDeviceStatusUiTest {
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("payment-scan-button").assertIsEnabled()
-    }
-    private class OfflineResponse(url: URL, val body: String) : HttpsURLConnection(url) {
-        override fun connect() {}
-        override fun disconnect() {}
-        override fun usingProxy() = false
-        override fun getResponseCode() = 200
-        override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
-        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
-        override fun getCipherSuite() = "TLS_TEST"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
     }
 }

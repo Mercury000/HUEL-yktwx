@@ -52,6 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -194,6 +196,23 @@ private fun rememberGravityRotatedHighlight(
     }
 }
 
+/** The shared container material for iOS navigation and the payment device islands. */
+@Composable
+internal fun Modifier.iosGlassSurface(backdrop: LayerBackdrop?, shape: Shape = CircleShape,
+    layerBlock: GraphicsLayerScope.() -> Unit = {}): Modifier {
+    val surface = floatingBarColor()
+    val highlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
+    return if (backdrop != null) drawBackdrop(
+        backdrop = backdrop, shape = { shape }, effects = {
+            padding = maxOf(padding, 40.dp.toPx())
+            vibrancy()
+            blur(4.dp.toPx(), 4.dp.toPx())
+            lens(refractionHeight = 24.dp.toPx(), refractionAmount = 24.dp.toPx())
+        }, highlight = { highlight.value.copy(alpha = .75f) }, layerBlock = layerBlock,
+        onDrawSurface = { drawRect(surface.copy(alpha = .4f)) },
+    ) else background(surface, shape)
+}
+
 /**
  * iOS-style liquid-glass tab bar: a floating pill with a draggable pill indicator,
  * press-time refraction/lens effects and a specular highlight that follows gravity.
@@ -329,7 +348,6 @@ internal fun IosLiquidGlassNavigationBar(
     }
 
     // Read .value only inside highlight lambdas (draw phase), never in composition.
-    val baseHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
     val pillHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = 90f)
 
     val combinedBackdrop = backdrop?.let { rememberCombinedBackdrop(it, tabsBackdrop) }
@@ -418,38 +436,12 @@ internal fun IosLiquidGlassNavigationBar(
                                 alpha = if (isDark) 0.2f else 0.1f,
                             ),
                         )
-                        .then(
-                            if (backdrop != null) {
-                                Modifier.drawBackdrop(
-                                    backdrop = backdrop,
-                                    shape = { pillShape },
-                                    effects = {
-                                        // 24dp lens refraction + 16dp press-scale reach, raised before blur() reads it.
-                                        padding = maxOf(padding, 40.dp.toPx())
-                                        vibrancy()
-                                        blur(
-                                            4.dp.toPx(),
-                                            4.dp.toPx(),
-                                        )
-                                        lens(
-                                            refractionHeight = 24.dp.toPx(),
-                                            refractionAmount = 24.dp.toPx(),
-                                        )
-                                    },
-                                    highlight = { baseHighlight.value.copy(alpha = 0.75f) },
-                                    layerBlock = {
-                                        val width = size.width.coerceAtLeast(1f)
-                                        val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDrag.pressProgress)
-                                        scaleX = s
-                                        scaleY = s
-                                    },
-                                    onDrawSurface = { drawRect(containerColor) },
-                                )
-                            } else {
-                                Modifier
-                                    .background(containerColor, pillShape)
-                            },
-                        )
+                        .iosGlassSurface(backdrop, pillShape) {
+                            val width = size.width.coerceAtLeast(1f)
+                            val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDrag.pressProgress)
+                            scaleX = s
+                            scaleY = s
+                        }
                         .then(
                             if (isBlurActive) {
                                 interactiveHighlight.modifier.then(interactiveHighlight.gestureModifier)
