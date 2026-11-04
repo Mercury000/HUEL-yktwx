@@ -8,6 +8,25 @@ import androidx.compose.ui.unit.dp
 
 object AppIcons {
 
+    val Keyboard = ImageVector.Builder("Keyboard", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.6f) {
+            moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 19f); lineTo(3f, 19f); close()
+            moveTo(6f, 9f); lineTo(8f, 9f); moveTo(11f, 9f); lineTo(13f, 9f); moveTo(16f, 9f); lineTo(18f, 9f)
+            moveTo(6f, 12f); lineTo(8f, 12f); moveTo(11f, 12f); lineTo(13f, 12f); moveTo(16f, 12f); lineTo(18f, 12f)
+            moveTo(8f, 16f); lineTo(16f, 16f)
+        }
+    }.build()
+
+    val Scan = ImageVector.Builder("Scan", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f) {
+            moveTo(8f, 3f); lineTo(3f, 3f); lineTo(3f, 8f)
+            moveTo(16f, 3f); lineTo(21f, 3f); lineTo(21f, 8f)
+            moveTo(3f, 16f); lineTo(3f, 21f); lineTo(8f, 21f)
+            moveTo(21f, 16f); lineTo(21f, 21f); lineTo(16f, 21f)
+            moveTo(7f, 12f); lineTo(17f, 12f)
+        }
+    }.build()
+
     val Close = ImageVector.Builder("Close", 16.dp, 16.dp, 16f, 16f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round) {
