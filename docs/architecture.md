@@ -15,6 +15,8 @@
 
 `ui/pages/` 与 `ui/components/` 负责界面，ViewModel 负责页面状态，`data/` 提供接口、账户仓库与加密存储。
 
+`data/life/` 按平台组织服务、模型与账户记录。
+
 ## 依赖关系
 
 ```mermaid
@@ -25,7 +27,7 @@ flowchart TD
     DATA --> STORAGE[账户记录、设置与展示缓存]
 ```
 
-页面消费状态并提交用户操作，ViewModel 和业务控制器负责流程调度；数据层处理接口访问、账户归属、记录保存和共享读取。校园卡功能共用 `AccountRepository`。
+页面消费状态并提交用户操作，ViewModel 和业务控制器负责流程调度；数据层处理接口访问、账户归属、记录保存和共享读取。校园卡功能共用 `AccountRepository`，生活服务通过各平台服务接口和账户存储管理设备及订单。
 
 ## 网络
 

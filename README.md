@@ -19,6 +19,7 @@
 - 本地自定义头像。
 - 自动与手动检查应用更新。
 - 付款页提供统一的设备扫一扫入口。
+- 胖乖接水、洗衣与进行中的设备服务。
 - 宽屏侧栏与明暗主题。
 
 ## 安装与使用
@@ -50,6 +51,7 @@ macOS / Linux 使用 `./gradlew :app:assembleDebug`。依赖版本以本版本�
 - [开发说明](docs/development.md)
 - [项目架构](docs/architecture.md)
 - [一卡通接口](docs/api.md)
+- [生活服务](docs/life-services.md)
 - [应用更新](docs/app-updates.md)
 - [构建与发版](docs/releases.md)
 

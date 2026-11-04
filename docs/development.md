@@ -4,6 +4,10 @@
 
 使用 JDK 22、Android SDK Platform 37 和仓库内的 Gradle Wrapper。SDK 路径配置在 `local.properties`，本地配置、密钥和签名材料不提交。
 
+| 环境变量 | 本地属性 | 用途 |
+| --- | --- | --- |
+| `PANGGUI_API_SECRET` | `panggui.apiSecret` | 胖乖接口密钥 |
+
 ## 构建与预览
 
 在根目录执行 `./gradlew :app:assembleDebug` 或 `:app:assembleRelease`，Windows 使用 `.\gradlew.bat`。APK 输出至 `app/build/outputs/apk/`；正式签名由 Actions 完成。

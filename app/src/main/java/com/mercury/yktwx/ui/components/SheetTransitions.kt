@@ -29,6 +29,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val SheetPageDuration = 320
 
+/** Defer unused overlays, then keep their host alive for closing and rapid reopening. */
+@Composable
+internal fun rememberOverlayMounted(shown: Boolean): Boolean {
+    var mounted by remember { mutableStateOf(shown) }
+    if (shown) mounted = true
+    return mounted
+}
+
 /** Retain display values during exit; never pass passwords, captcha keys or payment preparations. */
 @Composable
 internal fun <T> rememberWhileShown(shown: Boolean, value: T): T {
