@@ -108,6 +108,16 @@ class LifeDevicesViewModelTest {
         assertEquals(0, api.deviceCalls)
     }
 
+    @Test fun unifiedScannerDoesNotRequirePangguiLoginOrLoadADeviceBeforeRouting() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store()); runCurrent()
+        model.openUnifiedScan(); runCurrent()
+        assertTrue(model.state.value.scanning)
+        assertFalse(model.state.value.loginVisible)
+        assertEquals(1, model.state.value.entryRequest)
+        assertEquals(0, api.loginCalls)
+        assertEquals(0, api.deviceCalls)
+    }
+
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Water); model.pageVisible(true)
         model.scanned("https://h5.qiekj.com/skip?SN=867369079842630"); runCurrent()

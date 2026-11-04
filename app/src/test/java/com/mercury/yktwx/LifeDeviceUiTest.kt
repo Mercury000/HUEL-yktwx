@@ -232,10 +232,11 @@ class LifeDeviceUiTest {
         val model = model()
         val settings = settings()
         var active by mutableStateOf(false)
+        val scanned = mutableListOf<String>()
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
                 Scaffold {
-                    LifeDevicePage(LifeDevicesUiState(restoring = false, scanning = true), settings, model, active, onBack = {})
+                    LifeDevicePage(LifeDevicesUiState(restoring = false, scanning = true), settings, model, active, onBack = {}, onScanned = scanned::add)
                 }
             } }
         }
@@ -264,6 +265,11 @@ class LifeDeviceUiTest {
         field.performTextInput("0")
         field.assertTextContains("8607369")
         assertEquals(TextRange(3), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        val hui798Qr = "https://i.hnkzy.com/q/1/123456789012345"
+        field.performTextReplacement(hui798Qr)
+        compose.onNodeWithText("识别设备").assertIsEnabled().performClick()
+        assertEquals(listOf(hui798Qr), scanned)
+        assertEquals(LifeProvider.Hui798, UnifiedDeviceCode.identify(scanned.single())?.provider)
     }
 
     private class OfflineResponse(url: URL, val body: String) : HttpsURLConnection(url) {

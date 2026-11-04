@@ -42,7 +42,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundrySessions: List<LaundrySession>,
     onOpenSession: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit,
     settings: ThemeSettings, modifier: Modifier = Modifier, enabled: Boolean = true,
-    nowMillis: () -> Long = System::currentTimeMillis) {
+    nowMillis: () -> Long = System::currentTimeMillis, additionalEntries: List<LifeDeviceStatusEntry> = emptyList()) {
     var now by remember { mutableLongStateOf(nowMillis()) }
     val ticking = enabled && laundrySessions.any { it.phase == LaundryPhase.Running && it.expectedEndMillis != null }
     LaunchedEffect(ticking, nowMillis) {
@@ -51,19 +51,19 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
     val entries = buildList {
         waterSessions.forEach { session ->
             val completed = session.phase == WaterPhase.Ended
-            add(StatusEntry(LifeFeature.Water, when (session.phase) {
+            add(LifeDeviceStatusEntry(LifeFeature.Water, when (session.phase) {
                 WaterPhase.Ended -> "已完成"
                 WaterPhase.Starting -> "正在启动"
                 WaterPhase.Stopping -> "正在结束"
                 else -> "接水中"
-            }, session.device.name.ifBlank { "接水" }, session.device,
+            }, session.device.name.ifBlank { "接水" }, session.device.shopName,
                 session.sessionId, completed, progress = if (completed) 1f else null))
         }
         laundrySessions.forEach { session ->
             val completed = !session.active
             val end = session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }
             val name = session.device.name.let { if (it.isNotBlank() && it.all(Char::isDigit)) "${it}号" else it }
-            add(StatusEntry(LifeFeature.Laundry, when (session.phase) {
+            add(LifeDeviceStatusEntry(LifeFeature.Laundry, when (session.phase) {
                 LaundryPhase.Ended -> "已完成"
                 LaundryPhase.Closed -> "已关闭"
                 LaundryPhase.Checking -> "正在检查"
@@ -72,7 +72,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 LaundryPhase.Starting -> "正在启动"
                 else -> "洗衣中"
             }, listOf(name, session.program).filter { it.isNotBlank() }.joinToString(" · ")
-                .ifBlank { "洗衣" }, session.device, session.sessionId, completed,
+                .ifBlank { "洗衣" }, session.device.shopName, session.sessionId, completed,
                 remainingMinutes = end?.takeIf { it > now }?.let { (it - now + 59_999) / 60_000 },
                 timeElapsed = end != null && end <= now,
                 progress = if (completed) 1f else session.startedAtMillis?.let { start ->
@@ -81,16 +81,18 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                     }
                 }))
         }
+        addAll(additionalEntries)
     }
     StatusEntries(entries, enabled, onOpenSession, onDismiss, settings, modifier)
 }
 
-private data class StatusEntry(val feature: LifeFeature, val title: String, val subtitle: String,
-    val device: LifeDevice, val sessionId: String, val completed: Boolean,
-    val remainingMinutes: Long? = null, val timeElapsed: Boolean = false, val progress: Float? = null)
+data class LifeDeviceStatusEntry(val feature: LifeFeature, val title: String, val subtitle: String,
+    val location: String, val sessionId: String, val completed: Boolean,
+    val remainingMinutes: Long? = null, val timeElapsed: Boolean = false, val progress: Float? = null,
+    val onOpen: (() -> Unit)? = null, val onDismiss: (() -> Unit)? = null)
 
 @Composable
-private fun StatusEntries(entries: List<StatusEntry>, enabled: Boolean,
+private fun StatusEntries(entries: List<LifeDeviceStatusEntry>, enabled: Boolean,
     onOpen: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit,
     settings: ThemeSettings, modifier: Modifier) {
     val ids = remember { mutableStateListOf<String>() }
@@ -139,7 +141,7 @@ private fun StatusEntries(entries: List<StatusEntry>, enabled: Boolean,
 }
 
 @Composable
-private fun StatusIsland(entry: StatusEntry, enabled: Boolean, width: Dp,
+private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: Dp,
     onOpen: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit, settings: ThemeSettings) {
     val dark = isSystemInDarkTheme()
     val liquid = settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1
@@ -164,10 +166,10 @@ private fun StatusIsland(entry: StatusEntry, enabled: Boolean, width: Dp,
             spotColor = Color(0xFF2B4161).copy(alpha = .08f)).then(material),
         shape = CircleShape, color = Color.Transparent, border = BorderStroke(.5.dp, border), contentColor = ink) {
         Row(Modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-            ActionSurface({ if (enabled) onOpen(entry.feature, entry.sessionId) },
+            ActionSurface({ if (enabled) { entry.onOpen?.invoke() ?: onOpen(entry.feature, entry.sessionId) } },
                 Modifier.weight(1f).testTag("life-status-${entry.feature.name.lowercase()}")
                     .semantics { contentDescription = listOf(entry.feature.title, entry.title,
-                        entry.subtitle, entry.device.shopName, detail).filter { it.isNotBlank() }.joinToString("，") },
+                        entry.subtitle, entry.location, detail).filter { it.isNotBlank() }.joinToString("，") },
                 enabled = enabled, shape = CircleShape, contentColor = ink) {
                 Row(Modifier.fillMaxWidth().padding(start = 11.dp,
                     end = if (entry.completed) 0.dp else 8.dp, top = 9.dp, bottom = 9.dp),
@@ -211,7 +213,7 @@ private fun StatusIsland(entry: StatusEntry, enabled: Boolean, width: Dp,
                     }
                 }
             }
-            if (entry.completed) ActionSurface({ if (enabled) onDismiss(entry.feature, entry.sessionId) },
+            if (entry.completed) ActionSurface({ if (enabled) { entry.onDismiss?.invoke() ?: onDismiss(entry.feature, entry.sessionId) } },
                 Modifier.padding(end = 5.dp).size(30.dp).testTag("dismiss-life-session-${entry.sessionId}"),
                 enabled = enabled, shape = CircleShape, contentColor = muted) {
                 Box(Modifier.size(20.dp).background(if (dark) panel else Color(0xFFF5F6F8), CircleShape),

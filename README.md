@@ -17,7 +17,7 @@
 
 | 页面 | 功能 |
 | --- | --- |
-| 付款 | 二维码与 CODE-128 条形码、点击放大、码号显隐、校园卡余额与本人充值；挂失时暂停展示付款码，并提供解挂入口。 |
+| 付款 | 二维码与 CODE-128 条形码、点击放大、码号显隐、校园卡余额与本人充值；胖乖接水/洗衣与慧生活798用水共用扫一扫，内联登录并保留服务进度；挂失时暂停展示付款码，并提供解挂入口。 |
 | 大厅 | 已绑定房间与水电读数、房间管理及临时缴费、校园网套餐与充值、代人充值；按实际项目配置展示一卡通或微信支付方式。 |
 | 账单 | 明细与统计、日 / 月 / 年 / 自定义日期范围、搜索和交易类型 / 金额筛选、交易详情、趋势与分类。搜索和筛选只影响明细。 |
 | 我的 | 个人资料、校园卡状态与余额、本月收支、挂失 / 解挂和查询密码修改、自定义头像、应用设置与关于页。 |
@@ -70,6 +70,10 @@
 | miuix | 0.9.4 |
 
 用 Android Studio 打开仓库，安装 Android SDK Platform 37，设置 SDK 路径并同步 Gradle。`local.properties` 由本机生成，**不要提交**。项目使用 Foojay toolchain resolver，首次构建可能需要联网下载 JDK 和依赖。
+
+慧生活798用水的接口网关与登录签名盐值通过 `HUI798_API_GATEWAY` / `HUI798_SIGN_SALT`，或本机 `local.properties` 的 `hui798.apiGateway` / `hui798.signSalt` 注入。配置和验证范围见[798用水接入](docs/life-devices-798.md)。
+
+CI 在仓库 **Settings → Secrets and variables → Actions → Secrets** 配置 `HUI798_SIGN_SALT`（798登录盐值）、`HUI798_API_GATEWAY`（798接口网关）和 `PANGGUI_API_SECRET`（胖乖接口配置）。未设置网关Secret时使用Gradle默认值。Release缺少798盐值时构建失败；PR构建不注入接口Secrets，debug缺配置时仍可编译，但相应平台无法登录。
 
 在仓库根目录执行：
 

@@ -30,7 +30,8 @@ import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.LifeDevicesViewModel
-import com.mercury.yktwx.data.life.LifeFeature
+import com.mercury.yktwx.Hui798ViewModel
+import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
@@ -285,6 +286,9 @@ private fun MainContent(
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
     val lifeModel: LifeDevicesViewModel = viewModel()
     val lifeState by lifeModel.state.collectAsStateWithLifecycle()
+    val hui798Model: Hui798ViewModel = viewModel()
+    val hui798State by hui798Model.state.collectAsStateWithLifecycle()
+    var lifeProvider by remember { mutableStateOf(LifeProvider.Panggui) }
     LifeAlipayEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
         lifeModel::launchLaundryPayment)
     val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
@@ -306,14 +310,17 @@ private fun MainContent(
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
-        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible)
+        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible || hui798State.loginVisible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
     val network by rememberNetworkState(state.preview)
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
-    LaunchedEffect(foreground, isActive, state.preview) { lifeModel.environment(foreground && isActive && !state.preview) }
-    DisposableEffect(lifeModel) { onDispose { lifeModel.environment(false) } }
+    LaunchedEffect(foreground, isActive, state.preview) {
+        lifeModel.environment(foreground && isActive && !state.preview)
+        hui798Model.environment(foreground && isActive && !state.preview)
+    }
+    DisposableEffect(lifeModel, hui798Model) { onDispose { lifeModel.environment(false); hui798Model.environment(false) } }
     val readPage = when {
         !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
@@ -389,19 +396,46 @@ private fun MainContent(
         }
     }
     fun openLifeScanner() {
-        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!isActive || layers.size >= MAX_LAYERS && layers.lastOrNull() != Screen.LifeDevice || motion.any { it.predictiveActive } ||
+            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null ||
+            lifeState.restoring || hui798State.restoring || lifeState.connectedPhone.isBlank() && !hui798State.connected) return
         if (!allowOnlineEntry(context, state.preview)) return
-        lifeModel.openScan()
+        lifeProvider = LifeProvider.Panggui
+        lifeModel.openUnifiedScan()
     }
     fun connectLifeAccount() {
         if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
         if (!allowOnlineEntry(context, state.preview)) return
+        hui798Model.dismissLogin()
         lifeModel.connectAccount()
+    }
+    fun connectHui798Account() {
+        if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.dismissLogin()
+        hui798Model.connectAccount()
     }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         if (!allowOnlineEntry(context, state.preview)) return
+        lifeProvider = LifeProvider.Panggui
         lifeModel.openSession(feature, sessionId)
+    }
+    fun openHui798Session(id: String) {
+        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive } || hui798State.busy) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeProvider = LifeProvider.Hui798
+        hui798Model.openSession(id)
+        if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
+    }
+    fun scannedLifeDevice(raw: String) {
+        if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() != Screen.LifeDevice ||
+            hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy) return
+        val route = UnifiedDeviceCode.identify(raw)
+        if (route?.provider == LifeProvider.Hui798) {
+            lifeProvider = LifeProvider.Hui798
+            hui798Model.openDevice(route.code)
+        } else lifeModel.scanned(raw)
     }
     LaunchedEffect(lifeState.entryRequest) {
         if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
@@ -539,10 +573,21 @@ private fun MainContent(
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     isActive = paymentPageSelected && !paymentPageCovered,
                                     onScan = ::openLifeScanner,
-                                    scanEnabled = !lifeState.restoring && lifeState.connectedPhone.isNotBlank() &&
-                                        !lifeState.waterBusy && !lifeState.laundryBusy && lifeState.paymentLaunch == null,
+                                    scanEnabled = !lifeState.restoring && !hui798State.restoring && (lifeState.connectedPhone.isNotBlank() || hui798State.connected) &&
+                                        !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
                                     lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
                                     onLifeLogin = ::connectLifeAccount,
+                                    hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
+                                    onHui798Login = ::connectHui798Account,
+                                    additionalLifeEntries = hui798State.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
+                                        when (session.phase) {
+                                            WaterPhase.Ended -> "已完成"
+                                            WaterPhase.Starting -> "正在启动"
+                                            WaterPhase.Stopping -> "正在结束"
+                                            else -> "用水中"
+                                        }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
+                                        progress = if (session.active) null else 1f,
+                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) },
                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
                                     onOpenLifeSession = ::openLifeSession,
                                     onDismissLifeSession = lifeModel::dismissSession,
@@ -668,8 +713,10 @@ private fun MainContent(
                     Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
                         onOpenReferences = { open(Screen.References) }, onBack = ::close)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
-                    Screen.LifeDevice -> LifeDevicePage(lifeState, settings, lifeModel,
-                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close)
+                    Screen.LifeDevice -> if (lifeProvider == LifeProvider.Hui798) Hui798DevicePage(hui798State, settings, hui798Model,
+                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
+                    else LifeDevicePage(lifeState, settings, lifeModel,
+                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice)
                     else -> SecondaryPage(
                         screen = screen,
                         settings = settings,
@@ -685,6 +732,7 @@ private fun MainContent(
     }
     }
     LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
+    Hui798LoginSheet(hui798State, hui798Model, active = isActive && !state.needsLogin)
     AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible), updateModel::dismiss)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&

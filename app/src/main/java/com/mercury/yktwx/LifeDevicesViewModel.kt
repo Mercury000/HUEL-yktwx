@@ -87,6 +87,13 @@ class LifeDevicesViewModel internal constructor(
         scan()
         requestedScan = false
     }
+    /** The shared camera can be opened with either platform's account. */
+    fun openUnifiedScan() {
+        if (mutable.value.restoring || mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
+        requestedFeature = null; requestedScan = false; requestedSessionId = null
+        scan()
+        mutable.update { it.copy(entryRequest = it.entryRequest + 1) }
+    }
     fun openSession(feature: LifeFeature, sessionId: String) {
         if (mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
         val water = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId }

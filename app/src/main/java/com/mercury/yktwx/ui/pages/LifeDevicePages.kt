@@ -49,35 +49,40 @@ import java.util.Locale
 @Composable
 internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean) {
     val show = active && state.loginVisible
-    val session = rememberOverlaySession(show)
     val keyboard = LocalSoftwareKeyboardController.current
-    OverlayBottomSheet(show = show, startAction = { SheetTitle("登录胖乖生活") },
-        onDismissRequest = { keyboard?.hide(); model.dismissLogin() }, renderInRootScaffold = true) {
-        key(session) {
-            val display = rememberWhileShown(show, state)
-            val enabled = show && !display.loggingIn && !display.sendingCode
-            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState())
-                .testTag("life-login-sheet"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("接水与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11,
-                    enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("life-login-phone"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    DigitTextField(display.code, model::codeChanged, label = "验证码", maxDigits = 8,
-                        enabled = enabled, modifier = Modifier.weight(1f).testTag("life-login-code"),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { if (enabled) { keyboard?.hide(); model.login() } }))
-                    TextButton(if (display.sendingCode) "发送中…" else if (display.codeSeconds > 0) "${display.codeSeconds} 秒" else "发送验证码",
-                        model::sendCode, enabled = enabled && display.phone.length == 11 && display.codeSeconds == 0,
-                        modifier = Modifier.testTag("life-send-code"))
-                }
-                InlineErrorGroup(display.loginError, 16.dp) {
-                    Button(onClick = { keyboard?.hide(); model.login() }, enabled = enabled && display.phone.length == 11 && display.code.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth().testTag("life-login-submit"), colors = ButtonDefaults.buttonColorsPrimary()) {
-                        Text(if (display.loggingIn) "正在登录…" else "登录并继续")
-                    }
-                }
+    LifeAccountLoginSheet(show, "登录胖乖生活", "life-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
+        val display = rememberWhileShown(show, state)
+        val enabled = show && !display.loggingIn && !display.sendingCode
+        Text("接水与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11,
+            enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("life-login-phone"),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            DigitTextField(display.code, model::codeChanged, label = "验证码", maxDigits = 8,
+                enabled = enabled, modifier = Modifier.weight(1f).testTag("life-login-code"),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (enabled) { keyboard?.hide(); model.login() } }))
+            TextButton(if (display.sendingCode) "发送中…" else if (display.codeSeconds > 0) "${display.codeSeconds} 秒" else "发送验证码",
+                model::sendCode, enabled = enabled && display.phone.length == 11 && display.codeSeconds == 0,
+                modifier = Modifier.testTag("life-send-code"))
+        }
+        InlineErrorGroup(display.loginError, 16.dp) {
+            Button(onClick = { keyboard?.hide(); model.login() }, enabled = enabled && display.phone.length == 11 && display.code.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().testTag("life-login-submit"), colors = ButtonDefaults.buttonColorsPrimary()) {
+                Text(if (display.loggingIn) "正在登录…" else "登录并继续")
             }
+        }
+    }
+}
+
+@Composable
+internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit) {
+    val session = rememberOverlaySession(show)
+    OverlayBottomSheet(show = show, startAction = { SheetTitle(title) }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+        key(session) {
+            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).testTag(tag),
+                verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
         }
     }
 }
@@ -87,7 +92,8 @@ private data class LifeDevicePresentation(val stage: String, val state: LifeDevi
 /** Shared page container, spacing and device presentation for both features. */
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
-    active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis) {
+    active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis,
+    onScanned: (String) -> Unit = model::scanned) {
     var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
     var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
@@ -147,7 +153,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         val state = presentation.state
         val stageActive = active && displayedStage == stage
         if (displayedStage == "scan") Box(Modifier.fillMaxSize().testTag("life-device-page")) {
-            DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) model.scanned(code) }, immersive = true,
+            DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
                 onManualInput = { manual = true })
             if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
             if (!state.error.isNullOrBlank() && !manual) Text(state.error,
@@ -190,13 +196,13 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
         onValue = { serial = it },
-        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); model.scanned(serial) })
+        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onScanned(serial) })
     LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
     LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
 
 @Composable
-private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
+internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
     onHelp: () -> Unit, showHelp: Boolean, footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
     val surface = if (scanning) Color(0xFF1B2025) else MiuixTheme.colorScheme.surface
     val ink = if (scanning) Color.White else MiuixTheme.colorScheme.onSurface
@@ -226,13 +232,18 @@ private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Bo
 /** One centered identity card and icon treatment, ready for other device categories. */
 @Composable
 internal fun LifeDeviceHero(device: LifeDevice, feature: LifeFeature) {
+    LifeDeviceHero(device.name, device.shopName, feature)
+}
+
+@Composable
+internal fun LifeDeviceHero(name: String, location: String, feature: LifeFeature) {
     Card(Modifier.fillMaxWidth().testTag("life-device-hero"), cornerRadius = 24.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             LifeDeviceGlyph(feature)
             Spacer(Modifier.height(15.dp))
-            Text(device.name.ifBlank { if (feature == LifeFeature.Water) "饮水设备" else "洗衣设备" }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
+            Text(name.ifBlank { if (feature == LifeFeature.Water) "饮水设备" else "洗衣设备" }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
                 lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            if (device.shopName.isNotBlank()) Text(device.shopName, Modifier.padding(top = 6.dp).testTag("life-device-location"),
+            if (location.isNotBlank()) Text(location, Modifier.padding(top = 6.dp).testTag("life-device-location"),
                 fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
         }
     }
@@ -362,24 +373,30 @@ private fun waterDuration(millis: Long): String {
 
 @Composable
 private fun WaterProgress(session: WaterSession, nowMillis: () -> Long) {
-    var now by remember(session.startedAtMillis) { mutableLongStateOf(nowMillis()) }
-    LaunchedEffect(session.phase, session.startedAtMillis, nowMillis) {
-        while (session.phase != WaterPhase.Ended) { now = nowMillis(); delay(1000) }
+    LifeWaterProgress(session.phase, session.startedAtMillis, session.endedAtMillis, "接水", "water", nowMillis)
+}
+
+@Composable
+internal fun LifeWaterProgress(phase: WaterPhase, startedAt: Long?, endedAt: Long?, action: String, tag: String,
+    nowMillis: () -> Long = System::currentTimeMillis) {
+    var now by remember(startedAt) { mutableLongStateOf(nowMillis()) }
+    LaunchedEffect(phase, startedAt, nowMillis) {
+        while (phase != WaterPhase.Ended) { now = nowMillis(); delay(1000) }
     }
-    val ended = session.phase == WaterPhase.Ended
-    Column(Modifier.fillMaxWidth().padding(top = if (ended) 30.dp else 36.dp, bottom = 24.dp).testTag("water-progress"),
+    val ended = phase == WaterPhase.Ended
+    Column(Modifier.fillMaxWidth().padding(top = if (ended) 30.dp else 36.dp, bottom = 24.dp).testTag("$tag-progress"),
         horizontalAlignment = Alignment.CenterHorizontally) {
         if (ended) {
-            DeviceCompletedIcon("water-ended-icon")
-            Text("接水已结束", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
-            Text("设备已结束本次接水", Modifier.padding(top = 7.dp), fontSize = 12.sp, color = DashboardPalette.muted)
+            DeviceCompletedIcon("$tag-ended-icon")
+            Text("${action}已结束", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
+            Text("设备已结束本次${action}", Modifier.padding(top = 7.dp), fontSize = 12.sp, color = DashboardPalette.muted)
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(6.dp).background(lifeSuccessInk(), CircleShape))
-                Text("接水中", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                Text(if (phase == WaterPhase.Stopping) "正在结束" else "${action}中", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
             }
-            session.startedAtMillis?.let { started ->
-                Text(waterDuration(now - started), Modifier.padding(top = 22.dp, bottom = 9.dp).testTag("water-elapsed"),
+            startedAt?.let { started ->
+                Text(waterDuration((endedAt ?: now) - started), Modifier.padding(top = 22.dp, bottom = 9.dp).testTag("$tag-elapsed"),
                     fontSize = 60.sp, lineHeight = 72.sp, fontWeight = FontWeight.SemiBold)
                 Text("本地参考计时", fontSize = 12.sp, color = DashboardPalette.muted)
             }
@@ -445,11 +462,11 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            val identify = { if (show && LifeDeviceCode.identify(serial) != null) onIdentify() }
+            val identify = { if (show && UnifiedDeviceCode.identify(serial) != null) onIdentify() }
             DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
                 modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
             InlineErrorGroup(state.error, 16.dp) {
-                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && LifeDeviceCode.identify(serial) != null,
+                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && UnifiedDeviceCode.identify(serial) != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
                 }
@@ -464,7 +481,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (state.scanning) "扫描接水或洗衣设备上的二维码，识别后自动进入对应界面。已有服务进度可从付款页的状态卡查看。"
+            Text(if (state.scanning) "扫描胖乖接水、洗衣或慧生活798用水设备上的二维码，识别后自动进入对应界面。798 手动输入请填写完整二维码链接；已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
                 else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣。桶自洁请按设备说明使用，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)

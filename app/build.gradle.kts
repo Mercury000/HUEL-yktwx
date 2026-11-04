@@ -10,6 +10,11 @@ val machineProperties = Properties().apply {
 }
 val pangguiSecret = providers.environmentVariable("PANGGUI_API_SECRET")
     .orElse(machineProperties.getProperty("panggui.apiSecret", "")).get()
+val hui798Gateway = providers.environmentVariable("HUI798_API_GATEWAY")
+    .orElse(machineProperties.getProperty("hui798.apiGateway", "https://i.ilife798.com/api/v1")).get()
+val hui798Salt = providers.environmentVariable("HUI798_SIGN_SALT")
+    .orElse(machineProperties.getProperty("hui798.signSalt", "")).get()
+fun buildString(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
@@ -21,6 +26,8 @@ android {
         versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PANGGUI_API_SECRET", "\"" + pangguiSecret.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+        buildConfigField("String", "HUI798_API_GATEWAY", buildString(hui798Gateway))
+        buildConfigField("String", "HUI798_SIGN_SALT", buildString(hui798Salt))
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {
@@ -33,6 +40,10 @@ android {
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
+    lint {
+        // Match the compilation JDK even when Gradle runs on an older JVM.
+        toolchain.languageVersion.set(JavaLanguageVersion.of(22))
+    }
     buildTypes {
         create("preview") {
             initWith(getByName("debug"))
