@@ -106,29 +106,21 @@ fun HallPage(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    if (showFailure) {
-                        item {
-                            Column {
-                                updateNotice()
-                                ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
-                            }
-                        }
-                    } else {
-                    item {
-                        Column {
-                            PageReadNotice(networkError.takeIf { initialError == null }, 14.dp,
-                                errorMaxLines = Int.MAX_VALUE,
-                                loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
-                                failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
-                                updateNotice()
-                                UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
-                                    onSwitch = { targetTab = 0; targetAdding = false; targets = true },
-                                    onAdd = { targetTab = 0; targetAdding = true; targets = true },
-                                    onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
-                                    onPay = onOpenDormFee)
-                            }
+                    item(key = "hall-overview") {
+                        PageReadNotice(networkError.takeIf { !showFailure && initialError == null }, 14.dp,
+                            errorMaxLines = Int.MAX_VALUE,
+                            loading = !showFailure && (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
+                            failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
+                            updateNotice()
+                            if (showFailure) ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
+                            else UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
+                                onSwitch = { targetTab = 0; targetAdding = false; targets = true },
+                                onAdd = { targetTab = 0; targetAdding = true; targets = true },
+                                onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
+                                onPay = onOpenDormFee)
                         }
                     }
+                    if (!showFailure) {
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }
                     item {
                         Card(Modifier.fillMaxWidth().testTag("hall-others-card"), cornerRadius = 24.dp) {

@@ -48,11 +48,10 @@ fun RechargeDialog(
     val targetPage = rememberWhileShown(show, if (isResult) RechargeSheetPage.Result else RechargeSheetPage.Amount)
     val title = rememberWhileShown(show,
         if (isResult) null else if (state.config?.recipient != null) "代人充值" else "卡片充值")
-    OverlayBottomSheet(
+    PaymentSheet(
         show = show,
-        startAction = { key(session) { SheetTitle(title) } },
+        title = title,
         onDismissRequest = { if (hasAttempt) onFinish() else onDismiss() },
-        renderInRootScaffold = true,
         // The result has its own spacing; avoid adding the sheet's defaults again.
         insideMargin = DpSize(0.dp, 0.dp),
     ) {

@@ -29,6 +29,8 @@ import com.mercury.yktwx.MyViewModel
 import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
+import com.mercury.yktwx.LifeDevicesViewModel
+import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
@@ -72,7 +74,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References }
+private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References, LifeDevice }
 private enum class AuthPage { Restoring, Login, Main }
 
 @Composable
@@ -281,6 +283,10 @@ private fun MainContent(
     val collectedMyState by myModel.state.collectAsStateWithLifecycle()
     val avatarState by avatarModel.state.collectAsStateWithLifecycle()
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
+    val lifeModel: LifeDevicesViewModel = viewModel()
+    val lifeState by lifeModel.state.collectAsStateWithLifecycle()
+    LifeAlipayEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
+        lifeModel::launchLaundryPayment)
     val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
     val avatarPending = !state.needsLogin && (avatarState.owner != state.username || avatarState.preview != state.preview || avatarState.restoring)
     val avatarImage = avatarState.image.takeIf { customAvatar }
@@ -300,12 +306,16 @@ private fun MainContent(
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
-        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible)
+        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
     val network by rememberNetworkState(state.preview)
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
+    LaunchedEffect(foreground, isActive, state.preview) {
+        lifeModel.environment(foreground && isActive && !state.preview)
+    }
+    DisposableEffect(lifeModel) { onDispose { lifeModel.environment(false) } }
     val readPage = when {
         !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
@@ -379,6 +389,31 @@ private fun MainContent(
         if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) {
             layers = layers.dropLast(1)
         }
+    }
+    fun openLifeScanner() {
+        if (!isActive || layers.size >= MAX_LAYERS && layers.lastOrNull() != Screen.LifeDevice || motion.any { it.predictiveActive } ||
+            lifeState.waterBusy || lifeState.laundryBusy || lifeState.paymentLaunch != null ||
+            lifeState.restoring || lifeState.connectedPhone.isBlank()) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.openUnifiedScan()
+    }
+    fun connectLifeAccount() {
+        if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.connectAccount()
+    }
+    fun openLifeSession(feature: LifeFeature, sessionId: String) {
+        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.openSession(feature, sessionId)
+    }
+    fun scannedLifeDevice(raw: String) {
+        if (!isActive || layers.lastOrNull() != Screen.LifeDevice ||
+            lifeState.waterBusy || lifeState.laundryBusy) return
+        lifeModel.scanned(raw)
+    }
+    LaunchedEffect(lifeState.entryRequest) {
+        if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
@@ -498,8 +533,8 @@ private fun MainContent(
                             motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD),
                 ) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
-                    val bottom = padding.calculateBottomPadding() + 28.dp
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+                        val bottom = padding.calculateBottomPadding() + 28.dp
                         HorizontalPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
                             beyondViewportPageCount = 1, key = { it },
@@ -512,6 +547,15 @@ private fun MainContent(
                                     onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     isActive = paymentPageSelected && !paymentPageCovered,
+                                    onScan = ::openLifeScanner,
+                                    scanEnabled = !lifeState.restoring && lifeState.connectedPhone.isNotBlank() &&
+                                        !lifeState.waterBusy && !lifeState.laundryBusy && lifeState.paymentLaunch == null,
+                                    lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
+                                    onLifeLogin = ::connectLifeAccount,
+
+                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                                    onOpenLifeSession = ::openLifeSession,
+                                    onDismissLifeSession = lifeModel::dismissSession,
                                     onUnlost = {
                                         val account = state.account?.account
                                         if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
@@ -634,6 +678,8 @@ private fun MainContent(
                     Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
                         onOpenReferences = { open(Screen.References) }, onBack = ::close)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
+                    Screen.LifeDevice -> LifeDevicePage(lifeState, settings, lifeModel,
+                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice)
                     else -> SecondaryPage(
                         screen = screen,
                         settings = settings,
@@ -648,6 +694,7 @@ private fun MainContent(
         }
     }
     }
+    LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
     AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible), updateModel::dismiss)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&

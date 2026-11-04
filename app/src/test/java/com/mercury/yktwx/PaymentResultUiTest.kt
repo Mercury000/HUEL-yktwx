@@ -77,6 +77,12 @@ class PaymentResultUiTest {
         compose.onNodeWithText("完成").performClick()
         compose.runOnIdle { assertTrue(finished) }
     }
+    @Test fun campusPaymentStillDefaultsToWeChatWhileAwaitingPayment() {
+        content(phase = RechargePhase.AwaitingPayment, detail = null)
+        compose.onNodeWithText("请在微信中完成支付").assertIsDisplayed()
+        compose.onNodeWithText("请在支付宝中完成支付").assertDoesNotExist()
+        compose.onNodeWithText("完成").assertDoesNotExist()
+    }
 
     @Test fun rechargeFailureReplacesAmountWithOfficialMessageWithoutRepeatingIt() {
         content(subject = "充值")

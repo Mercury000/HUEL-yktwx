@@ -26,12 +26,13 @@ interface Vault {
 }
 
 /** AES-256-GCM, randomized IV and a non-exportable Android Keystore key. Backups are disabled. */
-class SecureVault(context: Context) : Vault {
-    private val prefs = context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE)
+class SecureVault(context: Context, storageName: String = "encrypted_account",
+    private val keyAlias: String = "yktwx.account.aes.v1") : Vault {
+    private val prefs = context.getSharedPreferences(storageName, Context.MODE_PRIVATE)
     private val keyStore by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
     private val encryptionKey: SecretKey by lazy {
-        (keyStore.getKey(ALIAS, null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-            init(KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+        (keyStore.getKey(keyAlias, null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
+            init(KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setKeySize(256).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setRandomizedEncryptionRequired(true).build())
@@ -46,13 +47,13 @@ class SecureVault(context: Context) : Vault {
     }
     // Login reports persistence failure to the user. Keep one checked, atomic commit on IO.
     @SuppressLint("ApplySharedPref")
-    @Synchronized private fun write(values: Map<String, String>) {
+    @Synchronized internal fun write(values: Map<String, String>) {
         val encrypted = values.mapValues { (name, plain) -> encrypt(name, plain) }
         val editor = prefs.edit()
         encrypted.forEach { (name, value) -> editor.putString(name, value) }
         if (!editor.commit()) throw YktException("无法加密保存账户，请检查设备安全设置")
     }
-    @Synchronized private fun read(name: String): JSONObject? {
+    @Synchronized internal fun read(name: String): JSONObject? {
         val saved = prefs.getString(name, null) ?: return null
         return try {
             val bytes = Base64.decode(saved, Base64.NO_WRAP)
@@ -78,5 +79,5 @@ class SecureVault(context: Context) : Vault {
         write(mapOf("credentials" to credentialsJson(credentials), "session" to sessionJson(session)))
     @Synchronized override fun clearSession() { prefs.edit().remove("session").apply() }
     @Synchronized override fun clear() { prefs.edit().clear().apply() }
-    private companion object { const val ALIAS = "yktwx.account.aes.v1" }
+    @Synchronized internal fun remove(name: String) { prefs.edit().remove(name).apply() }
 }

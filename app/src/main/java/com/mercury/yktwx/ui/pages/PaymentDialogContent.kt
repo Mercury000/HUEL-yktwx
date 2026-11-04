@@ -25,6 +25,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.data.FeeMethod
@@ -41,9 +42,35 @@ import com.mercury.yktwx.ui.components.DashboardPlaceholder
 import com.mercury.yktwx.ui.components.ReadContent
 import com.mercury.yktwx.ui.components.UpdatedText
 import com.mercury.yktwx.ui.components.LocalReadMotionEnabled
+import com.mercury.yktwx.ui.components.SheetTitle
+import com.mercury.yktwx.ui.components.rememberOverlaySession
+import com.mercury.yktwx.ui.components.ReadLayout
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.LocalContentColor
+
+/** All payment flows keep the same native sheet host, title and outer insets. */
+@Composable
+internal fun PaymentSheet(show: Boolean, title: String?, onDismissRequest: () -> Unit,
+    insideMargin: DpSize = DpSize(20.dp, 12.dp), content: @Composable () -> Unit) {
+    val session = rememberOverlaySession(show)
+    OverlayBottomSheet(show = show, startAction = { key(session) { SheetTitle(title) } },
+        onDismissRequest = onDismissRequest, renderInRootScaffold = true, insideMargin = insideMargin) { content() }
+}
+
+/** Method selection and submit behavior shared by fixed-price services and amount-entry payments. */
+@Composable
+internal fun PaymentMethodActions(methods: List<String>, selected: Int, onSelect: (Int) -> Unit,
+    label: String, onSubmit: () -> Unit, enabled: Boolean, canSubmit: Boolean,
+    error: String? = null, modifier: Modifier = Modifier) {
+    InlineErrorGroup(error, 16.dp) {
+        Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        if (methods.isNotEmpty()) HallNeutralTabs(methods, selected) { if (enabled && it != selected) onSelect(it) }
+        Button(onClick = { if (enabled && canSubmit) onSubmit() }, enabled = enabled && canSubmit,
+            modifier = modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
+    }
+}
 
 /** The amount and method form shared by hall fees and campus-card recharge. */
 @Composable
@@ -73,18 +100,10 @@ internal fun PaymentAmountForm(
             if (next) hasFocused = true
             focused = next
         })
-    InlineErrorGroup(validationMessage ?: error, 16.dp) {
-        Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        HallNeutralTabs(methods, selectedMethod) {
-            if (enabled && !loading && it != selectedMethod) { onMethod(it); onInputEdited(FormField.PaymentMethod) }
-        }
-        Button(onClick = { if (enabled && canSubmit && !loading && valid) cents?.let { keyboard?.hide(); onSubmit(it) } },
-            enabled = enabled && canSubmit && !loading && valid,
-            modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-            Text(if (loading && submitting) "正在发起…"
-                else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值")
-        }
-    }
+    PaymentMethodActions(methods, selectedMethod, { onMethod(it); onInputEdited(FormField.PaymentMethod) },
+        label = if (loading && submitting) "正在发起…" else if (cents != null && valid) "充值 ¥ " + RechargeMoney.yuan(cents) else "充值",
+        onSubmit = { cents?.let { keyboard?.hide(); onSubmit(it) } }, enabled = enabled && !loading,
+        canSubmit = canSubmit && valid, error = validationMessage ?: error)
 }
 
 /** Server limits wrap at the same readable size as other secondary text. */
@@ -242,6 +261,8 @@ internal fun PaymentResultContent(
     enabled: Boolean = true,
     onCheck: (() -> Unit)? = null,
     loadingTitle: String? = null,
+    paymentApp: String = "微信",
+    retryMethodLabel: (FeeMethod) -> String = { it.name + "支付" },
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -255,7 +276,7 @@ internal fun PaymentResultContent(
         RechargePhase.TimedOut -> "支付超时"
         RechargePhase.Checking -> if (loading) "正在查询结果" else "支付结果"
         RechargePhase.Creating -> "正在发起" + subject
-        else -> "请在微信中完成支付"
+        else -> "请在${paymentApp}中完成支付"
     }
     val color = when (phase) {
         RechargePhase.Paid -> MiuixTheme.colorScheme.primary
@@ -303,7 +324,7 @@ internal fun PaymentResultContent(
                     PaymentSelectionCard(selected = selected, enabled = enabled,
                         onClick = { selectedMethod = if (selected) null else method }) { contentColor ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(method.name + "支付", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                            Text(retryMethodLabel(method), fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                                 color = contentColor, modifier = Modifier.weight(1f))
                             if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
                         }

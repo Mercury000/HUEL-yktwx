@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0"
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
+val machineProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+val pangguiSecret = providers.environmentVariable("PANGGUI_API_SECRET")
+    .orElse(machineProperties.getProperty("panggui.apiSecret", "")).get()
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
@@ -14,6 +21,7 @@ android {
         versionName = "1.3.0"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "PANGGUI_API_SECRET", "\"" + pangguiSecret.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {
@@ -84,6 +92,7 @@ dependencies {
     // Payment QR and barcode generation; camera decoding uses wechat-qrcode-lite.
     implementation("com.google.zxing:core:3.5.4")
     implementation(files("libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar"))
+    implementation("com.alipay.sdk:alipaysdk-android:15.8.42")
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
