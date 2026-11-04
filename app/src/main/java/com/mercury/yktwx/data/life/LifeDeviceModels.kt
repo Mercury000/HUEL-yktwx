@@ -9,7 +9,7 @@ data class LifeAccount(val phone: String, val token: String) {
     val maskedPhone: String get() = if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else ""
 }
 
-data class LifeSku(val id: String, val name: String, val available: Boolean)
+data class LifeSku(val id: String, val name: String, val available: Boolean, val price: String = "", val feature: String = "")
 data class LifePayChannel(val method: String, val name: String, val available: Boolean,
     val needsOpen: Boolean, val remark: String? = null, val link: String? = null)
 
@@ -31,6 +31,14 @@ data class LifeDevice(
         alipay == null -> "该设备没有可用的支付宝免密渠道"
         alipay?.needsOpen == true -> "请先在胖乖生活开通支付宝免密，返回后刷新设备"
         alipay?.available != true -> alipay?.remark ?: "支付宝免密暂不可用"
+        else -> null
+    }
+    val laundryError: String? get() = when {
+        category != "00" -> "请扫描洗衣设备"
+        bluetooth -> "该设备需要蓝牙操作，请使用胖乖生活"
+        payment != "before" -> "该设备的支付方式暂未接入"
+        error != null -> error
+        skus.none { it.available } -> "设备当前没有可用的洗衣程序"
         else -> null
     }
 }
@@ -90,4 +98,7 @@ interface LifeDeviceStore {
     fun session(): WaterSession?
     fun saveSession(session: WaterSession)
     fun clearSession()
+    fun laundrySession(): LaundrySession? = null
+    fun saveLaundrySession(session: LaundrySession) { throw LifeDeviceException("无法保存洗衣进度") }
+    fun clearLaundrySession() {}
 }

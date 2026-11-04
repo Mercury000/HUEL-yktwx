@@ -115,4 +115,91 @@ class LifeDeviceApiTest {
             assertEquals(listOf("/goods/water/sync"), calls.map { it.url.path })
         }
     }
+
+    private fun orderPayload(status: Int = 0, price: String = "0.00", order: String = "wash-1") =
+        """{"code":0,"data":{"id":"wash-id","orderNo":"$order","orderStatus":$status,"payPrice":"$price","machineFunctionName":"桶自洁","markMinutes":5,"payTime":"2026-11-04 12:41:47","completeTime":"2026-11-04 12:46:47","finishTime":"2026-11-04 12:48:48","tradeOrderItem":[{"goodsId":"77","skuId":"clean"}]}}"""
+
+    @Test fun laundryUsesNqtAndOnlyActualProgramsThenLoadsQuoteAndNumericShopChannel() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf(
+            "/goods/scan/v2" to """{"code":0,"data":{"id":"77","shopId":22,"categoryCode":"00","type":"goods"}}""",
+            "/goods/normal/details" to """{"code":0,"data":{"goodsId":"77","name":"77","categoryCode":"00","orgId":22,"shopId":"actual-shop","imei":"serial-77","payment":"before","isBluetooth":0,"supportAppUserFinish":false}}""",
+            "/goods/normal/skus" to """{"code":0,"data":[{"skuId":"clean","name":"桶自洁","scanAvailable":true,"stockState":1,"price":"0.00","feature":"设备桶自洁","unit":"5"}]}""",
+            "/shop/outline/v2" to """{"code":0,"data":{"shopName":"学校","address":""}}""",
+            "/trade/preview/v4" to """{"code":0,"data":{"realPrice":"0.00","items":[{"goodsId":"77","skuId":"clean","skuInfo":{"markMinutes":5}}],"promotions":[{"isUsed":false}]}}""",
+            "/payChannelRoute/prePay" to """{"code":0,"data":[{"method":2,"methodName":"余额支付","useStatus":true,"needOpenFlag":false}]}"""
+        ), calls)
+        val nqt = "00000000-0000-4000-8000-000000000001"
+        val device = service.laundryDevice(nqt, "test-token")
+        assertNull(device.laundryError)
+        assertFalse(device.supportsFinish)
+        assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁"), device.skus.single())
+        assertTrue(device.channels.isEmpty())
+        assertEquals(mapOf("NQT" to nqt, "token" to "test-token"), calls.first().form())
+        val quote = service.laundryQuote(device, "clean", "test-token")
+        assertEquals(5, quote.minutes)
+        assertEquals("0.00", quote.price)
+        assertEquals("22", calls.last().form()["shopId"])
+        val preview = calls.single { it.url.path == "/trade/preview/v4" }.form()
+        assertEquals("0", preview["isAutoSelectPromotion"])
+        assertEquals("[]", preview["promotions"])
+        assertEquals("[]", preview["forbiddenPromotions"])
+        assertFalse(calls.any { it.url.path.contains("afterPay") })
+    }
+
+    @Test fun zeroLaundryStillCreatesPaysAndReadsSameOrderFinishedTime() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf(
+            "/trade/check_device_status" to """{"code":0,"data":{"health":true,"msgId":"m-1"}}""",
+            "/machine/sync" to """{"code":0,"data":true}""",
+            "/trade/create" to """{"code":0,"data":{"tradeNo":"wash-1","orderId":"wash-id"}}""",
+            "/pay/unify/pay" to """{"code":0,"data":null}""",
+            "/order/pay_status" to """{"code":0,"data":true}""",
+            "/machine/device_is_start" to """{"code":0,"data":true}""",
+            "/order/detail" to orderPayload(3),
+        ), calls)
+        assertTrue(service.laundryMachineReady(service.checkLaundryDevice("77", "test-token"), "test-token"))
+        val order = service.createLaundryOrder("77", "clean", "test-token")
+        assertEquals(LaundryOrder("wash-1", "wash-id"), order)
+        service.payLaundryBalance(order.orderNo, "test-token")
+        assertTrue(service.laundryPaid(order.orderNo, "2", "test-token"))
+        assertTrue(service.laundryStarted(order.orderNo, "test-token"))
+        val reading = service.laundryOrder(order.orderNo, "test-token")
+        assertEquals(3, reading.status)
+        assertTrue(reading.finishedAtMillis!! > reading.expectedEndMillis!!)
+        assertEquals("12:48:48", java.time.Instant.ofEpochMilli(reading.finishedAtMillis).atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalTime().toString())
+        assertEquals("[]", calls.single { it.url.path == "/trade/create" }.form()["promotions"])
+        assertTrue(calls.filter { it.url.path in setOf("/pay/unify/pay", "/order/pay_status", "/machine/device_is_start", "/order/detail") }
+            .all { it.form()["orderNo"] == order.orderNo })
+        assertFalse(calls.any { it.url.path in setOf("/order/list", "/goods/endWater", "/order/afterPay/creating") })
+    }
+
+    @Test fun laundryAgainPayUsesOrderShopAndSignedAlipayPayloadIsPassedWithoutRewriting() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val payload = "app_id=test&biz_content=test&sign_type=RSA2&sign=test"
+        val service = api(mapOf(
+            "/payChannelRoute/againPay" to """{"code":0,"data":[{"method":13,"methodName":"支付宝","useStatus":true,"needOpenFlag":false}]}""",
+            "/pay/unify/prePay" to """{"code":0,"data":{"prepayParam":"$payload"}}"""
+        ), calls)
+        val device = LifeDevice("77", "nqt", "77", "00", "22", "22", "actual-shop", "serial", "", "", "before", false, false, null,
+            listOf(LifeSku("clean", "桶自洁", true)), emptyList())
+        val session = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying, orderNo = "wash-1")
+        assertEquals("13", service.laundryChannels(session, "test-token").single().method)
+        assertEquals("actual-shop", calls.first().form()["shopId"])
+        assertEquals(payload, service.prepareLaundryAlipay("wash-1", "test-token"))
+        assertEquals("13", calls.last().form()["payType"])
+    }
+
+    @Test fun laundryParsingDoesNotAcceptWrongLinksAndOrderIdentityMismatchIsRejected() = runBlocking {
+        val nqt = "00000000-0000-4000-8000-000000000001"
+        assertEquals(nqt, LifeDeviceCode.parse(nqt, LifeFeature.Laundry))
+        assertEquals(nqt, LifeDeviceCode.parse("https://h5.qiekj.com/skip?NQT=$nqt", LifeFeature.Laundry))
+        assertNull(LifeDeviceCode.parse("https://example.com/skip?NQT=$nqt", LifeFeature.Laundry))
+        assertNull(LifeDeviceCode.parse("867369079842630", LifeFeature.Laundry))
+        assertNull(LifeDeviceCode.parse("https://h5.qiekj.com/skip?NQT=$nqt&NQT=$nqt", LifeFeature.Laundry))
+        try {
+            api(mapOf("/order/detail" to orderPayload(order = "other-order")), mutableListOf()).laundryOrder("wash-1", "test-token")
+            fail("Cannot accept another order")
+        } catch (expected: LifeDeviceException) { assertEquals("洗衣订单信息不匹配", expected.message) }
+    }
 }

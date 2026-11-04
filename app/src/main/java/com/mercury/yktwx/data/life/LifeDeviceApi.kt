@@ -28,7 +28,7 @@ class LifeDeviceApi(
     private val secret: String = BuildConfig.PANGGUI_API_SECRET,
     private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
     private val clock: () -> Long = System::currentTimeMillis,
-) : LifeDeviceService {
+) : LifeDeviceService, LifeLaundryService {
     private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? = withContext(Dispatchers.IO) {
         if (token.isNotBlank() && secret.isBlank()) throw LifeDeviceException("胖乖生活连接配置缺失")
         val connection = openConnection(URL("https://userapi.qiekj.com$path"))
@@ -83,25 +83,27 @@ class LifeDeviceApi(
         return LifeAccount(phone, token)
     }
     override suspend fun device(serial: String, token: String): LifeDevice {
-        val scan = post("/goods/scan/v2", mapOf("SN" to serial), token).obj()
-        if (scan.text("type") != "goods" || scan.text("categoryCode") != "04") throw LifeDeviceException("请扫描饮水设备")
+        return readDevice(serial, "SN", "04", token)
+    }
+    override suspend fun laundryDevice(code: String, token: String): LifeDevice = readDevice(code, "NQT", "00", token)
+    private suspend fun readDevice(code: String, field: String, category: String, token: String): LifeDevice {
+        val scan = post("/goods/scan/v2", mapOf(field to code), token).obj()
+        if (scan.text("type") != "goods" || scan.text("categoryCode") != category)
+            throw LifeDeviceException(if (category == "04") "请扫描饮水设备" else "请扫描洗衣设备")
         val id = scan.required("id")
         val detail = post("/goods/normal/details", mapOf("goodsId" to id), token).obj()
-        if (detail.required("goodsId") != id || detail.text("categoryCode") != "04") throw LifeDeviceException("设备信息不匹配，请重新扫码")
+        if (detail.required("goodsId") != id || detail.text("categoryCode") != category) throw LifeDeviceException("设备信息不匹配，请重新扫码")
         val skuData = post("/goods/normal/skus", mapOf("goodsId" to id), token) as? JSONArray
             ?: throw LifeDeviceException("设备未返回接水选项")
-        val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), it.optBoolean("scanAvailable", false) && it.text("stockState") == "1") }
+        val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), it.optBoolean("scanAvailable", false) && it.text("stockState") == "1",
+            it.text("price"), it.text("feature")) }
         val orgId = detail.required("orgId")
         val routeShopId = scan.required("shopId")
         val shop = post("/shop/outline/v2", mapOf("orgId" to orgId, "goodsId" to id), token).obj()
         val imei = detail.required("imei")
-        val channelData = post("/payChannelRoute/afterPay", mapOf("imei" to imei, "useTicket" to "0", "shopId" to routeShopId, "goodsCategory" to "04"), token) as? JSONArray
-            ?: throw LifeDeviceException("设备未返回支付方式")
-        val channels = channelData.objects().map {
-            LifePayChannel(it.required("method"), it.text("methodName"), it.optBoolean("useStatus", false),
-                it.optBoolean("needOpenFlag", true), it.text("notUseRemark").ifBlank { null }, it.text("link").ifBlank { null })
-        }
-        return LifeDevice(id, serial, detail.text("name"), detail.text("categoryCode"), routeShopId, orgId,
+        val channels = if (category == "04") post("/payChannelRoute/afterPay", mapOf("imei" to imei, "useTicket" to "0", "shopId" to routeShopId, "goodsCategory" to "04"), token).channels()
+            else emptyList()
+        return LifeDevice(id, code, detail.text("name"), detail.text("categoryCode"), routeShopId, orgId,
             detail.text("shopId"), imei, shop.text("shopName"), shop.text("address"), detail.text("payment"),
             detail.text("isBluetooth") != "0", detail.optBoolean("supportAppUserFinish", false),
             detail.text("deviceErrorMsg").ifBlank { null }, skus, channels)
@@ -132,9 +134,75 @@ class LifeDeviceApi(
         val data = post("/order/sync", mapOf("orderNo" to orderNo, "payType" to "0"), token).obj()
         if (data.text("code") != "0") throw LifeDeviceException("订单处理失败，请稍后重试")
     }
+
+    private fun laundryItems(deviceId: String, skuId: String) = JSONArray().put(JSONObject()
+        .put("amount", "1").put("goodsId", deviceId).put("num", "1").put("skuId", skuId).put("soldType", "1")).toString()
+    override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String): LaundryQuote {
+        val data = post("/trade/preview/v4", mapOf("items" to laundryItems(device.id, skuId), "promotions" to "[]",
+            "isAutoSelectPromotion" to "0", "forbiddenPromotions" to "[]"), token).obj()
+        val item = (data.opt("items") as? JSONArray)?.objects()?.singleOrNull()
+            ?: throw LifeDeviceException("设备未返回程序价格")
+        if (item.required("goodsId") != device.id || item.required("skuId") != skuId)
+            throw LifeDeviceException("程序信息不匹配，请重新选择")
+        if ((data.opt("promotions") as? JSONArray)?.objects()?.any { it.optBoolean("isUsed", false) } == true)
+            throw LifeDeviceException("该价格含优惠，请在胖乖生活确认")
+        val price = data.required("realPrice").validPrice()
+        val channels = post("/payChannelRoute/prePay", mapOf("imei" to device.imei, "goodsId" to device.id,
+            "hitAd" to "0", "payPrice" to price, "useTicket" to "0", "shopId" to device.routeShopId,
+            "combineOrderStatus" to "false", "confirmSelectedStatus" to "false"), token).channels()
+        val rawInfo = item.opt("skuInfo")
+        val info = rawInfo as? JSONObject ?: (rawInfo as? String)?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val minutes = info?.text("markMinutes")?.toIntOrNull()?.takeIf { it > 0 }
+        return LaundryQuote(device.id, skuId, price, minutes, channels)
+    }
+    override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
+        val data = post("/trade/check_device_status", mapOf("goodsId" to deviceId), token).obj()
+        if (!data.optBoolean("health", false)) throw LifeDeviceException(data.text("faultDesc").ifBlank { "设备暂不可用，请稍后重试" })
+        return data.required("msgId")
+    }
+    override suspend fun laundryMachineReady(messageId: String, token: String): Boolean =
+        post("/machine/sync", mapOf("msgId" to messageId), token) == true
+    override suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder {
+        val data = post("/trade/create", mapOf("items" to laundryItems(deviceId, skuId), "promotions" to "[]"), token).obj()
+        return LaundryOrder(data.required("tradeNo"), data.required("orderId"))
+    }
+    override suspend fun laundryOrder(orderNo: String, token: String): LaundryReading {
+        val data = post("/order/detail", mapOf("orderNo" to orderNo), token).obj()
+        val item = (data.opt("tradeOrderItem") as? JSONArray)?.objects()?.singleOrNull()
+            ?: throw LifeDeviceException("订单未返回洗衣程序，请在胖乖生活核对")
+        val result = LaundryReading(data.required("orderNo"), data.required("id"), item.required("goodsId"), item.required("skuId"),
+            data.text("orderStatus").toIntOrNull(), data.required("payPrice").validPrice(), data.text("machineFunctionName"),
+            data.text("markMinutes").toIntOrNull()?.takeIf { it > 0 }, lifeTimestamp(data.text("payTime")),
+            lifeTimestamp(data.text("completeTime")), lifeTimestamp(data.text("finishTime")))
+        if (result.orderNo != orderNo) throw LifeDeviceException("洗衣订单信息不匹配")
+        return result
+    }
+    override suspend fun laundryChannels(session: LaundrySession, token: String): List<LifePayChannel> =
+        post("/payChannelRoute/againPay", mapOf("orderNo" to session.orderNo, "confirmSelectedStatus" to "false",
+            "shopId" to session.device.shopId), token).channels()
+    override suspend fun payLaundryBalance(orderNo: String, token: String) {
+        post("/pay/unify/pay", mapOf("orderNo" to orderNo, "payType" to "2"), token)
+    }
+    override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String {
+        val data = post("/pay/unify/prePay", mapOf("orderNo" to orderNo, "payType" to "13"), token).obj()
+        return data.required("prepayParam")
+    }
+    override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean =
+        post("/order/pay_status", mapOf("orderNo" to orderNo, "payType" to method), token) == true
+    override suspend fun laundryStarted(orderNo: String, token: String): Boolean =
+        post("/machine/device_is_start", mapOf("orderNo" to orderNo), token) == true
 }
 
 internal fun JSONObject.text(name: String): String = opt(name)?.takeUnless { it == JSONObject.NULL }?.toString().orEmpty()
 private fun JSONObject.required(name: String) = text(name).takeIf { it.isNotBlank() } ?: throw LifeDeviceException("设备响应信息不完整")
 private fun Any?.obj() = this as? JSONObject ?: throw LifeDeviceException("服务器返回内容异常")
 internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+private fun Any?.channels(): List<LifePayChannel> = (this as? JSONArray ?: throw LifeDeviceException("设备未返回支付方式"))
+    .objects().map { LifePayChannel(it.required("method"), it.text("methodName"), it.optBoolean("useStatus", false),
+        it.optBoolean("needOpenFlag", true), it.text("notUseRemark").ifBlank { null }, it.text("link").ifBlank { null }) }
+private fun String.validPrice(): String = takeIf { toBigDecimalOrNull()?.let { price -> price.signum() >= 0 && price.scale() <= 2 } == true }
+    ?: throw LifeDeviceException("价格信息异常，请在胖乖生活核对")
+internal fun lifeTimestamp(value: String): Long? = runCatching {
+    java.time.LocalDateTime.parse(value, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        .atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+}.getOrNull()
