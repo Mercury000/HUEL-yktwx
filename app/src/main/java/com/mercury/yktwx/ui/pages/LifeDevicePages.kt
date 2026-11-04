@@ -7,7 +7,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,7 +33,6 @@ import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
-import kotlinx.coroutines.delay
 import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -43,7 +41,6 @@ import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import java.util.Locale
 
 /** Both feature entries use this account drawer; closing it leaves the account disconnected. */
 @Composable
@@ -101,6 +98,10 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
     LaunchedEffect(state.scanning, active) { if (!state.scanning || !active) { manual = false; help = false } }
     val scanning = state.scanning || state.loadingDevice && state.device == null
+    if (state.feature == LifeFeature.Water && !scanning) {
+        PangguiWaterDevicePage(state, settings, model, active, onBack, nowMillis)
+        return
+    }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val view = LocalView.current
     if (scanning && active) DisposableEffect(view) {
@@ -120,14 +121,10 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Closed -> "洗衣订单"
         state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
-        state.feature == LifeFeature.Laundry -> "扫码洗衣"
-        state.water?.phase == WaterPhase.Ended -> "接水结束"
-        state.water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping) -> "接水进度"
-        else -> "扫码接水"
+        else -> "扫码洗衣"
     }
     LifeDeviceShell(title, settings, scanning, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
         footer = {
-            if (state.feature == LifeFeature.Water && !scanning) WaterActions(state, model, active, onBack)
             if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack, nowMillis)
         }) { padding ->
         val stage = when {
@@ -139,9 +136,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 LaundryPhase.Closed -> "closed"
                 else -> "processing"
             }}"
-            state.water?.phase == WaterPhase.Ended -> "water-ended"
-            state.water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping) -> "water-running"
-            else -> "water-ready"
+            else -> "laundry-ready"
         }
         AnimatedContent(LifeDevicePresentation(stage, state.copy(code = "", paymentLaunch = null)),
             contentKey = { it.stage }, modifier = Modifier.fillMaxSize(), transitionSpec = {
@@ -164,33 +159,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (state.feature == LifeFeature.Laundry) {
-                laundryContent(state, model, stageActive, nowMillis)
-            } else {
-                val water = state.water
-                val ended = water?.phase == WaterPhase.Ended
-                val progress = water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping)
-                if (ended) {
-                    val session = checkNotNull(water)
-                    item { WaterProgress(session, nowMillis) }
-                    item { WaterFeeNotice() }
-                    item { LifeDeviceFacts(session.device, session) }
-                } else if (progress) {
-                    val session = checkNotNull(water)
-                    item { WaterProgress(session, nowMillis) }
-                    item { LifeDeviceFacts(session.device) }
-                    item { LifePaymentCard(session.device) }
-                    item { WaterUsageNotice(session.device, running = true) }
-                } else {
-                    state.device?.let { device ->
-                        item { LifeDeviceHero(device, state.feature) }
-                        item { LifePaymentCard(device, showOptions = true, state = state,
-                            onSelect = model::selectSku, enabled = stageActive && !state.waterBusy && !state.loadingDevice) }
-                        item { WaterUsageNotice(device) }
-                    }
-                }
-                item { AnimatedInlineError(state.error) }
-            }
+            laundryContent(state, model, stageActive, nowMillis)
         }
         }
     }
@@ -259,29 +228,6 @@ internal fun LifeDeviceGlyph(feature: LifeFeature) {
 }
 
 @Composable
-private fun LifeDeviceFacts(device: LifeDevice, session: WaterSession? = null) {
-    val duration = session?.startedAtMillis?.let { started -> session.endedAtMillis?.let { end -> waterDuration(end - started) } }
-    val rows = buildList {
-        if (device.name.isNotBlank()) add("设备" to device.name)
-        if (device.shopName.isNotBlank()) add("位置" to device.shopName)
-        if (duration != null) add("本地参考时长" to duration)
-        if (session != null && device.alipay != null) add("支付方式" to device.alipay!!.name)
-        else add("服务提供方" to "胖乖生活")
-    }
-    Card(Modifier.fillMaxWidth().testTag("life-device-info"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-            rows.forEachIndexed { index, (label, value) ->
-                LifeDeviceField(label) {
-                    if (label == "支付方式") LifePaymentValue(device)
-                    else Text(value, fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End)
-                }
-                if (index < rows.lastIndex) HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-            }
-        }
-    }
-}
-
-@Composable
 internal fun LifeDeviceField(label: String, content: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -328,85 +274,19 @@ private fun LifePaymentCard(device: LifeDevice, showOptions: Boolean = false, st
 }
 
 @Composable
+internal fun lifeSuccessFill(): Color = if (isSystemInDarkTheme()) Color(0xFF283E32) else Color(0xFFEAF5EE)
+@Composable
+internal fun lifeSuccessInk(): Color = if (isSystemInDarkTheme()) Color(0xFF96C7AF) else Color(0xFF549276)
+
+@Composable
 private fun LifePaymentValue(device: LifeDevice) {
     val channel = device.alipay ?: return
     Text(if (device.payment == "after") "支付宝免密" else channel.name, fontSize = 12.sp)
 }
 
 @Composable
-private fun WaterUsageNotice(device: LifeDevice, running: Boolean = false) {
-    Card(Modifier.fillMaxWidth().testTag("water-usage-notice"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (!device.supportsFinish) "请按设备说明操作" else if (running) "接好后及时结束" else "接好后，点结束接水",
-                fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (running) "离开此页不会自动结束接水，可从付款页状态卡返回接水进度。"
-                else "请先放稳容器。费用可在胖乖生活或支付宝中查询。",
-                fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-        }
-    }
-}
-
-@Composable
-private fun WaterFeeNotice() {
-    Card(Modifier.fillMaxWidth().testTag("water-fee-notice"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Icon(AppIcons.Bill, null, Modifier.size(17.dp), tint = MiuixTheme.colorScheme.primary)
-                Text("费用可在胖乖生活或支付宝查询", Modifier.weight(1f), fontSize = 12.sp, lineHeight = 20.sp,
-                    fontWeight = FontWeight.SemiBold)
-            }
-            Text("支付宝免密后付，实际费用与扣款情况请查看对应记录。", fontSize = 11.sp, lineHeight = 19.sp,
-                color = DashboardPalette.muted)
-        }
-    }
-}
-
-@Composable
-internal fun lifeSuccessFill(): Color = if (isSystemInDarkTheme()) Color(0xFF283E32) else Color(0xFFEAF5EE)
-@Composable
-internal fun lifeSuccessInk(): Color = if (isSystemInDarkTheme()) Color(0xFF96C7AF) else Color(0xFF549276)
-
-private fun waterDuration(millis: Long): String {
-    val seconds = millis.coerceAtLeast(0) / 1000
-    return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)
-}
-
-@Composable
-private fun WaterProgress(session: WaterSession, nowMillis: () -> Long) {
-    LifeWaterProgress(session.phase, session.startedAtMillis, session.endedAtMillis, "接水", "water", nowMillis)
-}
-
-@Composable
-internal fun LifeWaterProgress(phase: WaterPhase, startedAt: Long?, endedAt: Long?, action: String, tag: String,
-    nowMillis: () -> Long = System::currentTimeMillis) {
-    var now by remember(startedAt) { mutableLongStateOf(nowMillis()) }
-    LaunchedEffect(phase, startedAt, nowMillis) {
-        while (phase != WaterPhase.Ended) { now = nowMillis(); delay(1000) }
-    }
-    val ended = phase == WaterPhase.Ended
-    Column(Modifier.fillMaxWidth().padding(top = if (ended) 30.dp else 36.dp, bottom = 24.dp).testTag("$tag-progress"),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        if (ended) {
-            DeviceCompletedIcon("$tag-ended-icon")
-            Text("${action}已结束", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
-            Text("设备已结束本次${action}", Modifier.padding(top = 7.dp), fontSize = 12.sp, color = DashboardPalette.muted)
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(Modifier.size(6.dp).background(lifeSuccessInk(), CircleShape))
-                Text(if (phase == WaterPhase.Stopping) "正在结束" else "${action}中", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
-            }
-            startedAt?.let { started ->
-                Text(waterDuration((endedAt ?: now) - started), Modifier.padding(top = 22.dp, bottom = 9.dp).testTag("$tag-elapsed"),
-                    fontSize = 60.sp, lineHeight = 72.sp, fontWeight = FontWeight.SemiBold)
-                Text("本地参考计时", fontSize = 12.sp, color = DashboardPalette.muted)
-            }
-            Text("费用以实际扣款记录为准", Modifier.padding(top = 3.dp), fontSize = 10.sp, color = DashboardPalette.muted)
-        }
-    }
-}
-
-@Composable
-private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean, onBack: () -> Unit) {
+private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
+    active: Boolean, onBack: () -> Unit, nowMillis: () -> Long) {
     val water = state.water
     val phase = water?.phase ?: WaterPhase.Ready
     val failedCommand = state.error != null && water != null && phase != WaterPhase.Running
@@ -422,28 +302,29 @@ private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel,
         phase == WaterPhase.Ended -> "再次扫码接水"
         else -> "开始接水"
     }
-    LifeDeviceActionFooter("water-action-footer") {
-    Text(if (phase == WaterPhase.Ready) "支付宝免密后付" else "费用可在胖乖生活或支付宝查询", fontSize = 12.sp,
-        lineHeight = 17.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
-    if (phase == WaterPhase.Running && water?.device?.supportsFinish != true) {
-        Text("请按设备说明结束接水", Modifier.fillMaxWidth(), fontSize = 13.sp, textAlign = TextAlign.Center,
-            color = DashboardPalette.muted)
-    } else Button(onClick = {
+    val device = water?.device ?: state.device
+    val display = WaterDeviceUiState(LifeProvider.Panggui, device?.name.orEmpty(), device?.shopName.orEmpty(),
+        phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
+        paymentMethod = device?.alipay?.let { if (device.payment == "after") "支付宝免密" else it.name },
+        supportsFinish = device?.supportsFinish == true, error = state.error)
+    val primary = WaterDeviceAction(label, !loading && when {
+        phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
+        else -> true
+    }) {
         when {
             failedCommand -> model.retryWater()
             phase == WaterPhase.Running -> model.stopWater()
             phase == WaterPhase.Ended -> model.scan()
             else -> model.startWater()
         }
-    }, enabled = active && !loading && when {
-        phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
-        else -> true
-    }, modifier = Modifier.fillMaxWidth().testTag("water-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
-        AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
-            label = "water-button-label") { Text(it) }
     }
-    if (phase == WaterPhase.Ended) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
-    }
+    WaterDevicePage(display, settings, active, primary,
+        scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, model::scan),
+        refreshAction = WaterDeviceAction("刷新设备", !state.waterBusy && !state.loadingDevice && phase == WaterPhase.Ready, model::refreshDevice),
+        onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
+        paymentContent = if (device == null) null else { enabled -> LifePaymentCard(device,
+            showOptions = phase in setOf(WaterPhase.Ready, WaterPhase.Starting), state = state, onSelect = model::selectSku,
+            enabled = enabled && !state.waterBusy && !state.loadingDevice) })
 }
 
 /** The device pages share the app's native action spacing and neutral secondary button style. */

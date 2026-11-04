@@ -209,6 +209,15 @@ class LifeDeviceUiTest {
         val notice = compose.onNodeWithTag("water-usage-notice").fetchSemanticsNode().boundsInRoot
         assertTrue("Content must fit above fixed action", notice.bottom < footer.top)
         capture("03-water-device-from-capture")
+        compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id, phase = WaterPhase.Starting)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("正在启动设备").assertIsDisplayed()
+        compose.onNodeWithTag("water-device-loading").assertIsDisplayed()
+        compose.onNodeWithTag("water-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
+        compose.onNodeWithTag("water-elapsed").assertDoesNotExist()
+        assertEquals("Starting keeps the shared device identity in place", hero,
+            compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot)
+        capture("water-starting-shared-page")
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id,
             phase = WaterPhase.Running, startedAtMillis = times.getLong("startedAt"))) }
         compose.onNodeWithText("结束接水").assertIsDisplayed()

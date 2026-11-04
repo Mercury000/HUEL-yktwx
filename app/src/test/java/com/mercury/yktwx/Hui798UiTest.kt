@@ -148,10 +148,33 @@ class Hui798UiTest {
         compose.onNodeWithText(device.name).assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("开始用水")
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
+        val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
+        assertEquals("Water identity uses the shared centered layout", hero.center.x,
+            compose.onNodeWithTag("life-device-glyph").fetchSemanticsNode().boundsInRoot.center.x, 1f)
+        assertEquals(hero.center.x, compose.onNodeWithTag("life-device-name").fetchSemanticsNode().boundsInRoot.center.x, 1f)
         capture("ready-${if (dark) "dark-large" else "light"}")
         val session = Hui798Session(device, WaterPhase.Running, attemptedAtMillis = 100_000, startAcknowledged = true,
             serverTime = 100_000, startedAtMillis = 100_000, sessionId = "session")
-        compose.runOnIdle { state = state.copy(sessions = listOf(session), selectedSessionId = session.sessionId) }
+        compose.runOnIdle { state = state.copy(sessions = listOf(session.copy(phase = WaterPhase.Starting, startedAtMillis = null)),
+            selectedSessionId = session.sessionId) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("正在启动设备").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-elapsed").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
+        val indicator = compose.onNodeWithTag("hui798-device-loading").fetchSemanticsNode().boundsInRoot
+        val message = compose.onNodeWithText("正在启动设备").fetchSemanticsNode().boundsInRoot
+        assertTrue("Spinner leaves space before the startup message", indicator.right < message.left)
+        assertTrue("Startup notice stays above the fixed footer",
+            compose.onNodeWithTag("hui798-usage-notice").fetchSemanticsNode().boundsInRoot.bottom <
+                compose.onNodeWithTag("hui798-action-footer").fetchSemanticsNode().boundsInRoot.top)
+        capture("starting-${if (dark) "dark-large" else "light"}")
+        compose.runOnIdle { state = state.copy(error = "设备响应较慢，请刷新状态") }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("hui798-device-loading").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("刷新状态")
+        compose.onNodeWithTag("hui798-elapsed").assertDoesNotExist()
+        capture("starting-failed-${if (dark) "dark-large" else "light"}")
+        compose.runOnIdle { state = state.copy(sessions = listOf(session), selectedSessionId = session.sessionId, error = null) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("结束用水")
         compose.onNodeWithTag("hui798-elapsed").assertIsDisplayed().assertTextContains("01:00")
@@ -185,7 +208,7 @@ class Hui798UiTest {
             Hui798DevicePage(state, settings, model, active = true, onScan = { scans++ }, onBack = {})
         } } }
         compose.onNodeWithText(id).assertIsDisplayed()
-        compose.onNodeWithText("饮水设备").assertIsDisplayed()
+        compose.onNodeWithText("生活用水设备").assertIsDisplayed()
         compose.onNodeWithTag("hui798-device-loading").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在查询…")
         capture("querying-light")
