@@ -92,6 +92,19 @@ class LifeDevicesViewModelTest {
         assertEquals(0, model.state.value.entryRequest)
         assertEquals(0, api.loginCalls)
     }
+    @Test fun connectingFromInlineNoticeStaysOnPaymentPageUntilScannerIsRequested() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store()); runCurrent()
+        assertFalse(model.state.value.loginVisible)
+        model.connectAccount()
+        assertTrue(model.state.value.loginVisible)
+        model.phoneChanged("13800000000"); model.codeChanged("123456"); model.login(); runCurrent()
+        assertFalse(model.state.value.loginVisible)
+        assertTrue(model.state.value.connectedPhone.isNotBlank())
+        assertEquals(0, model.state.value.entryRequest); assertFalse(model.state.value.scanning)
+        model.openScan(); runCurrent()
+        assertEquals(1, model.state.value.entryRequest); assertTrue(model.state.value.scanning)
+        assertEquals(0, api.deviceCalls)
+    }
 
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Water); model.pageVisible(true)
@@ -196,7 +209,7 @@ class LifeDevicesViewModelTest {
         val api = Api(); val store = Store(LifeAccount("13800000000", "test-token")); val model = model(api, store)
         prepare(model); model.startWater(); runCurrent()
         val session = model.state.value.water!!
-        model.openScan(LifeFeature.Water); runCurrent()
+        model.openScan(); runCurrent()
         assertTrue(model.state.value.scanning); assertNull(model.state.value.water)
         assertEquals(session, store.savedSession)
         model.environment(true); runCurrent(); advanceTimeBy(1500); runCurrent()
@@ -208,7 +221,7 @@ class LifeDevicesViewModelTest {
         assertEquals(1, model.state.value.waterSessions.size)
         model.stopWater(); runCurrent()
         assertEquals(WaterPhase.Ended, store.savedSession?.phase)
-        model.openScan(LifeFeature.Water); runCurrent()
+        model.openScan(); runCurrent()
         assertEquals(1, model.state.value.waterSessions.size)
         model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
         assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)

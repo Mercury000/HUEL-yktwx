@@ -7,6 +7,9 @@ import java.math.BigDecimal
 /** Device codes use explicit fields; a UUID is the observed laundry NQT, not an IMEI. */
 object LifeDeviceCode {
     private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    fun identify(raw: String): Pair<LifeFeature, String>? = LifeFeature.entries.mapNotNull { feature ->
+        parse(raw, feature)?.let { feature to it }
+    }.singleOrNull()
     fun parse(raw: String, feature: LifeFeature): String? {
         if (feature == LifeFeature.Water) return DeviceSerial.parse(raw)
         val value = raw.trim()

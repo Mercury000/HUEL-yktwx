@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -30,6 +32,9 @@ import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.PaymentCodeProblem
+import com.mercury.yktwx.data.life.LifeFeature
+import com.mercury.yktwx.data.life.WaterSession
+import com.mercury.yktwx.data.life.LaundrySession
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
@@ -38,7 +43,13 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true, updateNotice: @Composable () -> Unit = {}) {
+fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true, updateNotice: @Composable () -> Unit = {},
+    onScan: () -> Unit = {}, scanEnabled: Boolean = true,
+    lifeLoginRequired: Boolean = false, onLifeLogin: () -> Unit = {},
+    waterSessions: List<WaterSession> = emptyList(), laundrySessions: List<LaundrySession> = emptyList(),
+    onOpenLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
+    onDismissLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
+    lifeNowMillis: () -> Long = System::currentTimeMillis) {
     // Restoring an account precedes the shell's read effect. An unverified account
     // without a failed read is still waiting; keep this presentation local to the UI.
     val awaitingVerification = !state.needsLogin && state.code == null && state.error == null &&
@@ -81,10 +92,23 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         }
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val lifeStatus: @Composable () -> Unit = {
+        InlineLifeLoginNotice(lifeLoginRequired, onLifeLogin, enabled = isActive)
+        LifeDeviceStatusCards(waterSessions, laundrySessions, onOpenLifeSession, onDismissLifeSession,
+            enabled = isActive && !lifeLoginRequired, nowMillis = lifeNowMillis)
+    }
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
-                DashboardTopBar("付款", scrollBehavior = scrollBehavior)
+                DashboardTopBar("付款", scrollBehavior = scrollBehavior) {
+                    val enabled = isActive && scanEnabled
+                    IconButton(onClick = { if (isActive && scanEnabled) { enlarged = null; onScan() } },
+                        modifier = Modifier.padding(end = 16.dp).testTag("payment-scan-button")
+                            .semantics { if (!enabled) disabled() }, enabled = enabled) {
+                        Icon(AppIcons.Scan, "扫一扫", Modifier.size(24.dp),
+                            tint = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.disabledOnSurface)
+                    }
+                }
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -111,6 +135,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             item {
                                 Column {
                                     updateNotice()
+                                    lifeStatus()
                                     ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
                                 }
                             }
@@ -118,6 +143,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                         item {
                             PageReadNotice(networkError, 16.dp, errorMaxLines = Int.MAX_VALUE) {
                             updateNotice()
+                            lifeStatus()
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     Row(Modifier.fillMaxWidth().height(paymentHeaderHeight()), verticalAlignment = Alignment.CenterVertically) {

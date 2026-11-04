@@ -7,11 +7,13 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.*
+import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -60,19 +62,21 @@ class LifeDeviceUiTest {
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Test fun bothEntriesOpenSameNativeLoginDrawerWithNoInventedFields() {
+    @Test fun inlineReminderOpensNativeLoginDrawerOnlyWhenClicked() {
         val model = model()
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold {
                     val state by model.state.collectAsState()
-                    LifeDeviceEntries(model::openScan)
+                    PaymentPage(PreviewData.paymentState(false), settings(), 0.dp, {},
+                        lifeLoginRequired = true, onLifeLogin = model::connectAccount, scanEnabled = false)
                     LifeDeviceLoginSheet(state, model, active = true)
                 } }
             }
         }
         compose.waitUntil { !model.state.value.restoring }
-        compose.onNodeWithTag("hall-life-entry-water").performClick()
+        compose.onNodeWithTag("life-login-sheet").assertDoesNotExist()
+        compose.onNodeWithTag("life-login-notice").assertIsDisplayed().performClick()
         compose.onNodeWithTag("life-login-sheet").assertIsDisplayed()
         compose.onNodeWithTag("life-login-phone").assertTextContains("手机号")
         compose.onNodeWithTag("life-login-code").assertIsDisplayed()
@@ -91,7 +95,7 @@ class LifeDeviceUiTest {
         assertEquals(TextRange(4), code.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
         compose.runOnIdle { model.dismissLogin() }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("hall-life-entry-laundry").performClick()
+        compose.onNodeWithTag("life-login-notice").performClick()
         compose.onNodeWithTag("life-login-sheet").assertIsDisplayed()
         assertEquals(0, model.state.value.entryRequest)
     }

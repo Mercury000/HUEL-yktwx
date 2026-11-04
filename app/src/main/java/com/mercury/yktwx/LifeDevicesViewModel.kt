@@ -23,7 +23,7 @@ data class LifeDevicesUiState(
     val waterSessions: List<WaterSession> = emptyList(), val laundrySessions: List<LaundrySession> = emptyList(),
 )
 
-/** One login gate, account, scan request and device state shared by the two entries. */
+/** One login gate and scanner route each recognized code to its device service. */
 class LifeDevicesViewModel internal constructor(
     app: Application, private val api: LifeDeviceService, private val store: LifeDeviceStore,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
@@ -67,8 +67,9 @@ class LifeDevicesViewModel internal constructor(
             resumeSessions()
         }
     }
-    fun openScan(feature: LifeFeature) {
+    fun openScan() {
         if (mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
+        val feature = mutable.value.feature
         requestedScan = true
         requestedSessionId = null
         requestedFeature = feature
@@ -139,6 +140,11 @@ class LifeDevicesViewModel internal constructor(
         requestedScan = false; requestedSessionId = null
         mutable.update { it.copy(loginVisible = false, loggingIn = false, sendingCode = false, code = "", loginError = null) }
     }
+    fun connectAccount() {
+        if (mutable.value.restoring || account != null || mutable.value.loggingIn) return
+        requestedFeature = null; requestedScan = false; requestedSessionId = null
+        mutable.update { it.copy(loginVisible = true, loginError = null, code = "") }
+    }
     fun phoneChanged(value: String) {
         if (mutable.value.loggingIn || mutable.value.sendingCode) return
         mutable.update { it.copy(phone = value.filter { c -> c in '0'..'9' }.take(11), code = "", loginError = null) }
@@ -190,8 +196,8 @@ class LifeDevicesViewModel internal constructor(
                 mutable.update { it.copy(water = restored.first.lastOrNull(), laundry = restored.second.lastOrNull(),
                     waterSessions = restored.first, laundrySessions = restored.second) }
                 mutable.update { it.copy(loggingIn = false, connectedPhone = next.maskedPhone, loginVisible = false, code = "") }
-                val feature = requestedFeature ?: mutable.value.feature
-                continueEntry(feature)
+                requestedFeature?.let { continueEntry(it) }
+                resumeSessions()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
         }
@@ -209,19 +215,15 @@ class LifeDevicesViewModel internal constructor(
     }
     fun scan() {
         if (mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
-        if (mutable.value.feature == LifeFeature.Laundry) {
-            scanGeneration++; deviceTask?.cancel(); quoteTask?.cancel()
-            mutable.update { it.copy(scanning = true, device = null, selectedSkuId = "", error = null, loadingDevice = false,
-                laundry = null, laundryQuote = null, paymentVisible = false, quoteLoading = false) }
-            return
-        }
-        scanGeneration++; deviceTask?.cancel()
-        mutable.update { it.copy(scanning = true, device = null, selectedSkuId = "", error = null, loadingDevice = false, water = null) }
+        scanGeneration++; deviceTask?.cancel(); quoteTask?.cancel()
+        mutable.update { it.copy(scanning = true, device = null, selectedSkuId = "", error = null, loadingDevice = false,
+            water = null, laundry = null, laundryQuote = null, paymentVisible = false, quoteLoading = false) }
     }
     fun scanned(raw: String) {
         if (!visible || mutable.value.loadingDevice || !mutable.value.scanning) return
-        val serial = LifeDeviceCode.parse(raw, mutable.value.feature)
-        if (serial == null) { mutable.update { it.copy(error = "无法识别此二维码，请输入设备编号") }; return }
+        val (feature, serial) = LifeDeviceCode.identify(raw)
+            ?: run { mutable.update { it.copy(error = "无法识别此设备码，请扫描接水或洗衣设备二维码") }; return }
+        mutable.update { it.copy(feature = feature) }
         loadDevice(serial)
     }
     fun refreshDevice() {
@@ -662,7 +664,7 @@ class LifeDevicesViewModel internal constructor(
     }
     private fun continueEntry(feature: LifeFeature) {
         val sessionId = requestedSessionId
-        if (requestedScan) openScan(feature)
+        if (requestedScan) openScan()
         else if (sessionId != null) openSession(feature, sessionId)
         else open(feature)
     }

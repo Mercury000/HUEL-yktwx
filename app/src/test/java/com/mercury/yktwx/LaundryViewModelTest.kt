@@ -50,6 +50,7 @@ class LaundryViewModelTest {
         var status = 0; var paid = false; var started = false; var price = "0.00"; var readSku = "clean"
         var lostCreate = false; var lostPayment = false
         var waterReads = 0; var waterReading: WaterReading? = null; var waterFails = false
+        var scannedWaterDevice: LifeDevice? = null
         var readyGate: CompletableDeferred<Unit>? = null
         val balance = LifePayChannel("2", "余额支付", true, false)
         val alipay = LifePayChannel("13", "支付宝", true, false)
@@ -63,7 +64,7 @@ class LaundryViewModelTest {
         val paidOrders = mutableSetOf<String>()
         override suspend fun sendCode(phone: String) {}
         override suspend fun login(phone: String, code: String) = LifeAccount(phone, "test-token")
-        override suspend fun device(serial: String, token: String): LifeDevice = error("No water endpoint")
+        override suspend fun device(serial: String, token: String): LifeDevice = scannedWaterDevice ?: error("No water endpoint")
         override suspend fun selectAfterPay(token: String) { error("No after pay") }
         override suspend fun unlock(skuId: String, token: String): WaterUnlock = error("No water unlock")
         override suspend fun message(messageId: String, token: String): WaterMessage? = error("No water sync")
@@ -262,7 +263,7 @@ class LaundryViewModelTest {
         val store = Store(); val model = model(api, store)
         prepare(model); model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
         val first = model.state.value.laundry!!
-        model.openScan(LifeFeature.Laundry); runCurrent()
+        model.openScan(); runCurrent()
         assertTrue(model.state.value.scanning); assertNull(model.state.value.laundry)
         assertEquals(listOf(first), store.laundries)
         model.scanned(secondDevice.serial); runCurrent()
@@ -274,7 +275,7 @@ class LaundryViewModelTest {
         model.environment(true); runCurrent()
         assertEquals(first.sessionId, model.state.value.laundry?.sessionId)
         assertTrue(api.readOrders.containsAll(listOf(first.orderNo, second.orderNo)))
-        model.openScan(LifeFeature.Laundry); runCurrent()
+        model.openScan(); runCurrent()
         val reads = api.details
         advanceTimeBy(5000); runCurrent()
         assertTrue(api.details >= reads + 2)
@@ -331,6 +332,24 @@ class LaundryViewModelTest {
         api.detailGate!!.complete(Unit); runCurrent()
         assertTrue(model.state.value.laundrySessions.isEmpty()); assertNull(model.state.value.laundry)
         assertTrue(store.laundries.isEmpty())
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+    }
+    @Test fun unifiedScannerRoutesEachCodeByTypeAndRejectsAmbiguousCodes() = runTest(dispatcher) {
+        val waterDevice = device.copy(id = "water", category = "04", serial = "867369079842630", payment = "after",
+            skus = listOf(LifeSku("water-sku", "饮水", true)))
+        val api = Api().apply { scannedWaterDevice = waterDevice }
+        val model = model(api, Store()); runCurrent()
+        model.openScan(); model.pageVisible(true)
+        assertEquals(LifeFeature.Water, model.state.value.feature)
+        model.scanned(device.serial); runCurrent()
+        assertEquals(LifeFeature.Laundry, model.state.value.feature)
+        assertEquals(device, model.state.value.device); assertNotNull(model.state.value.laundryQuote)
+        model.openScan(); runCurrent()
+        model.scanned("https://h5.qiekj.com/skip?SN=${waterDevice.serial}&NQT=${device.serial}"); runCurrent()
+        assertTrue(model.state.value.scanning); assertNotNull(model.state.value.error); assertNull(model.state.value.device)
+        model.scanned("https://h5.qiekj.com/skip?SN=${waterDevice.serial}"); runCurrent()
+        assertEquals(LifeFeature.Water, model.state.value.feature)
+        assertEquals(waterDevice, model.state.value.device); assertNull(model.state.value.laundryQuote)
         assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
 }

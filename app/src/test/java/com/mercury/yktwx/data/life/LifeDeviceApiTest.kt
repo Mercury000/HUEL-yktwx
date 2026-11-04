@@ -198,6 +198,10 @@ class LifeDeviceApiTest {
         assertNull(LifeDeviceCode.parse("https://example.com/skip?NQT=$nqt", LifeFeature.Laundry))
         assertNull(LifeDeviceCode.parse("867369079842630", LifeFeature.Laundry))
         assertNull(LifeDeviceCode.parse("https://h5.qiekj.com/skip?NQT=$nqt&NQT=$nqt", LifeFeature.Laundry))
+        assertEquals(LifeFeature.Laundry to nqt, LifeDeviceCode.identify(nqt))
+        assertEquals(LifeFeature.Water to "867369079842630", LifeDeviceCode.identify("867369079842630"))
+        assertNull(LifeDeviceCode.identify("https://h5.qiekj.com/skip?NQT=$nqt&SN=867369079842630"))
+        assertNull(LifeDeviceCode.identify("https://example.com/skip?NQT=$nqt"))
         try {
             api(mapOf("/order/detail" to orderPayload(order = "other-order")), mutableListOf()).laundryOrder("wash-1", "test-token")
             fail("Cannot accept another order")

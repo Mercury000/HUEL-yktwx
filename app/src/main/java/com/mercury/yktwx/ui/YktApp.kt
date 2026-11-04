@@ -306,7 +306,7 @@ private fun MainContent(
     var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
-        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible)
+        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
     val network by rememberNetworkState(state.preview)
@@ -388,10 +388,15 @@ private fun MainContent(
             layers = layers.dropLast(1)
         }
     }
-    fun openLifeDevice(feature: LifeFeature) {
+    fun openLifeScanner() {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         if (!allowOnlineEntry(context, state.preview)) return
-        lifeModel.openScan(feature)
+        lifeModel.openScan()
+    }
+    fun connectLifeAccount() {
+        if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.connectAccount()
     }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
@@ -520,14 +525,7 @@ private fun MainContent(
                 ) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                        LifeDeviceStatusHost(lifeState.water, lifeState.laundry, padding.calculateBottomPadding(),
-                            visible = isActive && !state.preview && !state.needsLogin && layers.isEmpty() &&
-                                pagerState.currentPage != 1 && paymentSuccess == null && !dormPaymentVisible &&
-                                !rechargeState.visible && !cardState.visible && !passwordState.visible && !lifeState.loginVisible,
-                            onOpen = ::openLifeDevice,
-                            waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
-                            onOpenSession = ::openLifeSession) { extraBottom ->
-                        val bottom = padding.calculateBottomPadding() + 28.dp + extraBottom
+                        val bottom = padding.calculateBottomPadding() + 28.dp
                         HorizontalPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
                             beyondViewportPageCount = 1, key = { it },
@@ -540,6 +538,14 @@ private fun MainContent(
                                     onRecharge = ::recharge,
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     isActive = paymentPageSelected && !paymentPageCovered,
+                                    onScan = ::openLifeScanner,
+                                    scanEnabled = !lifeState.restoring && lifeState.connectedPhone.isNotBlank() &&
+                                        !lifeState.waterBusy && !lifeState.laundryBusy && lifeState.paymentLaunch == null,
+                                    lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
+                                    onLifeLogin = ::connectLifeAccount,
+                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                                    onOpenLifeSession = ::openLifeSession,
+                                    onDismissLifeSession = lifeModel::dismissSession,
                                     onUnlost = {
                                         val account = state.account?.account
                                         if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
@@ -567,12 +573,6 @@ private fun MainContent(
                                     feeOpening = feeOpening, feeOpeningTarget = feeTarget,
                                     onOpenCardService = ::cardAction,
                                     othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
-                                    onOpenLifeDevice = ::openLifeDevice,
-                                    waterSession = lifeState.water,
-                                    laundrySession = lifeState.laundry,
-                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
-                                    onOpenLifeSession = ::openLifeSession,
-                                    onDismissLifeSession = lifeModel::dismissSession,
                                 )
                                 2 -> BillPage(
                                     updateNotice = updateNotice,
@@ -609,7 +609,6 @@ private fun MainContent(
                                     onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
                                 )
                             }
-                        }
                         }
                     }
                     PaymentSuccessDialog(paymentSuccess, viewModel::dismissPaymentSuccess)

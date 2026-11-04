@@ -39,40 +39,10 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
-
-@Composable
-internal fun LifeDeviceEntries(onOpen: (LifeFeature) -> Unit) {
-    Card(Modifier.fillMaxWidth().testTag("hall-life-devices-card"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(top.yukonga.miuix.kmp.icon.MiuixIcons.GridView, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.primary)
-                Text("生活设备", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text("胖乖生活", fontSize = 11.sp, color = DashboardPalette.muted)
-            }
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LifeFeature.entries.forEach { feature ->
-                    val waterFeature = feature == LifeFeature.Water
-                    val ink = if (waterFeature) DashboardPalette.airAccent else MiuixTheme.colorScheme.primary
-                    Card(Modifier.weight(1f).fillMaxHeight().testTag("hall-life-entry-${feature.name.lowercase()}"),
-                        cornerRadius = 18.dp, colors = CardDefaults.defaultColors(color = if (waterFeature) DashboardPalette.airPanel else DashboardPalette.iconPanel),
-                        onClick = { onOpen(feature) }) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Icon(if (waterFeature) AppIcons.Water else AppIcons.Laundry, null, Modifier.size(26.dp), tint = ink)
-                            Text("扫码${feature.title}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = ink)
-                            Text(if (waterFeature) "饮水设备" else "选择洗衣程序", fontSize = 11.sp, lineHeight = 17.sp, color = ink.copy(alpha = .8f))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** Both feature entries use this account drawer; closing it leaves the account disconnected. */
 @Composable
@@ -358,7 +328,7 @@ private fun WaterUsageNotice(device: LifeDevice, running: Boolean = false) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (!device.supportsFinish) "请按设备说明操作" else if (running) "接好后及时结束" else "接好后，点结束接水",
                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (running) "离开此页不会自动结束接水，可从首页状态卡或大厅返回接水进度。"
+            Text(if (running) "离开此页不会自动结束接水，可从付款页状态卡返回接水进度。"
                 else "请先放稳容器。费用可在胖乖生活或支付宝中查询。",
                 fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
         }
@@ -475,15 +445,11 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            val identify = { if (show && LifeDeviceCode.parse(serial, state.feature) != null) onIdentify() }
-            if (state.feature == LifeFeature.Water) DigitTextField(value, onValue, label = "设备编号", maxDigits = 15,
-                enabled = show && !state.loadingDevice, modifier = Modifier.fillMaxWidth().testTag("life-device-serial"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { identify() }))
-            else DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
+            val identify = { if (show && LifeDeviceCode.identify(serial) != null) onIdentify() }
+            DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
                 modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
             InlineErrorGroup(state.error, 16.dp) {
-                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && LifeDeviceCode.parse(serial, state.feature) != null,
+                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && LifeDeviceCode.identify(serial) != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
                 }
@@ -494,12 +460,13 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
 
 @Composable
 private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit) {
-    OverlayBottomSheet(show = show, startAction = { SheetTitle("${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    OverlayBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
-                else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣。桶自洁请按设备说明使用，完成后可从大厅返回进度。",
+            Text(if (state.scanning) "扫描接水或洗衣设备上的二维码，识别后自动进入对应界面。已有服务进度可从付款页的状态卡查看。"
+                else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
+                else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣。桶自洁请按设备说明使用，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             display.device?.let { device ->
                 LifeDeviceField("设备编号") { Text(device.serial, fontSize = 12.sp) }
