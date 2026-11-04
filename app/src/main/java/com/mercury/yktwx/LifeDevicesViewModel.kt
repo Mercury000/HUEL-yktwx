@@ -95,7 +95,7 @@ class LifeDevicesViewModel internal constructor(
         val value = mutable.value
         if (feature == LifeFeature.Water) {
             val session = value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
-            if (session.phase != WaterPhase.Ended || !session.finalized) return
+            if (session.phase != WaterPhase.Ended) return
             mutable.update { it.copy(waterSessions = it.waterSessions.filterNot { item -> item.sessionId == sessionId },
                 water = it.water?.takeUnless { item -> item.sessionId == sessionId }) }
         } else {
@@ -373,9 +373,11 @@ class LifeDevicesViewModel internal constructor(
         if (session.phase != WaterPhase.Ended || session.finalized) return
         if (session.orderId.isBlank()) {
             val orderId = api.createAfterPay(session.orderNo, token)
+            if (mutable.value.waterSessions.none { it.sessionId == sessionId }) return
             session = session.copy(orderId = orderId)
             saveSession(session)
         }
+        if (mutable.value.waterSessions.none { it.sessionId == sessionId }) return
         api.syncOrder(session.orderNo, token)
         saveSession(session.copy(finalized = true))
         sessionError(LifeFeature.Water, session.sessionId, null)

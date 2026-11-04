@@ -50,7 +50,8 @@ internal fun LifeDeviceStatusCards(waterSessions: List<WaterSession>, laundrySes
             WaterPhase.Stopping -> "正在结束接水"
             else -> "接水中"
         }, session.device, if (session.phase == WaterPhase.Ended) "查看详情" else "查看进度",
-            sessionId = session.sessionId, completed = session.phase == WaterPhase.Ended, dismissible = session.finalized)) }
+            sessionId = session.sessionId, completed = session.phase == WaterPhase.Ended,
+            dismissible = session.phase == WaterPhase.Ended)) }
         laundries.forEach { session -> add(StatusEntry(LifeFeature.Laundry, when (session.phase) {
             LaundryPhase.Ended -> "洗衣已完成"
             LaundryPhase.Checking -> "正在检查洗衣设备"

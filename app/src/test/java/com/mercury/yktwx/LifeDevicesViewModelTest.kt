@@ -38,6 +38,7 @@ class LifeDevicesViewModelTest {
         var lostUnlock = false
         var messageGate: CompletableDeferred<Unit>? = null
         var stopGate: CompletableDeferred<Unit>? = null
+        var createGate: CompletableDeferred<Unit>? = null
         var reading = WaterReading(1, 2, "order-1")
         var createFailure = false
         var zeroConsumption = false
@@ -56,6 +57,7 @@ class LifeDevicesViewModelTest {
         override suspend fun endWater(goodsId: String, token: String) { stopCalls++; stopGate?.await(); reading = WaterReading(5, 1, "order-1", zeroConsumption) }
         override suspend fun createAfterPay(orderNo: String, token: String): String {
             createCalls++
+            createGate?.await()
             if (createFailure) throw java.io.IOException("lost create response")
             if (incompleteOrder) throw LifeDeviceException("设备响应信息不完整")
             return "id-1"
@@ -192,7 +194,7 @@ class LifeDevicesViewModelTest {
         assertTrue(model.state.value.scanning)
     }
 
-    @Test fun missingAfterPayFieldsCannotUndoConfirmedDeviceEnd() = runTest(dispatcher) {
+    @Test fun missingAfterPayFieldsKeepConfirmedEndDismissibleAcrossRestart() = runTest(dispatcher) {
         val api = Api().apply { incompleteOrder = true }
         val store = Store(LifeAccount("13800000000", "test-token"))
         val model = model(api, store)
@@ -202,6 +204,32 @@ class LifeDevicesViewModelTest {
         assertEquals(WaterPhase.Ended, store.savedSession?.phase)
         assertFalse(model.state.value.water!!.finalized)
         assertEquals("设备响应信息不完整", model.state.value.error)
+        assertEquals(1, api.createCalls)
+        assertEquals(0, api.syncCalls)
+        val session = model.state.value.water!!
+        model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
+        assertTrue(model.state.value.waterSessions.isEmpty())
+        assertNull(store.savedSession)
+        val restored = model(api, store); runCurrent()
+        restored.environment(true); runCurrent(); advanceTimeBy(3000); runCurrent()
+        assertTrue(restored.state.value.waterSessions.isEmpty())
+        assertEquals(1, api.createCalls)
+        assertEquals(0, api.syncCalls)
+    }
+    @Test fun dismissedEndedWaterCannotResumeAfterDelayedOrderResponse() = runTest(dispatcher) {
+        val api = Api().apply { createGate = CompletableDeferred() }
+        val store = Store(LifeAccount("13800000000", "test-token"))
+        val model = model(api, store)
+        prepare(model); model.startWater(); runCurrent()
+        model.stopWater(); runCurrent()
+        val session = model.state.value.water!!
+        assertEquals(WaterPhase.Ended, session.phase)
+        assertFalse(session.finalized)
+        model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
+        api.createGate!!.complete(Unit); runCurrent()
+        assertTrue(model.state.value.waterSessions.isEmpty())
+        assertNull(model.state.value.water)
+        assertNull(store.savedSession)
         assertEquals(1, api.createCalls)
         assertEquals(0, api.syncCalls)
     }

@@ -183,6 +183,28 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
         assertEquals(originalCodeTop, compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top, 1f)
     }
+    @Test fun paymentAllowsDismissalAsSoonAsWaterEndIsConfirmed() {
+        val device = LifeDevice("water", "serial", "开水", "04", "org", "org", "shop", "imei",
+            "学校", "", "after", false, true, null, emptyList(), emptyList())
+        val running = WaterSession(device, "sku", WaterPhase.Running, sessionId = "water-with-incomplete-response")
+        var waters by mutableStateOf(listOf(running))
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            MainNavigationScaffold(settings, 0, {}) { padding ->
+                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                    waterSessions = waters, onDismissLifeSession = { _, id -> waters = waters.filterNot { it.sessionId == id } })
+            }
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
+        compose.runOnIdle { waters = listOf(running.copy(phase = WaterPhase.Ended, finalized = false)) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("接水已结束").assertIsDisplayed()
+        compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertIsDisplayed().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("接水已结束").assertDoesNotExist()
+        assertTrue(waters.isEmpty())
+    }
     @Test fun paymentKeepsMultipleCompletedRecordsUntilIndividualDismissal() {
         val sessions = sessions()
         val finished = sessions.laundry.copy(phase = LaundryPhase.Ended, finishedAtMillis = sessions.laundry.expectedEndMillis!! + 121_000)
