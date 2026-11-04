@@ -45,12 +45,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.zxing.*
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
 
-/** A single camera and QR decoder for device entries; no scanner app or extra SDK required. */
+/** Camera preview and on-device QR recognition for device entries. */
 @Composable
 internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifier: Modifier = Modifier,
     immersive: Boolean = false, onManualInput: (() -> Unit)? = null) {
@@ -145,7 +144,8 @@ private class DeviceCamera(
             if (!disposed && texture?.display?.displayId == displayId) transform()
         }
     }
-    private val decoder = DeviceQrDecoder()
+    private val decoder = WeChatDeviceQrDecoder(context.applicationContext,
+        onUnavailable = { error("扫码暂不可用，请输入设备编号") })
     private var texture: TextureView? = null
     private var camera: CameraDevice? = null
     private var capture: CameraCaptureSession? = null
@@ -245,8 +245,7 @@ private class DeviceCamera(
                 } else for (x in 0 until image.width)
                     bytes[y * image.width + x] = buffer.get(start + y * plane.rowStride + x * plane.pixelStride)
             }
-            val source = PlanarYUVLuminanceSource(bytes, image.width, image.height, 0, 0, image.width, image.height, false)
-            val result = decoder.decode(source) ?: return
+            val result = decoder.decode(bytes, image.width, image.height) ?: return
             val now = SystemClock.elapsedRealtime()
             if (result != lastCode || now - lastCodeAt >= 2000) {
                 lastCode = result
@@ -262,7 +261,7 @@ private class DeviceCamera(
         val displayRotation = when (view.display?.rotation) { Surface.ROTATION_90 -> 90; Surface.ROTATION_180 -> 180; Surface.ROTATION_270 -> 270; else -> 0 }
         view.setTransform(devicePreviewTransform(view.width, view.height, size.width, size.height, sensorOrientation, displayRotation))
     }
-    private fun error() { if (!disposed) main.post { if (!disposed) onError("相机暂不可用，请输入设备编号") } }
+    private fun error(message: String = "相机暂不可用，请输入设备编号") { if (!disposed) main.post { if (!disposed) onError(message) } }
     private fun close() {
         capture?.close(); capture = null
         request = null
@@ -275,6 +274,8 @@ private class DeviceCamera(
         displays.unregisterDisplayListener(displayListener)
         texture?.surfaceTextureListener = null
         close()
+        // Release the native decoder after any in-flight recognition on its worker.
+        worker.post { decoder.close() }
         thread.quitSafely()
     }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) { open() }
