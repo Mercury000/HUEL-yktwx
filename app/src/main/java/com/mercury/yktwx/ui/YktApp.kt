@@ -285,6 +285,8 @@ private fun MainContent(
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
     val lifeModel: LifeDevicesViewModel = viewModel()
     val lifeState by lifeModel.state.collectAsStateWithLifecycle()
+    LifeAlipayEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
+        lifeModel::launchLaundryPayment)
     val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
     val avatarPending = !state.needsLogin && (avatarState.owner != state.username || avatarState.preview != state.preview || avatarState.restoring)
     val avatarImage = avatarState.image.takeIf { customAvatar }
@@ -555,6 +557,7 @@ private fun MainContent(
                                     othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
                                     onOpenLifeDevice = ::openLifeDevice,
                                     waterSession = lifeState.water,
+                                    laundrySession = lifeState.laundry,
                                 )
                                 2 -> BillPage(
                                     updateNotice = updateNotice,

@@ -1,0 +1,162 @@
+package com.mercury.yktwx
+
+import android.graphics.Bitmap
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelStore
+import com.mercury.yktwx.data.life.*
+import com.mercury.yktwx.ui.*
+import com.mercury.yktwx.ui.pages.*
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import java.io.*
+import java.net.URL
+import java.security.Principal
+import java.security.cert.Certificate
+import javax.net.ssl.HttpsURLConnection
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class LaundryUiTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val models = ViewModelStore()
+    @After fun cleanup() { models.clear() }
+    private fun model(): LifeDevicesViewModel {
+        val store = object : LifeDeviceStore {
+            override fun account(): LifeAccount? = null
+            override fun session(): WaterSession? = null
+            override fun saveAccount(account: LifeAccount) { error("No sign in from UI tests") }
+            override fun saveSession(session: WaterSession) { error("No device control") }
+            override fun clearAccount() {}
+            override fun clearSession() {}
+        }
+        return LifeDevicesViewModel(compose.activity.application, LifeDeviceApi("test-secret", { error("No live requests") }), store)
+            .also { models.put("life", it) }
+    }
+    private data class Fixture(val device: LifeDevice, val quote: LaundryQuote, val running: LaundryReading, val ended: LaundryReading)
+    private fun fixture(): Fixture {
+        val file = File("../tools/laundry-ui-capture.json")
+        assumeTrue("Optional local capture fixture", file.isFile)
+        val payload = JSONObject(file.readText())
+        fun service(orderKey: String) = LifeDeviceApi("test-secret", { url ->
+            OfflineResponse(url, payload.getJSONObject(if (url.path == "/order/detail") orderKey else url.path).toString())
+        })
+        return runBlocking {
+            val api = service("/order/running")
+            val device = api.laundryDevice(payload.getString("__code"), "test-token")
+            val sku = device.skus.first { it.name == "桶自洁" }
+            val quote = api.laundryQuote(device, sku.id, "test-token")
+            val number = payload.getJSONObject("/order/running").getJSONObject("data").getString("orderNo")
+            Fixture(device, quote, api.laundryOrder(number, "test-token"), service("/order/finished").laundryOrder(number, "test-token"))
+        }
+    }
+    private fun Fixture.session(ended: Boolean = false): LaundrySession {
+        val reading = if (ended) this.ended else running
+        return LaundrySession(device, quote.skuId, quote.price, "2", if (ended) LaundryPhase.Ended else LaundryPhase.Running,
+            true, reading.orderNo, reading.orderId, true, true, reading.minutes, reading.paidAtMillis,
+            reading.expectedEndMillis, reading.finishedAtMillis)
+    }
+    private fun capture(name: String, settle: Boolean = true) {
+        if (settle) compose.mainClock.advanceTimeBy(1000)
+        compose.runOnIdle { compose.activity.window.decorView.invalidate() }; compose.waitForIdle()
+        val file = File("../tools/life-device-ui/$name.png").absoluteFile
+        file.parentFile?.mkdirs()
+        file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+    private fun renderCapturedFlow(dark: Boolean, largeFont: Boolean) {
+        val fixture = fixture(); val model = model()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
+        val label = (if (dark) "dark" else "light") + if (largeFont) "-large" else ""
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = fixture.device,
+            selectedSkuId = fixture.quote.skuId, laundryQuote = fixture.quote))
+        val clock = { fixture.running.paidAtMillis!! + 46_000 }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+                    Scaffold { LifeDevicePage(state, settings, model, active = true, onBack = {}, nowMillis = clock) }
+                }
+            }
+        }
+        compose.onNodeWithText(fixture.device.name).assertIsDisplayed()
+        compose.onNodeWithTag("laundry-primary-action").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("选择洗衣程序").assertIsDisplayed()
+        compose.onNodeWithText("待确认").assertDoesNotExist()
+        compose.onNodeWithText("账单").assertDoesNotExist()
+        val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
+        val glyph = compose.onNodeWithTag("life-device-glyph").fetchSemanticsNode().boundsInRoot
+        val name = compose.onNodeWithTag("life-device-name").fetchSemanticsNode().boundsInRoot
+        assertTrue("Laundry identity follows compact design row", glyph.right < name.left)
+        assertEquals(glyph.center.y, hero.center.y, 1f)
+        assertEquals(fixture.running.minutes, fixture.quote.minutes)
+        capture("laundry-$label-01-programs")
+        compose.runOnIdle { state = state.copy(laundry = fixture.session()) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("laundry-remaining").assertIsDisplayed()
+        compose.onNodeWithText("结束洗衣").assertDoesNotExist()
+        val timer = compose.onNodeWithTag("laundry-remaining").fetchSemanticsNode().boundsInRoot
+        assertEquals(hero.center.x, timer.center.x, 1f)
+        capture("laundry-$label-02-running")
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state = state.copy(laundry = fixture.session(true)) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(128)
+        capture("laundry-$label-03-completion-motion", settle = false)
+        compose.mainClock.advanceTimeBy(600); compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("洗衣已完成").assertIsDisplayed()
+        compose.onNodeWithText("11-04 12:48").assertIsDisplayed()
+        compose.onNodeWithText("再次扫码洗衣").assertIsDisplayed()
+        compose.onNodeWithText("结束洗衣").assertDoesNotExist()
+        val footer = compose.onNodeWithTag("laundry-action-footer").fetchSemanticsNode().boundsInRoot
+        val notice = compose.onNodeWithTag("laundry-usage-notice").fetchSemanticsNode().boundsInRoot
+        if (!largeFont) assertTrue("Content fits above fixed footer", notice.bottom < footer.top)
+        capture("laundry-$label-04-completed")
+    }
+    @Test fun capturedLaundryLightFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(false, false)
+    @Test fun capturedLaundryDarkFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(true, false)
+    @Test @Config(fontScale = 1.3f) fun capturedLaundryLargeFontKeepsActionsReachable() = renderCapturedFlow(false, true)
+    @Test fun paymentDrawerContainsOnlyReturnedChannelsAndUsesCapturedPrice() {
+        val fixture = fixture(); val model = model()
+        val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = fixture.device,
+            selectedSkuId = fixture.quote.skuId, laundryQuote = fixture.quote)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(true, state, model)
+            } } }
+        }
+        compose.onNodeWithTag("laundry-payment-sheet").assertIsDisplayed()
+        compose.onNodeWithText("余额支付").assertIsDisplayed()
+        compose.onNodeWithText("¥0.00").assertIsDisplayed()
+        compose.onNodeWithText("微信支付").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed()
+        capture("laundry-light-05-payment-drawer")
+    }
+    private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {
+        override fun connect() {}
+        override fun disconnect() {}
+        override fun usingProxy() = false
+        override fun getResponseCode() = 200
+        override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
+        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+        override fun getCipherSuite() = "TLS_TEST"
+        override fun getLocalCertificates(): Array<Certificate>? = null
+        override fun getServerCertificates(): Array<Certificate> = emptyArray()
+        override fun getPeerPrincipal(): Principal? = null
+        override fun getLocalPrincipal(): Principal? = null
+    }
+}

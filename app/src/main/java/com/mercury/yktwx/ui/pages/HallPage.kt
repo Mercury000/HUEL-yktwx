@@ -37,6 +37,7 @@ import com.mercury.yktwx.data.FeeQuery
 import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.data.life.LifeFeature
 import com.mercury.yktwx.data.life.WaterSession
+import com.mercury.yktwx.data.life.LaundrySession
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
@@ -64,6 +65,7 @@ fun HallPage(
     updateNotice: @Composable () -> Unit = {},
     onOpenLifeDevice: (LifeFeature) -> Unit = {},
     waterSession: WaterSession? = null,
+    laundrySession: LaundrySession? = null,
 ) {
     val dorm = if (LocalReadOffline.current) dorm.offlineDisplay() else dorm
     var targets by remember { mutableStateOf(false) }
@@ -111,7 +113,7 @@ fun HallPage(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     if (showFailure) {
-                        item { LifeDeviceEntries(waterSession, onOpenLifeDevice) }
+                        item { LifeDeviceEntries(waterSession, onOpenLifeDevice, laundrySession) }
                         item {
                             Column {
                                 updateNotice()
@@ -135,7 +137,7 @@ fun HallPage(
                         }
                     }
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }
-                    item { LifeDeviceEntries(waterSession, onOpenLifeDevice) }
+                    item { LifeDeviceEntries(waterSession, onOpenLifeDevice, laundrySession) }
                     item {
                         Card(Modifier.fillMaxWidth().testTag("hall-others-card"), cornerRadius = 24.dp) {
                             DashboardPreference(title = "代人充值",

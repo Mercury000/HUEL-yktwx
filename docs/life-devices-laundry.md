@@ -98,7 +98,7 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 
 `/order/list` 返回订单 ID、orderNo、程序名、设备、价格、订单状态及 tradeOrderItem。与之前 `饮水.har` 解锁返回的 orderNo 对照，找到同一条雅5-1冷饮水订单，`payPrice=0.01`、`orderStatus=2`。这证明费用可以在订单列表取得，不代表接水结束同步接口返回了金额；`markMinutes=330000` 也不能直接作为真实接水时长。
 
-当前不接入账单，不把该金额填进接水中或结束页。后续洗衣实现仍需补齐：原始二维码格式、普通付费新建订单到支付及启动的完整成功捕获、实际结束状态，以及第三方支付在本 App 的唤起与回调依据。
+当前不接入账单，不把该金额填进接水中或结束页。实际洗衣完成状态已由 `洗衣完成.har` 补齐。普通付费新建到启动按已验证的先付订单流程接入；尚未完成本 App 真机支付验证，洗衣原始二维码图片也尚未提供。
 
 ## 7. 后续页面及共用结构的落点
 
@@ -114,4 +114,18 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 
 基础传输、登录、扫码 UI、设备信息和支付方式展示继续共用。程序类型、支付准备、订单结果及设备启动响应使用各自协议解析，不把洗衣流程塞进 WaterPhase，也不复制一整套账号或页面布局。
 
-接入时保留失败环节及订单标识，以便区分“支付未完成”和“已支付但未启动”。已创建订单的网络失败不能自动再次下单；第三方回调也不能替代 `/order/pay_status` 和 `/machine/device_is_start`。目前证据只支持本文已列出的分支，未捕获的结束和异常状态保持未实现。
+接入时保留失败环节及订单标识，以便区分“支付未完成”和“已支付但未启动”。已创建订单的网络失败不能自动再次下单；第三方回调也不能替代 `/order/pay_status` 和 `/machine/device_is_start`。目前证据支持本文已列出的启动、进行中和同订单完成分支；退款、预约、优惠资产、蓝牙设备及其他未捕获的异常状态保持未实现。
+
+## 8. 当前实现与复核
+
+- 洗衣扫码使用 NQT，支持直接输入捕获的 UUID，以及已知胖乖二维码域名的显式 NQT 参数。洗衣图片原始格式仍待真机检验，不把 15 位接水 SN 当作洗衣 NQT。
+- 设备读取、程序和位置解析、加密会话中的设备序列化、登录抽屉、扫码相机与手动输入基础共用；洗衣使用独立 LaundryPhase 和会话。
+- 程序价格来自 skus，仅作为标价；应付价来自当前程序 preview.realPrice。skuInfo 在真实 preview 中是 JSON 字符串，也兼容对象；预计分钟读取 markMinutes，不直接把 unit 当分钟。
+- 当前主动不使用优惠：preview 的 promotions=[]、forbiddenPromotions=[]、isAutoSelectPromotion=0；create 的 promotions=[]。这是按字段含义选择的无优惠请求，未捕获同参数的真实服务器响应。不会硬编码本次 oldPromotionId；预览若仍返回使用优惠，或创建后订单价格与已确认价格不一致，会停止支付并给出说明。
+- 余额渠道2按服务器返回可用性启用，包括零元桶自洁；支付宝渠道13调用 `com.alipay.sdk:alipaysdk-android:15.8.42` 的 payV2，原样传递服务端签名串，不进行二次签名。SDK由阿里云 Maven 镜像取得。SDK结果不直接标记已支付，继续查询同订单 pay_status 与设备启动/订单状态。
+- 微信32、银联52、农行91等若返回则显示说明，暂不提供支付；它们需要各自 SDK 或应用配置，不能把本次参数作为现有校园微信 URI 使用。不会为未返回的渠道造选项。
+- 已创建订单继续使用同一 orderNo；创建请求发送前保存 createSent，丢失创建响应后不重建订单。支付丢失响应时先读取服务器结果，不自动重复付款。返回大厅、重新进入和前后台恢复保留洗衣会话。
+- UI 使用 miuix SmallTopAppBar、IconButton、Card、Surface、RadioButton、TextField、Button、CircularProgressIndicator、OverlayBottomSheet；复用现有 APP 的色板、间距、按压反馈及 ContentMotion 曲线。洗衣选择页沿原设计采用紧凑设备行、纵向程序列表；进度页大数字和完成页沿接水风格。
+- 页面进出沿应用原有页面动画；设备内容阶段使用淡入和轻微位移，离开的阶段保留自身快照并关闭操作。程序背景、金额及按钮文字有短过渡；完成图标轻微放大。抽屉、选择标记及按压反馈沿 miuix/APP 共用实现，遵从系统动画时长设置。
+
+仅运行相关 API、接水与洗衣 ViewModel、原生 UI 定向测试。原生截图覆盖明暗主题、较大字号、程序选择、进度、完成、付款抽屉和状态过渡；真实设备扫码与第三方付款尚未验证。原始抓包、离线截图 fixture 和签名密钥不提交。

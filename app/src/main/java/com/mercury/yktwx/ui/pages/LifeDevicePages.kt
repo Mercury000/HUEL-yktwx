@@ -1,6 +1,8 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,7 +41,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-internal fun LifeDeviceEntries(water: WaterSession?, onOpen: (LifeFeature) -> Unit) {
+internal fun LifeDeviceEntries(water: WaterSession?, onOpen: (LifeFeature) -> Unit, laundry: LaundrySession? = null) {
     Card(Modifier.fillMaxWidth().testTag("hall-life-devices-card"), cornerRadius = 24.dp) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
@@ -50,7 +52,13 @@ internal fun LifeDeviceEntries(water: WaterSession?, onOpen: (LifeFeature) -> Un
             LifeFeature.entries.forEachIndexed { index, feature ->
                 DashboardPreference(feature.title, onClick = { onOpen(feature) },
                     summary = when {
-                        feature == LifeFeature.Laundry -> "暂未开放"
+                        feature == LifeFeature.Laundry -> when (laundry?.phase) {
+                            LaundryPhase.Running -> "${laundry.program}进行中"
+                            LaundryPhase.Ended -> "洗衣已完成"
+                            LaundryPhase.Paying -> "继续支付"
+                            null -> "扫码洗衣"
+                            else -> "查看洗衣进度"
+                        }
                         water?.phase == WaterPhase.Running -> "接水中"
                         water?.phase == WaterPhase.Starting -> "正在启动"
                         water?.phase == WaterPhase.Stopping -> "正在结束"
@@ -102,7 +110,9 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
     }
 }
 
-/** Shared page container, spacing and device presentation. Laundry adds its contents later. */
+private data class LifeDevicePresentation(val stage: String, val state: LifeDevicesUiState)
+
+/** Shared page container, spacing and device presentation for both features. */
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis) {
@@ -112,20 +122,43 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     val keyboard = LocalSoftwareKeyboardController.current
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
     LaunchedEffect(state.scanning, active) { if (!state.scanning || !active) { manual = false; help = false } }
-    val scanning = state.feature == LifeFeature.Water && (state.scanning || state.loadingDevice && state.device == null)
+    val scanning = state.scanning || state.loadingDevice && state.device == null
     val title = when {
-        state.feature == LifeFeature.Laundry -> "洗衣"
         scanning -> "扫一扫"
+        state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
+        state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
+        state.feature == LifeFeature.Laundry -> "扫码洗衣"
         state.water?.phase == WaterPhase.Ended -> "接水结束"
         state.water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping) -> "接水进度"
         else -> "扫码接水"
     }
-    LifeDeviceShell(title, settings, scanning, onBack, onHelp = { help = true }, showHelp = state.feature == LifeFeature.Water,
+    LifeDeviceShell(title, settings, scanning, onBack, onHelp = { help = true }, showHelp = true,
         footer = {
             if (state.feature == LifeFeature.Water && !scanning) WaterActions(state, model, active, onBack)
+            if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack)
         }) { padding ->
-        if (scanning) Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).testTag("life-device-page")) {
-            DeviceScanner(active && !manual && !help && !state.loadingDevice, model::scanned, immersive = true,
+        val stage = when {
+            scanning -> "scan"
+            state.feature == LifeFeature.Laundry -> "laundry-${when (state.laundry?.phase) {
+                null -> "ready"
+                LaundryPhase.Running -> "running"
+                LaundryPhase.Ended -> "ended"
+                else -> "processing"
+            }}"
+            state.water?.phase == WaterPhase.Ended -> "water-ended"
+            state.water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping) -> "water-running"
+            else -> "water-ready"
+        }
+        AnimatedContent(LifeDevicePresentation(stage, state.copy(code = "", paymentLaunch = null)),
+            contentKey = { it.stage }, modifier = Modifier.fillMaxSize(), transitionSpec = {
+            ((fadeIn(tween(ContentMotion.Insert)) + slideInVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing)) { it / 45 })
+                togetherWith fadeOut(tween(ContentMotion.Fade))).using(SizeTransform(clip = false))
+        }, label = "life-device-stage") { presentation ->
+        val displayedStage = presentation.stage
+        val state = presentation.state
+        val stageActive = active && displayedStage == stage
+        if (displayedStage == "scan") Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).testTag("life-device-page")) {
+            DeviceScanner(stageActive && !manual && !help && !state.loadingDevice, model::scanned, immersive = true,
                 onManualInput = { manual = true })
             if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
             if (!state.error.isNullOrBlank() && !manual) Text(state.error,
@@ -136,16 +169,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (state.feature == LifeFeature.Laundry) {
-                item { LifeDeviceHeading("洗衣") }
-                item {
-                    Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
-                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            LifeDeviceGlyph(LifeFeature.Laundry)
-                            Text("洗衣暂未开放", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
+                laundryContent(state, model, stageActive, nowMillis)
             } else {
                 val water = state.water
                 val ended = water?.phase == WaterPhase.Ended
@@ -166,18 +190,20 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                     state.device?.let { device ->
                         item { LifeDeviceHero(device, state.feature) }
                         item { LifePaymentCard(device, showOptions = true, state = state,
-                            onSelect = model::selectSku, enabled = active && !state.waterBusy && !state.loadingDevice) }
+                            onSelect = model::selectSku, enabled = stageActive && !state.waterBusy && !state.loadingDevice) }
                         item { WaterUsageNotice(device) }
                     }
                 }
                 item { AnimatedInlineError(state.error) }
             }
         }
+        }
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
-        onValue = { serial = it.filter { c -> c in '0'..'9' }.take(15) },
+        onValue = { serial = it },
         onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); model.scanned(serial) })
     LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
+    LaundryPaymentSheet(active && state.paymentVisible, state, model)
 }
 
 @Composable
@@ -203,19 +229,19 @@ private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Bo
 }
 
 @Composable
-private fun LifeDeviceHeading(title: String) {
+internal fun LifeDeviceHeading(title: String) {
     Text(title, Modifier.fillMaxWidth().padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
         fontSize = 29.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
 }
 
 /** One centered identity card and icon treatment, ready for other device categories. */
 @Composable
-private fun LifeDeviceHero(device: LifeDevice, feature: LifeFeature) {
+internal fun LifeDeviceHero(device: LifeDevice, feature: LifeFeature) {
     Card(Modifier.fillMaxWidth().testTag("life-device-hero"), cornerRadius = 24.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             LifeDeviceGlyph(feature)
             Spacer(Modifier.height(15.dp))
-            Text(device.name.ifBlank { "饮水设备" }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
+            Text(device.name.ifBlank { if (feature == LifeFeature.Water) "饮水设备" else "洗衣设备" }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
                 lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             if (device.shopName.isNotBlank()) Text(device.shopName, Modifier.padding(top = 6.dp).testTag("life-device-location"),
                 fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
@@ -224,7 +250,7 @@ private fun LifeDeviceHero(device: LifeDevice, feature: LifeFeature) {
 }
 
 @Composable
-private fun LifeDeviceGlyph(feature: LifeFeature) {
+internal fun LifeDeviceGlyph(feature: LifeFeature) {
     Box(Modifier.size(70.dp).clip(RoundedCornerShape(24.dp)).background(DashboardPalette.airPanel)
         .testTag("life-device-glyph"), contentAlignment = Alignment.Center) {
         Icon(if (feature == LifeFeature.Water) AppIcons.Water else AppIcons.Laundry, null, Modifier.size(35.dp),
@@ -256,7 +282,7 @@ private fun LifeDeviceFacts(device: LifeDevice, session: WaterSession? = null) {
 }
 
 @Composable
-private fun LifeDeviceField(label: String, content: @Composable () -> Unit) {
+internal fun LifeDeviceField(label: String, content: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp)) {
         Text(label, fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
@@ -342,9 +368,9 @@ private fun WaterFeeNotice() {
 }
 
 @Composable
-private fun lifeSuccessFill(): Color = if (isSystemInDarkTheme()) Color(0xFF283E32) else Color(0xFFEAF5EE)
+internal fun lifeSuccessFill(): Color = if (isSystemInDarkTheme()) Color(0xFF283E32) else Color(0xFFEAF5EE)
 @Composable
-private fun lifeSuccessInk(): Color = if (isSystemInDarkTheme()) Color(0xFF96C7AF) else Color(0xFF549276)
+internal fun lifeSuccessInk(): Color = if (isSystemInDarkTheme()) Color(0xFF96C7AF) else Color(0xFF549276)
 
 private fun waterDuration(millis: Long): String {
     val seconds = millis.coerceAtLeast(0) / 1000
@@ -361,9 +387,7 @@ private fun WaterProgress(session: WaterSession, nowMillis: () -> Long) {
     Column(Modifier.fillMaxWidth().padding(top = if (ended) 30.dp else 36.dp, bottom = 24.dp).testTag("water-progress"),
         horizontalAlignment = Alignment.CenterHorizontally) {
         if (ended) {
-            Box(Modifier.size(64.dp).background(lifeSuccessFill(), CircleShape).testTag("water-ended-icon"), contentAlignment = Alignment.Center) {
-                Icon(AppIcons.Check, null, Modifier.size(30.dp), tint = lifeSuccessInk())
-            }
+            DeviceCompletedIcon("water-ended-icon")
             Text("接水已结束", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
             Text("设备已结束本次接水", Modifier.padding(top = 7.dp), fontSize = 12.sp, color = DashboardPalette.muted)
         } else {
@@ -416,7 +440,10 @@ private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel,
     }, enabled = active && !loading && when {
         phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
         else -> true
-    }, modifier = Modifier.fillMaxWidth().testTag("water-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
+    }, modifier = Modifier.fillMaxWidth().testTag("water-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
+        AnimatedContent(label, transitionSpec = { fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade)) },
+            label = "water-button-label") { Text(it) }
+    }
     if (phase == WaterPhase.Ended) TextButton("返回大厅", onBack, Modifier.fillMaxWidth(), enabled = active,
         colors = ButtonDefaults.textButtonColors(color = DashboardPalette.card, textColor = MiuixTheme.colorScheme.primary))
     }
@@ -430,12 +457,15 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            DigitTextField(value, onValue, label = "设备编号", maxDigits = 15,
+            val identify = { if (show && LifeDeviceCode.parse(serial, state.feature) != null) onIdentify() }
+            if (state.feature == LifeFeature.Water) DigitTextField(value, onValue, label = "设备编号", maxDigits = 15,
                 enabled = show && !state.loadingDevice, modifier = Modifier.fillMaxWidth().testTag("life-device-serial"),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (show && DeviceSerial.parse(serial) != null) onIdentify() }))
+                keyboardActions = KeyboardActions(onDone = { identify() }))
+            else DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
+                modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
             InlineErrorGroup(state.error, 16.dp) {
-                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && DeviceSerial.parse(serial) != null,
+                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && LifeDeviceCode.parse(serial, state.feature) != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
                 }
@@ -446,18 +476,19 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
 
 @Composable
 private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit) {
-    OverlayBottomSheet(show = show, startAction = { SheetTitle("接水帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    OverlayBottomSheet(show = show, startAction = { SheetTitle("${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。",
+            Text(if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
+                else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣。桶自洁请按设备说明使用，完成后可从大厅返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             display.device?.let { device ->
                 LifeDeviceField("设备编号") { Text(device.serial, fontSize = 12.sp) }
                 if (device.address.isNotBlank()) LifeDeviceField("地址") {
                     Text(device.address, fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End)
                 }
-                if (display.water?.active != true && display.water?.phase != WaterPhase.Ended) Row(
+                if ((if (display.feature == LifeFeature.Water) display.water?.active != true && display.water?.phase != WaterPhase.Ended else display.laundry == null)) Row(
                     Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TextButton("重新扫码", { onDismiss(); model.scan() }, Modifier.weight(1f), enabled = show && !display.waterBusy)
                     TextButton("刷新设备", { onDismiss(); model.refreshDevice() }, Modifier.weight(1f), enabled = show && !display.waterBusy && !display.loadingDevice)

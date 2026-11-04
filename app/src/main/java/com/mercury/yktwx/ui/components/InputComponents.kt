@@ -22,6 +22,24 @@ internal fun DigitTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
+    StableInputTextField(value, onValueChange, label, modifier, enabled, keyboardOptions, keyboardActions) { it.digitsOnly(maxDigits) }
+}
+
+/** The same cursor-preserving miuix field also accepts laundry's alphanumeric device codes. */
+@Composable
+internal fun DeviceCodeTextField(value: String, onValueChange: (String) -> Unit, label: String,
+    modifier: Modifier = Modifier, enabled: Boolean = true, keyboardActions: KeyboardActions = KeyboardActions.Default) {
+    StableInputTextField(value, onValueChange, label, modifier, enabled,
+        KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done), keyboardActions) { next ->
+        if (next.text.length <= 256) next else next.copy(text = next.text.take(256),
+            selection = TextRange(next.selection.start.coerceAtMost(256), next.selection.end.coerceAtMost(256)), composition = null)
+    }
+}
+
+@Composable
+private fun StableInputTextField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier,
+    enabled: Boolean, keyboardOptions: KeyboardOptions, keyboardActions: KeyboardActions,
+    transform: (TextFieldValue) -> TextFieldValue) {
     var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(value, TextRange(value.length)))
     }
@@ -31,7 +49,7 @@ internal fun DigitTextField(
         if (draft.text != value) draft = TextFieldValue(value, TextRange(value.length))
     }
     TextField(draft, onValueChange = { next ->
-        draft = next.digitsOnly(maxDigits)
+        draft = transform(next)
         if (draft.text != value) onValueChange(draft.text)
     }, label = label, singleLine = true, useLabelAsPlaceholder = true, enabled = enabled,
         modifier = modifier.trackInputFocus(enabled), keyboardOptions = keyboardOptions, keyboardActions = keyboardActions)

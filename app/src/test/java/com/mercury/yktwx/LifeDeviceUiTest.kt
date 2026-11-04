@@ -96,19 +96,20 @@ class LifeDeviceUiTest {
         assertEquals(0, model.state.value.entryRequest)
     }
 
-    @Test fun laundryShellContainsNoDevicesPricesProgramsOrOrders() {
+    @Test fun laundryWithoutDeviceUsesSharedScannerAndInventsNoPrograms() {
         val model = model()
         val settings = settings()
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
-                LifeDevicePage(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry), settings, model, active = false, onBack = {})
+                LifeDevicePage(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, scanning = true), settings, model, active = false, onBack = {})
             } }
         }
-        compose.onNodeWithText("洗衣暂未开放").assertIsDisplayed()
+        compose.onNodeWithTag("device-scanner").assertIsDisplayed()
+        compose.onNodeWithText("洗衣暂未开放").assertDoesNotExist()
         compose.onNodeWithText("开始洗衣").assertDoesNotExist()
         compose.onNodeWithText("账单").assertDoesNotExist()
         compose.onNodeWithTag("water-primary-action").assertDoesNotExist()
-        capture("02-laundry-shell")
+        capture("02-laundry-shared-scanner")
     }
 
     @Test fun capturedWaterDeviceFitsNativePageAndDoesNotInventPrices() {
