@@ -391,7 +391,12 @@ private fun MainContent(
     fun openLifeDevice(feature: LifeFeature) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         if (!allowOnlineEntry(context, state.preview)) return
-        lifeModel.open(feature)
+        lifeModel.openScan(feature)
+    }
+    fun openLifeSession(feature: LifeFeature, sessionId: String) {
+        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.openSession(feature, sessionId)
     }
     LaunchedEffect(lifeState.entryRequest) {
         if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
@@ -519,7 +524,9 @@ private fun MainContent(
                             visible = isActive && !state.preview && !state.needsLogin && layers.isEmpty() &&
                                 pagerState.currentPage != 1 && paymentSuccess == null && !dormPaymentVisible &&
                                 !rechargeState.visible && !cardState.visible && !passwordState.visible && !lifeState.loginVisible,
-                            onOpen = ::openLifeDevice) { extraBottom ->
+                            onOpen = ::openLifeDevice,
+                            waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                            onOpenSession = ::openLifeSession) { extraBottom ->
                         val bottom = padding.calculateBottomPadding() + 28.dp + extraBottom
                         HorizontalPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
@@ -563,6 +570,9 @@ private fun MainContent(
                                     onOpenLifeDevice = ::openLifeDevice,
                                     waterSession = lifeState.water,
                                     laundrySession = lifeState.laundry,
+                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                                    onOpenLifeSession = ::openLifeSession,
+                                    onDismissLifeSession = lifeModel::dismissSession,
                                 )
                                 2 -> BillPage(
                                     updateNotice = updateNotice,

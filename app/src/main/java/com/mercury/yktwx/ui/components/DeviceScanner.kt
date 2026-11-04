@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -102,7 +103,9 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
             })
         }
         if (immersive) {
-            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 20.dp, vertical = 24.dp).bottomSheetSafeArea(),
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .72f))))
+                .padding(horizontal = 20.dp, vertical = 24.dp).bottomSheetSafeArea(),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(22.dp)) {
                 Text("扫描设备上的二维码\n识别后核对设备与支付方式", fontSize = 12.sp, lineHeight = 20.sp,
                     color = Color(0xFFD0D8E2), textAlign = TextAlign.Center)
@@ -110,7 +113,6 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
                     if (flashAvailable) ScannerAction(if (torch) "关闭手电筒" else "手电筒", AppIcons.Electricity, { torch = !torch }, active)
                     if (onManualInput != null) ScannerAction("输入设备编号", AppIcons.Keyboard, onManualInput, active)
                 }
-                Text("首次扫码时申请相机权限", fontSize = 10.sp, color = Color(0xFF909EAE))
             }
         } else Text(cameraError ?: "对准设备上的二维码", Modifier.align(Alignment.BottomCenter).padding(18.dp),
             fontSize = 12.sp, color = Color.White)

@@ -192,4 +192,26 @@ class LifeDevicesViewModelTest {
         assertEquals(1, api.createCalls)
         assertEquals(0, api.syncCalls)
     }
+    @Test fun scanEntryPreservesWaterAndSameDeviceResumesWithoutUnlockingAgain() = runTest(dispatcher) {
+        val api = Api(); val store = Store(LifeAccount("13800000000", "test-token")); val model = model(api, store)
+        prepare(model); model.startWater(); runCurrent()
+        val session = model.state.value.water!!
+        model.openScan(LifeFeature.Water); runCurrent()
+        assertTrue(model.state.value.scanning); assertNull(model.state.value.water)
+        assertEquals(session, store.savedSession)
+        model.environment(true); runCurrent(); advanceTimeBy(1500); runCurrent()
+        assertTrue(model.state.value.scanning); assertNull(model.state.value.device)
+        model.scanned(device.serial); runCurrent()
+        assertFalse(model.state.value.scanning); assertEquals(session.sessionId, model.state.value.water?.sessionId)
+        model.startWater(); runCurrent(); assertEquals(1, api.unlockCalls)
+        model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
+        assertEquals(1, model.state.value.waterSessions.size)
+        model.stopWater(); runCurrent()
+        assertEquals(WaterPhase.Ended, store.savedSession?.phase)
+        model.openScan(LifeFeature.Water); runCurrent()
+        assertEquals(1, model.state.value.waterSessions.size)
+        model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
+        assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+        model.environment(false); runCurrent()
+    }
 }

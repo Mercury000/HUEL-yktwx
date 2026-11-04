@@ -37,7 +37,8 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
     val phase: LaundryPhase = LaundryPhase.Checking, val createSent: Boolean = false,
     val orderNo: String = "", val orderId: String = "", val paymentSent: Boolean = false,
     val paid: Boolean = false, val minutes: Int? = null, val startedAtMillis: Long? = null,
-    val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null) {
+    val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null,
+    val sessionId: String = java.util.UUID.randomUUID().toString()) {
     val active: Boolean get() = phase != LaundryPhase.Ended
     val program: String get() = device.skus.firstOrNull { it.id == skuId }?.name.orEmpty()
 }

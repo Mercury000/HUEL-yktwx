@@ -79,6 +79,39 @@ class LaundryUiTest {
         file.parentFile?.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+    @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
+        val fixture = fixture(); val model = model()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            device = fixture.device, selectedSkuId = fixture.device.skus.first().id))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+                Scaffold { LifeDevicePage(state, settings, model, active = true, onBack = {}) }
+            } }
+        }
+        fixture.device.skus.forEach { sku ->
+            assertNotNull("Captured machine has program durations", sku.minutes)
+            compose.onNodeWithTag("laundry-program-minutes-${sku.id}", useUnmergedTree = true)
+                .assertTextContains("约 ${sku.minutes} 分钟", substring = true)
+        }
+        val before = fixture.device.skus.associate { it.id to compose.onNodeWithTag("laundry-program-${it.id}").fetchSemanticsNode().boundsInRoot }
+        capture("laundry-selection-before")
+        compose.runOnIdle { state = state.copy(selectedSkuId = fixture.quote.skuId, quoteLoading = true) }
+        compose.mainClock.advanceTimeBy(32)
+        capture("laundry-selection-frame-02", settle = false)
+        compose.mainClock.advanceTimeBy(64)
+        capture("laundry-selection-frame-06", settle = false)
+        compose.runOnIdle { state = state.copy(laundryQuote = fixture.quote, quoteLoading = false) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("laundry-program-${fixture.quote.skuId}").assertIsSelected()
+        fixture.device.skus.forEach { sku ->
+            assertEquals("Selection must not expand program rows", before[sku.id],
+                compose.onNodeWithTag("laundry-program-${sku.id}").fetchSemanticsNode().boundsInRoot)
+        }
+        compose.onNodeWithText("本次应付").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-quote-price").assertDoesNotExist()
+        capture("laundry-selection-after")
+    }
     private fun renderCapturedFlow(dark: Boolean, largeFont: Boolean) {
         val fixture = fixture(); val model = model()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
@@ -147,6 +180,8 @@ class LaundryUiTest {
         compose.onNodeWithText("¥0.00").assertIsDisplayed()
         compose.onNodeWithText("微信支付").assertDoesNotExist()
         compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed()
+        compose.onNodeWithText("支付后自动读取设备启动结果，请先按设备说明做好准备。").assertDoesNotExist()
+        compose.onNodeWithText("77 · 桶自洁").assertDoesNotExist()
         capture("laundry-light-05-payment-drawer")
     }
     private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {

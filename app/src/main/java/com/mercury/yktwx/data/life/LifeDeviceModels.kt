@@ -9,7 +9,8 @@ data class LifeAccount(val phone: String, val token: String) {
     val maskedPhone: String get() = if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else ""
 }
 
-data class LifeSku(val id: String, val name: String, val available: Boolean, val price: String = "", val feature: String = "")
+data class LifeSku(val id: String, val name: String, val available: Boolean, val price: String = "", val feature: String = "",
+    val minutes: Int? = null)
 data class LifePayChannel(val method: String, val name: String, val available: Boolean,
     val needsOpen: Boolean, val remark: String? = null, val link: String? = null)
 
@@ -49,6 +50,7 @@ data class WaterSession(
     val startSent: Boolean = false, val messageId: String = "", val orderNo: String = "",
     val orderId: String = "", val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
     val finalized: Boolean = false,
+    val sessionId: String = java.util.UUID.randomUUID().toString(),
 ) {
     val active: Boolean get() = phase in setOf(WaterPhase.Starting, WaterPhase.Running, WaterPhase.Stopping)
 }
@@ -101,4 +103,12 @@ interface LifeDeviceStore {
     fun laundrySession(): LaundrySession? = null
     fun saveLaundrySession(session: LaundrySession) { throw LifeDeviceException("无法保存洗衣进度") }
     fun clearLaundrySession() {}
+    fun waterSessions(): List<WaterSession> = listOfNotNull(session())
+    fun laundrySessions(): List<LaundrySession> = listOfNotNull(laundrySession())
+    fun saveWaterSessions(sessions: List<WaterSession>) {
+        sessions.lastOrNull()?.let(::saveSession) ?: clearSession()
+    }
+    fun saveLaundrySessions(sessions: List<LaundrySession>) {
+        sessions.lastOrNull()?.let(::saveLaundrySession) ?: clearLaundrySession()
+    }
 }

@@ -66,6 +66,11 @@ fun HallPage(
     onOpenLifeDevice: (LifeFeature) -> Unit = {},
     waterSession: WaterSession? = null,
     laundrySession: LaundrySession? = null,
+    lifeNowMillis: () -> Long = System::currentTimeMillis,
+    waterSessions: List<WaterSession> = listOfNotNull(waterSession),
+    laundrySessions: List<LaundrySession> = listOfNotNull(laundrySession),
+    onOpenLifeSession: (LifeFeature, String) -> Unit = { feature, _ -> onOpenLifeDevice(feature) },
+    onDismissLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
 ) {
     val dorm = if (LocalReadOffline.current) dorm.offlineDisplay() else dorm
     var targets by remember { mutableStateOf(false) }
@@ -112,35 +117,32 @@ fun HallPage(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    if (waterSession?.active == true || laundrySession?.active == true) item(key = "life-status") {
-                        LifeDeviceStatusCards(waterSession, laundrySession, onOpenLifeDevice, enabled = isActive)
+                    item(key = "life-devices") {
+                        PageReadNotice(networkError.takeIf { !showFailure && initialError == null }, 14.dp,
+                            errorMaxLines = Int.MAX_VALUE,
+                            loading = !showFailure && (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
+                            failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
+                            updateNotice()
+                            LifeDeviceStatusCards(null, null, onOpenLifeDevice,
+                                enabled = isActive, nowMillis = lifeNowMillis,
+                                waterSessions = waterSessions, laundrySessions = laundrySessions,
+                                onOpenSession = onOpenLifeSession, onDismiss = onDismissLifeSession)
+                            LifeDeviceEntries(onOpenLifeDevice)
+                        }
                     }
                     if (showFailure) {
-                        item { LifeDeviceEntries(waterSession, onOpenLifeDevice, laundrySession) }
                         item {
-                            Column {
-                                updateNotice()
-                                ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
-                            }
+                            ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
                         }
                     } else {
                     item {
-                        Column {
-                            PageReadNotice(networkError.takeIf { initialError == null }, 14.dp,
-                                errorMaxLines = Int.MAX_VALUE,
-                                loading = (dorm.loading || isActive && !dorm.loaded) && (dorm.loaded || dorm.displayRestored),
-                                failed = dorm.error != null || dorm.networkError != null || dorm.rooms.any { room -> room.meters.any { it.error != null } }) {
-                                updateNotice()
-                                UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
-                                    onSwitch = { targetTab = 0; targetAdding = false; targets = true },
-                                    onAdd = { targetTab = 0; targetAdding = true; targets = true },
-                                    onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
-                                    onPay = onOpenDormFee)
-                            }
-                        }
+                        UtilityCard(dorm, feeOpening, feeOpeningTarget, onRefreshDorm,
+                            onSwitch = { targetTab = 0; targetAdding = false; targets = true },
+                            onAdd = { targetTab = 0; targetAdding = true; targets = true },
+                            onTemporaryPay = { targetTab = 1; targetAdding = false; targets = true },
+                            onPay = onOpenDormFee)
                     }
                     item { NetworkCard(dorm, feeOpening, { onOpenFee(FeeProject.Network) }) }
-                    item { LifeDeviceEntries(waterSession, onOpenLifeDevice, laundrySession) }
                     item {
                         Card(Modifier.fillMaxWidth().testTag("hall-others-card"), cornerRadius = 24.dp) {
                             DashboardPreference(title = "代人充值",

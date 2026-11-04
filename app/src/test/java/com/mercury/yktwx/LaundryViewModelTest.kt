@@ -25,6 +25,8 @@ class LaundryViewModelTest {
     private val device = LifeDevice("77", "00000000-0000-4000-8000-000000000001", "77", "00", "22", "22", "shop", "serial-77",
         "学校", "", "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁")), emptyList())
     private class Store(var washing: LaundrySession? = null, var water: WaterSession? = null) : LifeDeviceStore {
+        var waters = listOfNotNull(water)
+        var laundries = listOfNotNull(washing)
         var owner: LifeAccount? = LifeAccount("13800000000", "test-token")
         override fun account() = owner
         override fun saveAccount(account: LifeAccount) { owner = account }
@@ -38,6 +40,10 @@ class LaundryViewModelTest {
         override fun laundrySession() = washing
         override fun saveLaundrySession(session: LaundrySession) { washing = session }
         override fun clearLaundrySession() { washing = null }
+        override fun waterSessions() = waters
+        override fun laundrySessions() = laundries
+        override fun saveWaterSessions(sessions: List<WaterSession>) { waters = sessions; water = sessions.lastOrNull() }
+        override fun saveLaundrySessions(sessions: List<LaundrySession>) { laundries = sessions; washing = sessions.lastOrNull() }
     }
     private inner class Api : LifeDeviceService, LifeLaundryService {
         var creates = 0; var balancePays = 0; var alipayPrepares = 0; var details = 0; var paidReads = 0
@@ -48,6 +54,13 @@ class LaundryViewModelTest {
         val balance = LifePayChannel("2", "余额支付", true, false)
         val alipay = LifePayChannel("13", "支付宝", true, false)
         var channels = listOf(balance, alipay)
+        val devices = mutableMapOf<String, LifeDevice>()
+        val orders = mutableMapOf<String, Pair<String, String>>()
+        val readings = mutableMapOf<String, LaundryReading>()
+        val readOrders = mutableListOf<String>()
+        var detailGate: CompletableDeferred<Unit>? = null
+        val orderStatuses = mutableMapOf<String, Int>()
+        val paidOrders = mutableSetOf<String>()
         override suspend fun sendCode(phone: String) {}
         override suspend fun login(phone: String, code: String) = LifeAccount(phone, "test-token")
         override suspend fun device(serial: String, token: String): LifeDevice = error("No water endpoint")
@@ -62,27 +75,38 @@ class LaundryViewModelTest {
         override suspend fun endWater(goodsId: String, token: String) { error("No water stop") }
         override suspend fun createAfterPay(orderNo: String, token: String): String = error("No after pay order")
         override suspend fun syncOrder(orderNo: String, token: String) { error("No after pay sync") }
-        override suspend fun laundryDevice(code: String, token: String) = device
+        override suspend fun laundryDevice(code: String, token: String) = devices[code] ?: device
         override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String) = LaundryQuote(device.id, skuId, price, 5, channels)
         override suspend fun checkLaundryDevice(deviceId: String, token: String): String { readyGate?.await(); return "msg-1" }
         override suspend fun laundryMachineReady(messageId: String, token: String) = true
         override suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder {
             creates++; if (lostCreate) throw java.io.IOException("lost create response")
-            return LaundryOrder("wash-1", "wash-id")
+            val order = LaundryOrder("wash-$creates", if (creates == 1) "wash-id" else "wash-id-$creates")
+            orders[order.orderNo] = deviceId to skuId
+            orderStatuses[order.orderNo] = 0
+            return order
         }
         override suspend fun laundryOrder(orderNo: String, token: String): LaundryReading {
             details++
-            return LaundryReading("wash-1", "wash-id", device.id, readSku, status, price, "桶自洁", 5,
-                100_000L.takeIf { status in setOf(2, 3) }, 400_000L.takeIf { status == 2 }, 521_000L.takeIf { status == 3 })
+            readOrders += orderNo
+            detailGate?.await()
+            readings[orderNo]?.let { return it }
+            val orderStatus = if (orders.size > 1) orderStatuses.getValue(orderNo) else status
+            return LaundryReading(orderNo, if (orderNo == "wash-1") "wash-id" else "wash-id-${orderNo.substringAfterLast('-')}",
+                orders[orderNo]?.first ?: device.id, readSku, orderStatus, price, "桶自洁", 5,
+                100_000L.takeIf { orderStatus in setOf(2, 3) }, 400_000L.takeIf { orderStatus == 2 }, 521_000L.takeIf { orderStatus == 3 })
         }
         override suspend fun laundryChannels(session: LaundrySession, token: String) = channels
         override suspend fun payLaundryBalance(orderNo: String, token: String) {
             balancePays++; paid = true; started = true; status = 2
+            paidOrders += orderNo; orderStatuses[orderNo] = 2
             if (lostPayment) throw java.io.IOException("lost payment response")
         }
         override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String { alipayPrepares++; return "test-signed-payload" }
-        override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean { paidReads++; return paid }
-        override suspend fun laundryStarted(orderNo: String, token: String) = started
+        override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean {
+            paidReads++; return if (orders.size > 1) orderNo in paidOrders else paid
+        }
+        override suspend fun laundryStarted(orderNo: String, token: String) = if (orders.size > 1) orderStatuses[orderNo] == 2 else started
     }
     private fun model(api: Api, store: Store) = LifeDevicesViewModel(ApplicationProvider.getApplicationContext<Application>(), api, store,
         dispatcher, { 100_000L }).also { models.put("model", it) }
@@ -103,7 +127,7 @@ class LaundryViewModelTest {
         assertEquals(521_000L, store.washing?.finishedAtMillis)
         assertNull(model.state.value.error)
         model.scan(); runCurrent()
-        assertTrue(model.state.value.scanning); assertNull(store.washing)
+        assertTrue(model.state.value.scanning); assertEquals(LaundryPhase.Ended, store.washing?.phase)
         assertEquals(1, api.creates); assertEquals(1, api.balancePays)
     }
     @Test fun repeatClicksAndLostCreateCannotGenerateAnotherOrder() = runTest(dispatcher) {
@@ -116,6 +140,8 @@ class LaundryViewModelTest {
         assertEquals(1, api.creates); assertEquals(LaundryPhase.Creating, store.washing?.phase)
         model.retryLaundry(); model.scan(); runCurrent()
         assertEquals(1, api.creates); assertEquals(0, api.balancePays)
+        assertTrue(model.state.value.scanning)
+        model.scanned(device.serial); runCurrent()
         assertFalse(model.state.value.scanning); assertNotNull(model.state.value.error)
     }
     @Test fun lostBalanceResponseChecksServerWithoutPayingOrCreatingAgain() = runTest(dispatcher) {
@@ -228,5 +254,83 @@ class LaundryViewModelTest {
         assertTrue(api.waterReads > paused.first); assertTrue(api.details > paused.second)
         assertNotNull(model.state.value.error)
         model.environment(false); runCurrent()
+    }
+    @Test fun scanKeepsMultipleOrdersAndPollingDoesNotReplaceTheSelectedOrderOrScanner() = runTest(dispatcher) {
+        val api = Api()
+        val secondDevice = device.copy(id = "78", name = "78", serial = "00000000-0000-4000-8000-000000000002")
+        api.devices[secondDevice.serial] = secondDevice
+        val store = Store(); val model = model(api, store)
+        prepare(model); model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
+        val first = model.state.value.laundry!!
+        model.openScan(LifeFeature.Laundry); runCurrent()
+        assertTrue(model.state.value.scanning); assertNull(model.state.value.laundry)
+        assertEquals(listOf(first), store.laundries)
+        model.scanned(secondDevice.serial); runCurrent()
+        model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
+        val second = model.state.value.laundry!!
+        assertEquals(2, api.creates); assertEquals(2, api.balancePays); assertEquals(2, store.laundries.size)
+        assertNotEquals(first.sessionId, second.sessionId)
+        model.openSession(LifeFeature.Laundry, first.sessionId); runCurrent()
+        model.environment(true); runCurrent()
+        assertEquals(first.sessionId, model.state.value.laundry?.sessionId)
+        assertTrue(api.readOrders.containsAll(listOf(first.orderNo, second.orderNo)))
+        model.openScan(LifeFeature.Laundry); runCurrent()
+        val reads = api.details
+        advanceTimeBy(5000); runCurrent()
+        assertTrue(api.details >= reads + 2)
+        assertTrue(model.state.value.scanning); assertNull(model.state.value.device); assertNull(model.state.value.laundry)
+        model.scanned(secondDevice.serial); runCurrent()
+        assertFalse(model.state.value.scanning)
+        assertEquals(second.sessionId, model.state.value.laundry?.sessionId)
+        assertEquals(2, api.creates)
+        model.environment(false); runCurrent()
+    }
+    @Test fun serverTimingAndIndependentCompletionSurviveRestoreUntilManualDismissal() = runTest(dispatcher) {
+        val first = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running,
+            true, "wash-1", "wash-id", true, true, 5, 100_000, 400_000)
+        val secondDevice = device.copy(id = "78", name = "78")
+        val second = first.copy(device = secondDevice, orderNo = "wash-2", orderId = "wash-id-2", sessionId = "second-session")
+        val store = Store().apply { laundries = listOf(first, second) }
+        val api = Api().apply {
+            readings[first.orderNo] = LaundryReading(first.orderNo, first.orderId, device.id, "clean", 3, "0.00", "桶自洁",
+                5, 100_000, null, 521_000)
+            readings[second.orderNo] = LaundryReading(second.orderNo, second.orderId, secondDevice.id, "clean", 2, "0.00", "桶自洁",
+                5, 200_000, 500_000, null)
+        }
+        val model = model(api, store)
+        runCurrent(); model.openSession(LifeFeature.Laundry, second.sessionId)
+        model.environment(true); runCurrent(); advanceTimeBy(600_000); runCurrent()
+        val finished = model.state.value.laundrySessions.first { it.sessionId == first.sessionId }
+        assertEquals(LaundryPhase.Ended, finished.phase)
+        assertEquals(400_000L, finished.expectedEndMillis); assertEquals(521_000L, finished.finishedAtMillis)
+        assertEquals(LaundryPhase.Running, model.state.value.laundry?.phase)
+        assertEquals(200_000L, model.state.value.laundry?.startedAtMillis)
+        assertEquals(500_000L, model.state.value.laundry?.expectedEndMillis)
+        model.dismissSession(LifeFeature.Laundry, second.sessionId); runCurrent()
+        assertEquals(2, store.laundries.size)
+        model.environment(false); runCurrent()
+        val restored = model(api, store); runCurrent()
+        assertEquals(listOf(finished, model.state.value.laundry), restored.state.value.laundrySessions)
+        restored.openSession(LifeFeature.Laundry, first.sessionId)
+        assertEquals(finished, restored.state.value.laundry)
+        restored.dismissSession(LifeFeature.Laundry, first.sessionId); runCurrent()
+        assertEquals(listOf(second.sessionId), store.laundries.map { it.sessionId })
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+    }
+    @Test fun anOrderReadFinishingAfterDismissalCannotRestoreTheCompletedCard() = runTest(dispatcher) {
+        val finished = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended,
+            orderNo = "wash-1", orderId = "wash-id", paid = true)
+        val store = Store(finished)
+        val api = Api().apply { status = 3; detailGate = CompletableDeferred() }
+        val model = model(api, store)
+        runCurrent(); model.openSession(LifeFeature.Laundry, finished.sessionId)
+        model.retryLaundry(); runCurrent()
+        assertTrue(model.state.value.laundryBusy)
+        model.dismissSession(LifeFeature.Laundry, finished.sessionId); runCurrent()
+        assertTrue(store.laundries.isEmpty())
+        api.detailGate!!.complete(Unit); runCurrent()
+        assertTrue(model.state.value.laundrySessions.isEmpty()); assertNull(model.state.value.laundry)
+        assertTrue(store.laundries.isEmpty())
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
 }

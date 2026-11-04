@@ -66,13 +66,13 @@ class LifeDeviceUiTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold {
                     val state by model.state.collectAsState()
-                    LifeDeviceEntries(null, model::open)
+                    LifeDeviceEntries(model::openScan)
                     LifeDeviceLoginSheet(state, model, active = true)
                 } }
             }
         }
         compose.waitUntil { !model.state.value.restoring }
-        compose.onNodeWithText("接水", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("hall-life-entry-water").performClick()
         compose.onNodeWithTag("life-login-sheet").assertIsDisplayed()
         compose.onNodeWithTag("life-login-phone").assertTextContains("手机号")
         compose.onNodeWithTag("life-login-code").assertIsDisplayed()
@@ -91,7 +91,7 @@ class LifeDeviceUiTest {
         assertEquals(TextRange(4), code.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
         compose.runOnIdle { model.dismissLogin() }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("洗衣", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("hall-life-entry-laundry").performClick()
         compose.onNodeWithTag("life-login-sheet").assertIsDisplayed()
         assertEquals(0, model.state.value.entryRequest)
     }
@@ -151,6 +151,7 @@ class LifeDeviceUiTest {
             phase = WaterPhase.Running, startedAtMillis = times.getLong("startedAt"))) }
         compose.onNodeWithText("结束接水").assertIsDisplayed()
         compose.onNodeWithTag("water-elapsed").assertIsDisplayed()
+        compose.onNodeWithText("本地参考计时").assertIsDisplayed()
         val timer = compose.onNodeWithTag("water-elapsed").fetchSemanticsNode().boundsInRoot
         assertEquals(hero.center.x, timer.center.x, 1f)
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
@@ -160,6 +161,7 @@ class LifeDeviceUiTest {
         compose.onNodeWithText("接水已结束").assertIsDisplayed()
         compose.onNodeWithTag("water-ended-icon").assertIsDisplayed()
         compose.onNodeWithTag("water-fee-notice").assertIsDisplayed()
+        compose.onNodeWithText("本地参考时长").assertIsDisplayed()
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
         capture("04-water-ended-no-amount")
     }
@@ -177,6 +179,9 @@ class LifeDeviceUiTest {
         }
         val scanner = compose.onNodeWithTag("device-scanner").fetchSemanticsNode().boundsInRoot
         val page = compose.onNodeWithTag("life-device-page").fetchSemanticsNode().boundsInRoot
+        val topBar = compose.onNodeWithTag("life-device-top-bar").fetchSemanticsNode().boundsInRoot
+        assertEquals(page.top, scanner.top, 1f)
+        assertTrue("Camera extends behind the miuix top bar", scanner.top <= topBar.top && scanner.bottom > topBar.bottom)
         assertEquals(page.width, scanner.width, 1f)
         assertEquals(page.height, scanner.height, 1f)
         assertTrue("Scanner must use full page, not a square card", scanner.height > scanner.width * 1.5f)

@@ -63,6 +63,7 @@ class LifeDeviceApiTest {
         assertEquals("actual-shop", device.shopId)
         assertEquals("", device.address)
         assertEquals("饮水", device.skus.single().name)
+        assertNull(device.skus.single().minutes)
         assertNull(device.startError)
         val channel = calls.single { it.url.path == "/payChannelRoute/afterPay" }
         assertEquals(mapOf("imei" to "867369079842630", "useTicket" to "0", "shopId" to "22", "goodsCategory" to "04", "token" to "test-token"), channel.form())
@@ -133,7 +134,7 @@ class LifeDeviceApiTest {
         val device = service.laundryDevice(nqt, "test-token")
         assertNull(device.laundryError)
         assertFalse(device.supportsFinish)
-        assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁"), device.skus.single())
+        assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁", 5), device.skus.single())
         assertTrue(device.channels.isEmpty())
         assertEquals(mapOf("NQT" to nqt, "token" to "test-token"), calls.first().form())
         val quote = service.laundryQuote(device, "clean", "test-token")

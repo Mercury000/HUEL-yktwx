@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -32,42 +34,41 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
+import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
-internal fun LifeDeviceEntries(water: WaterSession?, onOpen: (LifeFeature) -> Unit, laundry: LaundrySession? = null) {
+internal fun LifeDeviceEntries(onOpen: (LifeFeature) -> Unit) {
     Card(Modifier.fillMaxWidth().testTag("hall-life-devices-card"), cornerRadius = 24.dp) {
-        Column {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("生活设备", Modifier.weight(1f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Icon(top.yukonga.miuix.kmp.icon.MiuixIcons.GridView, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.primary)
+                Text("生活设备", Modifier.weight(1f).padding(start = 8.dp), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text("胖乖生活", fontSize = 11.sp, color = DashboardPalette.muted)
             }
-            LifeFeature.entries.forEachIndexed { index, feature ->
-                DashboardPreference(feature.title, onClick = { onOpen(feature) },
-                    summary = when {
-                        feature == LifeFeature.Laundry -> when (laundry?.phase) {
-                            LaundryPhase.Running -> "${laundry.program}进行中"
-                            LaundryPhase.Ended -> "洗衣已完成"
-                            LaundryPhase.Paying -> "继续支付"
-                            null -> "扫码洗衣"
-                            else -> "查看洗衣进度"
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LifeFeature.entries.forEach { feature ->
+                    val waterFeature = feature == LifeFeature.Water
+                    val ink = if (waterFeature) DashboardPalette.airAccent else MiuixTheme.colorScheme.primary
+                    Card(Modifier.weight(1f).fillMaxHeight().testTag("hall-life-entry-${feature.name.lowercase()}"),
+                        cornerRadius = 18.dp, colors = CardDefaults.defaultColors(color = if (waterFeature) DashboardPalette.airPanel else DashboardPalette.iconPanel),
+                        onClick = { onOpen(feature) }) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Icon(if (waterFeature) AppIcons.Water else AppIcons.Laundry, null, Modifier.size(26.dp), tint = ink)
+                            Text("扫码${feature.title}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = ink)
+                            Text(if (waterFeature) "饮水设备" else "选择洗衣程序", fontSize = 11.sp, lineHeight = 17.sp, color = ink.copy(alpha = .8f))
                         }
-                        water?.phase == WaterPhase.Running -> "接水中"
-                        water?.phase == WaterPhase.Starting -> "正在启动"
-                        water?.phase == WaterPhase.Stopping -> "正在结束"
-                        else -> "扫码接水"
-                    }, startAction = {
-                        Icon(if (feature == LifeFeature.Water) AppIcons.Water else AppIcons.Laundry, null,
-                            Modifier.size(22.dp), tint = MiuixTheme.colorScheme.primary)
-                    })
-                if (index < LifeFeature.entries.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp))
+                    }
+                }
             }
         }
     }
@@ -123,6 +124,19 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
     LaunchedEffect(state.scanning, active) { if (!state.scanning || !active) { manual = false; help = false } }
     val scanning = state.scanning || state.loadingDevice && state.device == null
+    val view = LocalView.current
+    if (scanning && active) DisposableEffect(view) {
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val oldStatus = controller?.isAppearanceLightStatusBars
+        val oldNavigation = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            oldStatus?.let { controller.isAppearanceLightStatusBars = it }
+            oldNavigation?.let { controller.isAppearanceLightNavigationBars = it }
+        }
+    }
     val title = when {
         scanning -> "扫一扫"
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
@@ -158,12 +172,12 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         val displayedStage = presentation.stage
         val state = presentation.state
         val stageActive = active && displayedStage == stage
-        if (displayedStage == "scan") Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).testTag("life-device-page")) {
-            DeviceScanner(stageActive && !manual && !help && !state.loadingDevice, model::scanned, immersive = true,
+        if (displayedStage == "scan") Box(Modifier.fillMaxSize().testTag("life-device-page")) {
+            DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) model.scanned(code) }, immersive = true,
                 onManualInput = { manual = true })
             if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
             if (!state.error.isNullOrBlank() && !manual) Text(state.error,
-                Modifier.align(Alignment.TopCenter).padding(horizontal = 24.dp, vertical = 16.dp),
+                Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 16.dp, start = 24.dp, end = 24.dp),
                 fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
         } else LazyColumn(Modifier.fillMaxSize().overScrollVertical().testTag("life-device-page"),
             contentPadding = PaddingValues(top = padding.calculateTopPadding(),
@@ -214,15 +228,19 @@ private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Bo
     val ink = if (scanning) Color.White else MiuixTheme.colorScheme.onSurface
     BarBlurHost(false, settings.blurTopBar.value && !scanning) {
         Scaffold(topBar = {
-            BlurredBar(topGradient = !scanning) {
-                SmallTopAppBar(title = title, color = surface, titleColor = ink,
+            val bar: @Composable () -> Unit = {
+                SmallTopAppBar(title = title, color = if (scanning) Color.Transparent else surface, titleColor = ink,
+                    modifier = Modifier.testTag("life-device-top-bar"),
                     navigationIcon = { IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) } },
                     actions = {
-                        if (showHelp) TextButton("帮助", onHelp,
-                            colors = ButtonDefaults.textButtonColors(color = Color.Transparent,
-                                textColor = if (scanning) Color(0xFFBDC7D1) else DashboardPalette.muted))
+                        if (showHelp) IconButton(onClick = onHelp) {
+                            Icon(MiuixIcons.Info, "帮助", tint = ink)
+                        }
                     })
             }
+            if (scanning) Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
+                bar()
+            } else BlurredBar(topGradient = true) { bar() }
         }, bottomBar = { footer() }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(surface)) { content(padding) }
         }
@@ -252,10 +270,10 @@ internal fun LifeDeviceHero(device: LifeDevice, feature: LifeFeature) {
 
 @Composable
 internal fun LifeDeviceGlyph(feature: LifeFeature) {
-    Box(Modifier.size(70.dp).clip(RoundedCornerShape(24.dp)).background(DashboardPalette.airPanel)
+    Box(Modifier.size(70.dp).clip(RoundedCornerShape(24.dp)).background(DashboardPalette.iconPanel)
         .testTag("life-device-glyph"), contentAlignment = Alignment.Center) {
         Icon(if (feature == LifeFeature.Water) AppIcons.Water else AppIcons.Laundry, null, Modifier.size(35.dp),
-            tint = DashboardPalette.airAccent)
+            tint = DashboardPalette.iconAccent)
     }
 }
 
@@ -265,12 +283,12 @@ private fun LifeDeviceFacts(device: LifeDevice, session: WaterSession? = null) {
     val rows = buildList {
         if (device.name.isNotBlank()) add("设备" to device.name)
         if (device.shopName.isNotBlank()) add("位置" to device.shopName)
-        if (duration != null) add("接水时长" to duration)
+        if (duration != null) add("本地参考时长" to duration)
         if (session != null && device.alipay != null) add("支付方式" to device.alipay!!.name)
         else add("服务提供方" to "胖乖生活")
     }
     Card(Modifier.fillMaxWidth().testTag("life-device-info"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
             rows.forEachIndexed { index, (label, value) ->
                 LifeDeviceField(label) {
                     if (label == "支付方式") LifePaymentValue(device)
@@ -296,7 +314,7 @@ private fun LifePaymentCard(device: LifeDevice, showOptions: Boolean = false, st
     onSelect: (String) -> Unit = {}, enabled: Boolean = false) {
     val channel = device.alipay ?: return
     Card(Modifier.fillMaxWidth().testTag("life-payment-card"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
             LifeDeviceField("支付方式") {
                 LifePaymentValue(device)
             }
@@ -331,21 +349,16 @@ private fun LifePaymentCard(device: LifeDevice, showOptions: Boolean = false, st
 @Composable
 private fun LifePaymentValue(device: LifeDevice) {
     val channel = device.alipay ?: return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).background(Color(0xFF149CFA)), contentAlignment = Alignment.Center) {
-            Text("支", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
-        Text(if (device.payment == "after") "支付宝免密" else channel.name, fontSize = 12.sp)
-    }
+    Text(if (device.payment == "after") "支付宝免密" else channel.name, fontSize = 12.sp)
 }
 
 @Composable
 private fun WaterUsageNotice(device: LifeDevice, running: Boolean = false) {
-    Card(Modifier.fillMaxWidth().testTag("water-usage-notice"), cornerRadius = 22.dp) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Card(Modifier.fillMaxWidth().testTag("water-usage-notice"), cornerRadius = 24.dp) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (!device.supportsFinish) "请按设备说明操作" else if (running) "接好后及时结束" else "接好后，点结束接水",
                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(if (running) "离开此页不会自动结束接水，可从大厅返回接水进度。"
+            Text(if (running) "离开此页不会自动结束接水，可从首页状态卡或大厅返回接水进度。"
                 else "请先放稳容器。费用可在胖乖生活或支付宝中查询。",
                 fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
         }
@@ -354,16 +367,15 @@ private fun WaterUsageNotice(device: LifeDevice, running: Boolean = false) {
 
 @Composable
 private fun WaterFeeNotice() {
-    Card(Modifier.fillMaxWidth().testTag("water-fee-notice"), cornerRadius = 22.dp,
-        colors = CardDefaults.defaultColors(color = DashboardPalette.lightingPanel)) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(Modifier.fillMaxWidth().testTag("water-fee-notice"), cornerRadius = 24.dp) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Icon(AppIcons.Bill, null, Modifier.size(17.dp), tint = DashboardPalette.lightingAccent)
+                Icon(AppIcons.Bill, null, Modifier.size(17.dp), tint = MiuixTheme.colorScheme.primary)
                 Text("费用可在胖乖生活或支付宝查询", Modifier.weight(1f), fontSize = 12.sp, lineHeight = 20.sp,
-                    fontWeight = FontWeight.SemiBold, color = DashboardPalette.lightingAccent)
+                    fontWeight = FontWeight.SemiBold)
             }
             Text("支付宝免密后付，实际费用与扣款情况请查看对应记录。", fontSize = 11.sp, lineHeight = 19.sp,
-                color = DashboardPalette.lightingAccent.copy(alpha = .8f))
+                color = DashboardPalette.muted)
         }
     }
 }
@@ -394,12 +406,12 @@ private fun WaterProgress(session: WaterSession, nowMillis: () -> Long) {
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(6.dp).background(lifeSuccessInk(), CircleShape))
-                Text("接水中", fontSize = 12.sp, color = DashboardPalette.airAccent, fontWeight = FontWeight.Medium)
+                Text("接水中", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
             }
             session.startedAtMillis?.let { started ->
                 Text(waterDuration(now - started), Modifier.padding(top = 22.dp, bottom = 9.dp).testTag("water-elapsed"),
                     fontSize = 60.sp, lineHeight = 72.sp, fontWeight = FontWeight.SemiBold)
-                Text("本次接水时长", fontSize = 12.sp, color = DashboardPalette.muted)
+                Text("本地参考计时", fontSize = 12.sp, color = DashboardPalette.muted)
             }
             Text("费用以实际扣款记录为准", Modifier.padding(top = 3.dp), fontSize = 10.sp, color = DashboardPalette.muted)
         }
@@ -423,10 +435,8 @@ private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel,
         phase == WaterPhase.Ended -> "再次扫码接水"
         else -> "开始接水"
     }
-    Column(Modifier.fillMaxWidth().background(MiuixTheme.colorScheme.surface).padding(horizontal = 16.dp)
-        .padding(top = 14.dp).bottomSheetSafeArea().padding(bottom = 20.dp).testTag("water-action-footer"),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Text(if (phase == WaterPhase.Ready) "支付宝免密后付" else "费用可在胖乖生活或支付宝查询", fontSize = 10.sp,
+    LifeDeviceActionFooter("water-action-footer") {
+    Text(if (phase == WaterPhase.Ready) "支付宝免密后付" else "费用可在胖乖生活或支付宝查询", fontSize = 12.sp,
         lineHeight = 17.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
     if (phase == WaterPhase.Running && water?.device?.supportsFinish != true) {
         Text("请按设备说明结束接水", Modifier.fillMaxWidth(), fontSize = 13.sp, textAlign = TextAlign.Center,
@@ -445,9 +455,16 @@ private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel,
         AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
             label = "water-button-label") { Text(it) }
     }
-    if (phase == WaterPhase.Ended) TextButton("返回大厅", onBack, Modifier.fillMaxWidth(), enabled = active,
-        colors = ButtonDefaults.textButtonColors(color = DashboardPalette.card, textColor = MiuixTheme.colorScheme.primary))
+    if (phase == WaterPhase.Ended) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
     }
+}
+
+/** The device pages share the app's native action spacing and neutral secondary button style. */
+@Composable
+internal fun LifeDeviceActionFooter(tag: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().background(MiuixTheme.colorScheme.surface).padding(horizontal = 16.dp)
+        .padding(top = 14.dp).bottomSheetSafeArea().padding(bottom = 20.dp).testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
 }
 
 @Composable
@@ -491,11 +508,12 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
                 }
                 if ((if (display.feature == LifeFeature.Water) display.water?.active != true && display.water?.phase != WaterPhase.Ended else display.laundry == null)) Row(
                     Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton("重新扫码", { onDismiss(); model.scan() }, Modifier.weight(1f), enabled = show && !display.waterBusy)
-                    TextButton("刷新设备", { onDismiss(); model.refreshDevice() }, Modifier.weight(1f), enabled = show && !display.waterBusy && !display.loadingDevice)
+                    Button(onClick = { onDismiss(); model.scan() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy) { Text("重新扫码") }
+                    Button(onClick = { onDismiss(); model.refreshDevice() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy && !display.loadingDevice) { Text("刷新设备") }
                 }
             }
-            TextButton("知道了", onDismiss, Modifier.fillMaxWidth(), enabled = show)
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), enabled = show,
+                colors = ButtonDefaults.buttonColorsPrimary()) { Text("知道了") }
         }
     }
 }
