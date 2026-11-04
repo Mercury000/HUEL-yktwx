@@ -261,6 +261,7 @@ internal fun PaymentResultContent(
     enabled: Boolean = true,
     onCheck: (() -> Unit)? = null,
     loadingTitle: String? = null,
+    paymentApp: String = "微信",
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -274,7 +275,7 @@ internal fun PaymentResultContent(
         RechargePhase.TimedOut -> "支付超时"
         RechargePhase.Checking -> if (loading) "正在查询结果" else "支付结果"
         RechargePhase.Creating -> "正在发起" + subject
-        else -> "请在微信中完成支付"
+        else -> "请在${paymentApp}中完成支付"
     }
     val color = when (phase) {
         RechargePhase.Paid -> MiuixTheme.colorScheme.primary

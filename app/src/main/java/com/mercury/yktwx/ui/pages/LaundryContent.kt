@@ -15,9 +15,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.LifeDevicesUiState
 import com.mercury.yktwx.LifeDevicesViewModel
+import com.mercury.yktwx.RechargePhase
+import com.mercury.yktwx.data.FeeMethod
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
@@ -85,7 +88,7 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
             }
         }
     }
-    item { AnimatedInlineError(state.error) }
+    item { AnimatedInlineError(state.error.takeUnless { state.paymentVisible }) }
 }
 
 @Composable
@@ -200,6 +203,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             when {
                 ended -> model.scan()
                 session?.phase == LaundryPhase.Paying -> model.showLaundryPayment()
+                session?.phase == LaundryPhase.Checking && !session.createSent -> model.showLaundryPayment()
                 retry || session != null -> model.retryLaundry()
                 else -> model.showLaundryPayment()
             }
@@ -218,25 +222,59 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
 @Composable
 internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel) {
     val overlaySession = rememberOverlaySession(show)
-    PaymentSheet(show = show, title = "付款", onDismissRequest = model::dismissLaundryPayment) {
-        key(overlaySession) {
-            val display = rememberWhileShown(show, state)
-            val quote = display.laundryQuote
-            val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
-            var selected by remember(channels) { mutableIntStateOf(channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)) }
-            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState())
-                .padding(top = 8.dp, bottom = 20.dp).testTag("laundry-payment-sheet"),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(quote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—", Modifier.fillMaxWidth(), fontSize = 32.sp,
-                    fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                val method = channels.getOrNull(selected)
-                val reason = if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
-                PaymentMethodActions(channels.map { it.name }, selected, { selected = it },
-                    label = if (method?.method == "13") "支付宝支付" else "确认支付",
-                    onSubmit = { method?.let { model.payLaundry(it.method) } }, enabled = show && !display.laundryBusy,
-                    canSubmit = method != null && reason == null, error = reason,
-                    modifier = Modifier.testTag("laundry-pay-submit"))
+    val feedback = state.paymentFeedback
+    val isResult = feedback != null && feedback.phase != RechargePhase.Creating
+    val targetPage = rememberWhileShown(show, if (isResult) LaundrySheetPage.Result else LaundrySheetPage.Method)
+    val title = rememberWhileShown(show, if (isResult) null else "付款")
+    PaymentSheet(show = show, title = title, onDismissRequest = model::dismissLaundryPayment,
+        insideMargin = DpSize(0.dp, 0.dp)) {
+        key(overlaySession) { SheetPageContent(targetPage, Modifier.bottomSheetSafeArea()) { page, interactive ->
+            val resultPage = page == LaundrySheetPage.Result
+            val enabled = show && interactive
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .then(if (resultPage) Modifier.padding(horizontal = 24.dp)
+                    else Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp))
+                .testTag("laundry-payment-sheet"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (resultPage) {
+                    val result = rememberWhileShown(show && isResult, LaundryResultDisplay(
+                        feedback?.phase ?: RechargePhase.Checking, feedback?.loading == true, feedback?.detail,
+                        state.laundry?.price ?: state.laundryQuote?.price ?: "0.00",
+                        state.laundryQuote?.channels.orEmpty()))
+                    val methods = remember(result.channels) {
+                        result.channels.filter { it.laundryUnavailableReason() == null }.map {
+                            FeeMethod(it.method, it.method, it.name.removeSuffix("支付"), false, 0)
+                        }
+                    }
+                    PaymentResultContent(result.phase, result.loading, result.price.toBigDecimal().movePointRight(2).longValueExact(),
+                        result.detail, { if (enabled && isResult) model.dismissLaundryPayment() }, subject = "支付",
+                        retryMethods = methods, onContinuePayment = { if (enabled && isResult) model.payLaundry(it.id) },
+                        enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
+                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() }, paymentApp = "支付宝")
+                } else {
+                    // Keep display-only form values during the transition; never retain SDK payloads.
+                    val quote = rememberWhileShown(show && !isResult, state.laundryQuote)
+                    val busy = rememberWhileShown(show && !isResult, state.laundryBusy)
+                    val error = rememberWhileShown(show && !isResult, state.error)
+                    val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
+                    var selected by remember(channels) { mutableIntStateOf(channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)) }
+                    Text(quote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—", Modifier.fillMaxWidth(), fontSize = 32.sp,
+                        fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                    val method = channels.getOrNull(selected)
+                    val reason = if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
+                    val canPay = state.laundry?.let { !it.active || it.phase == LaundryPhase.Paying ||
+                        it.phase == LaundryPhase.Checking && !it.createSent } ?: true
+                    PaymentMethodActions(channels.map { it.name }, selected, { selected = it },
+                        label = if (busy) "正在发起…" else if (method?.method == "13") "支付宝支付" else "确认支付",
+                        onSubmit = { method?.let { model.payLaundry(it.method) } },
+                        enabled = enabled && !isResult && !busy && state.paymentLaunch == null,
+                        canSubmit = canPay && method != null && reason == null, error = error ?: reason,
+                        modifier = Modifier.testTag("laundry-pay-submit"))
+                }
             }
-        }
+        } }
     }
 }
+
+private enum class LaundrySheetPage { Method, Result }
+private data class LaundryResultDisplay(val phase: RechargePhase, val loading: Boolean, val detail: String?,
+    val price: String, val channels: List<LifePayChannel>)

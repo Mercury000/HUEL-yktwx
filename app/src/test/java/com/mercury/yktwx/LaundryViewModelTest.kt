@@ -52,6 +52,11 @@ class LaundryViewModelTest {
         var waterReads = 0; var waterReading: WaterReading? = null; var waterFails = false
         var scannedWaterDevice: LifeDevice? = null
         var readyGate: CompletableDeferred<Unit>? = null
+        var readyError: String? = null
+        var prepayGate: CompletableDeferred<Unit>? = null
+        var prepayError = false
+        var paidError = false
+        var readyChecks = 0
         val balance = LifePayChannel("2", "余额支付", true, false)
         val alipay = LifePayChannel("13", "支付宝", true, false)
         var channels = listOf(balance, alipay)
@@ -78,7 +83,11 @@ class LaundryViewModelTest {
         override suspend fun syncOrder(orderNo: String, token: String) { error("No after pay sync") }
         override suspend fun laundryDevice(code: String, token: String) = devices[code] ?: device
         override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String) = LaundryQuote(device.id, skuId, price, 5, channels)
-        override suspend fun checkLaundryDevice(deviceId: String, token: String): String { readyGate?.await(); return "msg-1" }
+        override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
+            readyChecks++; readyGate?.await()
+            readyError?.let { throw LifeDeviceException(it) }
+            return "msg-1"
+        }
         override suspend fun laundryMachineReady(messageId: String, token: String) = true
         override suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder {
             creates++; if (lostCreate) throw java.io.IOException("lost create response")
@@ -103,9 +112,15 @@ class LaundryViewModelTest {
             paidOrders += orderNo; orderStatuses[orderNo] = 2
             if (lostPayment) throw java.io.IOException("lost payment response")
         }
-        override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String { alipayPrepares++; return "test-signed-payload" }
+        override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String {
+            alipayPrepares++; prepayGate?.await()
+            if (prepayError) throw java.io.IOException("prepay unavailable")
+            return "test-signed-payload"
+        }
         override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean {
-            paidReads++; return if (orders.size > 1) orderNo in paidOrders else paid
+            paidReads++
+            if (paidError) throw java.io.IOException("payment query unavailable")
+            return if (orders.size > 1) orderNo in paidOrders else paid
         }
         override suspend fun laundryStarted(orderNo: String, token: String) = if (orders.size > 1) orderStatuses[orderNo] == 2 else started
     }
@@ -183,6 +198,136 @@ class LaundryViewModelTest {
         val model = model(api, Store()); prepare(model)
         model.showLaundryPayment(); model.payLaundry("32"); runCurrent()
         assertEquals(0, api.creates); assertNull(model.state.value.laundry)
+    }
+    @Test fun failedInitialDeviceCheckKeepsTheFormAndRetryCreatesAndLaunchesOnce() = runTest(dispatcher) {
+        val message = "设备工作中，请更换设备使用"
+        val api = Api().apply { readyError = message }; val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        val sessionId = model.state.value.laundry!!.sessionId
+        assertTrue(model.state.value.paymentVisible)
+        assertEquals(RechargePhase.Creating, model.state.value.paymentFeedback?.phase)
+        assertEquals(message, model.state.value.error)
+        assertEquals(0, api.creates); assertEquals(0, api.alipayPrepares)
+        model.dismissLaundryPayment(); model.showLaundryPayment(); runCurrent()
+        assertEquals(message, model.state.value.error)
+        api.readyError = null
+        model.payLaundry("13"); model.payLaundry("13"); runCurrent()
+        assertEquals(sessionId, model.state.value.laundry?.sessionId)
+        assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares)
+        assertNotNull(model.state.value.paymentLaunch); assertNull(model.state.value.error)
+        assertEquals(RechargePhase.AwaitingPayment, model.state.value.paymentFeedback?.phase)
+        assertTrue(model.state.value.paymentVisible)
+    }
+    @Test fun occupiedExistingOrderErrorSurvivesPollingAndReopeningUntilADeviceCheckSucceeds() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "6001"); runCurrent()
+        api.readyError = "设备工作中，请更换设备使用"
+        model.payLaundry("13"); runCurrent()
+        assertEquals(api.readyError, model.state.value.error)
+        assertNull(model.state.value.paymentLaunch); assertEquals(1, api.alipayPrepares)
+        model.environment(true); runCurrent(); advanceTimeBy(10_000); runCurrent()
+        assertEquals(api.readyError, model.state.value.error)
+        model.dismissLaundryPayment(); model.showLaundryPayment(); runCurrent()
+        assertEquals(api.readyError, model.state.value.error)
+        api.readyError = null
+        model.payLaundry("13"); runCurrent()
+        assertNull(model.state.value.error); assertNotNull(model.state.value.paymentLaunch)
+        assertEquals(1, api.creates); assertEquals(2, api.alipayPrepares)
+        model.environment(false)
+    }
+    @Test fun preparationAndUnconsumedLaunchIgnoreRepeatedClicksAndStaleReturns() = runTest(dispatcher) {
+        val api = Api().apply { prepayGate = CompletableDeferred() }; val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        assertTrue(model.state.value.laundryBusy); assertTrue(model.state.value.paymentVisible)
+        assertEquals(RechargePhase.Creating, model.state.value.paymentFeedback?.phase)
+        model.showLaundryPayment(); model.payLaundry("13"); model.payLaundry("2"); runCurrent()
+        assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares); assertEquals(0, api.balancePays)
+        api.prepayGate!!.complete(Unit); runCurrent()
+        val first = model.state.value.paymentLaunch!!
+        model.showLaundryPayment(); model.payLaundry("13"); model.openScan(); runCurrent()
+        assertEquals(first, model.state.value.paymentLaunch)
+        assertEquals(1, api.alipayPrepares); assertFalse(model.state.value.scanning)
+        assertTrue(model.claimLaundryPayment(first.id)); assertFalse(model.claimLaundryPayment(first.id))
+        model.laundryPaymentReturned(first.id, "6001"); runCurrent()
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        model.payLaundry("13"); runCurrent()
+        val second = model.state.value.paymentLaunch!!
+        model.laundryPaymentReturned(first.id, "9000"); runCurrent()
+        assertEquals(second, model.state.value.paymentLaunch)
+        assertEquals(1, api.creates); assertEquals(2, api.alipayPrepares)
+    }
+    @Test fun prepayFailureKeepsFormAndSignedPayloadIsLaunchedOnTheNextSingleRetry() = runTest(dispatcher) {
+        val api = Api().apply { prepayError = true }; val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        assertTrue(model.state.value.paymentVisible); assertNull(model.state.value.paymentLaunch)
+        assertEquals(RechargePhase.Creating, model.state.value.paymentFeedback?.phase)
+        assertNotNull(model.state.value.error)
+        api.prepayError = false
+        model.payLaundry("13"); runCurrent()
+        assertEquals("test-signed-payload", model.state.value.paymentLaunch?.payload)
+        assertEquals(1, api.creates); assertEquals(2, api.alipayPrepares)
+    }
+    @Test fun missingSdkResultGivesImmediateFailureAndNeverClaimsPaymentSucceeded() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, null); runCurrent()
+        assertFalse(model.state.value.laundryBusy)
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        assertEquals("支付宝未完成支付，可继续支付同一订单", model.state.value.paymentFeedback?.detail)
+        assertFalse(model.state.value.laundry!!.paid)
+    }
+    @Test fun sdkSuccessUsesSharedThreeQueryRoundAndDoesNotInventPaymentTimeout() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        val reads = api.paidReads
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "9000"); runCurrent()
+        assertEquals(RechargePhase.Checking, model.state.value.paymentFeedback?.phase)
+        assertTrue(model.state.value.paymentFeedback!!.loading)
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(reads + 3, api.paidReads)
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        assertFalse(model.state.value.laundry!!.paid)
+        assertFalse(model.state.value.laundryBusy)
+    }
+    @Test fun queryFailureOffersOnlyReadRetryAndBackendRunningStatusMeansPaid() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        api.paidError = true
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "9000"); runCurrent()
+        assertEquals(RechargePhase.Checking, model.state.value.paymentFeedback?.phase)
+        assertFalse(model.state.value.paymentFeedback!!.loading)
+        assertNotNull(model.state.value.paymentFeedback?.detail)
+        api.paidError = false; api.status = 2
+        model.checkLaundryPayment(); runCurrent()
+        assertEquals(RechargePhase.Paid, model.state.value.paymentFeedback?.phase)
+        assertEquals(LaundryPhase.Running, model.state.value.laundry?.phase)
+        assertTrue(model.state.value.paymentVisible)
+        assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares); assertEquals(0, api.balancePays)
+    }
+    @Test fun dismissingFeedbackDoesNotLoseProgressOrReopenForLateConfirmation() = runTest(dispatcher) {
+        val api = Api(); val store = Store(); val model = model(api, store)
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        val request = model.state.value.paymentLaunch!!
+        model.dismissLaundryPayment()
+        assertNull(model.state.value.paymentFeedback); assertNotNull(model.state.value.paymentLaunch)
+        api.status = 2
+        model.laundryPaymentReturned(request.id, "6001"); runCurrent()
+        assertEquals(LaundryPhase.Running, store.washing?.phase)
+        assertTrue(store.washing!!.paid)
+        assertFalse(model.state.value.paymentVisible); assertNull(model.state.value.paymentFeedback)
+        assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares)
+    }
+    @Test fun resultRetryReadsExistingOrderChannelsBeforePreparingPaymentAgain() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "6001"); runCurrent()
+        api.channels = listOf(api.alipay.copy(available = false, remark = "支付渠道暂不可用"))
+        model.payLaundry("13"); runCurrent()
+        assertEquals("支付渠道暂不可用", model.state.value.error)
+        assertEquals(api.channels, model.state.value.laundryQuote?.channels)
+        assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares)
+        assertNull(model.state.value.paymentLaunch)
     }
     @Test fun restoredFinishedOrderAndForegroundPollingKeepExpectedTimeSeparateFromCompletion() = runTest(dispatcher) {
         val session = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running, true, "wash-1", "wash-id", true, true,

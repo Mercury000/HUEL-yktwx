@@ -214,6 +214,68 @@ class LaundryUiTest {
         compose.onNodeWithText("暂无支持的支付方式").assertIsDisplayed()
         compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled()
     }
+    @Test fun paymentDrawerReusesCampusFeedbackFromPreparationThroughAlipayAndResult() {
+        val model = model()
+        val quote = LaundryQuote("test-device", "test-program", "3.50", 30, listOf(
+            LifePayChannel("2", "余额支付", false, false, "余额不足"),
+            LifePayChannel("13", "支付宝支付", true, false),
+            LifePayChannel("32", "微信支付", true, false),
+            LifePayChannel("52", "银联支付", true, false)))
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            laundryQuote = quote, paymentVisible = true,
+            paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.Paid)))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(state.paymentVisible, state, model)
+            } } }
+        }
+        capture("laundry-payment-paid-initial")
+        compose.runOnIdle { state = state.copy(laundryBusy = true,
+            paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.Creating)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("¥3.50").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled().assertTextContains("正在发起…")
+        compose.runOnIdle { state = state.copy(laundryBusy = false,
+            paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.AwaitingPayment)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("请在支付宝中完成支付").assertIsDisplayed()
+        compose.onNodeWithText("请在微信中完成支付").assertDoesNotExist()
+        compose.onNodeWithText("¥ 3.50").assertIsDisplayed()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        capture("laundry-payment-awaiting")
+        compose.runOnIdle { state = state.copy(
+            paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.Checking, loading = true)) }
+        compose.onNodeWithText("正在查询结果").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(paymentFeedback = LaundryPaymentFeedback(
+            "attempt", RechargePhase.Checking, detail = "连接失败，请检查网络后重试")) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("查询结果").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNodeWithText("支付失败").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(paymentFeedback = LaundryPaymentFeedback(
+            "attempt", RechargePhase.Failed, detail = "支付已取消，可继续支付同一订单")) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("支付失败").assertIsDisplayed()
+        compose.onAllNodesWithText("支付已取消，可继续支付同一订单").assertCountEquals(1)
+        compose.onNodeWithText("¥ 3.50").assertDoesNotExist()
+        compose.onNodeWithText("余额支付").assertDoesNotExist()
+        compose.onNodeWithText("微信支付").assertDoesNotExist()
+        compose.onNodeWithText("银联支付").assertDoesNotExist()
+        compose.onNodeWithText("继续支付").assertIsNotEnabled()
+        compose.onNodeWithText("支付宝支付").performClick()
+        compose.onNodeWithText("继续支付").assertIsEnabled()
+        val actions = compose.onNodeWithText("继续支付").fetchSemanticsNode().boundsInRoot
+        assertTrue("Retry remains inside the drawer viewport", actions.bottom <= compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom)
+        capture("laundry-payment-failed")
+        compose.runOnIdle { state = state.copy(paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.Paid)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("支付成功").assertIsDisplayed()
+        compose.onNodeWithText("¥ 3.50").assertIsDisplayed()
+        compose.onNodeWithText("完成").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNode(hasText("完成") and hasClickAction()).performTouchInput { click() }
+        capture("laundry-payment-paid")
+    }
     private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {
         override fun connect() {}
         override fun disconnect() {}
