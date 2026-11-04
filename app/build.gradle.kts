@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0"
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
+val machineProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+val pangguiSecret = providers.environmentVariable("PANGGUI_API_SECRET")
+    .orElse(machineProperties.getProperty("panggui.apiSecret", "")).get()
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
@@ -13,6 +20,7 @@ android {
         versionCode = 7
         versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "PANGGUI_API_SECRET", "\"" + pangguiSecret.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {

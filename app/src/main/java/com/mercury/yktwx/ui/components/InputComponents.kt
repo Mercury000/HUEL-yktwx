@@ -2,14 +2,48 @@ package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import top.yukonga.miuix.kmp.basic.TextField
+
+/** Keep selection and IME composition locally when a parent echoes only the text. */
+@Composable
+internal fun DigitTextField(
+    value: String, onValueChange: (String) -> Unit, label: String, maxDigits: Int,
+    modifier: Modifier = Modifier, enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+) {
+    var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(value, TextRange(value.length)))
+    }
+    var externalValue by remember { mutableStateOf(value) }
+    if (value != externalValue) {
+        externalValue = value
+        if (draft.text != value) draft = TextFieldValue(value, TextRange(value.length))
+    }
+    TextField(draft, onValueChange = { next ->
+        draft = next.digitsOnly(maxDigits)
+        if (draft.text != value) onValueChange(draft.text)
+    }, label = label, singleLine = true, useLabelAsPlaceholder = true, enabled = enabled,
+        modifier = modifier.trackInputFocus(enabled), keyboardOptions = keyboardOptions, keyboardActions = keyboardActions)
+}
+
+internal fun TextFieldValue.digitsOnly(maxDigits: Int): TextFieldValue {
+    val digits = text.filter { it in '0'..'9' }.take(maxDigits)
+    if (digits == text) return this
+    fun offset(index: Int) = text.take(index).count { it in '0'..'9' }.coerceAtMost(maxDigits)
+    fun range(value: TextRange) = TextRange(offset(value.start), offset(value.end))
+    return copy(text = digits, selection = range(selection), composition = composition?.let(::range)?.takeUnless { it.collapsed })
+}
 
 /** Accept unfinished amounts while editing; payment rules still validate integral cents. */
 @Composable

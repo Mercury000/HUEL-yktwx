@@ -29,6 +29,8 @@ import com.mercury.yktwx.MyViewModel
 import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
+import com.mercury.yktwx.LifeDevicesViewModel
+import com.mercury.yktwx.data.life.LifeFeature
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
@@ -72,7 +74,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References }
+private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References, LifeDevice }
 private enum class AuthPage { Restoring, Login, Main }
 
 @Composable
@@ -281,6 +283,8 @@ private fun MainContent(
     val collectedMyState by myModel.state.collectAsStateWithLifecycle()
     val avatarState by avatarModel.state.collectAsStateWithLifecycle()
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
+    val lifeModel: LifeDevicesViewModel = viewModel()
+    val lifeState by lifeModel.state.collectAsStateWithLifecycle()
     val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
     val avatarPending = !state.needsLogin && (avatarState.owner != state.username || avatarState.preview != state.preview || avatarState.restoring)
     val avatarImage = avatarState.image.takeIf { customAvatar }
@@ -306,6 +310,8 @@ private fun MainContent(
     val network by rememberNetworkState(state.preview)
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
+    LaunchedEffect(foreground, isActive, state.preview) { lifeModel.environment(foreground && isActive && !state.preview) }
+    DisposableEffect(lifeModel) { onDispose { lifeModel.environment(false) } }
     val readPage = when {
         !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
@@ -379,6 +385,14 @@ private fun MainContent(
         if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) {
             layers = layers.dropLast(1)
         }
+    }
+    fun openLifeDevice(feature: LifeFeature) {
+        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!allowOnlineEntry(context, state.preview)) return
+        lifeModel.open(feature)
+    }
+    LaunchedEffect(lifeState.entryRequest) {
+        if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
@@ -539,6 +553,8 @@ private fun MainContent(
                                     feeOpening = feeOpening, feeOpeningTarget = feeTarget,
                                     onOpenCardService = ::cardAction,
                                     othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
+                                    onOpenLifeDevice = ::openLifeDevice,
+                                    waterSession = lifeState.water,
                                 )
                                 2 -> BillPage(
                                     updateNotice = updateNotice,
@@ -634,6 +650,8 @@ private fun MainContent(
                     Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
                         onOpenReferences = { open(Screen.References) }, onBack = ::close)
                     Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
+                    Screen.LifeDevice -> LifeDevicePage(lifeState, settings, lifeModel,
+                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close)
                     else -> SecondaryPage(
                         screen = screen,
                         settings = settings,
@@ -648,6 +666,7 @@ private fun MainContent(
         }
     }
     }
+    LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
     AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible), updateModel::dismiss)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
