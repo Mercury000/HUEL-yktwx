@@ -3,8 +3,6 @@ package com.mercury.yktwx.data.life
 import java.net.URI
 import java.net.URLDecoder
 
-enum class LifeProvider { Panggui, Hui798 }
-
 enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣") }
 
 data class LifeAccount(val phone: String, val token: String) {

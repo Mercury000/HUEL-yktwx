@@ -7,6 +7,8 @@
 | 环境变量 | 本地属性 | 用途 |
 | --- | --- | --- |
 | `PANGGUI_API_SECRET` | `panggui.apiSecret` | 胖乖接口密钥 |
+| `HUI798_API_GATEWAY` | `hui798.apiGateway` | 798 网关 |
+| `HUI798_SIGN_SALT` | `hui798.signSalt` | 798 登录签名配置 |
 
 ## 构建与预览
 

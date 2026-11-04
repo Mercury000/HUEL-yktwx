@@ -50,7 +50,9 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     waterSessions: List<WaterSession> = emptyList(), laundrySessions: List<LaundrySession> = emptyList(),
     onOpenLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
     onDismissLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
-    lifeNowMillis: () -> Long = System::currentTimeMillis) {
+    lifeNowMillis: () -> Long = System::currentTimeMillis,
+    hui798LoginRequired: Boolean = false, onHui798Login: () -> Unit = {},
+    additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList()) {
     // Restoring an account precedes the shell's read effect. An unverified account
     // without a failed read is still waiting; keep this presentation local to the UI.
     val awaitingVerification = !state.needsLogin && state.code == null && state.error == null &&
@@ -95,8 +97,11 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val lifeStatus: @Composable () -> Unit = {
         InlineLifeLoginNotice(lifeLoginRequired, onLifeLogin, enabled = isActive)
+        InlineLifeLoginNotice(hui798LoginRequired, onHui798Login, enabled = isActive,
+            text = "登录慧生活798，扫码用水", tag = "hui798-login-notice")
     }
-    val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty()
+    val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
+        additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
     val navigationMotion = LocalMainNavigationMotion.current
     BarBlurHost(bottomBarBlurEnabled = settings.blurBottomBar.value, topBarBlurEnabled = settings.blurTopBar.value) {
         Box(Modifier.fillMaxSize()) {
@@ -266,7 +271,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                 .padding(bottom = (bottomPadding - 20.dp).coerceAtLeast(8.dp), start = 16.dp, end = 16.dp)
                 .imePadding().fillMaxWidth(),
             enabled = isActive && !showEnlarged && navigationMotion?.visible != false,
-            nowMillis = lifeNowMillis)
+            nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries)
         }
     }
 }
