@@ -200,7 +200,14 @@ class Hui798UiTest {
         compose.runOnIdle { state = state.copy(device = Hui798Device(id, "五号楼饮水机")) }
         compose.onNodeWithText("五号楼饮水机").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("重新查询")
-        compose.runOnIdle { state = state.copy(connectedPhone = "", error = null) }
+        compose.runOnIdle { state = state.copy(deviceInUse = true, error = null) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("设备正在使用").assertIsDisplayed()
+        compose.onNodeWithText("请等待本次用水结束后刷新状态").assertIsDisplayed()
+        compose.onNodeWithText("暂未确认设备状态").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("刷新状态")
+        capture("occupied-light")
+        compose.runOnIdle { state = state.copy(connectedPhone = "", deviceInUse = false) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText(id).assertIsDisplayed()
         compose.onNodeWithTag("hui798-device-login-notice").assertIsDisplayed()

@@ -171,6 +171,7 @@ private fun Hui798DeviceStatus(state: Hui798UiState) {
         starting && state.error == null -> "正在启动设备"
         !state.connected -> "登录后即可用水"
         state.error != null -> "暂未确认设备状态"
+        state.deviceInUse -> "设备正在使用"
         ready -> "设备可用"
         else -> "等待查询设备状态"
     }
@@ -179,6 +180,7 @@ private fun Hui798DeviceStatus(state: Hui798UiState) {
         state.loadingDevice -> "正在确认设备是否可以用水"
         starting -> "请等待设备响应，留意现场出水情况"
         !state.connected -> "使用慧生活798账号继续"
+        state.deviceInUse -> "请等待本次用水结束后刷新状态"
         ready -> "核对设备编号后，点击下方开始用水"
         state.error != null -> null
         else -> "查询成功后即可开始用水"
@@ -207,6 +209,7 @@ private fun Hui798Actions(state: Hui798UiState, model: Hui798ViewModel, active: 
         state.restoring -> "正在加载…"
         state.loadingDevice -> "正在查询…"
         phase != WaterPhase.Ended && !state.connected -> "登录并继续"
+        retryDevice && state.deviceInUse -> "刷新状态"
         retryDevice -> "重新查询"
         failed -> "刷新状态"
         phase == WaterPhase.Starting -> "正在启动…"

@@ -21,6 +21,7 @@ data class Hui798UiState(
     val loginError: String? = null, val device: Hui798Device? = null, val loadingDevice: Boolean = false,
     val deviceReady: Boolean = false, val busy: Boolean = false, val error: String? = null,
     val scannedDeviceId: String? = null,
+    val deviceInUse: Boolean = false,
     val sessions: List<Hui798Session> = emptyList(), val selectedSessionId: String? = null,
     val confirmedSessions: Set<String> = emptySet(),
 ) {
@@ -160,7 +161,8 @@ class Hui798ViewModel internal constructor(
     fun openDevice(id: String) {
         if (mutable.value.busy || mutable.value.restoring) return
         pendingDeviceId = id; generation++; deviceTask?.cancel()
-        mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, loadingDevice = false, selectedSessionId = null, error = null) }
+        mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, deviceInUse = false,
+            loadingDevice = false, selectedSessionId = null, error = null) }
         if (account != null) loadDevice(id)
     }
     fun refreshDevice() { if (!mutable.value.busy && !mutable.value.loadingDevice) pendingDeviceId?.let(::loadDevice) }
@@ -169,7 +171,7 @@ class Hui798ViewModel internal constructor(
         val request = ++generation
         deviceTask?.cancel()
         deviceTask = viewModelScope.launch {
-            mutable.update { it.copy(loadingDevice = true, deviceReady = false, error = null) }
+            mutable.update { it.copy(loadingDevice = true, deviceReady = false, deviceInUse = false, error = null) }
             try {
                 val device = api.device(id, owner.token)
                 if (request != generation || account != owner) return@launch
@@ -177,7 +179,7 @@ class Hui798ViewModel internal constructor(
                 val reading = api.status(id, owner.token)
                 if (request != generation || account != owner) return@launch
                 mutable.update { it.copy(device = device, loadingDevice = false, deviceReady = reading.status == 99,
-                    error = if (reading.status == 1) "设备正在使用，请等待本次用水结束" else null) }
+                    deviceInUse = reading.status == 1, error = null) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (request != generation || account != owner) return@launch
@@ -190,7 +192,7 @@ class Hui798ViewModel internal constructor(
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         generation++; deviceTask?.cancel(); pendingDeviceId = null
         mutable.update { it.copy(device = session.device, scannedDeviceId = null, selectedSessionId = id, deviceReady = false,
-            loadingDevice = false, error = sessionErrors[id]) }
+            deviceInUse = false, loadingDevice = false, error = sessionErrors[id]) }
         resumeSessions()
     }
     fun dismissSession(id: String) {
@@ -220,8 +222,13 @@ class Hui798ViewModel internal constructor(
             mutable.update { it.copy(error = "还有设备正在用水，请先从付款页查看进度") }; return
         }
         runCommand(owner) {
-            if (api.status(device.id, owner.token).status != 99) throw Hui798Exception("设备正在使用，请刷新设备状态")
+            val reading = api.status(device.id, owner.token)
             if (account != owner) return@runCommand
+            if (reading.status == 1) {
+                mutable.update { it.copy(deviceReady = false, deviceInUse = true, error = null) }
+                return@runCommand
+            }
+            if (reading.status != 99) throw Hui798Exception("暂时无法确认设备状态，请刷新")
             val sent = Hui798Session(device, attemptedAtMillis = now())
             saveSession(sent, select = true)
             try { api.start(device.id, owner.token) }
@@ -320,7 +327,7 @@ class Hui798ViewModel internal constructor(
         if (e !is Hui798Exception || !e.loginExpired || account != owner) return
         account = null; generation++
         withContext(io) { store.clearAccount() }
-        mutable.update { it.copy(connectedPhone = "", confirmedSessions = emptySet(), deviceReady = false) }
+        mutable.update { it.copy(connectedPhone = "", confirmedSessions = emptySet(), deviceReady = false, deviceInUse = false) }
     }
     private fun resumeSessions() {
         val owner = account ?: return

@@ -84,6 +84,32 @@ class Hui798ViewModelTest {
         assertEquals(2, api.reads)
         assertEquals(0, api.starts)
     }
+    @Test fun occupiedDeviceIsAConfirmedStateAndRefreshCanMakeItReady() = runTest(dispatcher) {
+        val api = Api().apply { reading = Hui798Reading(1, clock) }
+        val model = model(api, Store(account)); runCurrent()
+        model.openDevice(device.id); runCurrent()
+        assertTrue(model.state.value.deviceInUse)
+        assertFalse(model.state.value.deviceReady)
+        assertNull(model.state.value.error)
+        model.startWater(); runCurrent(); assertEquals(0, api.starts)
+        api.reading = Hui798Reading(99, null)
+        model.refreshDevice(); runCurrent()
+        assertFalse(model.state.value.deviceInUse)
+        assertTrue(model.state.value.deviceReady)
+        assertNull(model.state.value.error)
+        assertEquals(0, api.starts)
+    }
+    @Test fun deviceOccupiedBetweenQueryAndStartDoesNotSendStartOrReportUnknownState() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store(account)); runCurrent()
+        model.openDevice(device.id); runCurrent()
+        api.reading = Hui798Reading(1, clock)
+        model.startWater(); runCurrent()
+        assertTrue(model.state.value.deviceInUse)
+        assertFalse(model.state.value.deviceReady)
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.session)
+        assertEquals(0, api.starts)
+    }
     @Test fun duplicatedStartAndStopWaitForDeviceConfirmationRatherThanCommandAcceptance() = runTest(dispatcher) {
         val api = Api(); val store = Store(account); val model = model(api, store); runCurrent()
         model.pageVisible(true); model.openDevice(device.id); runCurrent()
