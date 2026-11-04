@@ -122,10 +122,10 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         page == HallFeePage.Result -> null
         else -> paymentTitle
     })
-    OverlayBottomSheet(show = visible && state.stage != FeeStage.Password,
-        startAction = { key(session) { SheetTitle(title) } }, onDismissRequest = {
+    PaymentSheet(show = visible && state.stage != FeeStage.Password,
+        title = title, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
-    }, renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
+    }, insideMargin = DpSize(20.dp, 12.dp)) {
         key(session) { SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
         val active = interactive && visible && state.stage != FeeStage.Password
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp),
