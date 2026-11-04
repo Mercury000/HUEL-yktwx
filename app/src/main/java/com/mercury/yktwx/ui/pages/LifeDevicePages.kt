@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -94,6 +95,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
     LaunchedEffect(state.scanning, active) { if (!state.scanning || !active) { manual = false; help = false } }
     val scanning = state.scanning || state.loadingDevice && state.device == null
+    val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val view = LocalView.current
     if (scanning && active) DisposableEffect(view) {
         val window = (view.context as? android.app.Activity)?.window
@@ -117,7 +119,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         state.water?.phase in setOf(WaterPhase.Running, WaterPhase.Stopping) -> "接水进度"
         else -> "扫码接水"
     }
-    LifeDeviceShell(title, settings, scanning, onBack, onHelp = { help = true }, showHelp = true,
+    LifeDeviceShell(title, settings, scanning, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
         footer = {
             if (state.feature == LifeFeature.Water && !scanning) WaterActions(state, model, active, onBack)
             if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack, nowMillis)
@@ -151,8 +153,9 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             if (!state.error.isNullOrBlank() && !manual) Text(state.error,
                 Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 16.dp, start = 24.dp, end = 24.dp),
                 fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
-        } else LazyColumn(Modifier.fillMaxSize().overScrollVertical().testTag("life-device-page"),
-            contentPadding = PaddingValues(top = padding.calculateTopPadding(),
+        } else LazyColumn(Modifier.fillMaxSize().overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection).testTag("life-device-page"),
+            contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (state.feature == LifeFeature.Laundry) {
@@ -173,7 +176,6 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                     item { LifePaymentCard(session.device) }
                     item { WaterUsageNotice(session.device, running = true) }
                 } else {
-                    item { LifeDeviceHeading("确认接水") }
                     state.device?.let { device ->
                         item { LifeDeviceHero(device, state.feature) }
                         item { LifePaymentCard(device, showOptions = true, state = state,
@@ -194,35 +196,31 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
 }
 
 @Composable
-private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, onBack: () -> Unit,
+private fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
     onHelp: () -> Unit, showHelp: Boolean, footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
     val surface = if (scanning) Color(0xFF1B2025) else MiuixTheme.colorScheme.surface
     val ink = if (scanning) Color.White else MiuixTheme.colorScheme.onSurface
     BarBlurHost(false, settings.blurTopBar.value && !scanning) {
         Scaffold(topBar = {
-            val bar: @Composable () -> Unit = {
-                SmallTopAppBar(title = title, color = if (scanning) Color.Transparent else surface, titleColor = ink,
-                    modifier = Modifier.testTag("life-device-top-bar"),
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) } },
-                    actions = {
-                        if (showHelp) IconButton(onClick = onHelp) {
-                            Icon(MiuixIcons.Info, "帮助", tint = ink)
-                        }
-                    })
+            val navigationIcon: @Composable () -> Unit = {
+                IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) }
+            }
+            val actions: @Composable RowScope.() -> Unit = {
+                if (showHelp) IconButton(onClick = onHelp) {
+                    Icon(MiuixIcons.Info, "帮助", tint = ink)
+                }
             }
             if (scanning) Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                bar()
-            } else BlurredBar(topGradient = true) { bar() }
+                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = ink,
+                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
+            } else BlurredBar(topGradient = true) {
+                TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scrollBehavior,
+                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
+            }
         }, bottomBar = { footer() }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(surface)) { content(padding) }
         }
     }
-}
-
-@Composable
-internal fun LifeDeviceHeading(title: String) {
-    Text(title, Modifier.fillMaxWidth().padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
-        fontSize = 29.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
 }
 
 /** One centered identity card and icon treatment, ready for other device categories. */

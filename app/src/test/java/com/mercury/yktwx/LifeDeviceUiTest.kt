@@ -27,6 +27,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.*
 import java.net.URL
 import java.security.Principal
@@ -114,6 +115,63 @@ class LifeDeviceUiTest {
         compose.onNodeWithText("账单").assertDoesNotExist()
         compose.onNodeWithTag("water-primary-action").assertDoesNotExist()
         capture("02-laundry-shared-scanner")
+    }
+
+    @Test fun devicePageTitlesCollapseLikeSecondaryPagesAcrossFeaturesAndStages() {
+        val model = model()
+        val settings = settings()
+        val waterDevice = LifeDevice("water", "test-water", "饮水设备", "04", "org", "org", "shop", "imei",
+            "学校", "", "after", false, true, null, listOf(LifeSku("water-sku", "冷水", true)), emptyList())
+        val laundryDevice = waterDevice.copy(id = "laundry", name = "洗衣设备", category = "00", payment = "before",
+            skus = listOf(LifeSku("laundry-sku", "快洗", true, "2.50", minutes = 25)))
+        val waterState = LifeDevicesUiState(restoring = false, feature = LifeFeature.Water, device = waterDevice)
+        val laundryState = waterState.copy(feature = LifeFeature.Laundry, device = laundryDevice)
+        val water = WaterSession(waterDevice, "water-sku", WaterPhase.Running)
+        val laundry = LaundrySession(laundryDevice, "laundry-sku", "2.50", "13", LaundryPhase.Running)
+        val pages = listOf(
+            "扫码接水" to waterState,
+            "接水进度" to waterState.copy(water = water),
+            "接水结束" to waterState.copy(water = water.copy(phase = WaterPhase.Ended)),
+            "扫码洗衣" to laundryState,
+            "洗衣进度" to laundryState.copy(laundry = laundry),
+            "洗衣完成" to laundryState.copy(laundry = laundry.copy(phase = LaundryPhase.Ended)),
+            "洗衣订单" to laundryState.copy(laundry = laundry.copy(phase = LaundryPhase.Closed)),
+        )
+        var page by mutableIntStateOf(0)
+        var backs = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(if (pages[page].second.feature == LifeFeature.Water) ColorSchemeMode.Light else ColorSchemeMode.Dark) {
+                    key(page) { LifeDevicePage(pages[page].second, settings, model, active = false, onBack = { backs++ }) }
+                }
+            }
+        }
+        for ((index, entry) in pages.withIndex()) {
+            compose.runOnIdle { settings.setBlurTop(entry.second.feature == LifeFeature.Laundry); page = index }
+            compose.mainClock.advanceTimeBy(600)
+            val title = entry.first
+            fun titleBounds() = compose.onAllNodesWithText(title, useUnmergedTree = true)
+                .fetchSemanticsNodes().map { it.boundsInRoot }.filter { it.width > 0f && it.height > 0f }
+            val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+            val expanded = titleBounds().maxBy { it.height }
+            assertTrue("$title starts with a large title on the left", expanded.center.x < root.center.x)
+            compose.onNodeWithText("确认接水").assertDoesNotExist()
+            compose.onNodeWithText("选择洗衣程序").assertDoesNotExist()
+            if (index == 0 || index == 3) {
+                val bar = compose.onNodeWithTag("life-device-top-bar").fetchSemanticsNode().boundsInRoot
+                val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
+                assertTrue("The first card clears the title", hero.top > bar.bottom)
+                capture("secondary-$index-expanded")
+            }
+            compose.onNodeWithTag("life-device-page").performTouchInput { swipeUp() }
+            compose.waitForIdle()
+            val collapsed = titleBounds().minBy { it.height }
+            assertEquals("$title collapses to the center", root.center.x, collapsed.center.x, 2f)
+            assertTrue("$title becomes smaller after scrolling", collapsed.height < expanded.height)
+            if (index == 0 || index == 3) capture("secondary-$index-collapsed")
+            compose.onNodeWithContentDescription("返回").performClick()
+        }
+        assertEquals(pages.size, backs)
     }
 
     @Test fun capturedWaterDeviceFitsNativePageAndDoesNotInventPrices() {

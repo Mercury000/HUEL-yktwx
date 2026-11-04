@@ -128,7 +128,7 @@ class LaundryUiTest {
         }
         compose.onNodeWithText(fixture.device.name).assertIsDisplayed()
         compose.onNodeWithTag("laundry-primary-action").assertIsDisplayed().assertIsEnabled()
-        compose.onNodeWithText("选择洗衣程序").assertIsDisplayed()
+        compose.onNodeWithText("选择洗衣程序").assertDoesNotExist()
         compose.onNodeWithText("待确认").assertDoesNotExist()
         compose.onNodeWithText("账单").assertDoesNotExist()
         val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot

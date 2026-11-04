@@ -36,7 +36,6 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
     active: Boolean, nowMillis: () -> Long) {
     val session = state.laundry
     if (session == null) {
-        item { LifeDeviceHeading("选择洗衣程序") }
         state.device?.let { device ->
             item { LaundryDeviceIdentity(device) }
             item {
