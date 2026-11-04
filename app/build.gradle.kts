@@ -10,6 +10,11 @@ val machineProperties = Properties().apply {
 }
 val pangguiSecret = providers.environmentVariable("PANGGUI_API_SECRET")
     .orElse(machineProperties.getProperty("panggui.apiSecret", "")).get()
+val hui798Gateway = providers.environmentVariable("HUI798_API_GATEWAY")
+    .orElse(machineProperties.getProperty("hui798.apiGateway", "https://i.ilife798.com/api/v1")).get()
+val hui798Salt = providers.environmentVariable("HUI798_SIGN_SALT")
+    .orElse(machineProperties.getProperty("hui798.signSalt", "")).get()
+fun buildString(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
@@ -22,6 +27,8 @@ android {
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PANGGUI_API_SECRET", "\"" + pangguiSecret.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+        buildConfigField("String", "HUI798_API_GATEWAY", buildString(hui798Gateway))
+        buildConfigField("String", "HUI798_SIGN_SALT", buildString(hui798Salt))
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {

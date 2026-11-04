@@ -278,12 +278,15 @@ class LifeDeviceUiTest {
         field.performTextInput("0")
         field.assertTextContains("8607369")
         assertEquals(TextRange(3), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        val hui798Qr = "https://i.hnkzy.com/q/1/123456789012345"
+        field.performTextReplacement(hui798Qr)
         compose.onNodeWithText("识别设备").assertIsEnabled().performClick()
-        assertEquals(listOf("8607369"), scanned)
+        assertEquals(listOf(hui798Qr), scanned)
+        assertEquals(LifeProvider.Hui798, UnifiedDeviceCode.identify(scanned.single())?.provider)
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.mainClock.advanceTimeBy(32)
         compose.onNodeWithText("输入设备编号").performClick()
-        compose.onNodeWithTag("life-device-serial").assertIsDisplayed().assertTextContains("8607369")
+        compose.onNodeWithTag("life-device-serial").assertIsDisplayed().assertTextContains(hui798Qr)
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-device-serial").assertDoesNotExist()

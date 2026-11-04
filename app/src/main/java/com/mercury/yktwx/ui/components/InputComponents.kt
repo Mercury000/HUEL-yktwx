@@ -25,6 +25,18 @@ internal fun DigitTextField(
     StableInputTextField(value, onValueChange, label, modifier, enabled, keyboardOptions, keyboardActions) { it.digitsOnly(maxDigits) }
 }
 
+/** Captchas accept letters while retaining the same local cursor and IME state. */
+@Composable
+internal fun CaptchaTextField(value: String, onValueChange: (String) -> Unit, label: String,
+    modifier: Modifier = Modifier, enabled: Boolean = true, maxCharacters: Int = 8) {
+    StableInputTextField(value, onValueChange, label, modifier, enabled,
+        KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next), KeyboardActions.Default) { next ->
+        if (next.text.length <= maxCharacters) next else next.copy(text = next.text.take(maxCharacters),
+            selection = TextRange(next.selection.start.coerceAtMost(maxCharacters), next.selection.end.coerceAtMost(maxCharacters)),
+            composition = null)
+    }
+}
+
 /** The same cursor-preserving miuix field also accepts laundry's alphanumeric device codes. */
 @Composable
 internal fun DeviceCodeTextField(value: String, onValueChange: (String) -> Unit, label: String,
