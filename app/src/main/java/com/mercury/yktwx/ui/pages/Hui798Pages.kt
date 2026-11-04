@@ -7,9 +7,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +22,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -94,32 +97,27 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
                 .testTag("hui798-device-page"), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                     bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                item { InlineLifeLoginNotice(!display.restoring && !display.connected, { model.connectAccount(false) }, enabled = active,
-                    text = "登录慧生活798，继续扫码用水", tag = "hui798-device-login-notice") }
+                if (!display.restoring && !display.connected) item {
+                    InlineLifeLoginNotice(true, { model.connectAccount(false) }, enabled = active,
+                        text = "登录慧生活798，继续扫码用水", tag = "hui798-device-login-notice")
+                }
                 val session = display.session
                 if (session != null && session.phase != WaterPhase.Starting) {
                     item { LifeWaterProgress(session.phase, session.startedAtMillis, session.endedAtMillis, "用水", "hui798", nowMillis) }
-                } else display.device?.let { item { LifeDeviceHero(it.name, "慧生活798", LifeFeature.Water) } }
-                if (display.loadingDevice && display.device == null) item {
-                    Column(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("hui798-device-loading"), horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(Modifier.size(28.dp)); Text("正在识别设备…", Modifier.padding(top = 12.dp), fontSize = 13.sp)
-                    }
                 }
-                display.device?.let { device -> item {
-                    Card(Modifier.fillMaxWidth().testTag("hui798-device-info"), cornerRadius = 24.dp) {
-                        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                            LifeDeviceField("设备编号") { Text(device.id, fontSize = 12.sp) }
-                            HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                            LifeDeviceField("服务提供方") { Text("慧生活798", fontSize = 12.sp) }
+                item { Hui798DeviceIdentity(display) }
+                if (session == null || session.phase == WaterPhase.Starting) item { Hui798DeviceStatus(display) }
+                else {
+                    if (session.phase != WaterPhase.Ended) item {
+                        Text("用完请点击结束用水，离开页面不会停止设备。", Modifier.padding(horizontal = 4.dp),
+                            fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+                    }
+                    if (display.error != null) item {
+                        InlineErrorGroup(display.error, 12.dp) {
+                            if (display.connected && session.phase == WaterPhase.Running) TextButton("刷新状态", model::refreshState,
+                                enabled = active && !display.busy, modifier = Modifier.testTag("hui798-retry"))
                         }
                     }
-                } }
-                item { Text(if (session?.phase == WaterPhase.Ended) "费用可在慧生活798查询，以实际扣款记录为准。"
-                    else "请按设备说明用水，离开页面不会停止设备。费用以实际扣款记录为准。",
-                    fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted) }
-                item { AnimatedInlineError(display.error) }
-                if (display.connected && !display.busy && display.error != null) item {
-                    TextButton("刷新状态", model::refreshState, enabled = active, modifier = Modifier.testTag("hui798-retry"))
                 }
             }
         }
@@ -139,12 +137,77 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
 }
 
 @Composable
+private fun Hui798DeviceIdentity(state: Hui798UiState) {
+    Card(Modifier.fillMaxWidth().testTag("hui798-device-info"), cornerRadius = 24.dp) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                LifeDeviceGlyph(LifeFeature.Water)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("慧生活798", fontSize = 12.sp, color = DashboardPalette.muted)
+                    Text(state.device?.name.orEmpty().ifBlank { "饮水设备" }, Modifier.testTag("life-device-name"),
+                        fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            val id = state.device?.id ?: state.scannedDeviceId
+            if (id != null) {
+                HorizontalDivider(Modifier.padding(top = 18.dp), color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("设备编号", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+                    Text(id, Modifier.weight(1f), fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Hui798DeviceStatus(state: Hui798UiState) {
+    val starting = state.session?.phase == WaterPhase.Starting
+    val querying = state.restoring || state.loadingDevice || starting && state.error == null
+    val ready = state.connected && state.deviceReady && !querying && state.error == null
+    val title = when {
+        state.restoring -> "正在恢复账号"
+        state.loadingDevice -> "正在查询设备"
+        starting && state.error == null -> "正在启动设备"
+        !state.connected -> "登录后即可用水"
+        state.error != null -> "暂未确认设备状态"
+        ready -> "设备可用"
+        else -> "等待查询设备状态"
+    }
+    val subtitle = when {
+        state.restoring -> "请稍候"
+        state.loadingDevice -> "正在确认设备是否可以用水"
+        starting -> "请等待设备响应，留意现场出水情况"
+        !state.connected -> "使用慧生活798账号继续"
+        ready -> "核对设备编号后，点击下方开始用水"
+        state.error != null -> null
+        else -> "查询成功后即可开始用水"
+    }
+    Card(Modifier.fillMaxWidth().testTag("hui798-device-status"), cornerRadius = 24.dp) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                if (querying) CircularProgressIndicator(Modifier.size(18.dp).testTag("hui798-device-loading"))
+                else Box(Modifier.size(7.dp).background(if (ready) lifeSuccessInk() else DashboardPalette.muted, CircleShape))
+                Text(title, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+                    color = if (ready) lifeSuccessInk() else MiuixTheme.colorScheme.onSurface)
+            }
+            if (subtitle != null) Text(subtitle, Modifier.padding(top = 8.dp), fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+            AnimatedInlineError(state.error, topSpacing = 12.dp)
+        }
+    }
+}
+
+@Composable
 private fun Hui798Actions(state: Hui798UiState, model: Hui798ViewModel, active: Boolean, onScan: () -> Unit, onBack: () -> Unit) {
     val phase = state.session?.phase ?: WaterPhase.Ready
     val failed = state.error != null && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
-    val loading = state.busy || state.loadingDevice || !failed && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
+    val retryDevice = phase == WaterPhase.Ready && state.connected && !state.deviceReady && (state.device != null || state.scannedDeviceId != null)
+    val loading = state.restoring || state.busy || state.loadingDevice || !failed && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
     val label = when {
-        state.loadingDevice -> "正在识别…"
+        state.restoring -> "正在加载…"
+        state.loadingDevice -> "正在查询…"
+        phase != WaterPhase.Ended && !state.connected -> "登录并继续"
+        retryDevice -> "重新查询"
         failed -> "刷新状态"
         phase == WaterPhase.Starting -> "正在启动…"
         phase == WaterPhase.Stopping -> "正在结束…"
@@ -153,16 +216,26 @@ private fun Hui798Actions(state: Hui798UiState, model: Hui798ViewModel, active: 
         else -> "开始用水"
     }
     LifeDeviceActionFooter("hui798-action-footer") {
-        Text("费用可在慧生活798查询", fontSize = 12.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
+        if (phase == WaterPhase.Ready || phase == WaterPhase.Ended)
+            Text("费用可在慧生活798查询", fontSize = 12.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
         Button(onClick = {
-            when { failed -> model.refreshState(); phase == WaterPhase.Running -> model.stopWater(); phase == WaterPhase.Ended -> onScan(); else -> model.startWater() }
+            when {
+                phase == WaterPhase.Ended -> onScan()
+                !state.connected -> model.connectAccount(false)
+                retryDevice || failed -> model.refreshState()
+                phase == WaterPhase.Running -> model.stopWater()
+                else -> model.startWater()
+            }
         }, enabled = active && !loading && when {
             phase == WaterPhase.Ended -> true
-            !state.connected -> false
+            !state.connected -> true
+            retryDevice -> true
             phase == WaterPhase.Ready -> state.deviceReady && state.device != null
             phase == WaterPhase.Running -> state.session?.sessionId in state.confirmedSessions
             else -> failed
         }, modifier = Modifier.fillMaxWidth().testTag("hui798-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
+        if (phase == WaterPhase.Ready) DashboardLink("重新扫码", onScan, enabled = active && !state.busy && !state.restoring,
+            modifier = Modifier.testTag("hui798-rescan"), arrow = false, color = DashboardPalette.muted)
         if (phase == WaterPhase.Ended) Button(onBack, Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
     }
 }

@@ -57,6 +57,27 @@ class Hui798ApiTest {
         calls.forEach { assertEquals("GET", it.requestMethod); assertEquals("fixture-token", it.getRequestProperty("Authorization"))
             assertFalse(it.instanceFollowRedirects); assertEquals(0, it.sent.size()); assertTrue(it.closed) }
     }
+    @Test fun deviceHomeUsesTheReferenceOptionalNameAndStillQueriesStatus() = runBlocking {
+        for ((body, name) in listOf(
+            """{"code":0}""" to "",
+            """{"code":0,"data":{}}""" to "",
+            """{"code":0,"data":{"device":{}}}""" to "",
+            """{"code":0,"data":{"device":{"name":"五号楼饮水机"}}}""" to "五号楼饮水机",
+        )) {
+            val calls = mutableListOf<Response>()
+            val api = Hui798Api("https://fixture.test/api/v1", "", { url ->
+                Response(url, if (url.path.endsWith("/status"))
+                    """{"code":0,"data":{"device":{"gene":{"status":99}}}}""" else body).also(calls::add)
+            })
+            assertEquals(Hui798Device("864165069279947", name), api.device("864165069279947", "fixture-token"))
+            assertEquals(Hui798Reading(99, null), api.status("864165069279947", "fixture-token"))
+            assertEquals("/api/v1/ui/app/dev/home/1", calls[0].url.path)
+            assertEquals("did=864165069279947&apply=6", calls[0].url.query)
+            assertEquals("/api/v1/ui/app/dev/status", calls[1].url.path)
+            assertEquals("did=864165069279947&more=false", calls[1].url.query)
+            calls.forEach { assertEquals("fixture-token", it.getRequestProperty("Authorization")) }
+        }
+    }
     @Test fun missingUnknownAndUnidentifiedRunningStatusAreRejectedRatherThanStopped() = runBlocking {
         for (gene in listOf("{}", """{"status":null}""", """{"status":0}""", """{"status":5}""", """{"status":1}""", """{"status":1,"time":0}""")) {
             val api = Hui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":{"device":{"gene":$gene}}}""") })

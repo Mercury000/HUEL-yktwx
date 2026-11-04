@@ -174,6 +174,39 @@ class Hui798UiTest {
     @Test @Config(fontScale = 1.3f)
     fun waterStagesFitLargeTextAndDarkMode() = stages(true)
 
+    @Test fun deviceQueryStatesKeepIdentityVisibleAndOfferRetryInsteadOfStart() {
+        val model = model()
+        val settings = settings()
+        val id = "864165069279947"
+        var state by mutableStateOf(Hui798UiState(restoring = false, connectedPhone = "138****0000",
+            scannedDeviceId = id, loadingDevice = true))
+        var scans = 0
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme(ColorSchemeMode.Light) {
+            Hui798DevicePage(state, settings, model, active = true, onScan = { scans++ }, onBack = {})
+        } } }
+        compose.onNodeWithText(id).assertIsDisplayed()
+        compose.onNodeWithText("饮水设备").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-device-loading").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在查询…")
+        capture("querying-light")
+        compose.runOnIdle { state = state.copy(loadingDevice = false, error = "连接失败，请稍后重试") }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText(id).assertIsDisplayed()
+        compose.onNodeWithText("连接失败，请稍后重试").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("重新查询")
+        compose.onNodeWithTag("hui798-rescan").assertIsDisplayed().performClick()
+        assertEquals(1, scans)
+        capture("query-failed-light")
+        compose.runOnIdle { state = state.copy(device = Hui798Device(id, "五号楼饮水机")) }
+        compose.onNodeWithText("五号楼饮水机").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("重新查询")
+        compose.runOnIdle { state = state.copy(connectedPhone = "", error = null) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText(id).assertIsDisplayed()
+        compose.onNodeWithTag("hui798-device-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("登录并继续")
+    }
+
     @Test fun hui798OnlyProgressUsesItsOwnCallbacksAndOneSharedScanner() {
         val settings = settings()
         var opened = 0; var dismissed = 0; var pangguiCallbacks = 0; var scans = 0

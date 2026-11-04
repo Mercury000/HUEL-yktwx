@@ -36,7 +36,7 @@ https://cloud.hnkzy.com/h5/?atype=1&id=123456789012345#/pages/app/index
 | 图形验证码 | GET `/captcha/` | 查询 `s`、`r`；返回图片字节 |
 | 发送短信 | POST `/acc/login/code` | JSON：`un`、`authCode`、`s` |
 | 登录 | POST `/acc/login?sign=...` | JSON：`authCode`、`un`；Token：`data.al.token` |
-| 设备主页 | GET `/ui/app/dev/home/1` | `did`、`apply=6`；名称：`data.device.name` |
+| 设备主页 | GET `/ui/app/dev/home/1` | `did`、`apply=6`；名称：`data.device.name`，缺失时按参考客户端使用空名称并继续查状态 |
 | 设备状态 | GET `/ui/app/dev/status` | `did`、`more=false`；状态：`data.device.gene.status/time` |
 | 开始用水 | GET `/dev/start` | `did`、`upgrade=true`、`ptype=91`、`rcp=false` |
 | 结束用水 | GET `/dev/end` | `did`、`rcp=false`；不附加登录签名 |

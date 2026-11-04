@@ -20,6 +20,7 @@ data class Hui798UiState(
     val sendingCode: Boolean = false, val loggingIn: Boolean = false, val codeSeconds: Int = 0,
     val loginError: String? = null, val device: Hui798Device? = null, val loadingDevice: Boolean = false,
     val deviceReady: Boolean = false, val busy: Boolean = false, val error: String? = null,
+    val scannedDeviceId: String? = null,
     val sessions: List<Hui798Session> = emptyList(), val selectedSessionId: String? = null,
     val confirmedSessions: Set<String> = emptySet(),
 ) {
@@ -159,7 +160,7 @@ class Hui798ViewModel internal constructor(
     fun openDevice(id: String) {
         if (mutable.value.busy || mutable.value.restoring) return
         pendingDeviceId = id; generation++; deviceTask?.cancel()
-        mutable.update { it.copy(device = null, deviceReady = false, loadingDevice = false, selectedSessionId = null, error = null) }
+        mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, loadingDevice = false, selectedSessionId = null, error = null) }
         if (account != null) loadDevice(id)
     }
     fun refreshDevice() { if (!mutable.value.busy && !mutable.value.loadingDevice) pendingDeviceId?.let(::loadDevice) }
@@ -171,6 +172,8 @@ class Hui798ViewModel internal constructor(
             mutable.update { it.copy(loadingDevice = true, deviceReady = false, error = null) }
             try {
                 val device = api.device(id, owner.token)
+                if (request != generation || account != owner) return@launch
+                mutable.update { it.copy(device = device) }
                 val reading = api.status(id, owner.token)
                 if (request != generation || account != owner) return@launch
                 mutable.update { it.copy(device = device, loadingDevice = false, deviceReady = reading.status == 99,
@@ -186,7 +189,7 @@ class Hui798ViewModel internal constructor(
         if (mutable.value.busy) return
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         generation++; deviceTask?.cancel(); pendingDeviceId = null
-        mutable.update { it.copy(device = session.device, selectedSessionId = id, deviceReady = false,
+        mutable.update { it.copy(device = session.device, scannedDeviceId = null, selectedSessionId = id, deviceReady = false,
             loadingDevice = false, error = sessionErrors[id]) }
         resumeSessions()
     }
@@ -203,7 +206,8 @@ class Hui798ViewModel internal constructor(
     fun pageVisible(active: Boolean) {
         visible = active
         if (!active) { generation++; deviceTask?.cancel(); mutable.update { it.copy(loadingDevice = false) } }
-        else if (mutable.value.session == null && mutable.value.device == null && account != null) pendingDeviceId?.let(::loadDevice)
+        else if (mutable.value.session == null && !mutable.value.deviceReady && !mutable.value.loadingDevice &&
+            mutable.value.error == null && account != null) pendingDeviceId?.let(::loadDevice)
     }
     fun environment(active: Boolean) {
         foreground = active

@@ -40,6 +40,8 @@ class Hui798ViewModelTest {
         var starts = 0; var ends = 0; var reads = 0
         var lostStart = false; var lostEnd = false; var holdEnd = false
         var authFailure = false
+        var statusFailure = false
+        var homeName: String = device.name
         var captchaGate: CompletableDeferred<Unit>? = null
         val captchaKeys = mutableListOf<String>()
         var smsKey = ""
@@ -50,8 +52,13 @@ class Hui798ViewModelTest {
         }
         override suspend fun sendCode(phone: String, imageCode: String, key: String) { smsKey = key }
         override suspend fun login(phone: String, code: String) = Hui798Account(phone, "new-token")
-        override suspend fun device(id: String, token: String) = device.copy(id = id)
-        override suspend fun status(id: String, token: String): Hui798Reading { reads++; if (authFailure) throw Hui798Exception("fixture expired", true); return reading }
+        override suspend fun device(id: String, token: String) = device.copy(id = id, name = homeName)
+        override suspend fun status(id: String, token: String): Hui798Reading {
+            reads++
+            if (authFailure) throw Hui798Exception("fixture expired", true)
+            if (statusFailure) throw IOException("设备状态查询失败")
+            return reading
+        }
         override suspend fun start(id: String, token: String) { starts++; reading = Hui798Reading(1, clock); if (lostStart) throw IOException("fixture lost response") }
         override suspend fun end(id: String, token: String) { ends++; if (!holdEnd) reading = Hui798Reading(99, null); if (lostEnd) throw IOException("fixture lost response") }
     }
@@ -60,6 +67,23 @@ class Hui798ViewModelTest {
         return Hui798ViewModel(app, api, store, dispatcher) { clock }.also { models.put("model-${System.identityHashCode(it)}", it) }
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
+    @Test fun emptyHomeNameDoesNotPreventStatusQueryOrEnableStartBeforeConfirmation() = runTest(dispatcher) {
+        val api = Api().apply { homeName = ""; statusFailure = true }
+        val model = model(api, Store(account)); runCurrent()
+        model.openDevice(device.id); runCurrent()
+        assertEquals(device.id, model.state.value.scannedDeviceId)
+        assertEquals(device.copy(name = ""), model.state.value.device)
+        assertEquals(1, api.reads)
+        assertFalse(model.state.value.deviceReady)
+        assertNotNull(model.state.value.error)
+        model.startWater(); runCurrent(); assertEquals(0, api.starts)
+        api.statusFailure = false
+        model.refreshDevice(); runCurrent()
+        assertTrue(model.state.value.deviceReady)
+        assertNull(model.state.value.error)
+        assertEquals(2, api.reads)
+        assertEquals(0, api.starts)
+    }
     @Test fun duplicatedStartAndStopWaitForDeviceConfirmationRatherThanCommandAcceptance() = runTest(dispatcher) {
         val api = Api(); val store = Store(account); val model = model(api, store); runCurrent()
         model.pageVisible(true); model.openDevice(device.id); runCurrent()

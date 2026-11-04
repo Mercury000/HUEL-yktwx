@@ -87,8 +87,8 @@ class Hui798Api(
     }
     override suspend fun device(id: String, token: String): Hui798Device {
         val data = request("/ui/app/dev/home/1?did=${encode(id)}&apply=6", token) as JSONObject
-        val device = data.optJSONObject("data")?.optJSONObject("device") ?: throw Hui798Exception("设备信息不完整，请重新扫码")
-        return Hui798Device(id, device.optString("name").ifBlank { id })
+        val name = data.optJSONObject("data")?.optJSONObject("device")?.optString("name").orEmpty()
+        return Hui798Device(id, name)
     }
     override suspend fun status(id: String, token: String): Hui798Reading {
         val data = request("/ui/app/dev/status?did=${encode(id)}&more=false", token) as JSONObject
