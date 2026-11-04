@@ -514,8 +514,13 @@ private fun MainContent(
                             motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD),
                 ) { padding ->
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
-                    val bottom = padding.calculateBottomPadding() + 28.dp
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+                        LifeDeviceStatusHost(lifeState.water, lifeState.laundry, padding.calculateBottomPadding(),
+                            visible = isActive && !state.preview && !state.needsLogin && layers.isEmpty() &&
+                                pagerState.currentPage != 1 && paymentSuccess == null && !dormPaymentVisible &&
+                                !rechargeState.visible && !cardState.visible && !passwordState.visible && !lifeState.loginVisible,
+                            onOpen = ::openLifeDevice) { extraBottom ->
+                        val bottom = padding.calculateBottomPadding() + 28.dp + extraBottom
                         HorizontalPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
                             beyondViewportPageCount = 1, key = { it },
@@ -594,6 +599,7 @@ private fun MainContent(
                                     onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
                                 )
                             }
+                        }
                         }
                     }
                     PaymentSuccessDialog(paymentSuccess, viewModel::dismissPaymentSuccess)

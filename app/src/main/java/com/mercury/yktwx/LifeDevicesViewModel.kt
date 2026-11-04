@@ -34,7 +34,10 @@ class LifeDevicesViewModel internal constructor(
     private var deviceTask: Job? = null
     private var authTask: Job? = null
     private var waterTask: Job? = null
-    private var pollTask: Job? = null
+    private var waterPollTask: Job? = null
+    private var laundryPollTask: Job? = null
+    private var waterError: String? = null
+    private var laundryError: String? = null
     private val laundryApi = api as? LifeLaundryService
     private var laundryTask: Job? = null
     private var quoteTask: Job? = null
@@ -54,6 +57,7 @@ class LifeDevicesViewModel internal constructor(
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(restoring = false, loginError = failure(e)) } }
             requestedFeature?.let(::open)
+            resumeSessions()
         }
     }
     fun open(feature: LifeFeature) {
@@ -70,12 +74,12 @@ class LifeDevicesViewModel internal constructor(
                 LaundryPhase.Creating -> "订单创建结果未返回，请在胖乖生活核对，避免重复下单"
                 else -> null
             } else null
-            pollTask?.cancel(); pollTask = null
             mutable.update { it.copy(feature = feature, entryRequest = it.entryRequest + 1, loginVisible = false,
                 scanning = if (feature == LifeFeature.Water) session?.active != true && session?.phase != WaterPhase.Ended else washing == null,
-                device = if (feature == LifeFeature.Water) session?.device else washing?.device, error = interrupted,
+                device = if (feature == LifeFeature.Water) session?.device else washing?.device,
+                error = interrupted ?: if (feature == LifeFeature.Water) waterError else laundryError,
                 laundryQuote = null, paymentVisible = false) }
-            resumeWater()
+            resumeSessions()
         }
     }
     fun dismissLogin() {
@@ -123,7 +127,8 @@ class LifeDevicesViewModel internal constructor(
                 val next = api.login(value.phone, value.code)
                 withContext(io) { store.saveAccount(next) }
                 if (ownerPhone.isNotBlank() && ownerPhone != next.phone) {
-                    pollTask?.cancel(); waterTask?.cancel(); laundryTask?.cancel(); quoteTask?.cancel()
+                    waterPollTask?.cancel(); laundryPollTask?.cancel(); waterTask?.cancel(); laundryTask?.cancel(); quoteTask?.cancel()
+                    waterError = null; laundryError = null
                     mutable.update { it.copy(water = null, laundry = null, device = null, selectedSkuId = "", laundryQuote = null, paymentLaunch = null) }
                 }
                 account = next
@@ -142,7 +147,10 @@ class LifeDevicesViewModel internal constructor(
     }
     fun environment(active: Boolean) {
         foreground = active
-        if (active) resumeWater() else { pollTask?.cancel(); pollTask = null }
+        if (active) resumeSessions() else {
+            waterPollTask?.cancel(); waterPollTask = null
+            laundryPollTask?.cancel(); laundryPollTask = null
+        }
     }
     fun scan() {
         if (mutable.value.feature == LifeFeature.Laundry) {
@@ -208,9 +216,10 @@ class LifeDevicesViewModel internal constructor(
         device.startError?.let { message -> mutable.update { it.copy(error = message) }; return }
         if (device.skus.none { it.id == value.selectedSkuId && it.available }) return
         val token = account?.token ?: return requireLogin()
-        pollTask?.cancel(); pollTask = null
+        waterPollTask?.cancel(); waterPollTask = null
         waterTask = viewModelScope.launch {
-            mutable.update { it.copy(waterBusy = true, error = null) }
+            serviceError(LifeFeature.Water, null)
+            mutable.update { it.copy(waterBusy = true) }
             try {
                 api.selectAfterPay(token)
                 val sent = WaterSession(device, value.selectedSkuId, WaterPhase.Starting, startSent = true)
@@ -219,17 +228,18 @@ class LifeDevicesViewModel internal constructor(
                 saveSession(sent.copy(messageId = unlock.messageId, orderNo = unlock.orderNo))
                 waitForWater(token)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; expired(e) }
-            finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeWater() }
+            catch (e: Exception) { serviceError(LifeFeature.Water, failure(e)); expired(e) }
+            finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeSessions() }
         }
     }
     fun stopWater() {
         val session = mutable.value.water ?: return
         if (session.phase != WaterPhase.Running || !session.device.supportsFinish || waterTask?.isActive == true) return
         val token = account?.token ?: return requireLogin()
-        pollTask?.cancel(); pollTask = null
+        waterPollTask?.cancel(); waterPollTask = null
         waterTask = viewModelScope.launch {
-            mutable.update { it.copy(waterBusy = true, error = null) }
+            serviceError(LifeFeature.Water, null)
+            mutable.update { it.copy(waterBusy = true) }
             try {
                 saveSession(session.copy(phase = WaterPhase.Stopping))
                 api.endWater(session.device.id, token)
@@ -238,16 +248,17 @@ class LifeDevicesViewModel internal constructor(
             catch (e: Exception) {
                 // A rejected command keeps the normal running page; transport errors retain the command context.
                 if (e is LifeDeviceException && !e.loginExpired && mutable.value.water?.phase == WaterPhase.Stopping) saveSession(session)
-                mutable.update { it.copy(error = failure(e)) }; expired(e)
-            } finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeWater() }
+                serviceError(LifeFeature.Water, failure(e)); expired(e)
+            } finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeSessions() }
         }
     }
     fun retryWater() {
         if (waterTask?.isActive == true) return
         val token = account?.token ?: return requireLogin()
-        pollTask?.cancel(); pollTask = null
+        waterPollTask?.cancel(); waterPollTask = null
         waterTask = viewModelScope.launch {
-            mutable.update { it.copy(waterBusy = true, error = null) }
+            serviceError(LifeFeature.Water, null)
+            mutable.update { it.copy(waterBusy = true) }
             try {
                 if (mutable.value.water?.phase == WaterPhase.Ended) finalizeWater(token)
                 else {
@@ -258,8 +269,8 @@ class LifeDevicesViewModel internal constructor(
                     waitForWater(token)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; expired(e) }
-            finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeWater() }
+            catch (e: Exception) { serviceError(LifeFeature.Water, failure(e)); expired(e) }
+            finally { waterTask = null; mutable.update { it.copy(waterBusy = false) }; resumeSessions() }
         }
     }
     private suspend fun waitForWater(token: String) {
@@ -289,12 +300,12 @@ class LifeDevicesViewModel internal constructor(
                 val next = session.copy(phase = if (session.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
                     startedAtMillis = session.startedAtMillis ?: now())
                 if (next != session) saveSession(next)
-                mutable.update { it.copy(error = null) }
+                serviceError(LifeFeature.Water, null)
             }
             reading.workStatus == 1 && reading.status == 5 -> {
                 // The zero-consumption capture ends here without creating a payable after-pay order.
                 saveSession(session.copy(phase = WaterPhase.Ended, endedAtMillis = now(), finalized = reading.zeroConsumption))
-                if (reading.zeroConsumption) mutable.update { it.copy(error = null) }
+                if (reading.zeroConsumption) serviceError(LifeFeature.Water, null)
                 else finalizeWater(token)
             }
             else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
@@ -310,7 +321,7 @@ class LifeDevicesViewModel internal constructor(
         }
         api.syncOrder(session.orderNo, token)
         saveSession(session.copy(finalized = true))
-        mutable.update { it.copy(error = null) }
+        serviceError(LifeFeature.Water, null)
     }
     private suspend fun saveSession(session: WaterSession) {
         // Preserve the command in memory even if disk persistence fails after its response.
@@ -318,20 +329,27 @@ class LifeDevicesViewModel internal constructor(
             scanning = if (it.feature == LifeFeature.Water) false else it.scanning) }
         withContext(io) { store.saveSession(session) }
     }
+    private fun serviceError(feature: LifeFeature, message: String?) {
+        if (feature == LifeFeature.Water) waterError = message else laundryError = message
+        mutable.update { if (it.feature == feature) it.copy(error = message) else it }
+    }
+    private fun resumeSessions() {
+        resumeWater()
+        resumeLaundry()
+    }
     private fun resumeWater() {
-        if (mutable.value.feature == LifeFeature.Laundry) { resumeLaundry(); return }
-        if (!foreground || account == null || waterTask?.isActive == true || pollTask?.isActive == true) return
+        if (!foreground || account == null || waterTask?.isActive == true || waterPollTask?.isActive == true) return
         val session = mutable.value.water ?: return
         if (!session.active && (session.phase != WaterPhase.Ended || session.finalized)) return
-        if (session.phase == WaterPhase.Ended && mutable.value.error != null) return
+        if (session.phase == WaterPhase.Ended && waterError != null) return
         val token = account!!.token
-        pollTask = viewModelScope.launch {
-            while (isActive && foreground && mutable.value.feature == LifeFeature.Water && mutable.value.water?.let { it.active || !it.finalized } == true) {
+        waterPollTask = viewModelScope.launch {
+            while (isActive && foreground && account?.token == token && mutable.value.water?.let { it.active || !it.finalized } == true) {
                 try { readWater(token) }
                 catch (e: CancellationException) { throw e }
-                catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; if (expired(e)) break }
+                catch (e: Exception) { serviceError(LifeFeature.Water, failure(e)); if (expired(e)) break }
                 if (mutable.value.water?.phase == WaterPhase.Ended) break
-                delay(if (mutable.value.error == null) 1500 else 5000)
+                delay(if (waterError == null) 1500 else 5000)
             }
         }
     }
@@ -462,13 +480,14 @@ class LifeDevicesViewModel internal constructor(
         if (laundryTask?.isActive == true) return
         val token = account?.token ?: return requireLogin()
         val service = laundryApi ?: return
-        pollTask?.cancel(); pollTask = null
+        laundryPollTask?.cancel(); laundryPollTask = null
         laundryTask = viewModelScope.launch {
-            mutable.update { it.copy(laundryBusy = true, error = null) }
+            serviceError(LifeFeature.Laundry, null)
+            mutable.update { it.copy(laundryBusy = true) }
             try { block(token, service) }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; expired(e) }
-            finally { laundryTask = null; mutable.update { it.copy(laundryBusy = false) }; resumeWater() }
+            catch (e: Exception) { serviceError(LifeFeature.Laundry, failure(e)); expired(e) }
+            finally { laundryTask = null; mutable.update { it.copy(laundryBusy = false) }; resumeSessions() }
         }
     }
     private suspend fun checkLaundryReady(session: LaundrySession, token: String, service: LifeLaundryService) {
@@ -520,7 +539,7 @@ class LifeDevicesViewModel internal constructor(
             0 -> if (session.phase !in setOf(LaundryPhase.Ended, LaundryPhase.Running)) saveLaundrySession(next)
             else -> throw LifeDeviceException("暂时无法读取洗衣状态，请在胖乖生活核对")
         }
-        mutable.update { it.copy(error = null) }
+        serviceError(LifeFeature.Laundry, null)
         return mutable.value.laundry?.phase in setOf(LaundryPhase.Running, LaundryPhase.Ended)
     }
     private suspend fun saveLaundrySession(session: LaundrySession) {
@@ -529,13 +548,13 @@ class LifeDevicesViewModel internal constructor(
         withContext(io) { store.saveLaundrySession(session) }
     }
     private fun resumeLaundry() {
-        if (!foreground || account == null || laundryTask?.isActive == true || pollTask?.isActive == true) return
+        if (!foreground || account == null || laundryTask?.isActive == true || laundryPollTask?.isActive == true) return
         val session = mutable.value.laundry ?: return
-        if (!session.active || session.orderNo.isBlank() || mutable.value.error != null && session.phase != LaundryPhase.Running || mutable.value.paymentLaunch != null) return
+        if (!session.active || session.orderNo.isBlank() || laundryError != null && session.phase != LaundryPhase.Running || mutable.value.paymentLaunch != null) return
         val token = account!!.token
         val service = laundryApi ?: return
-        pollTask = viewModelScope.launch {
-            while (isActive && foreground && mutable.value.feature == LifeFeature.Laundry && mutable.value.laundry?.active == true) {
+        laundryPollTask = viewModelScope.launch {
+            while (isActive && foreground && account?.token == token && mutable.value.laundry?.active == true) {
                 try {
                     val current = checkNotNull(mutable.value.laundry)
                     if (current.phase == LaundryPhase.Paying && !current.paid && service.laundryPaid(current.orderNo, current.payMethod, token))
@@ -544,9 +563,9 @@ class LifeDevicesViewModel internal constructor(
                     if (mutable.value.laundry?.phase == LaundryPhase.Starting && service.laundryStarted(current.orderNo, token))
                         saveLaundrySession(checkNotNull(mutable.value.laundry).copy(phase = LaundryPhase.Running, paid = true))
                 } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; if (expired(e)) break }
+                catch (e: Exception) { serviceError(LifeFeature.Laundry, failure(e)); if (expired(e)) break }
                 if (mutable.value.laundry?.active != true) break
-                delay(if (mutable.value.error == null) 5000 else 10000)
+                delay(if (laundryError == null) 5000 else 10000)
             }
         }
     }

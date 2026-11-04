@@ -112,6 +112,9 @@ fun HallPage(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    if (waterSession?.active == true || laundrySession?.active == true) item(key = "life-status") {
+                        LifeDeviceStatusCards(waterSession, laundrySession, onOpenLifeDevice, enabled = isActive)
+                    }
                     if (showFailure) {
                         item { LifeDeviceEntries(waterSession, onOpenLifeDevice, laundrySession) }
                         item {
