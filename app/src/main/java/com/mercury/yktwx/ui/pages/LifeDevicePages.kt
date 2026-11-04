@@ -151,8 +151,9 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         }
         AnimatedContent(LifeDevicePresentation(stage, state.copy(code = "", paymentLaunch = null)),
             contentKey = { it.stage }, modifier = Modifier.fillMaxSize(), transitionSpec = {
-            ((fadeIn(tween(ContentMotion.Insert)) + slideInVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing)) { it / 45 })
-                togetherWith fadeOut(tween(ContentMotion.Fade))).using(SizeTransform(clip = false))
+            ((fadeIn(tween(ContentMotion.Append, delayMillis = 120)) +
+                slideInVertically(tween(ContentMotion.Append, delayMillis = 120, easing = ContentMotion.Easing)) { it / 45 })
+                togetherWith fadeOut(tween(120))).using(SizeTransform(clip = false))
         }, label = "life-device-stage") { presentation ->
         val displayedStage = presentation.stage
         val state = presentation.state
@@ -441,7 +442,7 @@ private fun WaterActions(state: LifeDevicesUiState, model: LifeDevicesViewModel,
         phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
         else -> true
     }, modifier = Modifier.fillMaxWidth().testTag("water-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
-        AnimatedContent(label, transitionSpec = { fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade)) },
+        AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
             label = "water-button-label") { Text(it) }
     }
     if (phase == WaterPhase.Ended) TextButton("返回大厅", onBack, Modifier.fillMaxWidth(), enabled = active,

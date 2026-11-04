@@ -162,4 +162,21 @@ class LaundryViewModelTest {
         val reads = api.details; advanceTimeBy(20_000); runCurrent(); assertEquals(reads, api.details)
         assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
+    @Test fun interruptedCheckCanRetryAndInterruptedCreationCannotCreateAgainAfterRestore() = runTest(dispatcher) {
+        val api = Api()
+        val checking = Store(LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Checking))
+        val model = model(api, checking)
+        runCurrent(); model.open(LifeFeature.Laundry); runCurrent()
+        assertNotNull(model.state.value.error)
+        model.retryLaundry(); runCurrent()
+        assertEquals(1, api.creates)
+        assertEquals(LaundryPhase.Paying, model.state.value.laundry?.phase)
+        val lost = Store(LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Creating, createSent = true))
+        val restored = model(api, lost)
+        runCurrent(); restored.open(LifeFeature.Laundry); runCurrent()
+        assertNotNull(restored.state.value.error)
+        restored.retryLaundry(); runCurrent()
+        assertEquals(1, api.creates)
+        assertEquals(LaundryPhase.Creating, restored.state.value.laundry?.phase)
+    }
 }

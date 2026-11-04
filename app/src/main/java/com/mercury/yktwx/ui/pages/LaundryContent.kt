@@ -40,23 +40,23 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
             item {
                 Column(Modifier.fillMaxWidth().testTag("laundry-programs"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     device.skus.forEach { sku ->
-                                DeviceOptionCard(sku.id == state.selectedSkuId, { model.selectSku(sku.id) },
-                                    Modifier.fillMaxWidth().testTag("laundry-program-${sku.id}"), enabled = active && sku.available && !state.laundryBusy) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        RadioButton(sku.id == state.selectedSkuId, onClick = null, enabled = sku.available)
-                                        Column(Modifier.weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(sku.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                            if (sku.feature.isNotBlank()) Text(sku.feature, fontSize = 11.sp, lineHeight = 17.sp, color = DashboardPalette.muted)
-                                            if (sku.id == state.selectedSkuId) state.laundryQuote?.minutes?.let {
-                                                Text("预计 $it 分钟", fontSize = 11.sp, color = DashboardPalette.muted)
-                                            }
-                                        }
-                                    sku.price.toBigDecimalOrNull()?.let {
-                                        Text("¥${it.setScale(2)}", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        DeviceOptionCard(sku.id == state.selectedSkuId, { model.selectSku(sku.id) },
+                            Modifier.fillMaxWidth().testTag("laundry-program-${sku.id}"), enabled = active && sku.available && !state.laundryBusy) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(sku.id == state.selectedSkuId, onClick = null, enabled = sku.available)
+                                Column(Modifier.weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(sku.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    if (sku.feature.isNotBlank()) Text(sku.feature, fontSize = 11.sp, lineHeight = 17.sp, color = DashboardPalette.muted)
+                                    if (sku.id == state.selectedSkuId) state.laundryQuote?.minutes?.let {
+                                        Text("预计 $it 分钟", fontSize = 11.sp, color = DashboardPalette.muted)
                                     }
-                                    }
-                                    if (!sku.available) Text("暂不可用", fontSize = 11.sp, color = DashboardPalette.muted)
                                 }
+                                sku.price.toBigDecimalOrNull()?.let {
+                                    Text("¥${it.setScale(2)}", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (!sku.available) Text("暂不可用", fontSize = 11.sp, color = DashboardPalette.muted)
+                        }
                     }
                 }
             }
@@ -213,7 +213,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
         if (session == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Text("本次应付", fontSize = 12.sp, color = DashboardPalette.muted)
             AnimatedContent(state.laundryQuote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—",
-                transitionSpec = { fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade)) },
+                transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
                 label = "laundry-price-update") { amount -> Text(amount,
                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("laundry-quote-price"))
             }
@@ -230,7 +230,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             retry -> true
             else -> state.laundryQuote?.channels?.any { it.laundryUnavailableReason() == null } == true
         }, modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
-            AnimatedContent(label, transitionSpec = { fadeIn(tween(ContentMotion.Fade)) togetherWith fadeOut(tween(ContentMotion.Fade)) },
+            AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
                 label = "laundry-button-label") { Text(it) }
         }
         if (session != null) TextButton("返回大厅", onBack, Modifier.fillMaxWidth(), enabled = active,

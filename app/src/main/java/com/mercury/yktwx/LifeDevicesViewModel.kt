@@ -65,10 +65,15 @@ class LifeDevicesViewModel internal constructor(
             requestedFeature = null
             val session = mutable.value.water
             val washing = mutable.value.laundry
+            val interrupted = if (feature == LifeFeature.Laundry && laundryTask?.isActive != true) when (washing?.phase) {
+                LaundryPhase.Checking -> "设备检查已中断，请重试"
+                LaundryPhase.Creating -> "订单创建结果未返回，请在胖乖生活核对，避免重复下单"
+                else -> null
+            } else null
             pollTask?.cancel(); pollTask = null
             mutable.update { it.copy(feature = feature, entryRequest = it.entryRequest + 1, loginVisible = false,
                 scanning = if (feature == LifeFeature.Water) session?.active != true && session?.phase != WaterPhase.Ended else washing == null,
-                device = if (feature == LifeFeature.Water) session?.device else washing?.device, error = null,
+                device = if (feature == LifeFeature.Water) session?.device else washing?.device, error = interrupted,
                 laundryQuote = null, paymentVisible = false) }
             resumeWater()
         }
@@ -332,7 +337,7 @@ class LifeDevicesViewModel internal constructor(
     }
     fun loadLaundryQuote() {
         val value = mutable.value
-        if (value.feature != LifeFeature.Laundry || value.laundry?.active == true) return
+        if (value.feature != LifeFeature.Laundry || value.laundry?.active == true || value.loadingDevice || value.device?.laundryError != null) return
         val device = value.device ?: return
         val token = account?.token ?: return requireLogin()
         val service = laundryApi ?: return

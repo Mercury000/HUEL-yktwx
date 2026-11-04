@@ -114,9 +114,12 @@ class LaundryUiTest {
         capture("laundry-$label-02-running")
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { state = state.copy(laundry = fixture.session(true)) }
-        compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(128)
-        capture("laundry-$label-03-completion-motion", settle = false)
+        repeat(18) { frame ->
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            if (!dark && !largeFont && frame % 3 == 0) capture("laundry-motion-${frame.toString().padStart(2, '0')}", settle = false)
+            if (frame == 7) capture("laundry-$label-03-completion-motion", settle = false)
+        }
         compose.mainClock.advanceTimeBy(600); compose.mainClock.autoAdvance = true
         compose.onNodeWithText("洗衣已完成").assertIsDisplayed()
         compose.onNodeWithText("11-04 12:48").assertIsDisplayed()
