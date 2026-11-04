@@ -56,7 +56,8 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
             data.text("orderNo"), data.text("orderId"), data.optBoolean("paymentSent"), data.optBoolean("paid"),
             data.optInt("minutes").takeIf { it > 0 }, data.optLong("startedAt").takeIf { it > 0 },
             data.optLong("expectedEnd").takeIf { it > 0 }, data.optLong("finishedAt").takeIf { it > 0 },
-            data.text("sessionId").ifBlank { "legacy-laundry-${data.text("orderNo")}-${data.getString("skuId")}" })
+            data.text("sessionId").ifBlank { "legacy-laundry-${data.text("orderNo")}-${data.getString("skuId")}" },
+            data.optLong("createdAt").takeIf { it > 0 })
     }.getOrNull()
     override fun saveLaundrySession(session: LaundrySession) {
         val owner = account() ?: throw LifeDeviceException("请先登录胖乖生活", true)
@@ -65,7 +66,7 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
             .put("createSent", session.createSent).put("orderNo", session.orderNo).put("orderId", session.orderId)
             .put("paymentSent", session.paymentSent).put("paid", session.paid).put("minutes", session.minutes)
             .put("startedAt", session.startedAtMillis).put("expectedEnd", session.expectedEndMillis)
-            .put("finishedAt", session.finishedAtMillis).put("sessionId", session.sessionId).toString()))
+            .put("finishedAt", session.finishedAtMillis).put("sessionId", session.sessionId).put("createdAt", session.createdAtMillis).toString()))
     }
     override fun clearLaundrySession() { vault.remove("laundry") }
     override fun waterSessions(): List<WaterSession> = records("water_sessions")?.map { data ->
@@ -79,7 +80,8 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
             data.getString("payMethod"), LaundryPhase.valueOf(data.getString("phase")), data.optBoolean("createSent"),
             data.text("orderNo"), data.text("orderId"), data.optBoolean("paymentSent"), data.optBoolean("paid"),
             data.optInt("minutes").takeIf { it > 0 }, data.optLong("startedAt").takeIf { it > 0 },
-            data.optLong("expectedEnd").takeIf { it > 0 }, data.optLong("finishedAt").takeIf { it > 0 }, data.getString("sessionId"))
+            data.optLong("expectedEnd").takeIf { it > 0 }, data.optLong("finishedAt").takeIf { it > 0 }, data.getString("sessionId"),
+            data.optLong("createdAt").takeIf { it > 0 })
     } ?: listOfNotNull(laundrySession())
     override fun saveWaterSessions(sessions: List<WaterSession>) {
         saveRecords("water_sessions", sessions.map { session -> JSONObject()
@@ -96,7 +98,7 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
             .put("createSent", session.createSent).put("orderNo", session.orderNo).put("orderId", session.orderId)
             .put("paymentSent", session.paymentSent).put("paid", session.paid).put("minutes", session.minutes)
             .put("startedAt", session.startedAtMillis).put("expectedEnd", session.expectedEndMillis)
-            .put("finishedAt", session.finishedAtMillis) })
+            .put("finishedAt", session.finishedAtMillis).put("createdAt", session.createdAtMillis) })
         clearLaundrySession()
     }
     private fun records(key: String): List<JSONObject>? {

@@ -110,6 +110,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     val title = when {
         scanning -> "扫一扫"
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
+        state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Closed -> "洗衣订单"
         state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
         state.feature == LifeFeature.Laundry -> "扫码洗衣"
         state.water?.phase == WaterPhase.Ended -> "接水结束"
@@ -119,7 +120,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     LifeDeviceShell(title, settings, scanning, onBack, onHelp = { help = true }, showHelp = true,
         footer = {
             if (state.feature == LifeFeature.Water && !scanning) WaterActions(state, model, active, onBack)
-            if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack)
+            if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack, nowMillis)
         }) { padding ->
         val stage = when {
             scanning -> "scan"
@@ -127,6 +128,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 null -> "ready"
                 LaundryPhase.Running -> "running"
                 LaundryPhase.Ended -> "ended"
+                LaundryPhase.Closed -> "closed"
                 else -> "processing"
             }}"
             state.water?.phase == WaterPhase.Ended -> "water-ended"
@@ -188,7 +190,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         onValue = { serial = it },
         onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); model.scanned(serial) })
     LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
-    LaundryPaymentSheet(active && state.paymentVisible, state, model)
+    LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
 
 @Composable

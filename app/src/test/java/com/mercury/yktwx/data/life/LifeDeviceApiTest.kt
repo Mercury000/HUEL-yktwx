@@ -190,6 +190,13 @@ class LifeDeviceApiTest {
         assertEquals(payload, service.prepareLaundryAlipay("wash-1", "test-token"))
         assertEquals("13", calls.last().form()["payType"])
     }
+    @Test fun closedLaundryReadsServerCreateTimeWithoutInventingPaymentTimes() = runBlocking {
+        val payload = """{"code":0,"data":{"id":"wash-id","orderNo":"wash-1","orderStatus":1,"createTime":"2026-11-04 18:50:39","payPrice":"2.50","showStart":false,"machineFunctionName":"快洗","markMinutes":25,"tradeOrderItem":[{"goodsId":"77","skuId":"quick"}]}}"""
+        val reading = api(mapOf("/order/detail" to payload), mutableListOf()).laundryOrder("wash-1", "test-token")
+        assertEquals(1, reading.status)
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 4, 18, 50, 39).atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli(), reading.createdAtMillis)
+        assertNull(reading.paidAtMillis); assertNull(reading.expectedEndMillis); assertNull(reading.finishedAtMillis)
+    }
 
     @Test fun laundryParsingDoesNotAcceptWrongLinksAndOrderIdentityMismatchIsRejected() = runBlocking {
         val nqt = "00000000-0000-4000-8000-000000000001"

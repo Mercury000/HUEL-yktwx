@@ -176,7 +176,7 @@ class LifeDeviceApi(
         val result = LaundryReading(data.required("orderNo"), data.required("id"), item.required("goodsId"), item.required("skuId"),
             data.text("orderStatus").toIntOrNull(), data.required("payPrice").validPrice(), data.text("machineFunctionName"),
             data.text("markMinutes").toIntOrNull()?.takeIf { it > 0 }, lifeTimestamp(data.text("payTime")),
-            lifeTimestamp(data.text("completeTime")), lifeTimestamp(data.text("finishTime")))
+            lifeTimestamp(data.text("completeTime")), lifeTimestamp(data.text("finishTime")), lifeTimestamp(data.text("createTime")))
         if (result.orderNo != orderNo) throw LifeDeviceException("洗衣订单信息不匹配")
         return result
     }

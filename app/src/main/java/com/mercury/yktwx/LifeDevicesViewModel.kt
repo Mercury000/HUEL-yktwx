@@ -17,6 +17,7 @@ import kotlin.coroutines.resumeWithException
 /** Foreground payment feedback is separate from the persisted device progress. */
 data class LaundryPaymentFeedback(val sessionId: String, val phase: RechargePhase,
     val loading: Boolean = false, val detail: String? = null)
+private class LaundryOrderClosed : Exception()
 
 data class LifeDevicesUiState(
     val restoring: Boolean = true, val connectedPhone: String = "", val feature: LifeFeature = LifeFeature.Water,
@@ -108,7 +109,7 @@ class LifeDevicesViewModel internal constructor(
                 water = it.water?.takeUnless { item -> item.sessionId == sessionId }) }
         } else {
             val session = value.laundrySessions.firstOrNull { it.sessionId == sessionId } ?: return
-            if (session.phase != LaundryPhase.Ended) return
+            if (session.active) return
             mutable.update { it.copy(laundrySessions = it.laundrySessions.filterNot { item -> item.sessionId == sessionId },
                 laundry = it.laundry?.takeUnless { item -> item.sessionId == sessionId }) }
         }
@@ -250,12 +251,6 @@ class LifeDevicesViewModel internal constructor(
                 val device = if (feature == LifeFeature.Water) api.device(serial, token)
                     else requireNotNull(laundryApi).laundryDevice(serial, token)
                 if (generation != scanGeneration) return@launch
-                val previousWater = mutable.value.waterSessions.firstOrNull { it.active && it.device.id == device.id }
-                val previousLaundry = mutable.value.laundrySessions.firstOrNull { it.active && it.device.id == device.id }
-                if (feature == LifeFeature.Water && previousWater != null || feature == LifeFeature.Laundry && previousLaundry != null) {
-                    openSession(feature, if (feature == LifeFeature.Water) previousWater!!.sessionId else previousLaundry!!.sessionId)
-                    return@launch
-                }
                 mutable.update { it.copy(device = device, selectedSkuId = device.skus.firstOrNull { sku -> sku.available }?.id.orEmpty(),
                     loadingDevice = false, error = if (feature == LifeFeature.Water) device.startError else device.laundryError,
                     laundryQuote = null) }
@@ -465,6 +460,10 @@ class LifeDevicesViewModel internal constructor(
         val value = mutable.value
         if (value.laundryBusy || value.quoteLoading || value.paymentLaunch != null || value.feature != LifeFeature.Laundry) return
         val session = value.laundry
+        if (session?.phase == LaundryPhase.Closed) {
+            mutable.update { it.copy(paymentVisible = true, paymentFeedback = closedLaundryFeedback(session)) }
+            return
+        }
         if (session != null && session.active) {
             if (session.phase == LaundryPhase.Checking && !session.createSent) {
                 mutable.update { it.copy(paymentVisible = true, paymentFeedback = null) }
@@ -483,6 +482,7 @@ class LifeDevicesViewModel internal constructor(
                     waitLaundryStart(token, service)
                     return@laundryWork
                 }
+                if (stopExpiredLaundryPayment(checkNotNull(mutable.value.laundry))) return@laundryWork
                 val channels = service.laundryChannels(session, token)
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels),
                     paymentVisible = true) }
@@ -499,6 +499,7 @@ class LifeDevicesViewModel internal constructor(
             quote.channels.none { it.method == method && it.laundryUnavailableReason() == null }) return
         laundryWork(clearError = false) { token, service ->
             var session = mutable.value.laundry
+            if (session?.phase == LaundryPhase.Closed) return@laundryWork
             if (session == null || !session.active || session.phase == LaundryPhase.Checking && !session.createSent) {
                 session = session?.takeIf { it.active }?.copy(payMethod = method)
                     ?: LaundrySession(device, quote.skuId, quote.price, method, minutes = quote.minutes)
@@ -518,6 +519,8 @@ class LifeDevicesViewModel internal constructor(
                     saveLaundrySession(checkNotNull(mutable.value.laundry).copy(paid = true, phase = LaundryPhase.Starting))
                     waitLaundryStart(token, service); return@laundryWork
                 }
+                session = checkNotNull(mutable.value.laundry)
+                if (stopExpiredLaundryPayment(session)) return@laundryWork
                 session = session.copy(payMethod = method)
                 saveLaundrySession(session)
                 val channels = service.laundryChannels(session, token)
@@ -529,6 +532,7 @@ class LifeDevicesViewModel internal constructor(
             }
             if (readLaundryOrder(token, service)) return@laundryWork
             session = checkNotNull(mutable.value.laundry)
+            if (stopExpiredLaundryPayment(session)) return@laundryWork
             saveLaundrySession(session.copy(phase = LaundryPhase.Paying, paymentSent = true))
             if (method == "2") {
                 paymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)
@@ -536,6 +540,7 @@ class LifeDevicesViewModel internal constructor(
                 waitLaundryPaid(token, service)
             } else {
                 val payload = service.prepareLaundryAlipay(session.orderNo, token)
+                if (stopExpiredLaundryPayment(session)) return@laundryWork
                 paymentFeedback(session.sessionId, RechargePhase.AwaitingPayment)
                 mutable.update { it.copy(paymentLaunch = LifeAlipayLaunch(++paymentSequence, session.orderNo, payload)) }
             }
@@ -556,6 +561,7 @@ class LifeDevicesViewModel internal constructor(
                     "6002" -> "支付宝连接失败，可继续支付同一订单"
                     else -> "支付宝未完成支付，可继续支付同一订单"
                 }
+                if (stopExpiredLaundryPayment(checkNotNull(mutable.value.laundry))) return@laundryWork
                 paymentFeedback(session.sessionId, RechargePhase.Failed, detail = message)
                 throw LifeDeviceException(message)
             }
@@ -564,6 +570,11 @@ class LifeDevicesViewModel internal constructor(
     }
     fun claimLaundryPayment(requestId: Long): Boolean {
         if (mutable.value.paymentLaunch?.id != requestId || paymentInFlight != null) return false
+        mutable.value.laundry?.takeIf { it.paymentExpired(now()) }?.let {
+            mutable.update { state -> state.copy(paymentLaunch = null) }
+            stopExpiredLaundryPayment(it)
+            return false
+        }
         paymentInFlight = requestId
         return true
     }
@@ -589,15 +600,24 @@ class LifeDevicesViewModel internal constructor(
                 LaundryPhase.Paying -> waitLaundryPaid(token, service)
                 LaundryPhase.Starting -> waitLaundryStart(token, service)
                 LaundryPhase.Running, LaundryPhase.Ended -> readLaundryOrder(token, service)
+                LaundryPhase.Closed -> Unit
             }
         }
     }
     fun checkLaundryPayment() {
         val session = mutable.value.laundry ?: return
-        if (mutable.value.paymentFeedback?.phase != RechargePhase.Checking || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
-        paymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)
+        if (mutable.value.paymentFeedback?.phase != RechargePhase.Checking && !session.paymentExpired(now()) ||
+            mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
+        mutable.update { it.copy(paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)) }
         laundryWork { token, service -> waitLaundryPaid(token, service) }
     }
+    private fun stopExpiredLaundryPayment(session: LaundrySession): Boolean {
+        if (!session.paymentExpired(now())) return false
+        paymentFeedback(session.sessionId, RechargePhase.Checking, detail = LaundryPaymentExpiredMessage)
+        return true
+    }
+    private fun closedLaundryFeedback(session: LaundrySession) = LaundryPaymentFeedback(session.sessionId,
+        if (session.paymentDeadlineReached(now())) RechargePhase.TimedOut else RechargePhase.Failed, detail = "订单已关闭")
     private fun paymentFeedback(sessionId: String, phase: RechargePhase, loading: Boolean = false, detail: String? = null) {
         mutable.update { value ->
             if (value.paymentFeedback?.sessionId == sessionId)
@@ -649,13 +669,19 @@ class LifeDevicesViewModel internal constructor(
                 },
                 query = {
                     val complete = readLaundryOrder(token, service, session.sessionId)
+                    if (mutable.value.laundry?.phase == LaundryPhase.Closed) throw LaundryOrderClosed()
                     RechargeResult(paid = complete || service.laundryPaid(session.orderNo, session.payMethod, token),
                         serverStatus = 0, message = "支付尚未完成，可继续支付同一订单")
                 }, onResult = { if (continuation.isActive) continuation.resume(it) },
-                onError = { if (continuation.isActive) continuation.resumeWithException(it) })
+                onError = { if (continuation.isActive) {
+                    if (it is LaundryOrderClosed) continuation.resume(OrderResultPoller.Outcome(null, null))
+                    else continuation.resumeWithException(it)
+                } })
         }
+        if (mutable.value.laundry?.phase == LaundryPhase.Closed) return
         if (result.phase != RechargePhase.Paid) {
             val message = result.message ?: "支付尚未完成，可继续支付同一订单"
+            if (stopExpiredLaundryPayment(checkNotNull(mutable.value.laundry))) return
             paymentFeedback(session.sessionId, RechargePhase.Failed, detail = message)
             throw LifeDeviceException(message)
         }
@@ -686,20 +712,23 @@ class LifeDevicesViewModel internal constructor(
         if (reading.price.toBigDecimalOrNull()?.compareTo(session.price.toBigDecimalOrNull()) != 0)
             throw LifeDeviceException("订单价格与所选程序不一致，请在胖乖生活核对")
         val next = session.copy(minutes = reading.minutes ?: session.minutes,
+            createdAtMillis = reading.createdAtMillis ?: session.createdAtMillis,
             startedAtMillis = reading.paidAtMillis ?: session.startedAtMillis,
             expectedEndMillis = reading.expectedEndMillis ?: session.expectedEndMillis,
             finishedAtMillis = reading.finishedAtMillis ?: session.finishedAtMillis)
         when (reading.status) {
+            1 -> if (!session.paid && session.phase !in setOf(LaundryPhase.Running, LaundryPhase.Ended))
+                saveLaundrySession(next.copy(phase = LaundryPhase.Closed))
             3 -> saveLaundrySession(next.copy(phase = LaundryPhase.Ended, paid = true))
             2 -> if (session.phase != LaundryPhase.Ended) saveLaundrySession(next.copy(phase = LaundryPhase.Running, paid = true))
-            0 -> if (session.phase !in setOf(LaundryPhase.Ended, LaundryPhase.Running)) saveLaundrySession(next)
+            0 -> if (session.phase !in setOf(LaundryPhase.Ended, LaundryPhase.Running, LaundryPhase.Closed)) saveLaundrySession(next)
             else -> throw LifeDeviceException("暂时无法读取洗衣状态，请在胖乖生活核对")
         }
         // An unpaid order does not prove the device is free or that a failed payment succeeded.
         if (reading.status in setOf(2, 3)) {
             sessionError(LifeFeature.Laundry, session.sessionId, null)
         }
-        return mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId }?.phase in setOf(LaundryPhase.Running, LaundryPhase.Ended)
+        return mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId }?.phase in setOf(LaundryPhase.Running, LaundryPhase.Ended, LaundryPhase.Closed)
     }
     private suspend fun saveLaundrySession(session: LaundrySession, select: Boolean = false) {
         // A response that finishes after manual dismissal must not restore the removed card.
@@ -713,6 +742,11 @@ class LifeDevicesViewModel internal constructor(
                 scanning = if (selected && it.feature == LifeFeature.Laundry) false else it.scanning)
         }
         if (session.paid) paymentFeedback(session.sessionId, RechargePhase.Paid)
+        else if (session.phase == LaundryPhase.Closed) {
+            sessionError(LifeFeature.Laundry, session.sessionId, null)
+            mutable.update { if (it.paymentFeedback?.sessionId == session.sessionId)
+                it.copy(paymentFeedback = closedLaundryFeedback(session)) else it }
+        }
         persistSessions()
     }
     private fun resumeLaundry() {
@@ -726,10 +760,12 @@ class LifeDevicesViewModel internal constructor(
                 if (sessions.isEmpty()) break
                 for (current in sessions) {
                     try {
-                        if (current.phase == LaundryPhase.Paying && !current.paid && service.laundryPaid(current.orderNo, current.payMethod, token))
-                            saveLaundrySession(current.copy(paid = true, phase = LaundryPhase.Starting))
                         readLaundryOrder(token, service, current.sessionId)
-                        val latest = mutable.value.laundrySessions.firstOrNull { it.sessionId == current.sessionId }
+                        var latest = mutable.value.laundrySessions.firstOrNull { it.sessionId == current.sessionId }
+                        if (latest?.phase == LaundryPhase.Paying && !latest.paid && service.laundryPaid(current.orderNo, current.payMethod, token)) {
+                            saveLaundrySession(latest.copy(paid = true, phase = LaundryPhase.Starting))
+                            latest = mutable.value.laundrySessions.firstOrNull { it.sessionId == current.sessionId }
+                        }
                         if (latest?.phase == LaundryPhase.Starting && service.laundryStarted(current.orderNo, token))
                             saveLaundrySession(latest.copy(phase = LaundryPhase.Running, paid = true))
                     } catch (e: CancellationException) { throw e }

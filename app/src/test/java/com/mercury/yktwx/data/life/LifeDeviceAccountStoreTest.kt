@@ -63,4 +63,21 @@ class LifeDeviceAccountStoreTest {
         store.saveLaundrySessions(emptyList())
         assertTrue(LifeDeviceAccountStore(records).laundrySessions().isEmpty())
     }
+    @Test fun paymentDeadlineAndClosureRoundTripAndLegacyRecordsHaveNoMadeUpStart() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val paying = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
+            orderNo = "wash", createdAtMillis = 100_000L)
+        store.saveLaundrySession(paying)
+        assertEquals(paying, store.laundrySession())
+        store.saveLaundrySessions(listOf(paying.copy(phase = LaundryPhase.Closed)))
+        assertEquals(LaundryPhase.Closed, LifeDeviceAccountStore(records).laundrySessions().single().phase)
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
+            getJSONArray("sessions").getJSONObject(0).remove("createdAt")
+        }.toString()
+        assertNull(LifeDeviceAccountStore(records).laundrySessions().single().createdAtMillis)
+        assertEquals(300L, paying.paymentRemainingSeconds(100_000L))
+        assertEquals(1L, paying.paymentRemainingSeconds(399_999L))
+        assertEquals(0L, paying.paymentRemainingSeconds(400_000L))
+        assertNull(paying.copy(paid = true).paymentRemainingSeconds(200_000L))
+    }
 }

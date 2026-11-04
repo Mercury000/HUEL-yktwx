@@ -276,6 +276,58 @@ class LaundryUiTest {
         compose.onNode(hasText("完成") and hasClickAction()).performTouchInput { click() }
         capture("laundry-payment-paid")
     }
+    @Test fun fiveMinutePaymentCountdownExpiresToReadOnlyQueryAndServerClosureIsFinal() {
+        val model = model()
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
+        val quote = LaundryQuote(device.id, "quick", "2.50", 25, listOf(LifePayChannel("13", "支付宝", true, false)))
+        val paying = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Paying,
+            orderNo = "test-order", orderId = "test-id", createdAtMillis = 100_000L)
+        var clock = 100_000L
+        val now = { clock }
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = device,
+            laundry = paying, laundryQuote = quote, paymentVisible = true))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(true, state, model, now)
+            } } }
+        }
+        compose.onNodeWithText("剩余支付时间 05:00").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsEnabled()
+        compose.runOnIdle { clock = 160_000L }; compose.mainClock.advanceTimeBy(1100)
+        compose.onNodeWithText("剩余支付时间 04:00").assertIsDisplayed()
+        compose.runOnIdle { clock = 400_000L }; compose.mainClock.advanceTimeBy(1600)
+        compose.onNodeWithText("付款时间已到，请查询订单结果").assertIsDisplayed()
+        compose.onNodeWithText("查询结果").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("支付超时").assertDoesNotExist()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-pay-submit").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(laundry = paying.copy(phase = LaundryPhase.Closed),
+            paymentFeedback = LaundryPaymentFeedback(paying.sessionId, RechargePhase.TimedOut, detail = "订单已关闭")) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("支付超时").assertIsDisplayed()
+        compose.onNodeWithText("订单已关闭").assertIsDisplayed()
+        compose.onNodeWithText("查询结果").assertDoesNotExist()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNodeWithText("完成").assertIsEnabled()
+        capture("laundry-payment-timeout")
+    }
+    @Test fun closedOrderPageShowsClosureAndAllowsScanningAgain() {
+        val model = model()
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
+        val closed = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Closed, orderNo = "test-order")
+        val settings = ThemeSettings(compose.activity.application)
+        val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = device, laundry = closed)
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            LifeDevicePage(state, settings, model, active = true, onBack = {})
+        } } } }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("订单已关闭").assertIsDisplayed()
+        compose.onNodeWithText("再次扫码洗衣").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("继续支付").assertDoesNotExist()
+        compose.onNodeWithText("洗衣已完成").assertDoesNotExist()
+    }
     private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {
         override fun connect() {}
         override fun disconnect() {}

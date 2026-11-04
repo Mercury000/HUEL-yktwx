@@ -54,12 +54,13 @@ internal fun LifeDeviceStatusCards(waterSessions: List<WaterSession>, laundrySes
             dismissible = session.phase == WaterPhase.Ended)) }
         laundries.forEach { session -> add(StatusEntry(LifeFeature.Laundry, when (session.phase) {
             LaundryPhase.Ended -> "洗衣已完成"
+            LaundryPhase.Closed -> "洗衣订单已关闭"
             LaundryPhase.Checking -> "正在检查洗衣设备"
             LaundryPhase.Creating -> "正在创建洗衣订单"
             LaundryPhase.Paying -> "洗衣待支付"
             LaundryPhase.Starting -> "正在启动洗衣"
             else -> "洗衣中"
-        }, session.device, if (session.phase == LaundryPhase.Ended) "查看详情" else if (session.phase == LaundryPhase.Paying) "继续支付" else
+        }, session.device, if (!session.active) "查看详情" else if (session.phase == LaundryPhase.Paying) "继续支付" else
             session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }?.let { end ->
                 if (end > now) "预计剩余 ${(end - now + 59_999) / 60_000} 分钟" else "预计时间已到"
             } ?: "查看进度", remainingMinutes = session.expectedEndMillis
@@ -67,8 +68,8 @@ internal fun LifeDeviceStatusCards(waterSessions: List<WaterSession>, laundrySes
             progress = session.startedAtMillis?.let { start -> session.expectedEndMillis
                 ?.takeIf { session.phase == LaundryPhase.Running && it > start && it > now }?.let { end ->
                     ((now - start).toFloat() / (end - start)).coerceIn(0f, .99f)
-                } }, sessionId = session.sessionId, completed = session.phase == LaundryPhase.Ended,
-            dismissible = session.phase == LaundryPhase.Ended)) }
+                } }, sessionId = session.sessionId, completed = !session.active,
+            dismissible = !session.active)) }
     }
     StatusEntries(entries, enabled, onOpenSession, onDismiss, modifier.fillMaxWidth())
 }
