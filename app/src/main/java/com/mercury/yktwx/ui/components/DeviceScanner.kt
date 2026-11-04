@@ -22,6 +22,11 @@ import android.view.Surface
 import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -31,7 +36,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size as CanvasSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
@@ -78,19 +85,7 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
             val camera = remember(context) { DeviceCamera(context, { currentScan(it) }, { cameraError = it }, { flashAvailable = it }) }
             DisposableEffect(camera) { onDispose { camera.dispose() } }
             AndroidView(factory = { TextureView(it).also(camera::attach) }, update = { camera.torch(torch) }, modifier = Modifier.fillMaxSize())
-        }
-        Canvas(Modifier.fillMaxSize()) {
-                val margin = size.width * .18f
-                val top = if (immersive) size.height * .20f else margin
-                val right = size.width - margin
-                val bottom = top + size.width * .64f
-                val length = size.width * .08f
-                val points = listOf(Offset(margin, top) to Offset(1f, 1f), Offset(right, top) to Offset(-1f, 1f),
-                    Offset(margin, bottom) to Offset(1f, -1f), Offset(right, bottom) to Offset(-1f, -1f))
-                points.forEach { (origin, direction) ->
-                    drawLine(Color.White, origin, origin + Offset(length * direction.x, 0f), 2.dp.toPx())
-                    drawLine(Color.White, origin, origin + Offset(0f, length * direction.y), 2.dp.toPx())
-                }
+            if (cameraError == null) ScannerSweep()
         }
         if (!granted || cameraError != null) Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(cameraError ?: "需要相机权限才能扫码", fontSize = 13.sp, color = Color.White, textAlign = TextAlign.Center)
@@ -115,6 +110,25 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
             }
         } else Text(cameraError ?: "对准设备上的二维码", Modifier.align(Alignment.BottomCenter).padding(18.dp),
             fontSize = 12.sp, color = Color.White)
+    }
+}
+
+@Composable
+private fun ScannerSweep() {
+    val transition = rememberInfiniteTransition(label = "device-scanner-sweep")
+    val progress = transition.animateFloat(0f, 1f,
+        animationSpec = infiniteRepeatable(tween(2400, delayMillis = 400, easing = LinearEasing)),
+        label = "device-scanner-sweep-progress")
+    Canvas(Modifier.fillMaxSize().clipToBounds()) {
+        val fraction = progress.value
+        val y = size.height * fraction
+        val alpha = minOf(fraction * 10f, (1f - fraction) * 10f, 1f).coerceAtLeast(0f)
+        val ink = Color(0xFF7CE2B0)
+        val trail = 48.dp.toPx()
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, ink.copy(alpha = .12f * alpha)),
+            startY = y - trail, endY = y), topLeft = Offset(0f, y - trail), size = CanvasSize(size.width, trail))
+        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .85f * alpha), Color.Transparent)),
+            topLeft = Offset(0f, y), size = CanvasSize(size.width, 2.dp.toPx()))
     }
 }
 
