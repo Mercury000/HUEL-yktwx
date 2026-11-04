@@ -146,6 +146,8 @@ class Hui798UiTest {
             }
         } }
         compose.onNodeWithText(device.name).assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
+        compose.onNodeWithText("慧生活798").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("开始用水")
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
         val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
@@ -159,6 +161,7 @@ class Hui798UiTest {
             selectedSessionId = session.sessionId) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("正在启动设备").assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("hui798-elapsed").assertDoesNotExist()
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
         val indicator = compose.onNodeWithTag("hui798-device-loading").fetchSemanticsNode().boundsInRoot
@@ -187,6 +190,7 @@ class Hui798UiTest {
         compose.runOnIdle { state = state.copy(sessions = listOf(session.copy(phase = WaterPhase.Ended, endedAtMillis = 160_000))) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("用水已结束").assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("hui798-ended-icon").assertIsDisplayed()
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
         capture("ended-${if (dark) "dark-large" else "light"}")

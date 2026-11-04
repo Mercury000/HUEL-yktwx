@@ -237,35 +237,33 @@ internal fun LifeDeviceField(label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun LifePaymentCard(device: LifeDevice, showOptions: Boolean = false, state: LifeDevicesUiState? = null,
+private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false, state: LifeDevicesUiState? = null,
     onSelect: (String) -> Unit = {}, enabled: Boolean = false) {
     val channel = device.alipay ?: return
-    Card(Modifier.fillMaxWidth().testTag("life-payment-card"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-            LifeDeviceField("支付方式") {
-                LifePaymentValue(device)
+    Column(Modifier.fillMaxWidth().testTag("life-payment-card")) {
+        LifeDeviceField("支付方式") {
+            LifePaymentValue(device)
+        }
+        if (showOptions) {
+            HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
+            LifeDeviceField("免密状态") {
+                val usable = channel.available && !channel.needsOpen
+                val green = lifeSuccessInk()
+                Text(if (channel.needsOpen) "需开通" else if (usable) "可使用" else "不可用",
+                    Modifier.clip(RoundedCornerShape(6.dp)).background(if (usable) lifeSuccessFill() else DashboardPalette.field)
+                        .padding(horizontal = 7.dp, vertical = 3.dp), fontSize = 10.sp, color = if (usable) green else DashboardPalette.muted)
             }
-            if (showOptions) {
+            val skus = device.skus.filter { it.name.isNotBlank() }
+            if (skus.size == 1) {
                 HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                LifeDeviceField("免密状态") {
-                    val usable = channel.available && !channel.needsOpen
-                    val green = lifeSuccessInk()
-                    Text(if (channel.needsOpen) "需开通" else if (usable) "可使用" else "不可用",
-                        Modifier.clip(RoundedCornerShape(6.dp)).background(if (usable) lifeSuccessFill() else DashboardPalette.field)
-                            .padding(horizontal = 7.dp, vertical = 3.dp), fontSize = 10.sp, color = if (usable) green else DashboardPalette.muted)
-                }
-                val skus = device.skus.filter { it.name.isNotBlank() }
-                if (skus.size == 1) {
-                    HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                    LifeDeviceField("接水选项") { Text(skus.single().name, fontSize = 12.sp) }
-                } else if (skus.isNotEmpty()) {
-                    HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                    Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("接水选项", fontSize = 12.sp, color = DashboardPalette.muted)
-                        skus.forEach { sku ->
-                            PaymentSelectionCard(selected = sku.id == state?.selectedSkuId, enabled = enabled && sku.available,
-                                onClick = { onSelect(sku.id) }) { Text(sku.name, fontSize = 13.sp, color = it) }
-                        }
+                LifeDeviceField("接水选项") { Text(skus.single().name, fontSize = 12.sp) }
+            } else if (skus.isNotEmpty()) {
+                HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
+                Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("接水选项", fontSize = 12.sp, color = DashboardPalette.muted)
+                    skus.forEach { sku ->
+                        PaymentSelectionCard(selected = sku.id == state?.selectedSkuId, enabled = enabled && sku.available,
+                            onClick = { onSelect(sku.id) }) { Text(sku.name, fontSize = 13.sp, color = it) }
                     }
                 }
             }
@@ -322,7 +320,7 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, model::scan),
         refreshAction = WaterDeviceAction("刷新设备", !state.waterBusy && !state.loadingDevice && phase == WaterPhase.Ready, model::refreshDevice),
         onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
-        paymentContent = if (device == null) null else { enabled -> LifePaymentCard(device,
+        paymentContent = if (device?.alipay == null) null else { enabled -> WaterPaymentDetails(device,
             showOptions = phase in setOf(WaterPhase.Ready, WaterPhase.Starting), state = state, onSelect = model::selectSku,
             enabled = enabled && !state.waterBusy && !state.loadingDevice) })
 }

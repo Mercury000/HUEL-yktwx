@@ -100,16 +100,14 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
                     }
                     WaterPhase.Running, WaterPhase.Stopping -> {
                         item { LifeWaterProgress(display.phase, display.startedAtMillis, display.endedAtMillis, display.action, display.tag, nowMillis) }
-                        item { WaterDeviceFacts(display) }
-                        if (payment != null) item { payment(false) }
+                        item { WaterDeviceFacts(display, paymentContent = payment) }
                         item { WaterUsageNotice(display) }
                     }
                     else -> {
                         item { LifeDeviceHero(display.name.ifBlank {
                             if (display.provider == LifeProvider.Panggui) "饮水设备" else "生活用水设备"
                         }, display.location, LifeFeature.Water) }
-                        if (payment != null) item { payment(stageActive) }
-                        else item { WaterDeviceFacts(display) }
+                        item { WaterDeviceFacts(display, stageActive, payment) }
                         item { WaterUsageNotice(display) }
                     }
                 }
@@ -135,22 +133,27 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
 }
 
 @Composable
-private fun WaterDeviceFacts(state: WaterDeviceUiState) {
+private fun WaterDeviceFacts(state: WaterDeviceUiState, paymentEnabled: Boolean = false,
+    paymentContent: (@Composable (Boolean) -> Unit)? = null) {
     val rows = buildList {
         if (state.phase in setOf(WaterPhase.Running, WaterPhase.Stopping, WaterPhase.Ended) && state.name.isNotBlank()) add("设备" to state.name)
-        if (state.location.isNotBlank()) add("位置" to state.location)
+        if (state.phase in setOf(WaterPhase.Running, WaterPhase.Stopping, WaterPhase.Ended) && state.location.isNotBlank()) add("位置" to state.location)
         state.deviceId?.let { add("设备编号" to it) }
         if (state.phase == WaterPhase.Ended) {
             state.startedAtMillis?.let { start -> state.endedAtMillis?.let { end -> add("本地参考时长" to waterDuration(end - start)) } }
         }
         if (state.phase == WaterPhase.Ended && state.paymentMethod != null) add("支付方式" to state.paymentMethod)
-        else add("服务提供方" to state.providerName)
+        add("服务提供方" to state.providerName)
     }
     Card(Modifier.fillMaxWidth().testTag(if (state.provider == LifeProvider.Panggui) "life-device-info" else "hui798-device-info"), cornerRadius = 24.dp) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
             rows.forEachIndexed { index, (label, value) ->
                 LifeDeviceField(label) { Text(value, fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End) }
                 if (index < rows.lastIndex) HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
+            }
+            if (paymentContent != null) {
+                HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
+                paymentContent(paymentEnabled)
             }
         }
     }

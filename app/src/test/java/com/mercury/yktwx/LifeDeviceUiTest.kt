@@ -192,6 +192,8 @@ class LifeDeviceUiTest {
             } }
         }
         compose.onNodeWithText(device.name).assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
+        compose.onNodeWithText("胖乖生活").assertIsDisplayed()
         compose.onNodeWithText("开始接水").assertIsDisplayed()
         compose.onNodeWithText("账单").assertDoesNotExist()
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
@@ -212,6 +214,7 @@ class LifeDeviceUiTest {
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id, phase = WaterPhase.Starting)) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("正在启动设备").assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("water-device-loading").assertIsDisplayed()
         compose.onNodeWithTag("water-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
         compose.onNodeWithTag("water-elapsed").assertDoesNotExist()
@@ -230,6 +233,7 @@ class LifeDeviceUiTest {
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id,
             phase = WaterPhase.Ended, finalized = true, startedAtMillis = times.getLong("startedAt"), endedAtMillis = times.getLong("endedAt"))) }
         compose.onNodeWithText("接水已结束").assertIsDisplayed()
+        compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("water-ended-icon").assertIsDisplayed()
         compose.onNodeWithTag("water-fee-notice").assertIsDisplayed()
         compose.onNodeWithText("本地参考时长").assertIsDisplayed()
