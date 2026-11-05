@@ -9,8 +9,8 @@ https://github.com/Mercury000/wechat-qrcode-lite/releases/tag/v0.1.0.
   upstream license notices.
 - AboutLibraries metadata in `app/config/aboutlibraries/` adds the local AAR to
   the References page. Its entry links to the release's upstream attribution
-  notice, and its license metadata links to the Apache 2.0 text. No extra license
-  or notice files are copied into application assets.
+  notice, and its license metadata includes the full Apache 2.0 text for offline
+  builds. No extra license or notice files are copied into application assets.
 - JNI libraries are compressed in the APK via `packaging.jniLibs.useLegacyPackaging`.
 - Camera QR recognition exclusively uses this native decoder on the camera
   worker. The app reuses it and closes it on that worker when the scanner is
