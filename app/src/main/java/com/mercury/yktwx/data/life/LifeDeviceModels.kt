@@ -97,6 +97,7 @@ interface LifeDeviceStore {
     fun account(): LifeAccount?
     fun saveAccount(account: LifeAccount)
     fun clearAccount()
+    fun removeAccount() { clearSession(); clearLaundrySession(); clearAccount() }
     fun session(): WaterSession?
     fun saveSession(session: WaterSession)
     fun clearSession()

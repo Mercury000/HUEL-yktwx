@@ -71,6 +71,7 @@ interface Hui798Store {
     fun account(): Hui798Account?
     fun saveAccount(account: Hui798Account)
     fun clearAccount()
+    fun removeAccount() { if (account() != null) saveSessions(emptyList()); clearAccount() }
     fun sessions(): List<Hui798Session>
     fun saveSessions(sessions: List<Hui798Session>)
 }
