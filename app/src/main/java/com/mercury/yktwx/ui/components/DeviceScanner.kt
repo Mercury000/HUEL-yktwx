@@ -17,6 +17,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
@@ -52,6 +53,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.mercury.yktwx.BuildConfig
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
@@ -160,6 +162,8 @@ private class DeviceCamera(
     }
     private val decoder = WeChatDeviceQrDecoder(context.applicationContext,
         onUnavailable = { error("扫码暂不可用，请输入设备编号") })
+    private val frameBuffer = DeviceQrFrameBuffer()
+    private val timings = if (BuildConfig.DEBUG) DeviceQrTimings() else null
     private var texture: TextureView? = null
     private var camera: CameraDevice? = null
     private var capture: CameraCaptureSession? = null
@@ -201,6 +205,7 @@ private class DeviceCamera(
             images = ImageReader.newInstance(size.width, size.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
                 setOnImageAvailableListener({ reader -> decode(reader) }, worker)
             }
+            worker.post { if (!disposed) decoder.prepare() }
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
                     opening = false
@@ -245,21 +250,32 @@ private class DeviceCamera(
     }
     private fun decode(reader: ImageReader) {
         val image = runCatching { reader.acquireLatestImage() }.getOrNull() ?: return
-        try {
-            if (disposed || SystemClock.elapsedRealtime() - lastFrame < 400) return
-            lastFrame = SystemClock.elapsedRealtime()
+        var width = 0
+        var height = 0
+        var copyStarted = 0L
+        val bytes = try {
+            val now = SystemClock.elapsedRealtime()
+            if (disposed || now - lastFrame < 400) return
+            lastFrame = now
+            if (timings != null) copyStarted = SystemClock.elapsedRealtimeNanos()
+            width = image.width
+            height = image.height
             val plane = image.planes[0]
-            val buffer = plane.buffer.duplicate()
-            val start = buffer.position()
-            val bytes = ByteArray(image.width * image.height)
-            for (y in 0 until image.height) {
-                if (plane.pixelStride == 1) {
-                    buffer.position(start + y * plane.rowStride)
-                    buffer.get(bytes, y * image.width, image.width)
-                } else for (x in 0 until image.width)
-                    bytes[y * image.width + x] = buffer.get(start + y * plane.rowStride + x * plane.pixelStride)
-            }
-            val result = decoder.decode(bytes, image.width, image.height) ?: return
+            frameBuffer.copy(plane.buffer, width, height, plane.rowStride, plane.pixelStride)
+        } catch (_: Exception) {
+            return
+        } finally {
+            // The dense copy owns its pixels, so inference need not retain a camera image.
+            image.close()
+        }
+        if (disposed) return
+        val decodeStarted = if (timings != null) SystemClock.elapsedRealtimeNanos() else 0L
+        try {
+            val result = try {
+                decoder.decode(bytes, width, height)
+            } finally {
+                timings?.record(decodeStarted - copyStarted, SystemClock.elapsedRealtimeNanos() - decodeStarted)
+            } ?: return
             val now = SystemClock.elapsedRealtime()
             if (result != lastCode || now - lastCodeAt >= 2000) {
                 lastCode = result
@@ -267,7 +283,6 @@ private class DeviceCamera(
                 main.post { if (!disposed) onScan(result) }
             }
         } catch (_: Exception) { /* Empty frames are normal while aiming. */ }
-        finally { image.close() }
     }
     private fun transform() {
         val view = texture ?: return
@@ -296,6 +311,25 @@ private class DeviceCamera(
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { transform() }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { close(); return true }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+}
+
+/** Debug-only aggregates contain timings, never decoded payloads or images. */
+private class DeviceQrTimings {
+    private val copy = LongArray(20)
+    private val decode = LongArray(20)
+    private var count = 0
+
+    fun record(copyNanos: Long, decodeNanos: Long) {
+        copy[count] = copyNanos
+        decode[count] = decodeNanos
+        if (++count < copy.size) return
+        val averageCopy = copy.sum() / count / 1_000_000.0
+        val averageDecode = decode.sum() / count / 1_000_000.0
+        decode.sort()
+        val p95 = decode[18] / 1_000_000.0
+        Log.d("DeviceScanner", "QR frames=$count, copyAvgMs=$averageCopy, decodeAvgMs=$averageDecode, decodeP95Ms=$p95")
+        count = 0
+    }
 }
 
 /** Camera SurfaceTexture already applies sensor orientation; only undo display rotation here. */

@@ -1,8 +1,10 @@
 package com.mercury.yktwx.ui.components
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.AtomicFile
 import android.util.Log
+import com.mercury.yktwx.BuildConfig
 import io.github.mercury000.wechatqrcode.WeChatQrDecoder
 import java.io.File
 
@@ -14,12 +16,21 @@ internal class WeChatDeviceQrDecoder(context: Context, private val onUnavailable
     private var closed = false
 
     @Synchronized
-    fun decode(grayscale: ByteArray, width: Int, height: Int): String? {
-        if (closed || width <= 0 || height <= 0 || width.toLong() * height > grayscale.size) return null
+    fun prepare(): Boolean {
+        if (closed) return false
         if (!initialized) {
             initialized = true
+            val started = if (BuildConfig.DEBUG) SystemClock.elapsedRealtimeNanos() else 0L
             decoder = try {
-                WeChatQrDecoder(prepareWeChatQrModels(appContext).absolutePath)
+                val models = prepareWeChatQrModels(appContext)
+                val nativeStarted = if (BuildConfig.DEBUG) SystemClock.elapsedRealtimeNanos() else 0L
+                WeChatQrDecoder(models.absolutePath).also {
+                    if (BuildConfig.DEBUG) {
+                        val finished = SystemClock.elapsedRealtimeNanos()
+                        Log.d("DeviceScanner", "QR initialization: modelCopyMs=${(nativeStarted - started) / 1_000_000.0}, " +
+                            "nativeInitMs=${(finished - nativeStarted) / 1_000_000.0}")
+                    }
+                }
             } catch (error: LinkageError) {
                 Log.w("DeviceScanner", "WeChat QR native library unavailable", error)
                 null
@@ -29,6 +40,12 @@ internal class WeChatDeviceQrDecoder(context: Context, private val onUnavailable
             }
             if (decoder == null) onUnavailable()
         }
+        return decoder != null
+    }
+
+    @Synchronized
+    fun decode(grayscale: ByteArray, width: Int, height: Int): String? {
+        if (closed || width <= 0 || height <= 0 || width.toLong() * height > grayscale.size || !prepare()) return null
         return try {
             decoder?.decode(grayscale, width, height)?.firstOrNull()
         } catch (error: Exception) {
