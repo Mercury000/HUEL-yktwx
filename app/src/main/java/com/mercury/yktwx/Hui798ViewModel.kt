@@ -369,7 +369,10 @@ class Hui798ViewModel internal constructor(
     }
     private suspend fun readSession(owner: Hui798Account, id: String, allowBind: Boolean = false, verifyUser: Boolean = false) {
         val before = mutable.value.sessions.firstOrNull { it.sessionId == id && it.active } ?: return
-        var use = if (verifyUser || id !in mutable.value.confirmedSessions || before.serverTime == null)
+        // An acknowledged start in this app session binds through the status endpoint, as before.
+        // Home is still required for restored/unverified use and before sending a stop command.
+        val confirmingStart = before.phase == WaterPhase.Starting && before.startAcknowledged && before.serverTime == null
+        var use = if (verifyUser || !confirmingStart && (id !in mutable.value.confirmedSessions || before.serverTime == null))
             api.deviceUse(before.device.id, owner.token) else null
         var reading = use?.reading ?: api.status(before.device.id, owner.token)
         // A changed device marker can belong to a later user. Confirm through the home response.

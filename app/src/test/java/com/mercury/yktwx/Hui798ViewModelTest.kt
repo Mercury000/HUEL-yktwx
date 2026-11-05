@@ -41,6 +41,8 @@ class Hui798ViewModelTest {
         var lostStart = false; var lostEnd = false; var holdEnd = false
         var authFailure = false
         var statusFailure = false
+        var deviceUseFailure: Exception? = null
+        var useReads = 0
         var homeName: String = device.name
         var userId: String? = account.userId
         var overviewDevices: List<Hui798Device> = emptyList()
@@ -68,7 +70,11 @@ class Hui798ViewModelTest {
             if (overviewFailure) throw IOException("主页查询失败")
             return result
         }
-        override suspend fun deviceUse(id: String, token: String) = Hui798DeviceUse(device.copy(id = id, name = homeName), status(id, token), userId)
+        override suspend fun deviceUse(id: String, token: String): Hui798DeviceUse {
+            useReads++
+            deviceUseFailure?.let { throw it }
+            return Hui798DeviceUse(device.copy(id = id, name = homeName), status(id, token), userId)
+        }
         override suspend fun status(id: String, token: String): Hui798Reading {
             reads++
             if (authFailure) throw Hui798Exception("fixture expired", true)
@@ -155,6 +161,32 @@ class Hui798ViewModelTest {
         model.stopWater(); runCurrent(); assertEquals(WaterPhase.Stopping, model.state.value.session?.phase)
         model.refreshState(); runCurrent()
         assertEquals(1, api.ends); assertEquals(WaterPhase.Ended, model.state.value.session?.phase)
+    }
+    @Test fun acknowledgedStartUsesStatusWhenHomeIsUnavailableButStopStillVerifiesUser() = runTest(dispatcher) {
+        val unavailable = "暂时无法确认设备状态，请刷新"
+        val api = Api().apply { deviceUseFailure = Hui798Exception(unavailable) }
+        val store = Store(account); val model = model(api, store); runCurrent()
+        model.environment(true); model.pageVisible(true); model.openDevice(device.id); runCurrent()
+        model.startWater(); runCurrent()
+        assertEquals(1, api.starts); assertEquals(WaterPhase.Starting, model.state.value.session?.phase)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase)
+        assertEquals(clock, store.saved.single().serverTime)
+        assertNull(model.state.value.error); assertEquals(0, api.useReads)
+        advanceTimeBy(6000); runCurrent()
+        assertNull(model.state.value.error); assertEquals(0, api.useReads)
+
+        model.stopWater(); runCurrent()
+        assertEquals(unavailable, model.state.value.error)
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase)
+        assertEquals(1, api.useReads); assertEquals(0, api.ends)
+        api.deviceUseFailure = null
+        model.stopWater(); runCurrent()
+        assertEquals(2, api.useReads); assertEquals(1, api.ends)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Ended, model.state.value.session?.phase)
+        assertNull(model.state.value.error); assertEquals(1, api.starts); assertEquals(1, api.ends)
+        model.environment(false)
     }
     @Test fun lostStartDoesNotAdoptAnUnidentifiedRunOrReplayStartOnRetry() = runTest(dispatcher) {
         val api = Api().apply { lostStart = true }; val model = model(api, Store(account)); runCurrent()
