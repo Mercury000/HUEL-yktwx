@@ -76,7 +76,6 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         state.loadingDevice -> "正在查询设备"
         !state.connected -> "登录后即可用水"
         state.error != null -> "暂未确认设备状态"
-        state.deviceInUse -> "设备正在使用"
         ready -> "设备可用"
         else -> "等待查询设备状态"
     }
@@ -84,7 +83,6 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         state.restoring -> "请稍候"
         state.loadingDevice -> "正在确认设备是否可以用水"
         !state.connected -> "使用慧生活798账号继续"
-        state.deviceInUse -> "请等待本次用水结束后刷新状态"
         ready -> "核对设备编号后，点击下方开始用水；用完后点击结束用水"
         state.error != null -> null
         else -> "查询成功后即可开始用水"
@@ -123,9 +121,11 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
     }
     val session = state.session
     val device = session?.device ?: state.device
+    val occupied = phase == WaterPhase.Ready && state.deviceInUse && !querying && state.connected && state.error == null
     val display = WaterDeviceUiState(LifeProvider.Hui798, device?.name.orEmpty(), deviceId = device?.id ?: state.scannedDeviceId,
         phase = phase, startedAtMillis = session?.startedAtMillis, endedAtMillis = session?.endedAtMillis,
-        status = if (phase == WaterPhase.Ready) WaterDeviceStatus(title, subtitle, querying) else null, error = state.error)
+        status = if (phase == WaterPhase.Ready && !occupied) WaterDeviceStatus(title, subtitle, querying) else null,
+        error = state.error ?: "设备正在使用，请结束后刷新状态".takeIf { occupied })
     val refresh = WaterDeviceAction("刷新状态", state.connected && !state.busy && !state.loadingDevice && phase != WaterPhase.Ended, model::refreshState)
     WaterDevicePage(display, settings, active, primary,
         scanAction = WaterDeviceAction("重新扫码", !state.busy && !state.restoring, onScan), refreshAction = refresh,

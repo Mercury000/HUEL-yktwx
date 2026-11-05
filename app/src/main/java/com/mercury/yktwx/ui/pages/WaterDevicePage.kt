@@ -108,7 +108,8 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
                             if (display.provider == LifeProvider.Panggui) "饮水设备" else "生活用水设备"
                         }, display.location, LifeFeature.Water) }
                         item { WaterDeviceFacts(display, stageActive, payment) }
-                        item { WaterUsageNotice(display) }
+                        if (display.phase != WaterPhase.Ready || display.status != null || display.error == null)
+                            item { WaterUsageNotice(display) }
                     }
                 }
                 item { InlineErrorGroup(display.error, 12.dp) {

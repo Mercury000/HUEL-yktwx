@@ -111,7 +111,13 @@ class Hui798Api(
         val device = data?.optJSONObject("device")
         val returnedId = device?.identifier("id")
         if (returnedId != null && returnedId != id) throw Hui798Exception("设备信息不一致，请重新扫码")
-        return Hui798DeviceUse(Hui798Device(id, device?.optString("name").orEmpty()), reading(device),
+        // Home can report status 10 while /dev/status reports this same order as running (1).
+        // Use the live status for lifecycle decisions and bind home's user to its matching marker.
+        val current = status(id, token)
+        val homeTime = device?.optJSONObject("gene")?.opt("time")?.toString()?.toLongOrNull()?.takeIf { it > 0 }
+        if (current.status == 1 && homeTime != current.sessionTime)
+            throw Hui798Exception("设备用水记录尚未同步，请刷新")
+        return Hui798DeviceUse(Hui798Device(id, device?.optString("name").orEmpty()), current,
             data?.optJSONObject("user")?.identifier("id"))
     }
     private fun reading(device: JSONObject?): Hui798Reading {

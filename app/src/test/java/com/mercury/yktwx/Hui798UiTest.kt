@@ -9,7 +9,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -31,6 +33,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -203,21 +206,24 @@ class Hui798UiTest {
     @Test @Config(fontScale = 1.3f)
     fun waterStagesFitLargeTextAndDarkMode() = stages(true)
 
-    @Test fun deviceQueryStatesKeepIdentityVisibleAndOfferRetryInsteadOfStart() {
+    private fun deviceQueryStates(dark: Boolean) {
         val model = model()
-        val settings = settings()
+        val settings = settings(dark)
+        var occupiedInk = androidx.compose.ui.graphics.Color.Unspecified
         val id = "864165069279947"
         var state by mutableStateOf(Hui798UiState(restoring = false, connectedPhone = "138****0000",
             scannedDeviceId = id, loadingDevice = true))
         var scans = 0
-        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme(ColorSchemeMode.Light) {
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+            val errorInk = MiuixTheme.colorScheme.onErrorContainer
+            SideEffect { occupiedInk = errorInk }
             Hui798DevicePage(state, settings, model, active = true, onScan = { scans++ }, onBack = {})
         } } }
         compose.onNodeWithText(id).assertIsDisplayed()
         compose.onNodeWithText("生活用水设备").assertIsDisplayed()
         compose.onNodeWithTag("hui798-device-loading").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在查询…")
-        capture("querying-light")
+        capture("querying-${if (dark) "dark" else "light"}")
         compose.runOnIdle { state = state.copy(loadingDevice = false, error = "连接失败，请稍后重试") }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText(id).assertIsDisplayed()
@@ -225,23 +231,30 @@ class Hui798UiTest {
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("重新查询")
         compose.onNodeWithTag("hui798-rescan").assertIsDisplayed().performClick()
         assertEquals(1, scans)
-        capture("query-failed-light")
+        capture("query-failed-${if (dark) "dark" else "light"}")
         compose.runOnIdle { state = state.copy(device = Hui798Device(id, "五号楼饮水机")) }
         compose.onNodeWithText("五号楼饮水机").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("重新查询")
         compose.runOnIdle { state = state.copy(deviceInUse = true, error = null) }
         compose.mainClock.advanceTimeBy(600)
-        compose.onNodeWithText("设备正在使用").assertIsDisplayed()
-        compose.onNodeWithText("请等待本次用水结束后刷新状态").assertIsDisplayed()
+        val occupiedMessage = "设备正在使用，请结束后刷新状态"
+        compose.onNodeWithText(occupiedMessage).assertIsDisplayed()
+        compose.onNodeWithTag("hui798-usage-notice").assertDoesNotExist()
         compose.onNodeWithText("暂未确认设备状态").assertDoesNotExist()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("刷新状态")
-        capture("occupied-light")
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(occupiedMessage).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals("Occupied notice uses the shared error color", occupiedInk, layouts.single().layoutInput.style.color)
+        assertFalse("Occupied error must be readable in full", layouts.single().isLineEllipsized(0))
+        capture("occupied-${if (dark) "dark" else "light"}")
         compose.runOnIdle { state = state.copy(connectedPhone = "", deviceInUse = false) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText(id).assertIsDisplayed()
         compose.onNodeWithTag("hui798-device-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("登录并继续")
     }
+    @Test fun deviceQueryStatesKeepIdentityVisibleAndOfferRetryInsteadOfStart() = deviceQueryStates(false)
+    @Test fun occupiedDeviceShowsTheSharedErrorInDarkMode() = deviceQueryStates(true)
 
     @Test fun hui798OnlyProgressUsesItsOwnCallbacksAndOneSharedScanner() {
         val settings = settings()

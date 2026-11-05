@@ -121,6 +121,40 @@ class Hui798ViewModelTest {
         assertNull(model.state.value.error)
         assertEquals(0, api.starts)
     }
+    @Test fun rescanningOurRunningDeviceReturnsToItsOrderAndCompletedUseCanBeScannedAgain() = runTest(dispatcher) {
+        val api = Api(); val store = Store(account); val model = model(api, store); runCurrent()
+        model.pageVisible(true); model.openDevice(device.id); runCurrent()
+        model.startWater(); runCurrent(); advanceTimeBy(3000); runCurrent()
+        val order = model.state.value.session!!
+        assertEquals(WaterPhase.Running, order.phase)
+        val reads = api.reads
+        model.pageVisible(false); model.openDevice(device.id); model.pageVisible(true); runCurrent()
+        assertEquals(order.sessionId, model.state.value.selectedSessionId)
+        assertEquals(order, model.state.value.session)
+        assertFalse(model.state.value.deviceInUse); assertFalse(model.state.value.deviceReady)
+        assertEquals(1, model.state.value.sessions.size); assertEquals(reads, api.reads)
+        assertEquals(1, api.starts); assertNull(model.state.value.error)
+
+        model.stopWater(); runCurrent(); advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Ended, model.state.value.session?.phase)
+        model.openDevice(device.id); runCurrent()
+        assertNull(model.state.value.session); assertTrue(model.state.value.deviceReady)
+        assertFalse(model.state.value.deviceInUse)
+        assertEquals(1, api.starts); assertEquals(1, api.ends)
+    }
+    @Test fun scanningAnotherOccupiedDeviceDoesNotSelectOurExistingOrder() = runTest(dispatcher) {
+        val api = Api().apply { reading = Hui798Reading(1, clock) }
+        val model = model(api, Store(account, listOf(running()))); runCurrent()
+        model.openSession("fixture-session")
+        val otherDevice = "123456789012346"
+        model.openDevice(otherDevice); runCurrent()
+        assertNull(model.state.value.session)
+        assertEquals(otherDevice, model.state.value.device?.id)
+        assertTrue(model.state.value.deviceInUse); assertFalse(model.state.value.deviceReady)
+        assertEquals(listOf(running()), model.state.value.sessions)
+        model.startWater(); runCurrent()
+        assertEquals(0, api.starts); assertEquals(0, api.ends)
+    }
     @Test fun deviceOccupiedBetweenQueryAndStartDoesNotSendStartOrReportUnknownState() = runTest(dispatcher) {
         val api = Api(); val model = model(api, Store(account)); runCurrent()
         model.openDevice(device.id); runCurrent()

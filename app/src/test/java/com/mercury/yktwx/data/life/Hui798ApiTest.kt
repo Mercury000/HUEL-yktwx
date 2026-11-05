@@ -43,7 +43,8 @@ class Hui798ApiTest {
         assertEquals(2, body.length()); assertEquals("123456", body.getString("authCode")); assertEquals("13800000000", body.getString("un"))
         calls.forEach {
             assertEquals("POST", it.requestMethod); assertEquals("1,1", it.getRequestProperty("ApplicationType"))
-            assertEquals("3.1.9", it.getRequestProperty("VersionCode")); assertNull(it.getRequestProperty("Authorization"))
+            assertEquals("3.1.9", it.getRequestProperty("VersionCode"))
+            assertEquals("Android_ilife798_3.1.9", it.getRequestProperty("User-Agent")); assertNull(it.getRequestProperty("Authorization"))
             assertFalse(it.instanceFollowRedirects); assertTrue(it.closed)
         }
     }
@@ -86,6 +87,49 @@ class Hui798ApiTest {
             Response(url, """{"code":0,"data":{"device":{"gene":{"status":1,"time":1700000000000}},"user":{"id":null}}}""")
         })
         assertNull(api.deviceUse("device", "token").userId)
+    }
+    @Test fun capturedHomeStatusTenUsesLiveStatusAndKeepsTheSameAccountAndUseMarker() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val responses = ArrayDeque(listOf(
+            """{"code":0,"data":{"account":{"id":"fixture-user"},"favos":[{"id":"fixture-device","name":"饮水机","status":1,"gene":{"status":10,"mode":1,"time":"1700000000000"},"owner":{"id":"fixture-operator"}}]}}""",
+            """{"code":0,"data":{"device":{"id":"fixture-device","name":"饮水机","status":1,"gene":{"status":10,"mode":1,"time":"1700000000000"}},"user":{"id":"fixture-user"}}}""",
+            """{"code":0,"data":{"device":{"id":"fixture-device","status":1,"gene":{"status":1,"mode":1,"time":"1700000000000"}}}}""",
+            """{"code":0,"data":{"device":{"id":"fixture-device","status":1,"gene":{"status":99,"mode":1}}}}""",
+        ))
+        val api = Hui798Api("https://fixture.test/api/v1", "", { url ->
+            Response(url, responses.removeFirst()).also(calls::add)
+        })
+        val overview = api.overview("fixture-token")
+        val use = api.deviceUse(overview.devices.single().id, "fixture-token")
+        assertEquals(overview.userId, use.userId)
+        assertEquals(Hui798Reading(1, 1_700_000_000_000), use.reading)
+        assertEquals(Hui798Reading(99, null), api.status(use.device.id, "fixture-token"))
+        assertEquals(listOf("/api/v1/ui/app/master", "/api/v1/ui/app/dev/home/1", "/api/v1/ui/app/dev/status", "/api/v1/ui/app/dev/status"), calls.map { it.url.path })
+        assertEquals(listOf("ad=true", "did=fixture-device&apply=6", "did=fixture-device&more=false", "did=fixture-device&more=false"), calls.map { it.url.query })
+        calls.forEach {
+            assertEquals("GET", it.requestMethod)
+            assertEquals("1,1", it.getRequestProperty("ApplicationType"))
+            assertEquals("3.1.9", it.getRequestProperty("VersionCode"))
+            assertEquals("Android_ilife798_3.1.9", it.getRequestProperty("User-Agent"))
+            assertEquals("fixture-token", it.getRequestProperty("Authorization"))
+        }
+    }
+    @Test fun staleHomeCannotOverrideLiveCompletionOrAssignItsUserToAnotherOrder() = runBlocking {
+        for ((status, time) in listOf(99 to null, 1 to "1700000010000")) {
+            val api = Hui798Api("https://fixture.test/api/v1", "", { url ->
+                val response = if (url.path.endsWith("/status")) {
+                    val gene = JSONObject().put("status", status)
+                    time?.let { gene.put("time", it) }
+                    JSONObject().put("code", 0).put("data", JSONObject().put("device", JSONObject().put("gene", gene))).toString()
+                } else """{"code":0,"data":{"device":{"id":"fixture-device","gene":{"status":10,"time":"1700000000000"}},"user":{"id":"fixture-user"}}}"""
+                Response(url, response)
+            })
+            if (status == 99) assertEquals(Hui798Reading(99, null), api.deviceUse("fixture-device", "fixture-token").reading)
+            else {
+                try { api.deviceUse("fixture-device", "fixture-token"); fail("Stale home's user must not verify a later order") }
+                catch (e: Hui798Exception) { assertEquals("设备用水记录尚未同步，请刷新", e.message) }
+            }
+        }
     }
     @Test fun deviceHomeUsesTheReferenceOptionalNameAndStillQueriesStatus() = runBlocking {
         for ((body, name) in listOf(

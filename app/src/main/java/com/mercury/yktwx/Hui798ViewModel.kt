@@ -177,6 +177,10 @@ class Hui798ViewModel internal constructor(
 
     fun openDevice(id: String) {
         if (mutable.value.busy || mutable.value.restoring) return
+        mutable.value.sessions.firstOrNull { it.active && it.device.id == id }?.let {
+            openSession(it.sessionId)
+            return
+        }
         pendingDeviceId = id; generation++; deviceTask?.cancel()
         mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, deviceInUse = false,
             loadingDevice = false, selectedSessionId = null, error = null) }
