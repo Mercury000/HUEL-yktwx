@@ -39,7 +39,7 @@ internal fun LifeAccountsSettingsCard(accounts: List<ManagedLifeAccount>, active
         accounts.forEach { account ->
             ArrowPreference(title = account.name,
                 summary = account.connection.phone.ifBlank { account.services },
-                onClick = { onClick(account) }, enabled = active && !account.restoring && !account.busy,
+                onClick = { if (active) onClick(account) }, enabled = !account.restoring && !account.busy,
                 modifier = Modifier.testTag("${account.tag}-account-row"),
                 endActions = { Text(account.status, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) })
         }
