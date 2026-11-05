@@ -14,6 +14,28 @@ import java.security.cert.Certificate
 import javax.net.ssl.HttpsURLConnection
 
 class LifeDeviceApiTest {
+    @Test fun accountProfileUsesAuthenticatedReadWithoutScanningDevices() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf("/user/info" to """{"code":0,"data":{"id":"fixture-user","phone":"13800000000","userName":"示例","balance":"0.00","unCompleteOrders":null}}"""), calls)
+        assertEquals(LifeAccountProfile("fixture-user", "13800000000"), service.profile("fixture-token"))
+        val call = calls.single()
+        assertEquals("/user/info", call.url.path)
+        assertEquals(mapOf("token" to "fixture-token"), call.form())
+        assertEquals("fixture-token", call.getRequestProperty("Authorization"))
+        assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", "/user/info", "fixture-token"), call.getRequestProperty("sign"))
+        assertTrue(call.closed)
+    }
+
+    @Test fun accountProfileRejectsMissingIdentityAndRecognizesExpiredCredentials() = runBlocking {
+        for (data in listOf("null", "{}", """{"id":"fixture-user"}""", """{"id":"fixture-user","phone":"138****0000"}""")) {
+            val service = api(mapOf("/user/info" to """{"code":0,"data":$data}"""), mutableListOf())
+            try { service.profile("fixture-token"); fail("Incomplete account must stay unverified") }
+            catch (e: LifeDeviceException) { assertFalse(e.loginExpired) }
+        }
+        val service = api(mapOf("/user/info" to """{"code":401,"msg":"登录失效"}"""), mutableListOf())
+        try { service.profile("fixture-token"); fail("Expired token must be rejected") }
+        catch (e: LifeDeviceException) { assertTrue(e.loginExpired) }
+    }
     private class Response(url: URL, val body: String) : HttpsURLConnection(url) {
         val sent = ByteArrayOutputStream()
         var closed = false

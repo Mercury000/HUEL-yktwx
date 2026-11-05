@@ -30,6 +30,8 @@ data class LifeDevicesUiState(
     val laundryBusy: Boolean = false, val paymentVisible: Boolean = false, val paymentLaunch: LifeAlipayLaunch? = null,
     val paymentFeedback: LaundryPaymentFeedback? = null,
     val waterSessions: List<WaterSession> = emptyList(), val laundrySessions: List<LaundrySession> = emptyList(),
+    val changingAccount: Boolean = false, val accountBusy: Boolean = false,
+    val accountError: String? = null,
 )
 
 /** One login gate and scanner route each recognized code to its device service. */
@@ -60,6 +62,51 @@ class LifeDevicesViewModel internal constructor(
     private var visible = false
     private var foreground = false
     private var scanGeneration = 0L
+    private val accountVerifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: LifeAccount ->
+        val profile = (api as? LifeAccountService)?.profile(owner.token)
+            ?: throw LifeDeviceException("暂时无法确认登录状态，请重新登录")
+        if (profile.phone != owner.phone) throw LifeDeviceException("胖乖账户信息不一致，请重新登录", true)
+    }, { e, _ -> expired(e, showLogin = false) }, ::failure)
+    val accountConnection = accountVerifier.state
+    private var accountTask: Job? = null
+    val hasActiveServices: Boolean get() = mutable.value.waterSessions.any { it.active } ||
+        mutable.value.laundrySessions.any { it.active } || mutable.value.water?.active == true ||
+        mutable.value.laundry?.active == true || mutable.value.paymentLaunch != null
+    private fun accountChangeBlocked(): Boolean = hasActiveServices || mutable.value.restoring ||
+        mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.accountBusy
+
+    fun checkAccount(force: Boolean = false) {
+        if (!mutable.value.restoring && !mutable.value.loggingIn && !mutable.value.accountBusy) accountVerifier.check(force)
+    }
+
+    fun manageLogin(change: Boolean = false): Boolean {
+        if (mutable.value.restoring || mutable.value.loggingIn || mutable.value.accountBusy ||
+            change && accountChangeBlocked()) return false
+        requestedFeature = null; requestedScan = false; requestedSessionId = null
+        mutable.update { it.copy(loginVisible = true, changingAccount = change, phone = "", code = "", loginError = null, accountError = null) }
+        return true
+    }
+
+    fun removeAccount(): Boolean {
+        if (accountChangeBlocked() || mutable.value.loggingIn) return false
+        accountVerifier.reset()
+        accountTask = viewModelScope.launch {
+            mutable.update { it.copy(accountBusy = true, accountError = null) }
+            try {
+                persistence.withLock {
+                    withContext(io) { store.removeAccount() }
+                    account = null; ownerPhone = ""
+                }
+                scanGeneration++; deviceTask?.cancel(); quoteTask?.cancel(); waterPollTask?.cancel(); laundryPollTask?.cancel()
+                requestedFeature = null; requestedScan = false; requestedSessionId = null
+                sessionErrors.clear(); accountVerifier.cleared()
+                mutable.update { LifeDevicesUiState(restoring = false, entryRequest = it.entryRequest) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { mutable.update { it.copy(accountError = failure(e)) } }
+            finally { mutable.update { it.copy(accountBusy = false) } }
+        }
+        return true
+    }
 
     init {
         viewModelScope.launch {
@@ -67,12 +114,14 @@ class LifeDevicesViewModel internal constructor(
                 val saved = withContext(io) { Triple(store.account(), store.waterSessions(), store.laundrySessions()) }
                 account = saved.first
                 ownerPhone = account?.phone.orEmpty()
+                accountVerifier.restored(account?.maskedPhone.orEmpty())
                 mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty(),
                     laundry = saved.third.lastOrNull(), laundrySessions = saved.third) }
                 account?.let { recoverWaterSessions(it.token, saved.second.filter { session -> session.active }) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(restoring = false, loginError = failure(e)) } }
             mutable.update { it.copy(restoring = false) }
+            if (api is LifeAccountService) checkAccount()
             requestedFeature?.let { continueEntry(it) }
             resumeSessions(waitBeforeWaterRead = true)
         }
@@ -160,7 +209,7 @@ class LifeDevicesViewModel internal constructor(
     fun connectAccount() {
         if (mutable.value.restoring || account != null || mutable.value.loggingIn) return
         requestedFeature = null; requestedScan = false; requestedSessionId = null
-        mutable.update { it.copy(loginVisible = true, loginError = null, code = "") }
+        mutable.update { it.copy(loginVisible = true, changingAccount = false, loginError = null, code = "") }
     }
     fun phoneChanged(value: String) {
         if (mutable.value.loggingIn || mutable.value.sendingCode) return
@@ -200,7 +249,11 @@ class LifeDevicesViewModel internal constructor(
             mutable.update { it.copy(loggingIn = true, loginError = null) }
             try {
                 val next = api.login(value.phone, value.code)
-                withContext(io) { store.saveAccount(next) }
+                ensureActive()
+                if (ownerPhone.isNotBlank() && ownerPhone != next.phone && accountChangeBlocked())
+                    throw LifeDeviceException("还有服务进行中，请使用原账户重新登录")
+                accountVerifier.reset()
+                persistence.withLock { withContext(io) { store.saveAccount(next) }; ensureActive(); account = next }
                 if (ownerPhone.isNotBlank() && ownerPhone != next.phone) {
                     waterPollTask?.cancel(); laundryPollTask?.cancel(); waterTask?.cancel(); laundryTask?.cancel(); quoteTask?.cancel()
                     sessionErrors.clear()
@@ -209,12 +262,16 @@ class LifeDevicesViewModel internal constructor(
                 }
                 account = next
                 ownerPhone = next.phone
+                accountVerifier.verified(next.maskedPhone)
+                mutable.update { it.copy(loggingIn = false, connectedPhone = next.maskedPhone, loginVisible = false,
+                    code = "", changingAccount = false) }
                 val restored = withContext(io) { store.waterSessions() to store.laundrySessions() }
                 val candidates = restored.first.filter { item -> item.active &&
                     mutable.value.waterSessions.none { it.sessionId == item.sessionId } }
                 mutable.update { it.copy(laundry = restored.second.lastOrNull(), laundrySessions = restored.second) }
-                recoverWaterSessions(next.token, candidates)
-                mutable.update { it.copy(loggingIn = false, connectedPhone = next.maskedPhone, loginVisible = false, code = "") }
+                try { recoverWaterSessions(next.token, candidates) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { mutable.update { it.copy(error = failure(e)) } }
                 requestedFeature?.let { continueEntry(it) }
                 resumeSessions(waitBeforeWaterRead = true)
             } catch (e: CancellationException) { throw e }
@@ -227,7 +284,8 @@ class LifeDevicesViewModel internal constructor(
     }
     fun environment(active: Boolean) {
         foreground = active
-        if (active) resumeSessions() else {
+        if (active) { resumeSessions(); checkAccount() } else {
+            accountVerifier.stop()
             waterPollTask?.cancel(); waterPollTask = null
             laundryPollTask?.cancel(); laundryPollTask = null
         }
@@ -880,12 +938,15 @@ class LifeDevicesViewModel internal constructor(
         else if (sessionId != null) openSession(feature, sessionId)
         else open(feature)
     }
-    private suspend fun expired(e: Exception): Boolean {
+    private suspend fun expired(e: Exception, showLogin: Boolean = true): Boolean {
         if (e !is LifeDeviceException || !e.loginExpired) return false
-        account = null
-        withContext(io) { store.clearAccount() }
+        persistence.withLock {
+            withContext(io) { store.clearAccount() }
+            account = null
+        }
+        accountVerifier.expired()
         mutable.update { it.copy(connectedPhone = "") }
-        requireLogin()
+        if (showLogin && visible) requireLogin()
         return true
     }
     private fun failure(e: Exception) = when (e) {

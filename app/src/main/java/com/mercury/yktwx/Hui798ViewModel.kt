@@ -24,6 +24,8 @@ data class Hui798UiState(
     val deviceInUse: Boolean = false,
     val sessions: List<Hui798Session> = emptyList(), val selectedSessionId: String? = null,
     val confirmedSessions: Set<String> = emptySet(),
+    val changingAccount: Boolean = false, val accountBusy: Boolean = false,
+    val accountError: String? = null,
 ) {
     val session: Hui798Session? get() = sessions.firstOrNull { it.sessionId == selectedSessionId }
     val connected: Boolean get() = connectedPhone.isNotBlank()
@@ -53,12 +55,57 @@ class Hui798ViewModel internal constructor(
     private var timerTask: Job? = null
     private var pollTask: Job? = null
     private var recoveryInProgress = 0
+    private var accountTask: Job? = null
+    private val accountVerifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: Hui798Account ->
+        val overview = api.overview(owner.token)
+        if (owner.userId != null && owner.userId != overview.userId)
+            throw Hui798Exception("慧生活798账户信息不一致，请重新登录", loginExpired = true)
+    }, ::expired, ::failure)
+    val accountConnection = accountVerifier.state
+    val hasActiveServices: Boolean get() = mutable.value.sessions.any { it.active }
+    private fun accountChangeBlocked(): Boolean = hasActiveServices || mutable.value.restoring ||
+        mutable.value.busy || mutable.value.accountBusy || recoveryInProgress > 0
+
+    fun checkAccount(force: Boolean = false) {
+        if (!mutable.value.restoring && !mutable.value.loggingIn && !mutable.value.accountBusy && recoveryInProgress == 0)
+            accountVerifier.check(force)
+    }
+
+    fun manageLogin(change: Boolean = false): Boolean {
+        if (mutable.value.restoring || mutable.value.loggingIn || mutable.value.busy || mutable.value.accountBusy ||
+            change && accountChangeBlocked()) return false
+        pendingDeviceId = null
+        mutable.update { it.copy(loginVisible = true, changingAccount = change, phone = "", code = "", imageCode = "", loginError = null, accountError = null) }
+        refreshCaptcha()
+        return true
+    }
+
+    fun removeAccount(): Boolean {
+        if (accountChangeBlocked() || mutable.value.loggingIn) return false
+        accountVerifier.reset()
+        accountTask = viewModelScope.launch {
+            mutable.update { it.copy(accountBusy = true, accountError = null) }
+            try {
+                persistence.withLock {
+                    withContext(io) { store.removeAccount() }
+                    account = null; ownerPhone = ""
+                }
+                generation++; pendingDeviceId = null; deviceTask?.cancel(); pollTask?.cancel(); sessionErrors.clear()
+                accountVerifier.cleared()
+                mutable.value = Hui798UiState(restoring = false)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { mutable.update { it.copy(accountError = failure(e)) } }
+            finally { mutable.update { it.copy(accountBusy = false) } }
+        }
+        return true
+    }
 
     init {
         viewModelScope.launch {
             try {
                 val saved = withContext(io) { store.account() to store.sessions() }
                 account = saved.first; ownerPhone = account?.phone.orEmpty()
+                accountVerifier.restored(account?.maskedPhone.orEmpty())
                 mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty()) }
                 account?.let { recoverSessions(it, saved.second.filter { session -> session.active }) }
             } catch (e: CancellationException) { throw e }
@@ -74,7 +121,7 @@ class Hui798ViewModel internal constructor(
     fun connectAccount(clearPending: Boolean = true) {
         if (mutable.value.restoring || mutable.value.busy || mutable.value.loggingIn) return
         if (clearPending) pendingDeviceId = null
-        mutable.update { it.copy(loginVisible = true, loginError = null, code = "", imageCode = "") }
+        mutable.update { it.copy(loginVisible = true, changingAccount = false, loginError = null, code = "", imageCode = "") }
         refreshCaptcha()
     }
     fun dismissLogin() {
@@ -148,6 +195,11 @@ class Hui798ViewModel internal constructor(
             mutable.update { it.copy(loggingIn = true, loginError = null) }
             try {
                 val next = api.login(value.phone, value.code)
+                ensureActive()
+                if (ownerPhone.isNotBlank() && ownerPhone != next.phone &&
+                    (hasActiveServices || mutable.value.busy || mutable.value.accountBusy))
+                    throw Hui798Exception("还有服务进行中，请使用原账户重新登录")
+                accountVerifier.reset()
                 generation++; deviceTask?.cancel(); pollTask?.cancel(); pollTask = null
                 val sameOwner = ownerPhone == next.phone
                 if (!sameOwner) sessionErrors.clear()
@@ -159,8 +211,10 @@ class Hui798ViewModel internal constructor(
                 val candidates = withContext(io) { store.sessions().filter { it.active } }
                 val sessions = if (sameOwner) mutable.value.sessions else emptyList()
                 mutable.update { it.copy(loggingIn = false, loginVisible = false, connectedPhone = next.maskedPhone,
+                    changingAccount = false,
                     code = "", imageCode = "", captcha = null, sessions = sessions, confirmedSessions = emptySet(),
                     selectedSessionId = it.selectedSessionId?.takeIf { id -> sessions.any { item -> item.sessionId == id } }, error = null) }
+                accountVerifier.verified(next.maskedPhone)
                 try { recoverSessions(next, candidates) }
                 catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
@@ -234,7 +288,9 @@ class Hui798ViewModel internal constructor(
     }
     fun environment(active: Boolean) {
         foreground = active
-        if (active) resumeSessions() else { pollTask?.cancel(); pollTask = null; mutable.update { it.copy(confirmedSessions = emptySet()) } }
+        if (active) { resumeSessions(); checkAccount() } else {
+            accountVerifier.stop(); pollTask?.cancel(); pollTask = null; mutable.update { it.copy(confirmedSessions = emptySet()) }
+        }
     }
     fun startWater() {
         val value = mutable.value; val device = value.device ?: return; val owner = account ?: return
@@ -324,7 +380,12 @@ class Hui798ViewModel internal constructor(
     private suspend fun recoverOnce(owner: Hui798Account, cached: List<Hui798Session>) {
         if (account != owner) return
         persist()
-        val overview = api.overview(owner.token)
+        val overview = try { api.overview(owner.token) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (account == owner) accountVerifier.failed(failure(e))
+            throw e
+        }
         currentCoroutineContext().ensureActive()
         if (account != owner) return
         if (owner.userId != null && owner.userId != overview.userId)
@@ -336,6 +397,7 @@ class Hui798ViewModel internal constructor(
             if (account != owner) return
             account = verifiedOwner
         }
+        accountVerifier.verified(verifiedOwner.maskedPhone)
         val candidates = (overview.devices + cached.map { it.device }).distinctBy { it.id }
         var failed = false
         for (device in candidates) {
@@ -433,6 +495,7 @@ class Hui798ViewModel internal constructor(
             account = null; generation++
             withContext(io) { store.clearAccount() }
             mutable.update { it.copy(connectedPhone = "", confirmedSessions = emptySet(), deviceReady = false, deviceInUse = false) }
+            accountVerifier.expired()
         }
     }
     private fun pollIntervalMillis(): Long = if (mutable.value.sessions.any { it.active && it.phase != WaterPhase.Running }) 3000 else 6000

@@ -26,7 +26,7 @@ import top.yukonga.miuix.kmp.basic.*
 internal fun Hui798LoginSheet(state: Hui798UiState, model: Hui798ViewModel, active: Boolean) {
     val show = active && state.loginVisible
     val keyboard = LocalSoftwareKeyboardController.current
-    LifeAccountLoginSheet(show, "登录慧生活798", "hui798-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
+    LifeAccountLoginSheet(show, if (state.changingAccount) "更换慧生活798账户" else "登录慧生活798", "hui798-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
         val display = rememberWhileShown(show, state)
         val enabled = show && !display.loggingIn && !display.sendingCode
         Text("使用慧生活798账号扫码用水", fontSize = 13.sp, color = DashboardPalette.muted)
@@ -58,7 +58,7 @@ internal fun Hui798LoginSheet(state: Hui798UiState, model: Hui798ViewModel, acti
         InlineErrorGroup(display.loginError, 16.dp) {
             Button(onClick = { keyboard?.hide(); model.login() }, enabled = enabled && display.phone.length == 11 && display.code.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("hui798-login-submit"), colors = ButtonDefaults.buttonColorsPrimary()) {
-                Text(if (display.loggingIn) "正在登录…" else "登录并继续")
+                Text(if (display.loggingIn) "正在登录…" else if (display.changingAccount) "登录并更换账户" else "登录并继续")
             }
         }
     }

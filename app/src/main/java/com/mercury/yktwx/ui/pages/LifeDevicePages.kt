@@ -50,7 +50,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean) {
     val show = active && state.loginVisible
     val keyboard = LocalSoftwareKeyboardController.current
-    LifeAccountLoginSheet(show, "登录胖乖生活", "life-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
+    LifeAccountLoginSheet(show, if (state.changingAccount) "更换胖乖生活账户" else "登录胖乖生活", "life-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
         val display = rememberWhileShown(show, state)
         val enabled = show && !display.loggingIn && !display.sendingCode
         Text("接水与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -69,7 +69,7 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
         InlineErrorGroup(display.loginError, 16.dp) {
             Button(onClick = { keyboard?.hide(); model.login() }, enabled = enabled && display.phone.length == 11 && display.code.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("life-login-submit"), colors = ButtonDefaults.buttonColorsPrimary()) {
-                Text(if (display.loggingIn) "正在登录…" else "登录并继续")
+                Text(if (display.loggingIn) "正在登录…" else if (display.changingAccount) "登录并更换账户" else "登录并继续")
             }
         }
     }

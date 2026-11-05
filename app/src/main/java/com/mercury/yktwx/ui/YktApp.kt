@@ -9,7 +9,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -69,8 +68,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -288,6 +285,15 @@ private fun MainContent(
     val lifeState by lifeModel.state.collectAsStateWithLifecycle()
     val hui798Model: Hui798ViewModel = viewModel()
     val hui798State by hui798Model.state.collectAsStateWithLifecycle()
+    val pangguiConnection by lifeModel.accountConnection.collectAsStateWithLifecycle()
+    val hui798Connection by hui798Model.accountConnection.collectAsStateWithLifecycle()
+    val managedAccounts = listOf(
+        ManagedLifeAccount(LifeProvider.Hui798, hui798Connection, hui798State.restoring,
+            hui798State.accountBusy || hui798State.loggingIn || hui798State.busy,
+            hui798State.sessions.count { it.active }, hui798State.accountError),
+        ManagedLifeAccount(LifeProvider.Panggui, pangguiConnection, lifeState.restoring,
+            lifeState.accountBusy || lifeState.loggingIn || lifeState.waterBusy || lifeState.laundryBusy,
+            lifeState.waterSessions.count { it.active } + lifeState.laundrySessions.count { it.active }, lifeState.accountError))
     var lifeProvider by remember { mutableStateOf(LifeProvider.Panggui) }
     LifeAlipayEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
         lifeModel::launchLaundryPayment)
@@ -321,6 +327,13 @@ private fun MainContent(
         hui798Model.environment(foreground && isActive && !state.preview)
     }
     DisposableEffect(lifeModel, hui798Model) { onDispose { lifeModel.environment(false); hui798Model.environment(false) } }
+    val lifeAccountPageVisible = layers.lastOrNull() == Screen.Settings
+    LaunchedEffect(foreground, foregroundState.epoch, isActive, state.preview, network.online, lifeAccountPageVisible,
+        paymentPageSelected, lifeState.restoring, hui798State.restoring) {
+        if (foreground && isActive && !state.preview && network.online == true && (lifeAccountPageVisible || paymentPageSelected)) {
+            lifeModel.checkAccount(); hui798Model.checkAccount()
+        }
+    }
     val readPage = when {
         !isActive || paymentSuccess != null || dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
             rechargeState.loading || cardState.loading || passwordState.loading || feeOpening != null -> null
@@ -415,6 +428,16 @@ private fun MainContent(
         lifeModel.dismissLogin()
         hui798Model.connectAccount()
     }
+    fun manageLifeLogin(provider: LifeProvider, change: Boolean) {
+        if (!isActive || motion.any { it.predictiveActive } || !allowOnlineEntry(context, state.preview)) return
+        val opened = if (provider == LifeProvider.Hui798) { lifeModel.dismissLogin(); hui798Model.manageLogin(change) }
+            else { hui798Model.dismissLogin(); lifeModel.manageLogin(change) }
+        if (!opened) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
+    }
+    fun checkLifeAccount(provider: LifeProvider) {
+        if (!isActive || !allowOnlineEntry(context, state.preview)) return
+        if (provider == LifeProvider.Hui798) hui798Model.checkAccount(force = true) else lifeModel.checkAccount(force = true)
+    }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
         if (!allowOnlineEntry(context, state.preview)) return
@@ -427,6 +450,17 @@ private fun MainContent(
         lifeProvider = LifeProvider.Hui798
         hui798Model.openSession(id)
         if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
+    }
+    fun openManagedProgress(provider: LifeProvider) {
+        if (!isActive || motion.any { it.predictiveActive }) return
+        val hui = hui798State.sessions.firstOrNull { it.active }
+        val water = lifeState.waterSessions.firstOrNull { it.active }
+        val laundry = lifeState.laundrySessions.firstOrNull { it.active }
+        if (provider == LifeProvider.Hui798 && hui == null || provider == LifeProvider.Panggui && water == null && laundry == null) return
+        layers = emptyList()
+        if (provider == LifeProvider.Hui798) openHui798Session(checkNotNull(hui).sessionId)
+        else if (laundry != null) openLifeSession(LifeFeature.Laundry, laundry.sessionId)
+        else openLifeSession(LifeFeature.Water, checkNotNull(water).sessionId)
     }
     fun scannedLifeDevice(raw: String) {
         if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() != Screen.LifeDevice ||
@@ -725,6 +759,16 @@ private fun MainContent(
                         onLogout = { if (isActive) onLogout() },
                         updateState = updateState,
                         onCheckUpdates = updateModel::checkManually,
+                        lifeAccounts = managedAccounts,
+                        active = isActive && layers.lastOrNull() == screen,
+                        onCheckLifeAccount = ::checkLifeAccount,
+                        onLoginLifeAccount = { manageLifeLogin(it, false) },
+                        onRemoveLifeAccount = { provider ->
+                            if (isActive) {
+                                val removed = if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
+                                if (!removed) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
+                            }
+                        }, onLifeProgress = ::openManagedProgress,
                     )
                 }
             }
@@ -748,6 +792,12 @@ private fun SecondaryPage(
     onLogout: () -> Unit,
     updateState: AppUpdateUiState,
     onCheckUpdates: () -> Unit,
+    lifeAccounts: List<ManagedLifeAccount>,
+    active: Boolean,
+    onCheckLifeAccount: (LifeProvider) -> Unit,
+    onLoginLifeAccount: (LifeProvider) -> Unit,
+    onRemoveLifeAccount: (LifeProvider) -> Unit,
+    onLifeProgress: (LifeProvider) -> Unit,
 ) {
     var showLogout by remember { mutableStateOf(false) }
     val title = when (screen) {
@@ -769,37 +819,10 @@ private fun SecondaryPage(
                 val contentPadding = PaddingValues(top = padding.calculateTopPadding(),
                     bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp)
                 when (screen) {
-                    Screen.Settings -> LazyColumn(modifier = modifier.testTag("settings-page-list"), contentPadding = contentPadding) {
-                        item {
-                            Card(Modifier.fillMaxWidth()) {
-                                ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)
-                                SwitchPreference(
-                                    title = stringResource(R.string.payment_motion_detection),
-                                    summary = stringResource(R.string.payment_motion_detection_summary),
-                                    checked = settings.paymentMotionDetection.value,
-                                    onCheckedChange = settings::setPaymentMotionDetection,
-                                    modifier = Modifier.testTag("payment-motion-detection-switch"),
-                                )
-                                SwitchPreference(
-                                    title = stringResource(R.string.prevent_screenshots),
-                                    summary = stringResource(R.string.prevent_screenshots_summary),
-                                    checked = settings.preventScreenshots.value,
-                                    onCheckedChange = settings::setPreventScreenshots,
-                                )
-                            }
-                        }
-                        item {
-                            Box(Modifier.padding(top = 16.dp)) {
-                                UpdateSettingsCard(updateState, settings.automaticUpdates.value,
-                                    settings::setAutomaticUpdates, onCheckUpdates)
-                            }
-                        }
-                        item {
-                            Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                                ArrowPreference(title = "退出登录", onClick = { showLogout = true })
-                            }
-                        }
-                    }
+                    Screen.Settings -> AppSettingsContent(modifier, contentPadding, settings, updateState,
+                        onCheckUpdates, onTheme, lifeAccounts, active, onLogout = { showLogout = true },
+                        onCheckAccount = onCheckLifeAccount, onLoginAccount = onLoginLifeAccount,
+                        onRemoveAccount = onRemoveLifeAccount, onProgress = onLifeProgress, scrollBehavior = scroll)
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, contentPadding = contentPadding,
                         themeMode = settings.themeMode, onThemeModeChange = settings::setTheme,
@@ -815,7 +838,7 @@ private fun SecondaryPage(
                     else -> Unit
                 }
             }
-            OverlayDialog(show = showLogout, title = "退出登录", summary = "退出后将清除本机保存的登录信息。",
+            OverlayDialog(show = showLogout, title = "退出校园卡登录", summary = "退出后将清除本机保存的校园卡登录信息。生活服务账户可在设置中单独管理。",
                 onDismissRequest = { showLogout = false }, renderInRootScaffold = true) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = { showLogout = false }, modifier = Modifier.weight(1f)) { Text("取消") }

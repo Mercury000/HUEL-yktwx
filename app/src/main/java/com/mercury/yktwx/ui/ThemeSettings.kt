@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
+import com.mercury.yktwx.data.life.LifeProvider
 
 /** Persistent UI preferences, including SonyPods theme controls with their original defaults. */
 class ThemeSettings(context: Context) {
@@ -17,6 +18,13 @@ class ThemeSettings(context: Context) {
     val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
+    val pangguiLoginNoticeDismissed = mutableStateOf(prefs.getBoolean("panggui_login_notice_dismissed", false))
+    val hui798LoginNoticeDismissed = mutableStateOf(prefs.getBoolean("hui798_login_notice_dismissed", false))
+    fun dismissLifeLoginNotice(provider: LifeProvider) {
+        val hui = provider == LifeProvider.Hui798
+        (if (hui) hui798LoginNoticeDismissed else pangguiLoginNoticeDismissed).value = true
+        prefs.edit().putBoolean(if (hui) "hui798_login_notice_dismissed" else "panggui_login_notice_dismissed", true).apply()
+    }
     fun getNavigationRailExpanded(default: Boolean): Boolean = prefs.getBoolean("navigation_rail_expanded", default)
     fun setNavigationRailExpanded(v: Boolean) { prefs.edit().putBoolean("navigation_rail_expanded", v).apply() }
     fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }

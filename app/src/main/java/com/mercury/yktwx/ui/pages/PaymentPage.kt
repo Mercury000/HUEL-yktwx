@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -33,6 +35,7 @@ import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.life.LifeFeature
+import com.mercury.yktwx.data.life.LifeProvider
 import com.mercury.yktwx.data.life.WaterSession
 import com.mercury.yktwx.data.life.LaundrySession
 import com.mercury.yktwx.ui.LocalMainNavigationMotion
@@ -95,10 +98,18 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         }
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val context = LocalContext.current
+    fun dismissLoginNotice(provider: LifeProvider) {
+        if (!isActive) return
+        settings.dismissLifeLoginNotice(provider)
+        Toast.makeText(context, "可在设置 → 生活服务账户中登录", Toast.LENGTH_SHORT).show()
+    }
     val lifeStatus: @Composable () -> Unit = {
-        InlineLifeLoginNotice(lifeLoginRequired, onLifeLogin, enabled = isActive)
-        InlineLifeLoginNotice(hui798LoginRequired, onHui798Login, enabled = isActive,
-            text = "登录慧生活798，扫码用水", tag = "hui798-login-notice")
+        InlineLifeLoginNotice(lifeLoginRequired && !settings.pangguiLoginNoticeDismissed.value, onLifeLogin, enabled = isActive,
+            onDismiss = { dismissLoginNotice(LifeProvider.Panggui) })
+        InlineLifeLoginNotice(hui798LoginRequired && !settings.hui798LoginNoticeDismissed.value, onHui798Login, enabled = isActive,
+            text = "登录慧生活798，扫码用水", tag = "hui798-login-notice",
+            onDismiss = { dismissLoginNotice(LifeProvider.Hui798) })
     }
     val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
         additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }

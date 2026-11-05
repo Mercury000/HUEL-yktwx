@@ -20,12 +20,17 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
         if (phone.isBlank() || token.isBlank()) null else LifeAccount(phone, token)
     }
     override fun saveAccount(account: LifeAccount) {
-        if (account().let { it != null && it.phone != account.phone }) {
+        val changing = account().let { it != null && it.phone != account.phone }
+        vault.write(mapOf("account" to JSONObject().put("phone", account.phone).put("token", account.token).toString()))
+        if (changing) {
             clearSession(); clearLaundrySession(); vault.remove("water_sessions"); vault.remove("laundry_sessions")
         }
-        vault.write(mapOf("account" to JSONObject().put("phone", account.phone).put("token", account.token).toString()))
     }
     override fun clearAccount() { vault.remove("account") }
+    override fun removeAccount() {
+        vault.remove("water"); vault.remove("laundry"); vault.remove("water_sessions"); vault.remove("laundry_sessions")
+        clearAccount()
+    }
     override fun session(): WaterSession? = runCatching {
         val data = vault.read("water") ?: return null
         val owner = account() ?: return null
