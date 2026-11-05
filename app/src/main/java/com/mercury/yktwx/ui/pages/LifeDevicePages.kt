@@ -279,7 +279,7 @@ internal fun lifeSuccessInk(): Color = if (isSystemInDarkTheme()) Color(0xFF96C7
 @Composable
 private fun LifePaymentValue(device: LifeDevice) {
     val channel = device.alipay ?: return
-    Text(if (device.payment == "after") "支付宝免密" else channel.name, fontSize = 12.sp)
+    Text(channel.name, fontSize = 12.sp)
 }
 
 @Composable
@@ -303,7 +303,7 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
     val device = water?.device ?: state.device
     val display = WaterDeviceUiState(LifeProvider.Panggui, device?.name.orEmpty(), device?.shopName.orEmpty(),
         phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
-        paymentMethod = device?.alipay?.let { if (device.payment == "after") "支付宝免密" else it.name },
+        paymentMethod = device?.alipay?.name,
         supportsFinish = device?.supportsFinish == true, error = state.error)
     val primary = WaterDeviceAction(label, !loading && when {
         phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
@@ -362,7 +362,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (state.scanning) "扫描胖乖接水、洗衣或慧生活798用水设备上的二维码，识别后自动进入对应界面。798 手动输入请填写完整二维码链接；已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
-                else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣。桶自洁请按设备说明使用，完成后可从付款页返回进度。",
+                else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             display.device?.let { device ->
                 LifeDeviceField("设备编号") { Text(device.serial, fontSize = 12.sp) }

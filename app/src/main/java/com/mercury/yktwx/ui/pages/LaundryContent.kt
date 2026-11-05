@@ -70,31 +70,18 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
                     }
                 }
             }
-            val selected = device.skus.firstOrNull { it.id == state.selectedSkuId }
-            if (selected != null) item {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
-                        AnimatedContent(selected.name == "桶自洁", transitionSpec = {
-                            fadeIn(tween(140, delayMillis = 80)) togetherWith fadeOut(tween(80))
-                        }, label = "laundry-program-instructions") { cleaning ->
-                            Text(if (cleaning) "桶自洁请按设备说明使用，关好门后启动。"
-                                else "放好衣物并关好门后再支付。", Modifier.heightIn(min = 40.dp),
-                                fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-                        }
-                }
+            if (device.skus.any { it.id == state.selectedSkuId }) item {
+                Text("放好衣物并关好门后再支付。", Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+                    fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
             }
         }
     } else {
         item { LaundryProgress(session, state.laundryBusy, nowMillis) }
         item { LaundryFacts(session) }
-        item {
+        if (session.phase == LaundryPhase.Running) item {
             Card(Modifier.fillMaxWidth().testTag("laundry-usage-notice"), cornerRadius = 24.dp) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (session.phase == LaundryPhase.Closed) "订单已关闭，可重新扫码选择设备。"
-                        else if (session.phase == LaundryPhase.Ended && session.program == "桶自洁") "桶自洁已完成，使用前请检查设备。"
-                        else if (session.phase == LaundryPhase.Ended) "请检查设备，及时取回物品。"
-                        else "预计时间仅供参考，以设备实际完成为准。",
-                        fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-                }
+                Text("预计时间仅供参考，以设备实际完成为准。", Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
             }
         }
     }
@@ -179,7 +166,10 @@ private fun LaundryFacts(session: LaundrySession) {
         if (session.device.shopName.isNotBlank()) add("位置" to session.device.shopName)
         if (session.program.isNotBlank()) add("程序" to session.program)
         add((if (session.paid) "支付金额" else "应付金额") to "¥${session.price.toBigDecimal().setScale(2)}")
-        add("支付方式" to if (session.payMethod == "2") "余额支付" else "支付宝")
+        val payName = session.payTypeName.ifBlank {
+            session.device.channels.firstOrNull { it.method == session.payMethod }?.name.orEmpty()
+        }
+        if (payName.isNotBlank()) add("支付方式" to payName)
         if (session.phase == LaundryPhase.Ended) session.finishedAtMillis?.let { add("完成时间" to laundryTime(it)) }
         else session.expectedEndMillis?.let { add("预计完成" to laundryTime(it)) }
     }
@@ -299,7 +289,7 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         state.laundryQuote?.channels.orEmpty()))
                     val methods = remember(result.channels) {
                         result.channels.filter { it.laundryUnavailableReason() == null }.map {
-                            FeeMethod(it.method, it.method, it.name.removeSuffix("支付"), false, 0)
+                            FeeMethod(it.method, it.method, it.name, false, 0)
                         }
                     }
                     if (seconds != null && !expired) LaundryPaymentCountdown(seconds)
@@ -308,7 +298,8 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         retryMethods = methods.takeUnless { expired || closed }.orEmpty(),
                         onContinuePayment = { if (enabled && isResult && !expired) model.payLaundry(it.id) },
                         enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
-                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() }, paymentApp = "支付宝")
+                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() }, paymentApp = "支付宝",
+                        retryMethodLabel = { it.name })
                 } else {
                     // Keep display-only form values during the transition; never retain SDK payloads.
                     val quote = rememberWhileShown(show && !isResult, state.laundryQuote)

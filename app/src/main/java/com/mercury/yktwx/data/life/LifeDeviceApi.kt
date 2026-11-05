@@ -97,7 +97,7 @@ class LifeDeviceApi(
             ?: throw LifeDeviceException("设备未返回接水选项")
         val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), it.optBoolean("scanAvailable", false) && it.text("stockState") == "1",
             it.text("price"), it.text("feature"), if (category == "00")
-                (it.text("markMinutes").toBigDecimalOrNull() ?: it.text("unit").toBigDecimalOrNull())
+                it.text("markMinutes").toBigDecimalOrNull()
                     ?.let { value -> runCatching { value.intValueExact() }.getOrNull() }?.takeIf { minutes -> minutes > 0 }
                 else null) }
         val orgId = detail.required("orgId")
@@ -176,10 +176,13 @@ class LifeDeviceApi(
         val data = post("/order/detail", mapOf("orderNo" to orderNo), token).obj()
         val item = (data.opt("tradeOrderItem") as? JSONArray)?.objects()?.singleOrNull()
             ?: throw LifeDeviceException("订单未返回洗衣程序，请在胖乖生活核对")
+        val rawInfo = item.opt("skuInfo")
+        val info = rawInfo as? JSONObject ?: (rawInfo as? String)?.let { runCatching { JSONObject(it) }.getOrNull() }
         val result = LaundryReading(data.required("orderNo"), data.required("id"), item.required("goodsId"), item.required("skuId"),
             data.text("orderStatus").toIntOrNull(), data.required("payPrice").validPrice(), data.text("machineFunctionName"),
             data.text("markMinutes").toIntOrNull()?.takeIf { it > 0 }, lifeTimestamp(data.text("payTime")),
-            lifeTimestamp(data.text("completeTime")), lifeTimestamp(data.text("finishTime")), lifeTimestamp(data.text("createTime")))
+            lifeTimestamp(data.text("completeTime")), lifeTimestamp(data.text("finishTime")), lifeTimestamp(data.text("createTime")),
+            data.text("machineName"), data.text("shopName"), data.text("payTypeName"), info?.text("feature").orEmpty())
         if (result.orderNo != orderNo) throw LifeDeviceException("洗衣订单信息不匹配")
         return result
     }

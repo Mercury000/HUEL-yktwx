@@ -508,8 +508,9 @@ class LifeDevicesViewModel internal constructor(
             var session = mutable.value.laundry
             if (session?.phase == LaundryPhase.Closed) return@laundryWork
             if (session == null || !session.active || session.phase == LaundryPhase.Checking && !session.createSent) {
-                session = session?.takeIf { it.active }?.copy(payMethod = method)
-                    ?: LaundrySession(device, quote.skuId, quote.price, method, minutes = quote.minutes)
+                session = session?.takeIf { it.active }?.copy(payMethod = method, payTypeName = "",
+                    device = device.copy(channels = quote.channels))
+                    ?: LaundrySession(device.copy(channels = quote.channels), quote.skuId, quote.price, method, minutes = quote.minutes)
                 saveLaundrySession(session, select = true)
                 mutable.update { it.copy(paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Creating)) }
                 checkLaundryReady(session, token, service)
@@ -528,13 +529,15 @@ class LifeDevicesViewModel internal constructor(
                 }
                 session = checkNotNull(mutable.value.laundry)
                 if (stopExpiredLaundryPayment(session)) return@laundryWork
-                session = session.copy(payMethod = method)
+                session = session.copy(payMethod = method, payTypeName = "")
                 saveLaundrySession(session)
                 val channels = service.laundryChannels(session, token)
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels)) }
                 if (channels.none { it.method == method && it.laundryUnavailableReason() == null })
                     throw LifeDeviceException(channels.firstOrNull { it.method == method }?.laundryUnavailableReason()
                         ?: "支付方式已变更，请重新选择")
+                session = session.copy(device = session.device.copy(channels = channels))
+                saveLaundrySession(session)
                 checkLaundryReady(session, token, service)
             }
             if (readLaundryOrder(token, service)) return@laundryWork
@@ -742,7 +745,14 @@ class LifeDevicesViewModel internal constructor(
             throw LifeDeviceException("洗衣订单信息不匹配，请在胖乖生活核对")
         if (reading.price.toBigDecimalOrNull()?.compareTo(session.price.toBigDecimalOrNull()) != 0)
             throw LifeDeviceException("订单价格与所选程序不一致，请在胖乖生活核对")
-        val next = session.copy(minutes = reading.minutes ?: session.minutes,
+        val next = session.copy(device = session.device.copy(
+            name = reading.deviceName.ifBlank { session.device.name },
+            shopName = reading.shopName.ifBlank { session.device.shopName },
+            skus = session.device.skus.map { sku ->
+                if (sku.id == reading.skuId) sku.copy(name = reading.program.ifBlank { sku.name },
+                    feature = reading.programFeature.ifBlank { sku.feature }) else sku
+            }), payTypeName = reading.payTypeName.ifBlank { session.payTypeName },
+            minutes = reading.minutes ?: session.minutes,
             createdAtMillis = reading.createdAtMillis ?: session.createdAtMillis,
             startedAtMillis = reading.paidAtMillis ?: session.startedAtMillis,
             expectedEndMillis = reading.expectedEndMillis ?: session.expectedEndMillis,

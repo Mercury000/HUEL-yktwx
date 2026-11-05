@@ -181,6 +181,27 @@ class LaundryViewModelTest {
         assertFalse(model.state.value.loadingDevice); assertFalse(model.state.value.quoteLoading)
         assertEquals(0, api.creates)
     }
+    @Test fun orderDisplayUsesLatestServerNamesAndRetainsThemWhenLaterFieldsAreAbsent() = runTest(dispatcher) {
+        val api = Api(); val store = Store(); val model = model(api, store)
+        prepare(model); model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
+        assertEquals(api.channels, store.washing!!.device.channels)
+        val reading = api.laundryOrder("wash-1", "test-token").copy(
+            deviceName = "服务端设备名", shopName = "服务端商户名", program = "服务端程序名",
+            programFeature = "服务端程序说明", payTypeName = "余额")
+        api.readings[reading.orderNo] = reading
+        model.retryLaundry(); runCurrent()
+        val updated = checkNotNull(model.state.value.laundry)
+        assertEquals("服务端设备名", updated.device.name)
+        assertEquals("服务端商户名", updated.device.shopName)
+        assertEquals("服务端程序名", updated.program)
+        assertEquals("服务端程序说明", updated.device.skus.single().feature)
+        assertEquals("余额", updated.payTypeName)
+        assertEquals(updated, store.washing)
+        api.readings[reading.orderNo] = reading.copy(deviceName = "", shopName = "", program = "", programFeature = "", payTypeName = "")
+        model.retryLaundry(); runCurrent()
+        assertEquals(updated, model.state.value.laundry)
+        assertEquals(1, api.creates); assertEquals(1, api.balancePays)
+    }
     @Test fun leavingBlockedDeviceRetryDiscardsItsLateResult() = runTest(dispatcher) {
         val api = Api().apply { devices[device.serial] = device.copy(error = "设备工作中，请更换设备使用") }
         val model = model(api, Store())

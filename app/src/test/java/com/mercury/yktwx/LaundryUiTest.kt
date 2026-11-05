@@ -70,7 +70,7 @@ class LaundryUiTest {
         val reading = if (ended) this.ended else running
         return LaundrySession(device, quote.skuId, quote.price, "2", if (ended) LaundryPhase.Ended else LaundryPhase.Running,
             true, reading.orderNo, reading.orderId, true, true, reading.minutes, reading.paidAtMillis,
-            reading.expectedEndMillis, reading.finishedAtMillis)
+            reading.expectedEndMillis, reading.finishedAtMillis, payTypeName = reading.payTypeName)
     }
     private fun capture(name: String, settle: Boolean = true) {
         if (settle) compose.mainClock.advanceTimeBy(1000)
@@ -109,7 +109,7 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText(message).assertIsDisplayed()
     }
-    @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
+    @Test fun programDurationsRequireServerMinuteFieldsAndQuoteLoadingKeepsRowsStill() {
         val fixture = fixture(); val model = model()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
@@ -120,10 +120,11 @@ class LaundryUiTest {
             } }
         }
         fixture.device.skus.forEach { sku ->
-            assertNotNull("Captured machine has program durations", sku.minutes)
+            assertNull("Raw unit alone does not establish program minutes", sku.minutes)
             compose.onNodeWithTag("laundry-program-${sku.id}")
-                .assertTextContains("约 ${sku.minutes} 分钟", substring = true)
+                .assertTextContains(sku.feature, substring = true)
         }
+        compose.onAllNodes(hasText("分钟", substring = true)).assertCountEquals(0)
         val before = fixture.device.skus.associate { it.id to compose.onNodeWithTag("laundry-program-${it.id}").fetchSemanticsNode().boundsInRoot }
         capture("laundry-selection-before")
         compose.runOnIdle { state = state.copy(selectedSkuId = fixture.quote.skuId, quoteLoading = true) }
@@ -131,13 +132,15 @@ class LaundryUiTest {
         capture("laundry-selection-frame-02", settle = false)
         compose.mainClock.advanceTimeBy(64)
         capture("laundry-selection-frame-06", settle = false)
+        fixture.device.skus.forEach { sku ->
+            assertEquals("Quote loading must not expand program rows", before[sku.id],
+                compose.onNodeWithTag("laundry-program-${sku.id}").fetchSemanticsNode().boundsInRoot)
+        }
         compose.runOnIdle { state = state.copy(laundryQuote = fixture.quote, quoteLoading = false) }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("laundry-program-${fixture.quote.skuId}").assertIsSelected()
-        fixture.device.skus.forEach { sku ->
-            assertEquals("Selection must not expand program rows", before[sku.id],
-                compose.onNodeWithTag("laundry-program-${sku.id}").fetchSemanticsNode().boundsInRoot)
-        }
+        compose.onNodeWithTag("laundry-program-${fixture.quote.skuId}")
+            .assertTextContains("约 ${fixture.quote.minutes} 分钟", substring = true)
         compose.onNodeWithText("本次应付").assertDoesNotExist()
         compose.onNodeWithTag("laundry-quote-price").assertDoesNotExist()
         capture("laundry-selection-after")
@@ -189,13 +192,45 @@ class LaundryUiTest {
         compose.onNodeWithText("再次扫码洗衣").assertIsDisplayed()
         compose.onNodeWithText("结束洗衣").assertDoesNotExist()
         val footer = compose.onNodeWithTag("laundry-action-footer").fetchSemanticsNode().boundsInRoot
-        val notice = compose.onNodeWithTag("laundry-usage-notice").fetchSemanticsNode().boundsInRoot
-        if (!largeFont) assertTrue("Content fits above fixed footer", notice.bottom < footer.top)
+        val info = compose.onNodeWithTag("laundry-info").fetchSemanticsNode().boundsInRoot
+        if (!largeFont) assertTrue("Content fits above fixed footer", info.bottom < footer.top)
+        compose.onNodeWithTag("laundry-usage-notice").assertDoesNotExist()
         capture("laundry-$label-04-completed")
     }
     @Test fun capturedLaundryLightFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(false, false)
     @Test fun capturedLaundryDarkFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(true, false)
     @Test @Config(fontScale = 1.3f) fun capturedLaundryLargeFontKeepsActionsReachable() = renderCapturedFlow(false, true)
+    @Test fun laundryShowsServerDescriptionsAndPaymentNamesWithGenericInstructions() {
+        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val device = LifeDevice("77", "nqt", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁")), emptyList())
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            device = device, selectedSkuId = "clean"))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LifeDevicePage(state, settings, model, active = true, onBack = {})
+            } } }
+        }
+        compose.onNodeWithTag("laundry-program-clean").assertTextContains("设备桶自洁", substring = true)
+        compose.onNodeWithText("放好衣物并关好门后再支付。").assertIsDisplayed()
+        compose.onNodeWithText("桶自洁请按设备说明使用，关好门后启动。").assertDoesNotExist()
+        val ended = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended, paid = true, payTypeName = "余额")
+        compose.runOnIdle { state = state.copy(laundry = ended.copy(phase = LaundryPhase.Running)) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("预计时间仅供参考，以设备实际完成为准。").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(laundry = ended) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("余额").assertIsDisplayed()
+        compose.onNodeWithText("余额支付").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-usage-notice").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(laundry = ended.copy(phase = LaundryPhase.Paying, paid = false,
+            payMethod = "13", payTypeName = ""), paymentVisible = true,
+            laundryQuote = LaundryQuote(device.id, "clean", "0.00", null, listOf(LifePayChannel("13", "支付宝", true, false))),
+            paymentFeedback = LaundryPaymentFeedback(ended.sessionId, RechargePhase.Failed, detail = "支付未完成")) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("支付宝").assertIsDisplayed()
+        compose.onNodeWithText("支付宝支付").assertDoesNotExist()
+    }
     @Test fun paymentDrawerShowsOnlySupportedReturnedChannelsAndKeepsServerRestrictions() {
         val fixture = fixture(); val model = model()
         val quote = fixture.quote.copy(channels = listOf(

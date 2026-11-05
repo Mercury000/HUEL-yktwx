@@ -18,7 +18,7 @@ class LifeDeviceAccountStoreTest {
         val records = Records(); val store = LifeDeviceAccountStore(records)
         store.saveAccount(account)
         val first = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running,
-            orderNo = "order-1", orderId = "id-1", startedAtMillis = 100_000, expectedEndMillis = 400_000)
+            orderNo = "order-1", orderId = "id-1", startedAtMillis = 100_000, expectedEndMillis = 400_000, payTypeName = "余额")
         val second = first.copy(device = device.copy(id = "78"), phase = LaundryPhase.Ended,
             orderNo = "order-2", orderId = "id-2", finishedAtMillis = 521_000, sessionId = "second")
         val water = WaterSession(device.copy(category = "04"), "water", WaterPhase.Running, orderNo = "water-1")

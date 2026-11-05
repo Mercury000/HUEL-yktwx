@@ -156,7 +156,7 @@ class LifeDeviceApiTest {
         val device = service.laundryDevice(nqt, "test-token")
         assertNull(device.laundryError)
         assertFalse(device.supportsFinish)
-        assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁", 5), device.skus.single())
+        assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁"), device.skus.single())
         assertTrue(device.channels.isEmpty())
         assertEquals(mapOf("NQT" to nqt, "token" to "test-token"), calls.first().form())
         val quote = service.laundryQuote(device, "clean", "test-token")
@@ -213,11 +213,22 @@ class LifeDeviceApiTest {
         assertEquals("13", calls.last().form()["payType"])
     }
     @Test fun closedLaundryReadsServerCreateTimeWithoutInventingPaymentTimes() = runBlocking {
-        val payload = """{"code":0,"data":{"id":"wash-id","orderNo":"wash-1","orderStatus":1,"createTime":"2026-11-04 18:50:39","payPrice":"2.50","showStart":false,"machineFunctionName":"快洗","markMinutes":25,"tradeOrderItem":[{"goodsId":"77","skuId":"quick"}]}}"""
+        val payload = """{"code":0,"data":{"id":"wash-id","orderNo":"wash-1","orderStatus":1,"createTime":"2026-11-04 18:50:39","payPrice":"2.50","showStart":false,"machineName":"77","shopName":"河南财经政法大学","machineFunctionName":"快洗","markMinutes":25,"tradeOrderItem":[{"goodsId":"77","skuId":"quick","skuInfo":{"feature":"适用不太脏的衣物"}}]}}"""
         val reading = api(mapOf("/order/detail" to payload), mutableListOf()).laundryOrder("wash-1", "test-token")
         assertEquals(1, reading.status)
         assertEquals(java.time.LocalDateTime.of(2026, 11, 4, 18, 50, 39).atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli(), reading.createdAtMillis)
         assertNull(reading.paidAtMillis); assertNull(reading.expectedEndMillis); assertNull(reading.finishedAtMillis)
+        assertEquals("77", reading.deviceName)
+        assertEquals("河南财经政法大学", reading.shopName)
+        assertEquals("适用不太脏的衣物", reading.programFeature)
+        assertEquals("", reading.payTypeName)
+    }
+
+    @Test fun laundryOrderKeepsCapturedPaymentNameAndStringSkuInfo() = runBlocking {
+        val payload = """{"code":0,"data":{"id":"wash-id","orderNo":"wash-1","orderStatus":3,"payPrice":"0.00","machineFunctionName":"桶自洁","payTypeName":"余额","tradeOrderItem":[{"goodsId":"77","skuId":"clean","skuInfo":"{\"feature\":\"设备桶自洁\"}"}]}}"""
+        val reading = api(mapOf("/order/detail" to payload), mutableListOf()).laundryOrder("wash-1", "test-token")
+        assertEquals("余额", reading.payTypeName)
+        assertEquals("设备桶自洁", reading.programFeature)
     }
 
     @Test fun laundryParsingDoesNotAcceptWrongLinksAndOrderIdentityMismatchIsRejected() = runBlocking {

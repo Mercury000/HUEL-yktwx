@@ -262,6 +262,7 @@ internal fun PaymentResultContent(
     onCheck: (() -> Unit)? = null,
     loadingTitle: String? = null,
     paymentApp: String = "微信",
+    retryMethodLabel: (FeeMethod) -> String = { it.name + "支付" },
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -323,7 +324,7 @@ internal fun PaymentResultContent(
                     PaymentSelectionCard(selected = selected, enabled = enabled,
                         onClick = { selectedMethod = if (selected) null else method }) { contentColor ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(method.name + "支付", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                            Text(retryMethodLabel(method), fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                                 color = contentColor, modifier = Modifier.weight(1f))
                             if (selected) Text("已选择", fontSize = 12.sp, color = contentColor)
                         }
