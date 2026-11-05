@@ -7,13 +7,30 @@ import org.junit.Test
 class LifeDeviceAccountStoreTest {
     private class Records : LifeDeviceRecords {
         val values = mutableMapOf<String, String>()
+        var failWrite = false
         override fun read(key: String) = values[key]?.let(::JSONObject)
-        override fun write(values: Map<String, String>) { this.values.putAll(values) }
+        override fun write(values: Map<String, String>) { if (failWrite) throw IllegalStateException("storage unavailable"); this.values.putAll(values) }
         override fun remove(key: String) { values.remove(key) }
     }
     private val device = LifeDevice("77", "serial", "77", "00", "22", "22", "shop", "imei",
         "学校", "", "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", minutes = 5)), emptyList())
     private val account = LifeAccount("13800000000", "test-token")
+    @Test fun failedAccountReplacementPreservesThePreviousAccountAndProgress() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val session = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended)
+        store.saveLaundrySessions(listOf(session)); records.failWrite = true
+        try { store.saveAccount(LifeAccount("13900000000", "other-token")); fail("Write should fail") }
+        catch (_: IllegalStateException) {}
+        assertEquals(account, store.account())
+        assertEquals(listOf(session), store.laundrySessions())
+    }
+
+    @Test fun removingExpiredLocalAccountAlsoErasesItsSavedProgress() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        store.saveLaundrySessions(listOf(LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended)))
+        store.clearAccount(); store.removeAccount()
+        assertTrue(records.values.isEmpty())
+    }
     @Test fun multipleSessionsRoundTripStableIdsAndServerTimes() {
         val records = Records(); val store = LifeDeviceAccountStore(records)
         store.saveAccount(account)

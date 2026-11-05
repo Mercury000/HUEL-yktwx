@@ -7,9 +7,26 @@ import org.junit.Test
 class Hui798AccountStoreTest {
     private class Records : LifeDeviceRecords {
         val data = mutableMapOf<String, String>()
+        var failWrite = false
         override fun read(key: String) = data[key]?.let(::JSONObject)
-        override fun write(values: Map<String, String>) { data.putAll(values) }
+        override fun write(values: Map<String, String>) { if (failWrite) throw IllegalStateException("storage unavailable"); data.putAll(values) }
         override fun remove(key: String) { data.remove(key) }
+    }
+    @Test fun failedReplacementPreservesPreviousCredentialsAndRecoveryRecords() {
+        val records = Records(); val store = Hui798AccountStore(records)
+        val account = Hui798Account("13800000000", "fixture-token")
+        val session = Hui798Session(Hui798Device("fixture-device", "用水设备"), WaterPhase.Ended, 100_000)
+        store.saveAccount(account); store.saveSessions(listOf(session)); records.failWrite = true
+        try { store.saveAccount(Hui798Account("13900000000", "other-token")); fail("Write should fail") }
+        catch (_: IllegalStateException) {}
+        assertEquals(account, store.account()); assertEquals(listOf(session), store.sessions())
+    }
+    @Test fun removalErasesExpiredAccountRecoveryRecords() {
+        val records = Records(); val store = Hui798AccountStore(records)
+        store.saveAccount(Hui798Account("13800000000", "fixture-token"))
+        store.saveSessions(listOf(Hui798Session(Hui798Device("fixture-device", "用水设备"), WaterPhase.Ended, 100_000)))
+        store.clearAccount(); store.removeAccount()
+        assertTrue(records.data.isEmpty())
     }
     @Test fun accountIdentityRoundTripsAndLegacyAccountsRequireServerLookup() {
         val records = Records(); val store = Hui798AccountStore(records)

@@ -13,11 +13,12 @@ class Hui798AccountStore internal constructor(private val records: LifeDeviceRec
     }
     override fun saveAccount(account: Hui798Account) {
         val owner = records.read("sessions")?.text("owner")
-        if (owner != null && owner != account.phone) records.remove("sessions")
         records.write(mapOf("account" to JSONObject().put("phone", account.phone).put("token", account.token)
             .put("userId", account.userId).toString()))
+        if (owner != null && owner != account.phone) records.remove("sessions")
     }
     override fun clearAccount() { records.remove("account") }
+    override fun removeAccount() { records.remove("sessions"); clearAccount() }
     override fun sessions(): List<Hui798Session> {
         val owner = account() ?: return emptyList()
         val data = records.read("sessions") ?: return emptyList()

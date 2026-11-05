@@ -28,7 +28,7 @@ class LifeDeviceApi(
     private val secret: String = BuildConfig.PANGGUI_API_SECRET,
     private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
     private val clock: () -> Long = System::currentTimeMillis,
-) : LifeDeviceService, LifeLaundryService {
+) : LifeDeviceService, LifeLaundryService, LifeAccountService {
     private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? = withContext(Dispatchers.IO) {
         if (token.isNotBlank() && secret.isBlank()) throw LifeDeviceException("胖乖生活连接配置缺失")
         val connection = openConnection(URL("https://userapi.qiekj.com$path"))
@@ -75,6 +75,15 @@ class LifeDeviceApi(
 
     override suspend fun sendCode(phone: String) {
         post("/common/sms/sendCode", mapOf("phone" to phone, "template" to "reg"))
+    }
+    override suspend fun profile(token: String): LifeAccountProfile {
+        val data = post("/user/info", emptyMap(), token) as? JSONObject
+            ?: throw LifeDeviceException("暂时无法读取胖乖账户，请重试")
+        val id = data.text("id")
+        val phone = data.text("phone")
+        if (id.isBlank() || !phone.matches(Regex("1[0-9]{10}")))
+            throw LifeDeviceException("胖乖账户信息不完整，请重试")
+        return LifeAccountProfile(id, phone)
     }
     override suspend fun login(phone: String, code: String): LifeAccount {
         val data = post("/user/reg", mapOf("channel" to LifeDeviceProtocol.Channel, "phone" to phone, "verify" to code)) as? JSONObject
