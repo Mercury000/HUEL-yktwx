@@ -121,7 +121,7 @@ class LaundryUiTest {
         }
         fixture.device.skus.forEach { sku ->
             assertNotNull("Captured machine has program durations", sku.minutes)
-            compose.onNodeWithTag("laundry-program-minutes-${sku.id}", useUnmergedTree = true)
+            compose.onNodeWithTag("laundry-program-${sku.id}")
                 .assertTextContains("约 ${sku.minutes} 分钟", substring = true)
         }
         val before = fixture.device.skus.associate { it.id to compose.onNodeWithTag("laundry-program-${it.id}").fetchSemanticsNode().boundsInRoot }

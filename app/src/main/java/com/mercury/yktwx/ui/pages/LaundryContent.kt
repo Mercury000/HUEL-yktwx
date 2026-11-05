@@ -12,6 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,6 +29,7 @@ import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -41,26 +45,27 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
             item {
                 Column(Modifier.fillMaxWidth().testTag("laundry-programs"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     device.skus.forEach { sku ->
-                        PaymentSelectionCard(sku.id == state.selectedSkuId, { model.selectSku(sku.id) },
-                            Modifier.fillMaxWidth().testTag("laundry-program-${sku.id}"), enabled = active && sku.available && !state.laundryBusy && !state.loadingDevice,
-                            animateSelection = true, unselectedColor = DashboardPalette.card) { contentColor ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    val minutes = state.laundryQuote?.takeIf { it.skuId == sku.id }?.minutes ?: sku.minutes
-                                    Text(sku.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = contentColor)
-                                    val subtitle = listOfNotNull(sku.feature.takeIf { it.isNotBlank() }, minutes?.let { "约 $it 分钟" }).joinToString(" · ")
-                                    Text(subtitle, Modifier.testTag("laundry-program-minutes-${sku.id}"), fontSize = 11.sp,
-                                        lineHeight = 17.sp, color = when {
-                                            sku.id == state.selectedSkuId -> contentColor
-                                            sku.available -> DashboardPalette.muted
-                                            else -> contentColor
+                        val selected = sku.id == state.selectedSkuId
+                        val enabled = active && sku.available && !state.laundryBusy && !state.loadingDevice
+                        val minutes = state.laundryQuote?.takeIf { it.skuId == sku.id }?.minutes ?: sku.minutes
+                        val summary = listOfNotNull(sku.feature.takeIf { it.isNotBlank() }, minutes?.let { "约 $it 分钟" },
+                            "暂不可用".takeUnless { sku.available }).joinToString(" · ")
+                        Card(Modifier.fillMaxWidth()) {
+                            RadioButtonPreference(title = sku.name, summary = summary, selected = selected,
+                                onClick = { model.selectSku(sku.id) }, enabled = enabled,
+                                modifier = Modifier.testTag("laundry-program-${sku.id}").semantics {
+                                    this.selected = selected
+                                    if (!enabled) disabled()
+                                },
+                                endActions = {
+                                    sku.price.toBigDecimalOrNull()?.let {
+                                        Text("¥${it.setScale(2)}", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = when {
+                                            !enabled -> MiuixTheme.colorScheme.disabledOnSurface
+                                            selected -> MiuixTheme.colorScheme.primary
+                                            else -> MiuixTheme.colorScheme.onSurface
                                         })
-                                }
-                                sku.price.toBigDecimalOrNull()?.let {
-                                    Text("¥${it.setScale(2)}", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = contentColor)
-                                }
-                            }
-                            if (!sku.available) Text("暂不可用", fontSize = 11.sp, color = contentColor)
+                                    }
+                                })
                         }
                     }
                 }

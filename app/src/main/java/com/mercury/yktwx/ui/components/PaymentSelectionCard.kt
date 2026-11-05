@@ -23,7 +23,6 @@ internal fun PaymentSelectionCard(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     animateSelection: Boolean = false,
-    unselectedColor: Color? = null,
     content: @Composable ColumnScope.(Color) -> Unit,
 ) {
     val dark = isSystemInDarkTheme()
@@ -36,8 +35,8 @@ internal fun PaymentSelectionCard(
     val targetColor = when {
         dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
         selected -> MiuixTheme.colorScheme.primary
-        dark -> unselectedColor ?: MiuixTheme.colorScheme.secondaryVariant
-        else -> unselectedColor ?: MiuixTheme.colorScheme.surfaceContainerHigh
+        dark -> MiuixTheme.colorScheme.secondaryVariant
+        else -> MiuixTheme.colorScheme.surfaceContainerHigh
     }
     val color = if (animateSelection) animateColorAsState(targetColor, tween(ContentMotion.Number), label = "selection-fill").value else targetColor
     val contentColor = if (animateSelection) animateColorAsState(targetContentColor, tween(ContentMotion.Number), label = "selection-content").value else targetContentColor
