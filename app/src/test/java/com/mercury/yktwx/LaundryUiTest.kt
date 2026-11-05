@@ -109,7 +109,7 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText(message).assertIsDisplayed()
     }
-    @Test fun programDurationsRequireServerMinuteFieldsAndQuoteLoadingKeepsRowsStill() {
+    @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
         val fixture = fixture(); val model = model()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
@@ -120,11 +120,11 @@ class LaundryUiTest {
             } }
         }
         fixture.device.skus.forEach { sku ->
-            assertNull("Raw unit alone does not establish program minutes", sku.minutes)
+            assertNotNull("Program minutes come from the scanned device response", sku.minutes)
             compose.onNodeWithTag("laundry-program-${sku.id}")
                 .assertTextContains(sku.feature, substring = true)
+                .assertTextContains("约 ${sku.minutes} 分钟", substring = true)
         }
-        compose.onAllNodes(hasText("分钟", substring = true)).assertCountEquals(0)
         val before = fixture.device.skus.associate { it.id to compose.onNodeWithTag("laundry-program-${it.id}").fetchSemanticsNode().boundsInRoot }
         capture("laundry-selection-before")
         compose.runOnIdle { state = state.copy(selectedSkuId = fixture.quote.skuId, quoteLoading = true) }
@@ -141,6 +141,10 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-program-${fixture.quote.skuId}").assertIsSelected()
         compose.onNodeWithTag("laundry-program-${fixture.quote.skuId}")
             .assertTextContains("约 ${fixture.quote.minutes} 分钟", substring = true)
+        fixture.device.skus.forEach { sku ->
+            assertEquals("Selection must not expand program rows", before[sku.id],
+                compose.onNodeWithTag("laundry-program-${sku.id}").fetchSemanticsNode().boundsInRoot)
+        }
         compose.onNodeWithText("本次应付").assertDoesNotExist()
         compose.onNodeWithTag("laundry-quote-price").assertDoesNotExist()
         capture("laundry-selection-after")

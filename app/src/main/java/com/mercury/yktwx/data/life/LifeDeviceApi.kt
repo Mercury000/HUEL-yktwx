@@ -97,7 +97,7 @@ class LifeDeviceApi(
             ?: throw LifeDeviceException("设备未返回接水选项")
         val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), it.optBoolean("scanAvailable", false) && it.text("stockState") == "1",
             it.text("price"), it.text("feature"), if (category == "00")
-                it.text("markMinutes").toBigDecimalOrNull()
+                (it.text("markMinutes").toBigDecimalOrNull() ?: it.text("unit").toBigDecimalOrNull())
                     ?.let { value -> runCatching { value.intValueExact() }.getOrNull() }?.takeIf { minutes -> minutes > 0 }
                 else null) }
         val orgId = detail.required("orgId")
