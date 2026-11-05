@@ -42,21 +42,25 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
                 Column(Modifier.fillMaxWidth().testTag("laundry-programs"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     device.skus.forEach { sku ->
                         PaymentSelectionCard(sku.id == state.selectedSkuId, { model.selectSku(sku.id) },
-                            Modifier.fillMaxWidth().testTag("laundry-program-${sku.id}"), enabled = active && sku.available && !state.laundryBusy,
-                            animateSelection = true, neutral = true) { contentColor ->
+                            Modifier.fillMaxWidth().testTag("laundry-program-${sku.id}"), enabled = active && sku.available && !state.laundryBusy && !state.loadingDevice,
+                            animateSelection = true, unselectedColor = DashboardPalette.card) { contentColor ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     val minutes = state.laundryQuote?.takeIf { it.skuId == sku.id }?.minutes ?: sku.minutes
                                     Text(sku.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = contentColor)
                                     val subtitle = listOfNotNull(sku.feature.takeIf { it.isNotBlank() }, minutes?.let { "约 $it 分钟" }).joinToString(" · ")
                                     Text(subtitle, Modifier.testTag("laundry-program-minutes-${sku.id}"), fontSize = 11.sp,
-                                        lineHeight = 17.sp, color = if (sku.available) DashboardPalette.muted else contentColor)
+                                        lineHeight = 17.sp, color = when {
+                                            sku.id == state.selectedSkuId -> contentColor
+                                            sku.available -> DashboardPalette.muted
+                                            else -> contentColor
+                                        })
                                 }
                                 sku.price.toBigDecimalOrNull()?.let {
                                     Text("¥${it.setScale(2)}", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = contentColor)
                                 }
                             }
-                            if (!sku.available) Text("暂不可用", fontSize = 11.sp, color = contentColor.copy(alpha = .8f))
+                            if (!sku.available) Text("暂不可用", fontSize = 11.sp, color = contentColor)
                         }
                     }
                 }
@@ -191,6 +195,7 @@ private fun laundryTime(millis: Long): String = DateTimeFormatter.ofPattern("MM-
 internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean, onBack: () -> Unit,
     nowMillis: () -> Long = System::currentTimeMillis) {
     val session = state.laundry
+    val loading = state.loadingDevice || state.laundryBusy || state.quoteLoading
     val expired = rememberLaundryPaymentSeconds(session, active, nowMillis) == 0L
     val ended = session != null && !session.active
     val canCancel = session?.canCancel == true && state.paymentLaunch == null
@@ -198,6 +203,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
     val confirmingCancel = cancelRequested && active && canCancel && !state.paymentVisible && !state.laundryBusy
     val retry = state.error != null
     val label = when {
+        state.loadingDevice -> "正在查询设备…"
         state.laundryBusy -> "正在处理…"
         state.quoteLoading -> "正在读取价格…"
         ended -> "再次扫码洗衣"
@@ -224,13 +230,17 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
                 retry || session != null -> model.retryLaundry()
                 else -> model.showLaundryPayment()
             }
-        }, enabled = active && !state.laundryBusy && !state.quoteLoading && when {
+        }, enabled = active && !loading && when {
             session != null -> ended || retry || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Paying)
             retry -> true
             else -> state.laundryQuote?.channels?.any { it.laundryUnavailableReason() == null } == true
         }, modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
-            AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
-                label = "laundry-button-label") { Text(it) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (loading) CircularProgressIndicator(Modifier.testTag("laundry-action-progress"), size = 16.dp, strokeWidth = 2.dp)
+                if (loading) Text(label)
+                else AnimatedContent(label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
+                    label = "laundry-button-label") { Text(it) }
+            }
         }
         if (canCancel) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { cancelRequested = true }, modifier = Modifier.weight(1f).testTag("laundry-cancel-order"),

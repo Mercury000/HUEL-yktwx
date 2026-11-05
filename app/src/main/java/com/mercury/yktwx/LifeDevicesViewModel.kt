@@ -612,7 +612,12 @@ class LifeDevicesViewModel internal constructor(
         }
     }
     fun retryLaundry() {
-        val session = mutable.value.laundry ?: return loadLaundryQuote()
+        if (mutable.value.feature != LifeFeature.Laundry || mutable.value.loadingDevice || mutable.value.quoteLoading) return
+        val session = mutable.value.laundry ?: run {
+            if (mutable.value.device?.laundryError != null) refreshDevice()
+            else loadLaundryQuote()
+            return
+        }
         laundryWork { token, service ->
             when (session.phase) {
                 LaundryPhase.Checking -> {

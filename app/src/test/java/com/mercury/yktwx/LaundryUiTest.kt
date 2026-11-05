@@ -79,6 +79,36 @@ class LaundryUiTest {
         file.parentFile?.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+    @Test fun blockedDeviceRetryShowsProgressAndRedisplaysTheSameErrorAfterCompletion() {
+        val model = model()
+        val settings = ThemeSettings(compose.activity.application)
+        val message = "设备工作中，请更换设备使用"
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, message, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            device = device, selectedSkuId = "quick", error = message))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LifeDevicePage(state, settings, model, active = true, onBack = {})
+            } } }
+        }
+        compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("重试")
+        val before = compose.onNodeWithTag("laundry-primary-action").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state = state.copy(loadingDevice = true, error = null) }
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithTag("laundry-primary-action").assertIsNotEnabled().assertTextContains("正在查询设备…")
+        compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("laundry-program-quick").assertIsNotEnabled()
+        assertEquals(before, compose.onNodeWithTag("laundry-primary-action").fetchSemanticsNode().boundsInRoot)
+        repeat(20) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.onNodeWithText(message).assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(loadingDevice = false, error = message) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("重试")
+        compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText(message).assertIsDisplayed()
+    }
     @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
         val fixture = fixture(); val model = model()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }

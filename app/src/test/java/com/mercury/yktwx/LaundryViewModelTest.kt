@@ -57,6 +57,8 @@ class LaundryViewModelTest {
         var prepayError = false
         var paidError = false
         var readyChecks = 0
+        var deviceReads = 0
+        var deviceGate: CompletableDeferred<Unit>? = null
         var createdAt: Long? = null
         val cancelledOrderIds = mutableListOf<String>()
         var cancelGate: CompletableDeferred<Unit>? = null
@@ -85,7 +87,10 @@ class LaundryViewModelTest {
         override suspend fun endWater(goodsId: String, token: String) { error("No water stop") }
         override suspend fun createAfterPay(orderNo: String, token: String): String = error("No after pay order")
         override suspend fun syncOrder(orderNo: String, token: String) { error("No after pay sync") }
-        override suspend fun laundryDevice(code: String, token: String) = devices[code] ?: device
+        override suspend fun laundryDevice(code: String, token: String): LifeDevice {
+            deviceReads++; deviceGate?.await()
+            return devices[code] ?: device
+        }
         override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String) = LaundryQuote(device.id, skuId, price, 5, channels)
         override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
             readyChecks++; readyGate?.await()
@@ -140,6 +145,53 @@ class LaundryViewModelTest {
         runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
         model.scanned(device.serial); runCurrent()
         assertNotNull(model.state.value.laundryQuote)
+    }
+    @Test fun blockedDeviceRetryReadsAgainAndRedisplaysUnchangedError() = runTest(dispatcher) {
+        val message = "设备工作中，请更换设备使用"
+        val api = Api().apply { devices[device.serial] = device.copy(error = message) }
+        val model = model(api, Store())
+        runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent()
+        assertEquals(message, model.state.value.error)
+        assertNull(model.state.value.laundryQuote)
+        api.deviceGate = CompletableDeferred()
+        model.retryLaundry(); runCurrent()
+        assertTrue(model.state.value.loadingDevice)
+        assertNull(model.state.value.error)
+        model.retryLaundry(); runCurrent()
+        assertEquals(2, api.deviceReads)
+        api.deviceGate!!.complete(Unit); runCurrent()
+        assertFalse(model.state.value.loadingDevice)
+        assertEquals(message, model.state.value.error)
+        model.retryLaundry(); runCurrent()
+        assertEquals(3, api.deviceReads)
+        assertEquals(message, model.state.value.error)
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+    }
+    @Test fun blockedDeviceRetryLoadsQuoteWhenTheDeviceBecomesAvailable() = runTest(dispatcher) {
+        val api = Api().apply { devices[device.serial] = device.copy(error = "设备工作中，请更换设备使用") }
+        val model = model(api, Store())
+        runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent()
+        api.devices[device.serial] = device
+        model.retryLaundry(); runCurrent()
+        assertEquals(2, api.deviceReads)
+        assertNull(model.state.value.error)
+        assertNotNull(model.state.value.laundryQuote)
+        assertFalse(model.state.value.loadingDevice); assertFalse(model.state.value.quoteLoading)
+        assertEquals(0, api.creates)
+    }
+    @Test fun leavingBlockedDeviceRetryDiscardsItsLateResult() = runTest(dispatcher) {
+        val api = Api().apply { devices[device.serial] = device.copy(error = "设备工作中，请更换设备使用") }
+        val model = model(api, Store())
+        runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent()
+        api.deviceGate = CompletableDeferred()
+        model.retryLaundry(); runCurrent()
+        model.scan(); api.deviceGate!!.complete(Unit); runCurrent()
+        assertTrue(model.state.value.scanning)
+        assertNull(model.state.value.device); assertNull(model.state.value.error)
+        assertFalse(model.state.value.loadingDevice)
     }
     @Test fun zeroCleanCreatesPaysRunsAndFinishesOnlyFromSameOrderResponse() = runTest(dispatcher) {
         val api = Api(); val store = Store(); val model = model(api, store)
