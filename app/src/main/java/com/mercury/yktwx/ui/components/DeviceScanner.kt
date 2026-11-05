@@ -149,6 +149,8 @@ private class DeviceCamera(
     private val onFlashAvailable: (Boolean) -> Unit,
 ) : TextureView.SurfaceTextureListener {
     private val main = Handler(Looper.getMainLooper())
+    private val cameraThread = HandlerThread("device-qr-camera").apply { start() }
+    private val cameraWorker = Handler(cameraThread.looper)
     private val thread = HandlerThread("device-qr-decoder").apply { start() }
     private val worker = Handler(thread.looper)
     private val manager = context.getSystemService(CameraManager::class.java)
@@ -163,7 +165,9 @@ private class DeviceCamera(
     private val decoder = WeChatDeviceQrDecoder(context.applicationContext,
         onUnavailable = { error("扫码暂不可用，请输入设备编号") })
     private val frameBuffer = DeviceQrFrameBuffer()
+    private val frameGate = DeviceQrFrameGate()
     private val timings = if (BuildConfig.DEBUG) DeviceQrTimings() else null
+    private var startupTimings: DeviceCameraStartupTimings? = null
     private var texture: TextureView? = null
     private var camera: CameraDevice? = null
     private var capture: CameraCaptureSession? = null
@@ -174,8 +178,8 @@ private class DeviceCamera(
     private var size = Size(640, 480)
     private var sensorOrientation = 90
     @Volatile private var disposed = false
+    @Volatile private var streamGeneration = 0L
     private var opening = false
-    private var lastFrame = 0L
     private var lastCode = ""
     private var lastCodeAt = 0L
     fun attach(view: TextureView) {
@@ -189,6 +193,11 @@ private class DeviceCamera(
     private fun open() {
         if (disposed || opening || camera != null || texture?.isAvailable != true) return
         opening = true
+        val generation = ++streamGeneration
+        val startup = if (BuildConfig.DEBUG) DeviceCameraStartupTimings() else null
+        startupTimings = startup
+        frameGate.resetInterval()
+        worker.post { if (!disposed && decoder.prepare()) frameGate.start() }
         try {
             val id = manager.cameraIdList.firstOrNull { manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK }
                 ?: manager.cameraIdList.firstOrNull() ?: throw IllegalStateException()
@@ -203,29 +212,36 @@ private class DeviceCamera(
             transform()
             preview = Surface(texture!!.surfaceTexture)
             images = ImageReader.newInstance(size.width, size.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
-                setOnImageAvailableListener({ reader -> decode(reader) }, worker)
+                setOnImageAvailableListener({ reader -> readFrame(reader, generation, startup) }, cameraWorker)
             }
-            worker.post { if (!disposed) decoder.prepare() }
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
+                    if (disposed || generation != streamGeneration || texture?.isAvailable != true) { device.close(); return }
                     opening = false
-                    if (disposed || texture?.isAvailable != true) { device.close(); return }
+                    startup?.record("opened")
                     camera = device
-                    configure(device)
+                    configure(device, generation, startup)
                 }
-                override fun onDisconnected(device: CameraDevice) { opening = false; device.close(); camera = null; error() }
-                override fun onError(device: CameraDevice, error: Int) { opening = false; device.close(); camera = null; error() }
+                override fun onDisconnected(device: CameraDevice) {
+                    device.close()
+                    if (!disposed && generation == streamGeneration) { close(); error() }
+                }
+                override fun onError(device: CameraDevice, error: Int) {
+                    device.close()
+                    if (!disposed && generation == streamGeneration) { close(); error() }
+                }
             }, main)
-        } catch (_: Exception) { opening = false; error() }
+        } catch (_: Exception) { close(); error() }
     }
     @Suppress("DEPRECATION")
-    private fun configure(device: CameraDevice) {
+    private fun configure(device: CameraDevice, generation: Long, startup: DeviceCameraStartupTimings?) {
         val output = preview ?: return
         val reader = images ?: return
         try {
             device.createCaptureSession(listOf(output, reader.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
-                    if (disposed || camera !== device) { session.close(); return }
+                    if (disposed || generation != streamGeneration || camera !== device) { session.close(); return }
+                    startup?.record("configured")
                     capture = session
                     try {
                         request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
@@ -234,11 +250,14 @@ private class DeviceCamera(
                             set(CaptureRequest.FLASH_MODE, if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
                         }
                         session.setRepeatingRequest(request!!.build(), null, main)
-                    } catch (_: Exception) { error() }
+                    } catch (_: Exception) { close(); error() }
                 }
-                override fun onConfigureFailed(session: CameraCaptureSession) { session.close(); error() }
+                override fun onConfigureFailed(session: CameraCaptureSession) {
+                    session.close()
+                    if (!disposed && generation == streamGeneration) { close(); error() }
+                }
             }, main)
-        } catch (_: Exception) { error() }
+        } catch (_: Exception) { close(); error() }
     }
     fun torch(enabled: Boolean) {
         if (enabled == torchEnabled) return
@@ -248,39 +267,52 @@ private class DeviceCamera(
             request?.let { capture?.setRepeatingRequest(it.build(), null, main) }
         } catch (_: Exception) { error() }
     }
-    private fun decode(reader: ImageReader) {
+    private fun readFrame(reader: ImageReader, generation: Long, startup: DeviceCameraStartupTimings?) {
         val image = runCatching { reader.acquireLatestImage() }.getOrNull() ?: return
         var width = 0
         var height = 0
         var copyStarted = 0L
+        var acquired = false
         val bytes = try {
-            val now = SystemClock.elapsedRealtime()
-            if (disposed || now - lastFrame < 400) return
-            lastFrame = now
+            if (disposed || generation != streamGeneration) return
+            startup?.record("firstImage")
+            if (!frameGate.tryAcquire(SystemClock.elapsedRealtime())) return
+            acquired = true
             if (timings != null) copyStarted = SystemClock.elapsedRealtimeNanos()
             width = image.width
             height = image.height
             val plane = image.planes[0]
             frameBuffer.copy(plane.buffer, width, height, plane.rowStride, plane.pixelStride)
         } catch (_: Exception) {
+            if (acquired) frameGate.release()
             return
         } finally {
             // The dense copy owns its pixels, so inference need not retain a camera image.
             image.close()
         }
-        if (disposed) return
+        val copyNanos = if (timings != null) SystemClock.elapsedRealtimeNanos() - copyStarted else 0L
+        if (!worker.post {
+            try {
+                if (!disposed && generation == streamGeneration) decode(bytes, width, height, copyNanos, generation)
+            } finally {
+                frameGate.release()
+            }
+        }) frameGate.release()
+    }
+    private fun decode(bytes: ByteArray, width: Int, height: Int, copyNanos: Long, generation: Long) {
         val decodeStarted = if (timings != null) SystemClock.elapsedRealtimeNanos() else 0L
         try {
             val result = try {
                 decoder.decode(bytes, width, height)
             } finally {
-                timings?.record(decodeStarted - copyStarted, SystemClock.elapsedRealtimeNanos() - decodeStarted)
+                timings?.record(copyNanos, SystemClock.elapsedRealtimeNanos() - decodeStarted)
             } ?: return
+            if (disposed || generation != streamGeneration) return
             val now = SystemClock.elapsedRealtime()
             if (result != lastCode || now - lastCodeAt >= 2000) {
                 lastCode = result
                 lastCodeAt = now
-                main.post { if (!disposed) onScan(result) }
+                main.post { if (!disposed && generation == streamGeneration) onScan(result) }
             }
         } catch (_: Exception) { /* Empty frames are normal while aiming. */ }
     }
@@ -292,25 +324,48 @@ private class DeviceCamera(
     }
     private fun error(message: String = "相机暂不可用，请输入设备编号") { if (!disposed) main.post { if (!disposed) onError(message) } }
     private fun close() {
+        ++streamGeneration
+        opening = false
+        startupTimings = null
         capture?.close(); capture = null
         request = null
         camera?.close(); camera = null
-        images?.close(); images = null
+        // Finish any luminance copy before closing its ImageReader on the same thread.
+        images?.let { reader -> cameraWorker.post {
+            reader.setOnImageAvailableListener(null, null)
+            reader.close()
+        } }
+        images = null
         preview?.release(); preview = null
     }
     fun dispose() {
         disposed = true
+        frameGate.close()
         displays.unregisterDisplayListener(displayListener)
         texture?.surfaceTextureListener = null
         close()
         // Release the native decoder after any in-flight recognition on its worker.
         worker.post { decoder.close() }
+        cameraThread.quitSafely()
         thread.quitSafely()
     }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) { open() }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { transform() }
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { close(); return true }
-    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) { startupTimings?.record("firstPreview") }
+}
+
+/** Debug-only milestones measure camera startup independently of recognition. */
+private class DeviceCameraStartupTimings {
+    private val started = SystemClock.elapsedRealtimeNanos()
+    private val recorded = mutableSetOf<String>()
+
+    @Synchronized
+    fun record(stage: String) {
+        if (!recorded.add(stage)) return
+        val elapsedMs = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
+        Log.d("DeviceScanner", "Camera startup: stage=$stage, elapsedMs=$elapsedMs")
+    }
 }
 
 /** Debug-only aggregates contain timings, never decoded payloads or images. */
