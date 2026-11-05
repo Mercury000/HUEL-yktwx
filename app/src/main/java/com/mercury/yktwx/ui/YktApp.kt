@@ -579,7 +579,7 @@ private fun MainContent(
                                     onLifeLogin = ::connectLifeAccount,
                                     hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
                                     onHui798Login = ::connectHui798Account,
-                                    additionalLifeEntries = hui798State.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
+                                    additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
                                         when (session.phase) {
                                             WaterPhase.Ended -> "已完成"
                                             WaterPhase.Starting -> "正在启动"

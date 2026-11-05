@@ -81,9 +81,10 @@ class Hui798Api(
         if (salt.isBlank()) throw Hui798Exception("慧生活798连接配置缺失")
         val data = request("/acc/login?sign=${Hui798Protocol.loginSign(phone, code, salt)}",
             body = JSONObject().put("authCode", code).put("un", phone)) as JSONObject
-        val token = data.optJSONObject("data")?.optJSONObject("al")?.optString("token").orEmpty()
+        val login = data.optJSONObject("data")?.optJSONObject("al")
+        val token = login?.optString("token").orEmpty()
         if (token.isBlank()) throw Hui798Exception("登录未返回账号信息，请重试")
-        return Hui798Account(phone, token)
+        return Hui798Account(phone, token, login?.identifier("uid"))
     }
     override suspend fun device(id: String, token: String): Hui798Device {
         val data = request("/ui/app/dev/home/1?did=${encode(id)}&apply=6", token) as JSONObject
@@ -92,7 +93,29 @@ class Hui798Api(
     }
     override suspend fun status(id: String, token: String): Hui798Reading {
         val data = request("/ui/app/dev/status?did=${encode(id)}&more=false", token) as JSONObject
-        val gene = data.optJSONObject("data")?.optJSONObject("device")?.optJSONObject("gene")
+        return reading(data.optJSONObject("data")?.optJSONObject("device"))
+    }
+    override suspend fun overview(token: String): Hui798Overview {
+        val data = (request("/ui/app/master?ad=true", token) as JSONObject).optJSONObject("data")
+        val userId = data?.optJSONObject("account")?.identifier("id")
+            ?: throw Hui798Exception("暂时无法核对慧生活798账号，请重试")
+        val devices = data.optJSONArray("favos")
+            ?: throw Hui798Exception("暂时无法读取正在使用的设备，请重试")
+        return Hui798Overview(userId, (0 until devices.length()).mapNotNull { index ->
+            val device = devices.optJSONObject(index) ?: return@mapNotNull null
+            device.identifier("id")?.let { Hui798Device(it, device.optString("name")) }
+        }.distinctBy { it.id })
+    }
+    override suspend fun deviceUse(id: String, token: String): Hui798DeviceUse {
+        val data = (request("/ui/app/dev/home/1?did=${encode(id)}&apply=6", token) as JSONObject).optJSONObject("data")
+        val device = data?.optJSONObject("device")
+        val returnedId = device?.identifier("id")
+        if (returnedId != null && returnedId != id) throw Hui798Exception("设备信息不一致，请重新扫码")
+        return Hui798DeviceUse(Hui798Device(id, device?.optString("name").orEmpty()), reading(device),
+            data?.optJSONObject("user")?.identifier("id"))
+    }
+    private fun reading(device: JSONObject?): Hui798Reading {
+        val gene = device?.optJSONObject("gene")
             ?: throw Hui798Exception("暂时无法确认设备状态，请刷新")
         val status = gene.opt("status")?.toString()?.toIntOrNull()
             ?: throw Hui798Exception("暂时无法确认设备状态，请刷新")
@@ -101,6 +124,8 @@ class Hui798Api(
         if (status == 1 && time == null) throw Hui798Exception("设备未返回用水记录，请核对现场状态")
         return Hui798Reading(status, time)
     }
+    private fun JSONObject.identifier(key: String): String? = opt(key)?.takeIf { it is String || it is Number }
+        ?.toString()?.trim()?.takeIf { it.isNotEmpty() }
     override suspend fun start(id: String, token: String) { request("/dev/start?did=${encode(id)}&upgrade=true&ptype=91&rcp=false", token) }
     override suspend fun end(id: String, token: String) { request("/dev/end?did=${encode(id)}&rcp=false", token) }
     private fun encode(value: String) = URLEncoder.encode(value, "UTF-8")

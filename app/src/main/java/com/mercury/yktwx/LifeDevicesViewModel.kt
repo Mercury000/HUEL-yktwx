@@ -67,13 +67,14 @@ class LifeDevicesViewModel internal constructor(
                 val saved = withContext(io) { Triple(store.account(), store.waterSessions(), store.laundrySessions()) }
                 account = saved.first
                 ownerPhone = account?.phone.orEmpty()
-                mutable.update { it.copy(restoring = false, connectedPhone = account?.maskedPhone.orEmpty(),
-                    water = saved.second.lastOrNull(), laundry = saved.third.lastOrNull(),
-                    waterSessions = saved.second, laundrySessions = saved.third) }
+                mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty(),
+                    laundry = saved.third.lastOrNull(), laundrySessions = saved.third) }
+                account?.let { recoverWaterSessions(it.token, saved.second.filter { session -> session.active }) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(restoring = false, loginError = failure(e)) } }
+            mutable.update { it.copy(restoring = false) }
             requestedFeature?.let { continueEntry(it) }
-            resumeSessions()
+            resumeSessions(waitBeforeWaterRead = true)
         }
     }
     fun openScan() {
@@ -209,11 +210,13 @@ class LifeDevicesViewModel internal constructor(
                 account = next
                 ownerPhone = next.phone
                 val restored = withContext(io) { store.waterSessions() to store.laundrySessions() }
-                mutable.update { it.copy(water = restored.first.lastOrNull(), laundry = restored.second.lastOrNull(),
-                    waterSessions = restored.first, laundrySessions = restored.second) }
+                val candidates = restored.first.filter { item -> item.active &&
+                    mutable.value.waterSessions.none { it.sessionId == item.sessionId } }
+                mutable.update { it.copy(laundry = restored.second.lastOrNull(), laundrySessions = restored.second) }
+                recoverWaterSessions(next.token, candidates)
                 mutable.update { it.copy(loggingIn = false, connectedPhone = next.maskedPhone, loginVisible = false, code = "") }
                 requestedFeature?.let { continueEntry(it) }
-                resumeSessions()
+                resumeSessions(waitBeforeWaterRead = true)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
         }
@@ -308,6 +311,9 @@ class LifeDevicesViewModel internal constructor(
             serviceError(LifeFeature.Water, null)
             mutable.update { it.copy(waterBusy = true) }
             try {
+                readWater(token, session.sessionId)
+                val current = mutable.value.waterSessions.firstOrNull { it.sessionId == session.sessionId }
+                if (current?.phase != WaterPhase.Running || account?.token != token) return@launch
                 saveSession(session.copy(phase = WaterPhase.Stopping))
                 api.endWater(session.device.id, token)
                 waitForWater(token)
@@ -341,11 +347,11 @@ class LifeDevicesViewModel internal constructor(
         }
     }
     private suspend fun waitForWater(token: String) {
-        repeat(30) {
+        repeat(20) {
             readWater(token)
             val phase = mutable.value.water?.phase
-            if (phase == WaterPhase.Running || phase == WaterPhase.Ended) return
-            delay(1000)
+            if (phase == null || phase == WaterPhase.Running || phase == WaterPhase.Ended) return
+            delay(1500)
         }
         throw LifeDeviceException("设备响应较慢，请留意现场状态并重试")
     }
@@ -359,9 +365,15 @@ class LifeDevicesViewModel internal constructor(
             if (message.state != "OK" || message.code != "0") throw LifeDeviceException("启动失败，请在胖乖生活查看设备")
         }
         val reading = api.water(session.skuId, token)
+        if (account?.token != token) return
         session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
-        if (session.orderNo.isNotBlank() && reading.orderNo != session.orderNo) throw LifeDeviceException("设备订单已变化，请在胖乖生活核对")
         if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回接水订单，请重试")
+        if (reading.orderNo != session.orderNo) {
+            if (session.phase == WaterPhase.Starting) throw LifeDeviceException("设备订单已变化，请在胖乖生活核对")
+            // The device now reports another order; stop tracking ours without finalizing or controlling it.
+            removeWaterSession(session.sessionId)
+            return
+        }
         when {
             reading.workStatus == 2 && reading.status == 1 -> {
                 val next = session.copy(phase = if (session.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
@@ -422,17 +434,59 @@ class LifeDevicesViewModel internal constructor(
         sessionId?.let { if (message == null) sessionErrors.remove(it) else sessionErrors[it] = message }
         mutable.update { if (it.feature == feature) it.copy(error = message) else it }
     }
-    private fun resumeSessions() {
-        resumeWater()
+    private suspend fun removeWaterSession(id: String) {
+        mutable.update { it.copy(waterSessions = it.waterSessions.filterNot { session -> session.sessionId == id },
+            water = it.water?.takeUnless { session -> session.sessionId == id }) }
+        sessionErrors.remove(id)
+        persistSessions()
+    }
+    /** Recovery is attempted once; only verified running orders are retained, without replaying commands. */
+    private suspend fun recoverWaterSessions(token: String, candidates: List<WaterSession>) {
+        if (account?.token != token) return
+        // Drop the old cache before querying so an expired login cannot leave failed candidates behind.
+        persistSessions()
+        for (session in candidates) {
+            try {
+                if (session.orderNo.isNotBlank()) {
+                    val reading = api.water(session.skuId, token)
+                    if (account?.token != token) return
+                    if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回接水订单，请重试")
+                    if (reading.orderNo == session.orderNo) {
+                        when {
+                            reading.status == 1 && reading.workStatus == 2 -> {
+                                val running = session.copy(phase = WaterPhase.Running,
+                                    startedAtMillis = session.startedAtMillis ?: now(), endedAtMillis = null)
+                                mutable.update { it.copy(waterSessions = it.waterSessions + running,
+                                    water = if (it.restoring && it.water == null) running else it.water) }
+                            }
+                            reading.status == 5 && reading.workStatus == 1 -> Unit
+                            else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
+                        }
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (account?.token != token) return
+                mutable.update { if (it.feature == LifeFeature.Water && it.water == null)
+                    it.copy(error = failure(e)) else it }
+                if (expired(e)) return
+            }
+        }
+        if (account?.token == token) persistSessions()
+    }
+    private fun resumeSessions(waitBeforeWaterRead: Boolean = false) {
+        resumeWater(waitBeforeWaterRead)
         resumeLaundry()
     }
-    private fun resumeWater() {
+    private fun resumeWater(waitBeforeFirstRead: Boolean = false) {
         if (!foreground || account == null || waterTask?.isActive == true || waterPollTask?.isActive == true) return
         if (mutable.value.waterSessions.none { it.active || it.phase == WaterPhase.Ended && !it.finalized }) return
         val token = account!!.token
         waterPollTask = viewModelScope.launch {
+            if (waitBeforeFirstRead) delay(1500)
             while (isActive && foreground && account?.token == token) {
-                val sessions = mutable.value.waterSessions.filter { it.active || it.phase == WaterPhase.Ended && !it.finalized && sessionErrors[it.sessionId] == null }
+                val sessions = mutable.value.waterSessions.filter { it.active ||
+                    it.phase == WaterPhase.Ended && !it.finalized && sessionErrors[it.sessionId] == null }
                 if (sessions.isEmpty()) break
                 for (session in sessions) {
                     try { readWater(token, session.sessionId) }

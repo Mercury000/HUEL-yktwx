@@ -11,6 +11,14 @@ class Hui798AccountStoreTest {
         override fun write(values: Map<String, String>) { data.putAll(values) }
         override fun remove(key: String) { data.remove(key) }
     }
+    @Test fun accountIdentityRoundTripsAndLegacyAccountsRequireServerLookup() {
+        val records = Records(); val store = Hui798AccountStore(records)
+        val account = Hui798Account("13800000000", "fixture-token", "fixture-user")
+        store.saveAccount(account); assertEquals(account, Hui798AccountStore(records).account())
+        records.data["account"] = records.read("account")!!.apply { remove("userId") }.toString()
+        assertEquals(account.copy(userId = null), store.account())
+        store.saveAccount(account); assertEquals(account, store.account())
+    }
     @Test fun authenticationLossPreservesOwnedProgressButSwitchingAccountsDoesNotAdoptIt() {
         val store = Hui798AccountStore(Records())
         val first = Hui798Account("13800000000", "first-token")

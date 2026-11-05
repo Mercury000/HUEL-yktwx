@@ -49,15 +49,14 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
         while (ticking) { now = nowMillis(); delay(1000) }
     }
     val entries = buildList {
-        waterSessions.forEach { session ->
-            val completed = session.phase == WaterPhase.Ended
+        waterSessions.filter { it.active }.forEach { session ->
             add(LifeDeviceStatusEntry(LifeFeature.Water, when (session.phase) {
                 WaterPhase.Ended -> "已完成"
                 WaterPhase.Starting -> "正在启动"
                 WaterPhase.Stopping -> "正在结束"
                 else -> "接水中"
             }, session.device.name.ifBlank { "接水" }, session.device.shopName,
-                session.sessionId, completed, progress = if (completed) 1f else null))
+                session.sessionId, completed = false))
         }
         laundrySessions.forEach { session ->
             val completed = !session.active
@@ -81,7 +80,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                     }
                 }))
         }
-        addAll(additionalEntries)
+        addAll(additionalEntries.filterNot { it.feature == LifeFeature.Water && it.completed })
     }
     StatusEntries(entries, enabled, onOpenSession, onDismiss, settings, modifier)
 }

@@ -97,14 +97,9 @@ class LifeDeviceStatusUiTest {
         capture("payment-progress-${if (dark) "dark-large" else "light"}")
         compose.runOnIdle { water = sessions.water.copy(phase = WaterPhase.Ended, finalized = true) }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("life-device-icon-${sessions.water.sessionId}", useUnmergedTree = true)
-            .assertContentDescriptionEquals("接水设备")
-        compose.onNodeWithTag("life-progress-${sessions.water.sessionId}", useUnmergedTree = true)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
+        compose.onNodeWithTag("life-session-${sessions.water.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").assertDoesNotExist()
         capture("payment-completed-${if (dark) "dark-large" else "light"}")
-        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performClick()
-        compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("已完成").assertDoesNotExist()
         compose.onNodeWithText("洗衣中").assertIsDisplayed()
     }
@@ -185,7 +180,7 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
         assertEquals(originalCodeTop, compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top, 1f)
     }
-    @Test fun paymentAllowsDismissalAsSoonAsWaterEndIsConfirmed() {
+    @Test fun paymentAutomaticallyHidesEndedWaterEvenWhenAfterPayIsUnfinished() {
         val device = LifeDevice("water", "serial", "开水", "04", "org", "org", "shop", "imei",
             "学校", "", "after", false, true, null, emptyList(), emptyList())
         val running = WaterSession(device, "sku", WaterPhase.Running, sessionId = "water-with-incomplete-response")
@@ -201,13 +196,13 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
         compose.runOnIdle { waters = listOf(running.copy(phase = WaterPhase.Ended, finalized = false)) }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("已完成").assertIsDisplayed()
-        compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertIsDisplayed().performClick()
-        compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("已完成").assertDoesNotExist()
-        assertTrue(waters.isEmpty())
+        compose.onNodeWithTag("life-session-${running.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+        assertEquals(WaterPhase.Ended, waters.single().phase)
     }
-    @Test fun paymentKeepsMultipleCompletedRecordsUntilIndividualDismissal() {
+    @Test fun paymentKeepsCompletedLaundryUntilDismissalAndExcludesCompletedWater() {
         val sessions = sessions()
         val finished = sessions.laundry.copy(phase = LaundryPhase.Ended, finishedAtMillis = sessions.laundry.expectedEndMillis!! + 121_000)
         val running = sessions.laundry.copy(sessionId = "another-laundry", device = sessions.laundry.device.copy(name = "另一台洗衣机"))
@@ -230,7 +225,8 @@ class LifeDeviceStatusUiTest {
         } } }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("洗衣中").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("已完成").assertCountEquals(2)
+        compose.onAllNodesWithText("已完成").assertCountEquals(1)
+        compose.onNodeWithTag("life-session-${water.sessionId}").assertDoesNotExist()
         compose.onNodeWithTag("dismiss-life-session-${running.sessionId}").assertDoesNotExist()
         compose.onNode(hasTestTag("life-status-laundry") and hasAnyAncestor(hasTestTag("life-session-${finished.sessionId}")))
             .performScrollTo().performClick()
@@ -245,9 +241,7 @@ class LifeDeviceStatusUiTest {
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-session-${finished.sessionId}").assertDoesNotExist()
         compose.onNodeWithText("洗衣中").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("已完成").assertCountEquals(1); assertEquals(1, opened.size)
-        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").performScrollTo().performClick()
-        compose.mainClock.advanceTimeBy(1000)
+        assertEquals(1, opened.size)
         compose.onNodeWithText("已完成").assertDoesNotExist()
         capture("payment-after-dismiss")
     }
@@ -279,8 +273,8 @@ class LifeDeviceStatusUiTest {
 
     @Test fun coveredPaymentPageAndExitingIslandsCannotOpenOrDismissSessions() {
         val sessions = sessions()
-        val water = sessions.water.copy(phase = WaterPhase.Ended)
-        var waters by mutableStateOf(listOf(water))
+        val laundry = sessions.laundry.copy(phase = LaundryPhase.Ended)
+        var laundries by mutableStateOf(listOf(laundry))
         var active by mutableStateOf(false)
         var opened = 0
         var dismissed = 0
@@ -288,21 +282,21 @@ class LifeDeviceStatusUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
-                    waterSessions = waters, isActive = active,
+                    laundrySessions = laundries, isActive = active,
                     onOpenLifeSession = { _, _ -> opened++ }, onDismissLifeSession = { _, _ -> dismissed++ })
             }
         } } }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("life-status-water").assertIsNotEnabled().performClick()
-        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("life-status-laundry").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("dismiss-life-session-${laundry.sessionId}").assertIsNotEnabled().performClick()
         assertEquals(0, opened); assertEquals(0, dismissed)
         compose.runOnIdle { active = true }
-        compose.onNodeWithTag("life-status-water").assertIsEnabled()
+        compose.onNodeWithTag("life-status-laundry").assertIsEnabled()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { waters = emptyList() }
+        compose.runOnIdle { laundries = emptyList() }
         repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-        compose.onNodeWithTag("life-status-water").assertIsNotEnabled().performClick()
-        compose.onNodeWithTag("dismiss-life-session-${water.sessionId}").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("life-status-laundry").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("dismiss-life-session-${laundry.sessionId}").assertIsNotEnabled().performClick()
         assertEquals(0, opened); assertEquals(0, dismissed)
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
@@ -378,7 +372,7 @@ class LifeDeviceStatusUiTest {
     @Test @Config(qualifiers = "zh-rCN-w360dp-h891dp-xxhdpi")
     fun twoIslandsUseTheAvailableWidthAndCloseSmoothlyIntoOneCenteredIsland() {
         val sessions = sessions()
-        var waters by mutableStateOf(listOf(sessions.water.copy(phase = WaterPhase.Ended)))
+        var waters by mutableStateOf(listOf(sessions.water))
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var density = 1f
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -400,7 +394,7 @@ class LifeDeviceStatusUiTest {
         assertTrue("Small phones should fit both readable islands", water.width >= 144f * density)
         val codeTop = compose.onNodeWithTag("payment-code-card").fetchSemanticsNode().boundsInRoot.top
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithTag("dismiss-life-session-${sessions.water.sessionId}").performClick()
+        compose.runOnIdle { waters = listOf(sessions.water.copy(phase = WaterPhase.Ended)) }
         var previous = laundry.center.x
         var moved = false
         repeat(24) {

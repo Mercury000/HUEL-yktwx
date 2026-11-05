@@ -29,10 +29,10 @@ class Hui798ApiTest {
     @Test fun appLoginAndSmsUseIndependentJsonAndSignedLoginFields() = runBlocking {
         val calls = mutableListOf<Response>()
         val api = Hui798Api("https://fixture.test/api/v1", "fixture-salt", { url ->
-            Response(url, """{"code":0,"data":{"al":{"token":"fixture-token"}}}""").also(calls::add)
+            Response(url, """{"code":0,"data":{"al":{"token":"fixture-token","uid":"fixture-user"}}}""").also(calls::add)
         })
         api.sendCode("13800000000", "aB12", "image-key")
-        assertEquals(Hui798Account("13800000000", "fixture-token"), api.login("13800000000", "123456"))
+        assertEquals(Hui798Account("13800000000", "fixture-token", "fixture-user"), api.login("13800000000", "123456"))
         assertEquals("/api/v1/acc/login/code", calls[0].url.path)
         assertEquals("image-key", JSONObject(calls[0].sent.toString("UTF-8")).getString("s"))
         assertEquals("aB12", JSONObject(calls[0].sent.toString("UTF-8")).getString("authCode"))
@@ -56,6 +56,36 @@ class Hui798ApiTest {
         assertEquals("/api/v1/dev/end", calls[1].url.path); assertEquals("did=123456789012345&rcp=false", calls[1].url.query)
         calls.forEach { assertEquals("GET", it.requestMethod); assertEquals("fixture-token", it.getRequestProperty("Authorization"))
             assertFalse(it.instanceFollowRedirects); assertEquals(0, it.sent.size()); assertTrue(it.closed) }
+    }
+    @Test fun recoveryReadsAccountIdentityAndVerifiesUseThroughHomeRatherThanFavoOwner() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val api = Hui798Api("https://fixture.test/api/v1", "", { url ->
+            val body = if (url.path.endsWith("/master"))
+                """{"code":0,"data":{"account":{"id":"current-user"},"favos":[{"id":"device-1","name":"饮水机","owner":{"id":"operator"}}]}}"""
+            else """{"code":0,"data":{"device":{"id":"device-1","name":"饮水机","gene":{"status":1,"time":"1700000000000"}},"user":{"id":"current-user"}}}"""
+            Response(url, body).also(calls::add)
+        })
+        val device = Hui798Device("device-1", "饮水机")
+        assertEquals(Hui798Overview("current-user", listOf(device)), api.overview("fixture-token"))
+        assertEquals(Hui798DeviceUse(device, Hui798Reading(1, 1_700_000_000_000), "current-user"), api.deviceUse(device.id, "fixture-token"))
+        assertEquals("/api/v1/ui/app/master", calls[0].url.path); assertEquals("ad=true", calls[0].url.query)
+        assertEquals("did=device-1&apply=6", calls[1].url.query)
+        calls.forEach { assertEquals("GET", it.requestMethod); assertEquals("fixture-token", it.getRequestProperty("Authorization")) }
+    }
+    @Test fun malformedRecoveryResponsesCannotPretendThatNoAccountIsUsingWater() = runBlocking {
+        for (data in listOf("{}", """{"account":{"id":null},"favos":[]}""", """{"account":{"id":"user"}}""")) {
+            val api = Hui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":$data}""") })
+            try { api.overview("token"); fail("Missing identity/list must fail") } catch (_: Hui798Exception) {}
+        }
+        for (data in listOf("""{"device":{"gene":{"status":1}}}""",
+            """{"device":{"id":"other-device","gene":{"status":99}}}""")) {
+            val api = Hui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":$data}""") })
+            try { api.deviceUse("device", "token"); fail("Unidentified/mismatched device must fail") } catch (_: Hui798Exception) {}
+        }
+        val api = Hui798Api("https://fixture.test/api/v1", "", { url ->
+            Response(url, """{"code":0,"data":{"device":{"gene":{"status":1,"time":1700000000000}},"user":{"id":null}}}""")
+        })
+        assertNull(api.deviceUse("device", "token").userId)
     }
     @Test fun deviceHomeUsesTheReferenceOptionalNameAndStillQueriesStatus() = runBlocking {
         for ((body, name) in listOf(

@@ -60,6 +60,8 @@ class Hui798UiTest {
             override suspend fun sendCode(phone: String, imageCode: String, key: String) { error("No live SMS") }
             override suspend fun login(phone: String, code: String): Hui798Account = error("No live login")
             override suspend fun device(id: String, token: String): Hui798Device = error("No live reads")
+            override suspend fun overview(token: String): Hui798Overview = error("No live reads")
+            override suspend fun deviceUse(id: String, token: String): Hui798DeviceUse = error("No live reads")
             override suspend fun status(id: String, token: String): Hui798Reading = error("No live reads")
             override suspend fun start(id: String, token: String) { error("No live starts") }
             override suspend fun end(id: String, token: String) { error("No live stops") }
@@ -266,12 +268,10 @@ class Hui798UiTest {
         capture("payment-hui798-only")
         compose.runOnIdle { complete = true }
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("life-progress-hui798-session", useUnmergedTree = true)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
-        compose.onNodeWithTag("dismiss-life-session-hui798-session").performClick()
-        compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-status-water").assertDoesNotExist()
-        assertEquals(1, dismissed)
+        compose.onNodeWithTag("dismiss-life-session-hui798-session").assertDoesNotExist()
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+        assertEquals(0, dismissed)
         assertEquals(0, pangguiCallbacks)
     }
 }

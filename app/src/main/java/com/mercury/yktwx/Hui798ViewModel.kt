@@ -52,16 +52,22 @@ class Hui798ViewModel internal constructor(
     private var captchaTask: Job? = null
     private var timerTask: Job? = null
     private var pollTask: Job? = null
+    private var recoveryInProgress = 0
 
     init {
         viewModelScope.launch {
             try {
                 val saved = withContext(io) { store.account() to store.sessions() }
                 account = saved.first; ownerPhone = account?.phone.orEmpty()
-                mutable.update { it.copy(restoring = false, connectedPhone = account?.maskedPhone.orEmpty(), sessions = saved.second) }
+                mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty()) }
+                account?.let { recoverSessions(it, saved.second.filter { session -> session.active }) }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(restoring = false, loginError = failure(e)) } }
-            resumeSessions()
+            catch (e: Exception) {
+                mutable.update { it.copy(error = failure(e)) }
+                account?.let { expired(e, it) }
+            }
+            mutable.update { it.copy(restoring = false) }
+            resumeSessions(waitBeforeFirstRead = true)
         }
     }
 
@@ -142,17 +148,28 @@ class Hui798ViewModel internal constructor(
             mutable.update { it.copy(loggingIn = true, loginError = null) }
             try {
                 val next = api.login(value.phone, value.code)
-                withContext(io) { store.saveAccount(next) }
-                ensureActive()
                 generation++; deviceTask?.cancel(); pollTask?.cancel(); pollTask = null
-                if (ownerPhone.isNotBlank() && ownerPhone != next.phone) sessionErrors.clear()
-                account = next; ownerPhone = next.phone
-                val sessions = withContext(io) { store.sessions() }
+                val sameOwner = ownerPhone == next.phone
+                if (!sameOwner) sessionErrors.clear()
+                persistence.withLock {
+                    withContext(io) { store.saveAccount(next) }
+                    ensureActive()
+                    account = next; ownerPhone = next.phone
+                }
+                val candidates = withContext(io) { store.sessions().filter { it.active } }
+                val sessions = if (sameOwner) mutable.value.sessions else emptyList()
                 mutable.update { it.copy(loggingIn = false, loginVisible = false, connectedPhone = next.maskedPhone,
                     code = "", imageCode = "", captcha = null, sessions = sessions, confirmedSessions = emptySet(),
                     selectedSessionId = it.selectedSessionId?.takeIf { id -> sessions.any { item -> item.sessionId == id } }, error = null) }
+                try { recoverSessions(next, candidates) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    if (account?.phone == next.phone && account?.token == next.token) {
+                        mutable.update { it.copy(error = failure(e)) }; account?.let { expired(e, it) }
+                    }
+                }
                 pendingDeviceId?.takeIf { visible }?.let(::loadDevice)
-                resumeSessions()
+                resumeSessions(waitBeforeFirstRead = true)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
         }
@@ -218,6 +235,9 @@ class Hui798ViewModel internal constructor(
     fun startWater() {
         val value = mutable.value; val device = value.device ?: return; val owner = account ?: return
         if (value.busy || value.loadingDevice || !value.deviceReady || value.session != null) return
+        if (owner.userId == null || recoveryInProgress > 0) {
+            mutable.update { it.copy(error = "正在核对本账号的用水设备，请稍后刷新") }; return
+        }
         if (value.sessions.any { it.active }) {
             mutable.update { it.copy(error = "还有设备正在用水，请先从付款页查看进度") }; return
         }
@@ -248,7 +268,7 @@ class Hui798ViewModel internal constructor(
         val session = mutable.value.session ?: return; val owner = account ?: return
         if (mutable.value.busy || session.phase != WaterPhase.Running) return
         runCommand(owner) {
-            readSession(owner, session.sessionId)
+            readSession(owner, session.sessionId, verifyUser = true)
             val current = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId } ?: return@runCommand
             if (current.phase != WaterPhase.Running || session.sessionId !in mutable.value.confirmedSessions) return@runCommand
             saveSession(current.copy(phase = WaterPhase.Stopping))
@@ -280,26 +300,100 @@ class Hui798ViewModel internal constructor(
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (account == owner) { error(failure(e), mutable.value.selectedSessionId); expired(e, owner) }
-            } finally { commandTask = null; mutable.update { it.copy(busy = false) }; resumeSessions() }
+            } finally { commandTask = null; mutable.update { it.copy(busy = false) }; resumeSessions(waitBeforeFirstRead = true) }
         }
     }
     private suspend fun waitForDevice(owner: Hui798Account, id: String, allowBind: Boolean = false) {
-        repeat(30) {
+        repeat(10) {
+            delay(3000)
             readSession(owner, id, allowBind)
             val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
             if (current.phase in setOf(WaterPhase.Running, WaterPhase.Ended)) return
-            delay(1000)
         }
         throw Hui798Exception("设备响应较慢，请留意现场状态并刷新")
     }
-    private suspend fun readSession(owner: Hui798Account, id: String, allowBind: Boolean = false) {
+    /** Try candidates once and retain only verified use; failed records never form a retry queue. */
+    private suspend fun recoverSessions(owner: Hui798Account, cached: List<Hui798Session>) {
+        recoveryInProgress++
+        try { recoverOnce(owner, cached) } finally { recoveryInProgress-- }
+    }
+    private suspend fun recoverOnce(owner: Hui798Account, cached: List<Hui798Session>) {
+        if (account != owner) return
+        persist()
+        val overview = api.overview(owner.token)
+        currentCoroutineContext().ensureActive()
+        if (account != owner) return
+        if (owner.userId != null && owner.userId != overview.userId)
+            throw Hui798Exception("慧生活798账号信息不一致，请重新登录", loginExpired = true)
+        val verifiedOwner = owner.copy(userId = overview.userId)
+        persistence.withLock {
+            if (account != owner) return
+            if (verifiedOwner != owner) withContext(io) { store.saveAccount(verifiedOwner) }
+            if (account != owner) return
+            account = verifiedOwner
+        }
+        val candidates = (overview.devices + cached.map { it.device }).distinctBy { it.id }
+        var failed = false
+        for (device in candidates) {
+            try {
+                val use = api.deviceUse(device.id, verifiedOwner.token)
+                currentCoroutineContext().ensureActive()
+                if (account != verifiedOwner) return
+                val existing = mutable.value.sessions.firstOrNull { it.active && it.device.id == device.id }
+                if (use.reading.status == 99 || use.userId != null && use.userId != verifiedOwner.userId) {
+                    if (existing != null) saveSession(existing.copy(phase = WaterPhase.Ended, endedAtMillis = now()))
+                    continue
+                }
+                if (use.userId == null) throw Hui798Exception("设备未返回使用人，暂时无法恢复接水进度")
+                val time = use.reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
+                // A recovery response must not replace a command that was started in this app session.
+                if (existing != null) continue
+                val previous = cached.firstOrNull { it.device.id == device.id && it.serverTime == time }
+                val session = previous?.copy(device = use.device, phase = WaterPhase.Running, endedAtMillis = null)
+                    ?: Hui798Session(use.device, WaterPhase.Running, time, true, time, time)
+                mutable.update { it.copy(sessions = it.sessions + session, confirmedSessions = it.confirmedSessions + session.sessionId) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (account != verifiedOwner) return
+                failed = true
+                mutable.update { it.copy(error = failure(e)) }
+                expired(e, verifiedOwner)
+                if (account != verifiedOwner) return
+            }
+        }
+        if (account != verifiedOwner) return
+        if (!failed) {
+            if (mutable.value.selectedSessionId == null) error(null, null)
+        }
+        persist()
+    }
+    private suspend fun readSession(owner: Hui798Account, id: String, allowBind: Boolean = false, verifyUser: Boolean = false) {
         val before = mutable.value.sessions.firstOrNull { it.sessionId == id && it.active } ?: return
-        val reading = api.status(before.device.id, owner.token)
+        var use = if (verifyUser || id !in mutable.value.confirmedSessions || before.serverTime == null)
+            api.deviceUse(before.device.id, owner.token) else null
+        var reading = use?.reading ?: api.status(before.device.id, owner.token)
+        // A changed device marker can belong to a later user. Confirm through the home response.
+        if (reading.status == 1 && before.serverTime != null && before.serverTime != reading.sessionTime && use == null) {
+            use = api.deviceUse(before.device.id, owner.token)
+            reading = use.reading
+        }
         if (account != owner) return
         val current = mutable.value.sessions.firstOrNull { it.sessionId == id && it.active } ?: return
         if (reading.status == 1) {
             val time = reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
-            if (current.serverTime != null && current.serverTime != time || current.serverTime == null &&
+            if (use != null) {
+                if (owner.userId == null || use.userId == null) {
+                    mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
+                    throw Hui798Exception("暂时无法核对设备使用人，请刷新")
+                }
+                if (use.userId != owner.userId || current.serverTime != null && current.serverTime != time) {
+                    saveSession(current.copy(phase = WaterPhase.Ended, endedAtMillis = now()))
+                    mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
+                    error(null, id)
+                    return
+                }
+            }
+            if (current.serverTime == null &&
                 (!current.startAcknowledged || !allowBind && abs(time - current.attemptedAtMillis) > 60_000)) {
                 mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
                 throw Hui798Exception("设备用水记录已变化，请在慧生活798核对")
@@ -318,34 +412,43 @@ class Hui798ViewModel internal constructor(
             selectedSessionId = if (select) session.sessionId else it.selectedSessionId) }
         persist()
     }
-    private suspend fun persist() = persistence.withLock { withContext(io) { store.saveSessions(mutable.value.sessions) } }
+    private suspend fun persist() = persistence.withLock { withContext(io) {
+        store.saveSessions(mutable.value.sessions)
+    } }
     private fun error(message: String?, id: String?) {
         if (id != null) { if (message == null) sessionErrors.remove(id) else sessionErrors[id] = message }
         mutable.update { if (id == null || it.selectedSessionId == id) it.copy(error = message) else it }
     }
     private suspend fun expired(e: Exception, owner: Hui798Account) {
         if (e !is Hui798Exception || !e.loginExpired || account != owner) return
-        account = null; generation++
-        withContext(io) { store.clearAccount() }
-        mutable.update { it.copy(connectedPhone = "", confirmedSessions = emptySet(), deviceReady = false, deviceInUse = false) }
+        persistence.withLock {
+            if (account != owner) return
+            account = null; generation++
+            withContext(io) { store.clearAccount() }
+            mutable.update { it.copy(connectedPhone = "", confirmedSessions = emptySet(), deviceReady = false, deviceInUse = false) }
+        }
     }
-    private fun resumeSessions() {
+    private fun pollIntervalMillis(): Long = if (mutable.value.sessions.any { it.active && it.phase != WaterPhase.Running }) 3000 else 6000
+    private fun resumeSessions(waitBeforeFirstRead: Boolean = false) {
         val owner = account ?: return
-        if (!foreground || commandTask?.isActive == true || pollTask?.isActive == true || mutable.value.sessions.none { it.active }) return
+        if (!foreground || mutable.value.restoring || commandTask?.isActive == true || pollTask?.isActive == true ||
+            mutable.value.sessions.none { it.active }) return
         pollTask = viewModelScope.launch {
-            while (isActive && foreground && account == owner) {
+            if (waitBeforeFirstRead) delay(pollIntervalMillis())
+            while (isActive && foreground && account?.token == owner.token) {
+                val currentOwner = account ?: return@launch
                 val sessions = mutable.value.sessions.filter { it.active }
                 if (sessions.isEmpty()) break
                 for (session in sessions) {
-                    try { readSession(owner, session.sessionId) }
+                    try { readSession(currentOwner, session.sessionId) }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) {
                         mutable.update { it.copy(confirmedSessions = it.confirmedSessions - session.sessionId) }
-                        error(failure(e), session.sessionId); expired(e, owner)
-                        if (account != owner) return@launch
+                        error(failure(e), session.sessionId); expired(e, currentOwner)
+                        if (account != currentOwner) return@launch
                     }
                 }
-                delay(1500)
+                delay(pollIntervalMillis())
             }
         }
     }

@@ -100,7 +100,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         InlineLifeLoginNotice(hui798LoginRequired, onHui798Login, enabled = isActive,
             text = "登录慧生活798，扫码用水", tag = "hui798-login-notice")
     }
-    val hasLifeSessions = waterSessions.isNotEmpty() || laundrySessions.isNotEmpty() || additionalLifeEntries.isNotEmpty()
+    val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
+        additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
     val navigationMotion = LocalMainNavigationMotion.current
     BarBlurHost(bottomBarBlurEnabled = settings.blurBottomBar.value, topBarBlurEnabled = settings.blurTopBar.value) {
         Box(Modifier.fillMaxSize()) {

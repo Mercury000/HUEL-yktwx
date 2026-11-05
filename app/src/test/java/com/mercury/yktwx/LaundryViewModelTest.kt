@@ -644,9 +644,9 @@ class LaundryViewModelTest {
         val washing = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running,
             true, "wash-1", "wash-id", true, true)
         val water = WaterSession(device.copy(category = "04"), "water-sku", WaterPhase.Running, orderNo = "water-1")
-        val api = Api().apply { status = 2; waterFails = true }
+        val api = Api().apply { status = 2; waterReading = WaterReading(1, 2, "water-1") }
         val model = model(api, Store(washing, water))
-        runCurrent(); model.open(LifeFeature.Laundry); model.environment(true); runCurrent()
+        runCurrent(); api.waterFails = true; model.open(LifeFeature.Laundry); model.environment(true); runCurrent()
         assertNull(model.state.value.error)
         model.environment(false); runCurrent()
         val paused = api.waterReads to api.details

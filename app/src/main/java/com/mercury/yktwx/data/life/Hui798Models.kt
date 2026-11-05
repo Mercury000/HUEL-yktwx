@@ -37,11 +37,13 @@ object Hui798DeviceCode {
     }.getOrNull()
 }
 
-data class Hui798Account(val phone: String, val token: String) {
+data class Hui798Account(val phone: String, val token: String, val userId: String? = null) {
     val maskedPhone: String get() = phone.take(3) + "****" + phone.takeLast(4)
 }
 data class Hui798Device(val id: String, val name: String)
 data class Hui798Reading(val status: Int, val sessionTime: Long?)
+data class Hui798Overview(val userId: String, val devices: List<Hui798Device>)
+data class Hui798DeviceUse(val device: Hui798Device, val reading: Hui798Reading, val userId: String?)
 data class Hui798Session(
     val device: Hui798Device, val phase: WaterPhase = WaterPhase.Starting,
     val attemptedAtMillis: Long, val startAcknowledged: Boolean = false,
@@ -58,6 +60,8 @@ interface Hui798Service {
     suspend fun sendCode(phone: String, imageCode: String, key: String)
     suspend fun login(phone: String, code: String): Hui798Account
     suspend fun device(id: String, token: String): Hui798Device
+    suspend fun overview(token: String): Hui798Overview
+    suspend fun deviceUse(id: String, token: String): Hui798DeviceUse
     suspend fun status(id: String, token: String): Hui798Reading
     suspend fun start(id: String, token: String)
     suspend fun end(id: String, token: String)
