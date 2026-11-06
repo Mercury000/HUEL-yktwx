@@ -57,6 +57,7 @@ import com.mercury.yktwx.BuildConfig
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
+import java.util.concurrent.atomic.AtomicLong
 
 /** Camera preview and on-device QR recognition for device entries. */
 @Composable
@@ -146,7 +147,7 @@ private fun ScannerAction(label: String, icon: androidx.compose.ui.graphics.vect
     }
 }
 
-private class DeviceCamera(
+internal class DeviceCamera(
     private val context: Context, private val onScan: (String) -> Unit, private val onError: (String) -> Unit,
     private val onFlashAvailable: (Boolean) -> Unit,
 ) : TextureView.SurfaceTextureListener {
@@ -169,11 +170,13 @@ private class DeviceCamera(
     private val frameBuffer = DeviceQrFrameBuffer()
     private val frameGate = DeviceQrFrameGate()
     private val timings = if (BuildConfig.DEBUG) DeviceQrTimings() else null
-    private var startupTimings: DeviceCameraStartupTimings? = null
+    @Volatile private var startupTimings: DeviceCameraStartupTimings? = null
     private var texture: TextureView? = null
+    // Camera resources and controls are confined to cameraWorker; only view updates use main.
     private var camera: CameraDevice? = null
     private var capture: CameraCaptureSession? = null
     private var request: CaptureRequest.Builder? = null
+    @Volatile private var desiredTorch = false
     private var torchEnabled = false
     private var zoom = DeviceCameraZoom()
     private var images: ImageReader? = null
@@ -181,24 +184,33 @@ private class DeviceCamera(
     private var size = Size(640, 480)
     private var sensorOrientation = 90
     @Volatile private var disposed = false
-    @Volatile private var streamGeneration = 0L
-    private var opening = false
+    private val streamGeneration = AtomicLong()
+    private val pendingOpens = mutableSetOf<Long>()
     private var lastCode = ""
     private var lastCodeAt = 0L
     fun attach(view: TextureView) {
         texture = view
         displays.registerDisplayListener(displayListener, main)
         view.surfaceTextureListener = this
-        if (view.isAvailable) open()
+        if (view.isAvailable) view.surfaceTexture?.let(::start)
+    }
+
+    private fun isCurrent(generation: Long) = !disposed && generation == streamGeneration.get()
+
+    private fun start(surface: SurfaceTexture) {
+        if (disposed) return
+        val generation = streamGeneration.incrementAndGet()
+        val startup = if (BuildConfig.DEBUG) DeviceCameraStartupTimings() else null
+        startupTimings = startup
+        cameraWorker.post {
+            if (!isCurrent(generation)) return@post
+            close()
+            open(surface, generation, startup)
+        }
     }
 
     @SuppressLint("MissingPermission")
-    private fun open() {
-        if (disposed || opening || camera != null || texture?.isAvailable != true) return
-        opening = true
-        val generation = ++streamGeneration
-        val startup = if (BuildConfig.DEBUG) DeviceCameraStartupTimings() else null
-        startupTimings = startup
+    private fun open(surface: SurfaceTexture, generation: Long, startup: DeviceCameraStartupTimings?) {
         frameGate.resetInterval()
         worker.post { if (!disposed && decoder.prepare()) frameGate.start() }
         try {
@@ -208,36 +220,53 @@ private class DeviceCamera(
             zoom = DeviceCameraZoom(config.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE),
                 config.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE),
                 config.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM))
-            onFlashAvailable(config.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true)
-            sensorOrientation = config.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+            val flashAvailable = config.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            val orientation = config.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
             val map = config.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: throw IllegalStateException()
             val previews = map.getOutputSizes(SurfaceTexture::class.java).toSet()
-            size = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888).filter { it in previews && it.width <= 1280 }
+            val previewSize = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888).filter { it in previews && it.width <= 1280 }
                 .minByOrNull { kotlin.math.abs(it.width * it.height - 1280 * 720) } ?: throw IllegalStateException()
-            texture!!.surfaceTexture!!.setDefaultBufferSize(size.width, size.height)
-            transform()
-            preview = Surface(texture!!.surfaceTexture)
-            images = ImageReader.newInstance(size.width, size.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
+            if (!isCurrent(generation)) return
+            surface.setDefaultBufferSize(previewSize.width, previewSize.height)
+            main.post {
+                if (isCurrent(generation)) {
+                    size = previewSize
+                    sensorOrientation = orientation
+                    transform()
+                    onFlashAvailable(flashAvailable)
+                }
+            }
+            preview = Surface(surface)
+            images = ImageReader.newInstance(previewSize.width, previewSize.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
                 setOnImageAvailableListener({ reader -> readFrame(reader, generation, startup) }, cameraWorker)
             }
+            pendingOpens.add(generation)
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
-                    if (disposed || generation != streamGeneration || texture?.isAvailable != true) { device.close(); return }
-                    opening = false
+                    pendingOpens.remove(generation)
+                    if (!isCurrent(generation)) { device.close(); finishDisposal(); return }
                     startup?.record("opened")
                     camera = device
                     configure(device, generation, startup)
                 }
                 override fun onDisconnected(device: CameraDevice) {
+                    pendingOpens.remove(generation)
                     device.close()
-                    if (!disposed && generation == streamGeneration) { close(); error() }
+                    fail(generation)
+                    finishDisposal()
                 }
                 override fun onError(device: CameraDevice, error: Int) {
+                    pendingOpens.remove(generation)
                     device.close()
-                    if (!disposed && generation == streamGeneration) { close(); error() }
+                    fail(generation)
+                    finishDisposal()
                 }
-            }, main)
-        } catch (_: Exception) { close(); error() }
+            }, cameraWorker)
+        } catch (_: Exception) {
+            pendingOpens.remove(generation)
+            fail(generation)
+            finishDisposal()
+        }
     }
     @Suppress("DEPRECATION")
     private fun configure(device: CameraDevice, generation: Long, startup: DeviceCameraStartupTimings?) {
@@ -246,43 +275,53 @@ private class DeviceCamera(
         try {
             device.createCaptureSession(listOf(output, reader.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
-                    if (disposed || generation != streamGeneration || camera !== device) { session.close(); return }
+                    if (!isCurrent(generation) || camera !== device) { session.close(); return }
                     startup?.record("configured")
                     capture = session
                     try {
+                        torchEnabled = desiredTorch
                         request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                             addTarget(output); addTarget(reader.surface)
                             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                             set(CaptureRequest.FLASH_MODE, if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
                             applyZoom(this)
                         }
-                        session.setRepeatingRequest(request!!.build(), null, main)
-                    } catch (_: Exception) { close(); error() }
+                        session.setRepeatingRequest(request!!.build(), null, cameraWorker)
+                    } catch (_: Exception) { fail(generation) }
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) {
                     session.close()
-                    if (!disposed && generation == streamGeneration) { close(); error() }
+                    fail(generation)
                 }
-            }, main)
-        } catch (_: Exception) { close(); error() }
+            }, cameraWorker)
+        } catch (_: Exception) { fail(generation) }
     }
     fun torch(enabled: Boolean) {
-        if (enabled == torchEnabled) return
-        torchEnabled = enabled
-        try {
-            request?.set(CaptureRequest.FLASH_MODE, if (enabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
-            request?.let { capture?.setRepeatingRequest(it.build(), null, main) }
-        } catch (_: Exception) { error() }
+        // AndroidView can send this update before its SurfaceTexture becomes available.
+        desiredTorch = enabled
+        val generation = streamGeneration.get()
+        cameraWorker.post {
+            if (!isCurrent(generation) || desiredTorch == torchEnabled) return@post
+            torchEnabled = desiredTorch
+            try {
+                request?.set(CaptureRequest.FLASH_MODE, if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
+                request?.let { capture?.setRepeatingRequest(it.build(), null, cameraWorker) }
+            } catch (_: Exception) { error() }
+        }
     }
     fun zoomBy(factor: Float) = updateZoom { zoom.scaleBy(factor) }
     fun toggleQuickZoom() = updateZoom { zoom.toggleQuickZoom() }
     private fun updateZoom(change: () -> Boolean) {
-        val builder = request ?: return
-        if (disposed || !change()) return
-        try {
-            applyZoom(builder)
-            capture?.setRepeatingRequest(builder.build(), null, main)
-        } catch (_: Exception) { error() }
+        val generation = streamGeneration.get()
+        cameraWorker.post {
+            if (!isCurrent(generation)) return@post
+            val builder = request ?: return@post
+            if (!change()) return@post
+            try {
+                applyZoom(builder)
+                capture?.setRepeatingRequest(builder.build(), null, cameraWorker)
+            } catch (_: Exception) { error() }
+        }
     }
     private fun applyZoom(builder: CaptureRequest.Builder) {
         // Both preview and decoder targets share this request and the same field of view.
@@ -296,7 +335,7 @@ private class DeviceCamera(
         var copyStarted = 0L
         var acquired = false
         val bytes = try {
-            if (disposed || generation != streamGeneration) return
+            if (!isCurrent(generation)) return
             startup?.record("firstImage")
             if (!frameGate.tryAcquire(SystemClock.elapsedRealtime())) return
             acquired = true
@@ -315,7 +354,7 @@ private class DeviceCamera(
         val copyNanos = if (timings != null) SystemClock.elapsedRealtimeNanos() - copyStarted else 0L
         if (!worker.post {
             try {
-                if (!disposed && generation == streamGeneration) decode(bytes, width, height, copyNanos, generation)
+                if (isCurrent(generation)) decode(bytes, width, height, copyNanos, generation)
             } finally {
                 frameGate.release()
             }
@@ -329,12 +368,12 @@ private class DeviceCamera(
             } finally {
                 timings?.record(copyNanos, SystemClock.elapsedRealtimeNanos() - decodeStarted)
             } ?: return
-            if (disposed || generation != streamGeneration) return
+            if (!isCurrent(generation)) return
             val now = SystemClock.elapsedRealtime()
             if (result != lastCode || now - lastCodeAt >= 2000) {
                 lastCode = result
                 lastCodeAt = now
-                main.post { if (!disposed && generation == streamGeneration) onScan(result) }
+                main.post { if (isCurrent(generation)) onScan(result) }
             }
         } catch (_: Exception) { /* Empty frames are normal while aiming. */ }
     }
@@ -345,35 +384,54 @@ private class DeviceCamera(
         view.setTransform(devicePreviewTransform(view.width, view.height, size.width, size.height, sensorOrientation, displayRotation))
     }
     private fun error(message: String = "相机暂不可用，请输入设备编号") { if (!disposed) main.post { if (!disposed) onError(message) } }
+    private fun fail(generation: Long) {
+        if (!isCurrent(generation) || !streamGeneration.compareAndSet(generation, generation + 1)) return
+        close()
+        main.post {
+            if (isCurrent(generation + 1)) {
+                startupTimings = null
+                onError("相机暂不可用，请输入设备编号")
+            }
+        }
+    }
     private fun close() {
-        ++streamGeneration
-        opening = false
-        startupTimings = null
         capture?.close(); capture = null
         request = null
         camera?.close(); camera = null
-        // Finish any luminance copy before closing its ImageReader on the same thread.
-        images?.let { reader -> cameraWorker.post {
+        // Closing shares the camera worker with luminance copies and camera callbacks.
+        images?.let { reader ->
             reader.setOnImageAvailableListener(null, null)
             reader.close()
-        } }
+        }
         images = null
         preview?.release(); preview = null
     }
     fun dispose() {
+        if (disposed) return
         disposed = true
+        streamGeneration.incrementAndGet()
+        startupTimings = null
         frameGate.close()
         displays.unregisterDisplayListener(displayListener)
-        texture?.surfaceTextureListener = null
-        close()
+        // Keep the listener until destruction so TextureView defers SurfaceTexture.release()
+        // until queued camera work has stopped using it.
+        texture = null
+        cameraWorker.post { close(); finishDisposal() }
         // Release the native decoder after any in-flight recognition on its worker.
-        worker.post { decoder.close() }
-        cameraThread.quitSafely()
-        thread.quitSafely()
+        worker.post { decoder.close(); thread.quitSafely() }
     }
-    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) { open() }
+    private fun finishDisposal() {
+        // An in-flight open can deliver a device after dispose; close it before quitting.
+        if (disposed && pendingOpens.isEmpty()) cameraThread.quitSafely()
+    }
+    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) { start(surface) }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { transform() }
-    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean { close(); return true }
+    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+        streamGeneration.incrementAndGet()
+        startupTimings = null
+        if (!cameraWorker.post { close(); surface.release() }) surface.release()
+        return false
+    }
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) { startupTimings?.record("firstPreview") }
 }
 
