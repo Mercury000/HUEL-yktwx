@@ -80,8 +80,10 @@ internal fun MainNavigationScaffold(
             transitionSpec = { tween(if (targetState) 180 else 140) }, label = "main-footer-fade",
         ) { if (it) 1f else 0f }
         var height by remember { mutableIntStateOf(0) }
-        val motion = MainNavigationMotion(bottomBarVisible,
-            !transition.currentState && !transition.targetState, displacement, opacity, height)
+        val hidden = !transition.currentState && !transition.targetState
+        val motion = remember(bottomBarVisible, hidden, displacement, opacity, height) {
+            MainNavigationMotion(bottomBarVisible, hidden, displacement, opacity, height)
+        }
         CompositionLocalProvider(LocalMainNavigationMotion provides motion) {
             Scaffold(bottomBar = {
                 Box(Modifier.onSizeChanged { height = it.height }.then(motion.modifier())) {

@@ -39,11 +39,13 @@ class MainActivity : ComponentActivity() {
         if (!preview && settings.preventScreenshots.value) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
+        // Restore local account data while the first composition is being prepared.
+        if (restoreLogin || preview) initializePayment(preview, restoreLogin)
         setContent {
             val agreed = preview || consent.accepted
             LaunchedEffect(agreed) {
                 if (agreed) {
-                    viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent), restoreLogin = restoreLogin)
+                    initializePayment(preview, restoreLogin)
                     billViewModel.initialize(preview)
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startBusiness()
                 } else stopBusiness()
@@ -67,6 +69,9 @@ class MainActivity : ComponentActivity() {
                 YktApp(settings, viewModel, billViewModel, consent = consent.takeUnless { preview })
             }
         }
+    }
+    private fun initializePayment(preview: Boolean, restoreLogin: Boolean) {
+        viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent), restoreLogin = restoreLogin)
     }
     private fun businessAllowed() = (UiPreview.enabled && UiPreview.requested(intent)) || consent.accepted
     private fun startBusiness() {

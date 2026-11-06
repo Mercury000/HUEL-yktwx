@@ -79,7 +79,7 @@ internal class BillQueryMotion(initial: BillUiState) {
 @Composable
 internal fun rememberBillQueryMotion(state: BillUiState, list: LazyListState,
     active: Boolean, switching: Boolean): BillQueryMotion {
-    val motion = remember(state.dateFilter, state.needsLogin, active, state.statsVisible) { BillQueryMotion(state) }
+    val motion = remember(state.dateFilter, state.needsLogin, state.statsVisible) { BillQueryMotion(state) }
     val current by rememberUpdatedState(state)
     val animate = LocalReadMotionEnabled.current && active && !state.needsLogin && !state.statsVisible && !switching
     SideEffect { motion.synchronize(state, list) }

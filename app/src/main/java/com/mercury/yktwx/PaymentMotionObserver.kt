@@ -14,6 +14,8 @@ internal class PaymentMotionObserver(context: Context, private val onEvent: (Pay
     private var registered = false
 
     fun start(): Boolean {
+        // Adding an observer to a resumed lifecycle replays several events synchronously.
+        if (registered) return true
         stop()
         val manager = manager ?: return false
         val sensor = manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
