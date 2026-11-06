@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0"
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
 }
 val machineProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
@@ -104,6 +105,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4")
     implementation("com.mikepenz:aboutlibraries-core:15.3.0")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.compose.ui:ui-test-junit4")

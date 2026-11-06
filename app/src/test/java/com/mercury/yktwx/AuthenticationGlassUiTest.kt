@@ -130,7 +130,8 @@ class AuthenticationGlassUiTest {
         repeat(3) { turn ->
             tab("我的").performClick()
             compose.onNodeWithText("应用设置").performScrollTo().performClick()
-            compose.onNodeWithText("退出登录").performScrollTo().performClick()
+            compose.onNodeWithTag("settings-page-list").performScrollToNode(hasText("退出校园卡登录"))
+            compose.onNodeWithText("退出校园卡登录").performClick()
             compose.onNodeWithText("确定").performClick()
             compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); !payments.state.value.busy }
             assertFalse(consent.accepted)
