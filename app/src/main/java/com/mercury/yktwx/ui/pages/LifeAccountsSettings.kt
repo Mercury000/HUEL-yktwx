@@ -52,21 +52,21 @@ internal fun LifeAccountLogoutDialog(account: ManagedLifeAccount?, active: Boole
     val show = active && account != null
     val display = rememberWhileShown(show, account)
     val hasActiveServices = (display?.activeServices ?: 0) > 0
-    val canConfirm = show && account?.busy == false && !account.restoring
+    val canConfirm = show && !account.busy && !account.restoring
     OverlayDialog(show = show,
         title = if (hasActiveServices) "暂时无法退出" else "退出${display?.name.orEmpty()}账户",
         summary = if (hasActiveServices) "服务结束后才能退出账户。" else display?.error ?: "退出后需重新登录。",
         onDismissRequest = onDismiss, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth().testTag("life-account-logout-dialog"),
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onDismiss, enabled = show && account?.busy == false,
+            Button(onClick = onDismiss, enabled = show && !account.busy,
                 modifier = Modifier.weight(1f)) { Text("取消") }
             if (hasActiveServices) {
-                Button(onClick = { if (canConfirm) account?.let { onDismiss(); onProgress(it.provider) } },
+                Button(onClick = { if (canConfirm) { onDismiss(); onProgress(account.provider) } },
                     enabled = canConfirm, modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColorsPrimary()) { Text("查看进度") }
             } else {
-                Button(onClick = { if (canConfirm) account?.let { onRemove(it.provider) } },
+                Button(onClick = { if (canConfirm) onRemove(account.provider) },
                     enabled = canConfirm, modifier = Modifier.weight(1f).testTag("life-account-exit"),
                     colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (display?.busy == true) "正在退出…" else "退出")
