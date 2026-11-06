@@ -196,6 +196,59 @@ class MainTabBackNavigationTest {
         compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
     }
 
+    @Test fun transitionStyleSelectionKeepsTheThemePageAndAppliesToItsReturn() {
+        selectTab("我的")
+        compose.onNodeWithText("应用设置").performScrollTo().performClick()
+        compose.onNodeWithText("主题").performClick()
+        val title = compose.activity.getString(R.string.nav_transition_style)
+        val list = compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasText(title)))
+        val originalId = list.fetchSemanticsNode().id
+        compose.onNodeWithText(title).performScrollTo().performClick()
+        compose.onNodeWithText("AOSP").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, settings.navTransitionStyle.value) }
+        assertEquals("Changing style must retain the theme page", originalId, list.fetchSemanticsNode().id)
+        compose.onNodeWithText("AOSP").assertIsDisplayed()
+        back()
+        compose.onNodeWithTag("settings-page-list").assertIsDisplayed()
+        back()
+        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+    }
+
+    @Test fun aospPredictiveReturnUsesACardAndRestoresItOnCancel() {
+        compose.runOnIdle { settings.setNavTransitionStyle(1) }
+        selectTab("我的")
+        compose.onNodeWithText("应用设置").performScrollTo().performClick()
+        val page = compose.onNodeWithTag("settings-page-list")
+        fun drawnWidth(): Float {
+            val coordinates = page.fetchSemanticsNode().layoutInfo.coordinates
+            return coordinates.localToRoot(Offset(coordinates.size.width.toFloat(), 0f)).x -
+                coordinates.localToRoot(Offset.Zero).x
+        }
+        val originalWidth = drawnWidth()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle {
+                val dispatcher = compose.activity.onBackPressedDispatcher
+                dispatcher.dispatchOnBackStarted(BackEventCompat(0f, 400f, 0f, BackEventCompat.EDGE_LEFT))
+                dispatcher.dispatchOnBackProgressed(BackEventCompat(100f, 400f, .5f, BackEventCompat.EDGE_LEFT))
+            }
+            compose.mainClock.advanceTimeBy(32)
+            compose.waitForIdle()
+            assertTrue("AOSP predictive back shrinks the page into a card", drawnWidth() < originalWidth * .95f)
+            assertTrue("The card stays within the demo scale range", drawnWidth() >= originalWidth * .9f - 1f)
+            compose.runOnIdle { compose.activity.onBackPressedDispatcher.dispatchOnBackCancelled() }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+        assertEquals("Cancelling restores the page to full width", originalWidth, drawnWidth(), 1f)
+        compose.onNodeWithText("主题").assertIsDisplayed()
+        back(commitGesture = true)
+        compose.onNodeWithText("主题").assertDoesNotExist()
+        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+    }
+
     @Test fun savedStateRestoresTheNestedNavigationStack() {
         selectTab("我的")
         compose.onNodeWithText("应用设置").performScrollTo().performClick()

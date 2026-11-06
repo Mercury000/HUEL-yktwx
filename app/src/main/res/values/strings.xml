@@ -20,6 +20,7 @@
     <string name="blur_top_bar_summary">Use a translucent top app bar background</string>
     <string name="swipe_back">Enable Swipe Back</string>
     <string name="swipe_back_summary">Swipe a secondary page to return; direction follows the layout</string>
+    <string name="nav_transition_style">Transition Style</string>
     <string name="prevent_screenshots">Prevent Screenshots</string>
     <string name="prevent_screenshots_summary">Block app content from appearing in screenshots, screen recordings, and recent task previews</string>
     <string name="link_open_failed">No app available to open this link</string>

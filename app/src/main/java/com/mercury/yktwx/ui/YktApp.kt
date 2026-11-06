@@ -66,7 +66,6 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
-import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -172,8 +171,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             backStack = authBackStack,
             modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
             onBack = {},
-            transition = NavTransitions.MiuixDefault,
-            effects = rememberMiuixNavigationEffects(),
+            transition = miuixNavigationTransition(settings.navTransitionStyle.value),
+            effects = rememberMiuixNavigationEffects(transitionStyle = settings.navTransitionStyle.value),
         ) {
             entry<AuthPage>(swipeDismiss = NavSwipeDirection.None) { page ->
                 val interactive = page == authPage
@@ -534,7 +533,8 @@ private fun MainContent(
         LocalLayoutDirection.current == LayoutDirection.Rtl -> NavSwipeDirection.RightToLeft
         else -> NavSwipeDirection.LeftToRight
     }
-    val navigationEffects = rememberMiuixNavigationEffects(wideScreen = useRail)
+    val navigationTransition = miuixNavigationTransition(settings.navTransitionStyle.value)
+    val navigationEffects = rememberMiuixNavigationEffects(wideScreen = useRail, transitionStyle = settings.navTransitionStyle.value)
     CompositionLocalProvider(LocalReadOffline provides (network.online == false)) {
         // Match the demo: the rail stays beside a clipped navigation pane.
         Row(Modifier.fillMaxSize()) {
@@ -543,7 +543,7 @@ private fun MainContent(
                 NavDisplay(
                     backStack = backStack,
                     onBack = ::close,
-                    transition = NavTransitions.MiuixDefault,
+                    transition = navigationTransition,
                     effects = navigationEffects,
                 ) {
                     entry<Screen>(swipeDismiss = swipeDirection) { screen ->
@@ -785,6 +785,7 @@ private fun SecondaryPage(
                         blurBottomBar = settings.blurBottomBar, onBlurBottomBarChange = settings::setBlurBottom,
                         blurTopBar = settings.blurTopBar, onBlurTopBarChange = settings::setBlurTop,
                         swipeBack = settings.swipeBack, onSwipeBackChange = settings::setSwipeBack,
+                        navTransitionStyle = settings.navTransitionStyle, onNavTransitionStyleChange = settings::setNavTransitionStyle,
                     )
                     Screen.References -> ReferencesPage(modifier, contentPadding)
                     else -> Unit

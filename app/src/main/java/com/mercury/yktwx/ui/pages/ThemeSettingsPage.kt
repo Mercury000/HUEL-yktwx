@@ -14,6 +14,8 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
+private val NavTransitionStyleOptions = listOf("Miuix", "AOSP")
+
 @Composable
 fun ThemeSettingsPage(
     modifier: Modifier = Modifier,
@@ -32,6 +34,8 @@ fun ThemeSettingsPage(
     onBlurTopBarChange: (Boolean) -> Unit = {},
     swipeBack: MutableState<Boolean> = mutableStateOf(false),
     onSwipeBackChange: (Boolean) -> Unit = {},
+    navTransitionStyle: MutableState<Int> = mutableStateOf(0),
+    onNavTransitionStyleChange: (Int) -> Unit = {},
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -97,6 +101,12 @@ fun ThemeSettingsPage(
                     summary = stringResource(R.string.blur_top_bar_summary),
                     checked = blurTopBar.value,
                     onCheckedChange = { onBlurTopBarChange(it) },
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.nav_transition_style),
+                    items = NavTransitionStyleOptions,
+                    selectedIndex = navTransitionStyle.value.coerceIn(NavTransitionStyleOptions.indices),
+                    onSelectedIndexChange = onNavTransitionStyleChange,
                 )
                 SwitchPreference(
                     title = stringResource(R.string.swipe_back),

@@ -28,13 +28,15 @@ class NavigationRailBackUiTest {
 
     @Test fun collapsedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
+    @Test fun aospCardReturnKeepsTheRailFixedThroughCancelAndCommit() = verifyPredictiveReturn(style = 1)
+
     @Test
     @Config(qualifiers = "zh-rCN-w1280dp-h800dp-xhdpi")
     fun expandedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
-    private fun verifyPredictiveReturn() {
+    private fun verifyPredictiveReturn(style: Int = 0) {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(compose.activity)
+        val settings = ThemeSettings(compose.activity).apply { setNavTransitionStyle(style) }
         val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
         val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
         compose.setContent {
