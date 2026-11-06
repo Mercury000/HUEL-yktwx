@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -171,7 +172,8 @@ internal class DeviceCamera(
     private val main = Handler(Looper.getMainLooper())
     private val cameraThread = HandlerThread("device-qr-camera").apply { start() }
     private val cameraWorker = Handler(cameraThread.looper)
-    private val thread = HandlerThread("device-qr-decoder").apply { start() }
+    // Give rendering a small scheduling advantage without delaying the first scan by a timer.
+    private val thread = HandlerThread("device-qr-decoder", Process.THREAD_PRIORITY_LESS_FAVORABLE).apply { start() }
     private val worker = Handler(thread.looper)
     private val manager = context.getSystemService(CameraManager::class.java)
     private val displays = context.getSystemService(DisplayManager::class.java)
@@ -231,9 +233,7 @@ internal class DeviceCamera(
         frameGate.resetInterval()
         worker.post { if (!disposed && decoder.prepare()) frameGate.start() }
         try {
-            val id = manager.cameraIdList.firstOrNull { manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK }
-                ?: manager.cameraIdList.firstOrNull() ?: throw IllegalStateException()
-            val config = manager.getCameraCharacteristics(id)
+            val (id, config) = selectCamera()
             zoom = DeviceCameraZoom(config.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE),
                 config.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE),
                 config.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM))
@@ -284,6 +284,16 @@ internal class DeviceCamera(
             fail(generation)
             finishDisposal()
         }
+    }
+    private fun selectCamera(): Pair<String, CameraCharacteristics> {
+        val ids = manager.cameraIdList
+        var first: Pair<String, CameraCharacteristics>? = null
+        for (id in ids) {
+            val config = manager.getCameraCharacteristics(id)
+            if (first == null) first = id to config
+            if (config.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) return id to config
+        }
+        return first ?: throw IllegalStateException()
     }
     @Suppress("DEPRECATION")
     private fun configure(device: CameraDevice, generation: Long, startup: DeviceCameraStartupTimings?) {

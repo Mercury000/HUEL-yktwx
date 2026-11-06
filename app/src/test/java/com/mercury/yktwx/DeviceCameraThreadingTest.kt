@@ -36,6 +36,7 @@ import org.robolectric.shadows.StreamConfigurationMapBuilder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], shadows = [DeviceCameraThreadingTest.RecordingManager::class,
@@ -51,16 +52,23 @@ class DeviceCameraThreadingTest {
         private var queryLooper: Looper? = null
         private var configureLooper: Looper? = null
         private var closeLooper: Looper? = null
+        private val idQueries = AtomicInteger()
+        private val characteristicsQueries = LinkedBlockingQueue<String>()
         private val requests = LinkedBlockingQueue<Pair<Looper, CaptureRequest>>()
     }
 
     @Implements(CameraManager::class)
     class RecordingManager : ShadowCameraManager() {
         @Implementation public override fun getCameraIdList(): Array<String> {
+            idQueries.incrementAndGet()
             queryLooper = Looper.myLooper()
             queryEntered.countDown()
             check(queryGate.await(5, TimeUnit.SECONDS))
             return super.getCameraIdList()
+        }
+        @Implementation public override fun getCameraCharacteristics(cameraId: String): CameraCharacteristics {
+            characteristicsQueries.add(cameraId)
+            return super.getCameraCharacteristics(cameraId)
         }
     }
 
@@ -102,6 +110,7 @@ class DeviceCameraThreadingTest {
     private lateinit var surface: SurfaceTexture
     private var flashCallbacks = 0
     private var flashLooper: Looper? = null
+    private var flashAvailable: Boolean? = null
 
     @Before fun setup() {
         queryEntered = CountDownLatch(1); queryGate = CountDownLatch(0)
@@ -109,24 +118,30 @@ class DeviceCameraThreadingTest {
         deviceClosed = CountDownLatch(1)
         queryLooper = null; configureLooper = null; closeLooper = null
         requests.clear()
+        idQueries.set(0); characteristicsQueries.clear()
         val context = ApplicationProvider.getApplicationContext<Context>()
+        Shadow.extract<RecordingManager>(context.getSystemService(CameraManager::class.java))
+            .addCamera("0", characteristics(CameraCharacteristics.LENS_FACING_BACK))
+        camera = DeviceCamera(context, {}, {}, {
+            flashCallbacks++
+            flashLooper = Looper.myLooper()
+            flashAvailable = it
+        })
+        camera.attach(TextureView(context))
+        surface = SurfaceTexture(0)
+    }
+
+    private fun characteristics(facing: Int, flash: Boolean = true): CameraCharacteristics {
         val characteristics = ShadowCameraCharacteristics.newCameraCharacteristics()
         val values = Shadow.extract<ShadowCameraCharacteristics>(characteristics)
-        values.set(CameraCharacteristics.LENS_FACING, CameraCharacteristics.LENS_FACING_BACK)
+        values.set(CameraCharacteristics.LENS_FACING, facing)
         values.set(CameraCharacteristics.SENSOR_ORIENTATION, 90)
-        values.set(CameraCharacteristics.FLASH_INFO_AVAILABLE, true)
+        values.set(CameraCharacteristics.FLASH_INFO_AVAILABLE, flash)
         values.set(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE, Range(1f, 8f))
         values.set(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP,
             StreamConfigurationMapBuilder.newBuilder().addOutputSize(Size(1280, 720))
                 .addOutputSize(ImageFormat.YUV_420_888, Size(1280, 720)).build())
-        Shadow.extract<RecordingManager>(context.getSystemService(CameraManager::class.java))
-            .addCamera("0", characteristics)
-        camera = DeviceCamera(context, {}, {}, {
-            flashCallbacks++
-            flashLooper = Looper.myLooper()
-        })
-        camera.attach(TextureView(context))
-        surface = SurfaceTexture(0)
+        return characteristics
     }
 
     @After fun cleanup() {
@@ -145,6 +160,9 @@ class DeviceCameraThreadingTest {
         assertNotSame(Looper.getMainLooper(), looper)
         assertSame(looper, queryLooper)
         assertSame(looper, configureLooper)
+        assertEquals(1, idQueries.get())
+        // Robolectric also queries once internally when it constructs the fake opened device.
+        assertEquals(listOf("0", "0"), characteristicsQueries.toList())
         assertEquals(CaptureRequest.FLASH_MODE_OFF, initial.get(CaptureRequest.FLASH_MODE))
         assertEquals(1f, initial.get(CaptureRequest.CONTROL_ZOOM_RATIO)!!, 0f)
         shadowOf(Looper.getMainLooper()).idle()
@@ -164,6 +182,35 @@ class DeviceCameraThreadingTest {
         camera.dispose()
         await(deviceClosed)
         assertSame(looper, closeLooper)
+    }
+
+    @Test fun rearSelectionReusesItsCharacteristicsAndStopsAtFirstRearCamera() {
+        val manager = Shadow.extract<RecordingManager>(ApplicationProvider.getApplicationContext<Context>()
+            .getSystemService(CameraManager::class.java))
+        manager.removeCamera("0")
+        manager.addCamera("0", characteristics(CameraCharacteristics.LENS_FACING_FRONT, flash = false))
+        manager.addCamera("1", characteristics(CameraCharacteristics.LENS_FACING_BACK))
+        manager.addCamera("2", characteristics(CameraCharacteristics.LENS_FACING_BACK, flash = false))
+        camera.onSurfaceTextureAvailable(surface, 1080, 2400)
+        nextRequest()
+        assertEquals(1, idQueries.get())
+        assertEquals(listOf("0", "1", "1"), characteristicsQueries.toList())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(true, flashAvailable)
+    }
+
+    @Test fun noRearCameraFallsBackToFirstCameraWithoutQueryingListAgain() {
+        val manager = Shadow.extract<RecordingManager>(ApplicationProvider.getApplicationContext<Context>()
+            .getSystemService(CameraManager::class.java))
+        manager.removeCamera("0")
+        manager.addCamera("0", characteristics(CameraCharacteristics.LENS_FACING_FRONT, flash = false))
+        manager.addCamera("1", characteristics(CameraCharacteristics.LENS_FACING_EXTERNAL))
+        camera.onSurfaceTextureAvailable(surface, 1080, 2400)
+        nextRequest()
+        assertEquals(1, idQueries.get())
+        assertEquals(listOf("0", "1", "0"), characteristicsQueries.toList())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(false, flashAvailable)
     }
 
     @Test fun destroyingSurfaceDuringBlockedStartupReturnsImmediatelyAndCancelsUiUpdates() {
