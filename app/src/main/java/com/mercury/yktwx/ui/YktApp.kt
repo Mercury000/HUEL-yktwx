@@ -10,7 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -594,10 +593,10 @@ private fun MainContent(
                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                         val bottom = padding.calculateBottomPadding() + 28.dp
-                        HorizontalPager(
+                        RetainedMainTabsPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
-                            // The four root pages keep their composition and scroll state between tabs.
-                            beyondViewportPageCount = 3, key = { it },
+                            selectedPage = tabs.selectedPage,
+                            prewarmEnabled = isActive && foreground && layers.isEmpty() && !tabs.isNavigating,
                         ) { page ->
                             when (page) {
                                 0 -> PaymentPage(
