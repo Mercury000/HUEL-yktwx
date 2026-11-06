@@ -184,6 +184,20 @@ class MainTabBackNavigationTest {
         assertPaymentRoot()
     }
 
+    @Test fun rapidMainTabChangesSettleOnTheLastSelectedPage() {
+        compose.mainClock.autoAdvance = false
+        for (label in listOf("我的", "大厅", "账单")) {
+            compose.onNode(hasText(label) and hasClickAction()).performClick()
+            compose.mainClock.advanceTimeBy(80)
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNode(hasText("账单") and isSelectable()).assertIsSelected()
+        compose.onNodeWithTag("bill-content-viewport").assertIsDisplayed()
+        back()
+        assertPaymentRoot()
+    }
+
     @Test fun enablingSwipeBackReturnsToThePreviousPage() {
         compose.runOnIdle { settings.setSwipeBack(true) }
         selectTab("我的")
