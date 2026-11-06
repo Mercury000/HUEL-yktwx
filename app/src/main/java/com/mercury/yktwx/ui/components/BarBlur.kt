@@ -45,11 +45,10 @@ internal fun floatingBarColor(): Color = if (isSystemInDarkTheme())
 internal fun BarBlurHost(
     bottomBarBlurEnabled: Boolean,
     topBarBlurEnabled: Boolean,
-    captureForEffects: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
-    val backdrop = if ((bottomBarBlurEnabled || topBarBlurEnabled || captureForEffects) && isRuntimeShaderSupported()) {
+    val backdrop = if ((bottomBarBlurEnabled || topBarBlurEnabled) && isRuntimeShaderSupported()) {
         rememberLayerBackdrop {
             drawRect(surfaceColor)
             drawContent()

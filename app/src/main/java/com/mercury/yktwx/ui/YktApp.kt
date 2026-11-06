@@ -1,12 +1,6 @@
 package com.mercury.yktwx.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -20,6 +14,7 @@ import android.content.Intent
 import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
 import com.mercury.yktwx.CardPasswordViewModel
@@ -43,12 +38,16 @@ import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -62,8 +61,13 @@ import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.nav.*
 import com.mercury.yktwx.ui.pages.*
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.navBackStackOf
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -72,8 +76,9 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-private enum class Screen { BillDetail, Profile, Account, About, Settings, Theme, References, LifeDevice }
-private enum class AuthPage { Restoring, Login, Main }
+@Serializable
+private enum class Screen : NavKey { Main, BillDetail, Profile, Account, About, Settings, Theme, References, LifeDevice }
+private enum class AuthPage : NavKey { Restoring, Login, Main }
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null) {
@@ -161,68 +166,63 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             else -> AuthPage.Main
         }
         LaunchedEffect(authPage) { updateModel.dismiss() }
-        AnimatedContent(
-            // Route-only target: never retain a payment batch, code or password
-            // as an animation snapshot. Normal refreshes do not change screens.
-            targetState = authPage,
+        val authBackStack = remember { navBackStackOf(authPage) }
+        val shellViewModelOwner = checkNotNull(LocalViewModelStoreOwner.current)
+        SideEffect { authBackStack[0] = authPage }
+        NavDisplay(
+            backStack = authBackStack,
             modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
-            transitionSpec = {
-                if (initialState == AuthPage.Restoring || targetState == AuthPage.Restoring) {
-                    (EnterTransition.None togetherWith ExitTransition.None).using(null)
-                } else if (targetState == AuthPage.Main) {
-                    (islandPageEnter() togetherWith islandPageExit(-BACKGROUND_PARALLAX))
-                        .apply { targetContentZIndex = 1f }.using(null)
-                } else {
-                    // Main slides away like a popped detail layer; login is the
-                    // uncovered background, using the same timings and easing.
-                    (islandPageEnter(-BACKGROUND_PARALLAX) togetherWith islandPageExit())
-                        .apply { targetContentZIndex = 0f }.using(null)
-                }
-            },
-            label = "AuthenticationPageTransition",
-        ) { page ->
-            val interactive = page == authPage
-            Box(
-                Modifier.fillMaxSize()
-                    .then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})
-                    .pointerInput(interactive) {
-                        if (!interactive) awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                event.changes.forEach { it.consume() }
+            onBack = {},
+            transition = miuixNavigationTransition(settings.navTransitionStyle.value),
+            effects = rememberMiuixNavigationEffects(transitionStyle = settings.navTransitionStyle.value),
+        ) {
+            entry<AuthPage>(swipeDismiss = NavSwipeDirection.None) { page ->
+                val interactive = page == authPage
+                Box(
+                    Modifier.fillMaxSize()
+                        .then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})
+                        .pointerInput(interactive) {
+                            if (!interactive) awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    event.changes.forEach { it.consume() }
+                                }
                             }
-                        }
-                    },
-            ) {
-                when (page) {
-                    AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                    AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
-                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) },
-                        consent = consent, onInputEdited = viewModel::loginInputEdited,
-                        updateNotice = {
-                            InlineUpdateNotice(updateState.copy(noticeVisible = interactive && agreed && updateState.noticeVisible),
-                                updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
                         },
-                        updateDialog = {
-                            AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
-                        })
-                    AuthPage.Main -> {
-                        // Keep only shell identity for the outgoing animation.
-                        // Latest logged-out state has already removed payment codes.
-                        val shellOwner = remember { state.username }
-                        key(shellOwner) {
-                            // One overlay host above both tabs and secondary page layers.
-                            Scaffold {
-                                MainContent(
-                                    settings, state,
-                                    if (interactive) billState else BillUiState(),
-                                    viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
-                                    isActive = interactive,
-                                    onLogout = { consent?.revoke(); viewModel.logout() },
-                                    updateModel = updateModel, updateState = updateState,
-                                )
+                ) {
+                    when (page) {
+                        AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                        AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
+                            onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) },
+                            consent = consent, onInputEdited = viewModel::loginInputEdited,
+                            updateNotice = {
+                                InlineUpdateNotice(updateState.copy(noticeVisible = interactive && agreed && updateState.noticeVisible),
+                                    updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
+                            },
+                            updateDialog = {
+                                AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
+                            })
+                        AuthPage.Main -> {
+                            // Keep only shell identity for the outgoing animation.
+                            // Latest logged-out state has already removed payment codes.
+                            val shellOwner = remember { state.username }
+                            key(shellOwner) {
+                                // Service models remain owned by the app across navigation and login changes.
+                                CompositionLocalProvider(LocalViewModelStoreOwner provides shellViewModelOwner) {
+                                    // One overlay host above both tabs and secondary page layers.
+                                    Scaffold {
+                                        MainContent(
+                                            settings, state,
+                                            if (interactive) billState else BillUiState(),
+                                            viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
+                                            isActive = interactive,
+                                            onLogout = { consent?.revoke(); viewModel.logout() },
+                                            updateModel = updateModel, updateState = updateState,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -313,7 +313,8 @@ private fun MainContent(
     val scope = rememberCoroutineScope()
     val tabs = remember(pagerState, scope) { MainTabsPagerState(pagerState, scope) }
     LaunchedEffect(pagerState.currentPage) { tabs.syncPage() }
-    var layers by remember { mutableStateOf<List<Screen>>(emptyList()) }
+    val backStack = rememberNavBackStack<Screen>(Screen.Main)
+    val layers = backStack.filterIsInstance<Screen>().drop(1)
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
         (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible || hui798State.loginVisible)
@@ -382,14 +383,6 @@ private fun MainContent(
             !state.preview && !state.needsLogin && state.account != null && state.problem == null && paymentSuccess == null,
         username = state.username, model = viewModel,
     )
-    val motion = remember { List(MAX_LAYERS) { IslandLayerMotion() } }
-    val lastScreens = remember { mutableStateListOf<Screen?>(null, null, null) }
-    SideEffect {
-        layers.forEachIndexed { index, screen ->
-            if (lastScreens[index] != screen) lastScreens[index] = screen
-        }
-    }
-    val renderScreens = List(MAX_LAYERS) { layers.getOrNull(it) ?: lastScreens[it] }
     // Automatic results stay inline; user-opened details are confined to pages with an update entry.
     val updatePromptAllowed = isActive &&
         (layers.lastOrNull() == Screen.Settings || layers.isEmpty())
@@ -399,17 +392,14 @@ private fun MainContent(
     val updateNotice: @Composable () -> Unit = {
         InlineUpdateNotice(updateState, updateModel::openDetails, updateModel::dismissNotice)
     }
-    val distance: () -> Long = { settings.predictiveBackDistance.value.coerceIn(25, 100).toLong() }
     fun open(screen: Screen) {
-        if (isActive && layers.size < MAX_LAYERS && motion.none { it.predictiveActive }) layers = layers + screen
+        if (isActive && screen !in backStack) backStack.add(screen)
     }
     fun close() {
-        if (isActive && layers.isNotEmpty() && motion.none { it.predictiveActive }) {
-            layers = layers.dropLast(1)
-        }
+        if (isActive && backStack.size > 1) backStack.removeLastOrNull()
     }
     fun openLifeScanner() {
-        if (!isActive || layers.size >= MAX_LAYERS && layers.lastOrNull() != Screen.LifeDevice || motion.any { it.predictiveActive } ||
+        if (!isActive ||
             lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null ||
             lifeState.restoring || hui798State.restoring || lifeState.connectedPhone.isBlank() && !hui798State.connected) return
         if (!allowOnlineEntry(context, state.preview)) return
@@ -417,19 +407,19 @@ private fun MainContent(
         lifeModel.openUnifiedScan()
     }
     fun connectLifeAccount() {
-        if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
+        if (!isActive || layers.isNotEmpty()) return
         if (!allowOnlineEntry(context, state.preview)) return
         hui798Model.dismissLogin()
         lifeModel.connectAccount()
     }
     fun connectHui798Account() {
-        if (!isActive || layers.isNotEmpty() || motion.any { it.predictiveActive }) return
+        if (!isActive || layers.isNotEmpty()) return
         if (!allowOnlineEntry(context, state.preview)) return
         lifeModel.dismissLogin()
         hui798Model.connectAccount()
     }
     fun manageLifeLogin(provider: LifeProvider, change: Boolean) {
-        if (!isActive || motion.any { it.predictiveActive } || !allowOnlineEntry(context, state.preview)) return
+        if (!isActive || !allowOnlineEntry(context, state.preview)) return
         val opened = if (provider == LifeProvider.Hui798) { lifeModel.dismissLogin(); hui798Model.manageLogin(change) }
             else { hui798Model.dismissLogin(); lifeModel.manageLogin(change) }
         if (!opened) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
@@ -439,25 +429,25 @@ private fun MainContent(
         if (provider == LifeProvider.Hui798) hui798Model.checkAccount(force = true) else lifeModel.checkAccount(force = true)
     }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
-        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!isActive) return
         if (!allowOnlineEntry(context, state.preview)) return
         lifeProvider = LifeProvider.Panggui
         lifeModel.openSession(feature, sessionId)
     }
     fun openHui798Session(id: String) {
-        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive } || hui798State.busy) return
+        if (!isActive || hui798State.busy) return
         if (!allowOnlineEntry(context, state.preview)) return
         lifeProvider = LifeProvider.Hui798
         hui798Model.openSession(id)
         if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
     }
     fun openManagedProgress(provider: LifeProvider) {
-        if (!isActive || motion.any { it.predictiveActive }) return
+        if (!isActive) return
         val hui = hui798State.sessions.firstOrNull { it.active }
         val water = lifeState.waterSessions.firstOrNull { it.active }
         val laundry = lifeState.laundrySessions.firstOrNull { it.active }
         if (provider == LifeProvider.Hui798 && hui == null || provider == LifeProvider.Panggui && water == null && laundry == null) return
-        layers = emptyList()
+        backStack.subList(1, backStack.size).clear()
         if (provider == LifeProvider.Hui798) openHui798Session(checkNotNull(hui).sessionId)
         else if (laundry != null) openLifeSession(LifeFeature.Laundry, laundry.sessionId)
         else openLifeSession(LifeFeature.Water, checkNotNull(water).sessionId)
@@ -475,7 +465,7 @@ private fun MainContent(
         if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
-        if (!isActive || layers.size >= MAX_LAYERS || motion.any { it.predictiveActive }) return
+        if (!isActive) return
         if (!allowOnlineEntry(context, state.preview)) return
         feeOpening = project
         feeProject = project
@@ -538,242 +528,209 @@ private fun MainContent(
         tabs.animateToPage(0)
     }
 
-    repeat(MAX_LAYERS) { k ->
-        val shown = layers.size > k
-        LaunchedEffect(shown, motion[k].predictiveActive) {
-            if (!motion[k].predictiveActive) {
-                val target = if (shown) 1f else 0f
-                val duration = if (shown) LAYER_ENTER_DURATION else LAYER_EXIT_DURATION
-                coroutineScope {
-                    launch { motion[k].backdropIntensity.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
-                    launch { motion[k].coveredDepth.animateTo(target, tween(duration, easing = FastOutSlowInEasing)) }
-                }
-            }
-        }
-        IslandLayerBackHandlers(
-            enabled = isActive && settings.predictiveBack.value && layers.size == k + 1,
-            motion = motion[k], maxTranslationPercent = distance,
-            onDismissed = {
-                lastScreens[k] = null; layers = layers.take(k)
-            },
-        )
-    }
-    if (!settings.predictiveBack.value) BackHandler(enabled = isActive && layers.isNotEmpty()) { close() }
-
     val useRail = shouldShowMainNavigationRail(settings)
-    val blurRootForBack = !useRail && (settings.predictiveBack.value || settings.floatingBottomBar.value)
+    val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val swipeDirection = when {
+        !settings.swipeBack.value -> NavSwipeDirection.None
+        LocalLayoutDirection.current == LayoutDirection.Rtl -> NavSwipeDirection.RightToLeft
+        else -> NavSwipeDirection.LeftToRight
+    }
+    val navigationTransition = miuixNavigationTransition(settings.navTransitionStyle.value)
+    val navigationEffects = rememberMiuixNavigationEffects(wideScreen = useRail, transitionStyle = settings.navTransitionStyle.value)
     CompositionLocalProvider(LocalReadOffline provides (network.online == false)) {
-    BarBlurHost(
-        bottomBarBlurEnabled = settings.blurBottomBar.value,
-        topBarBlurEnabled = false,
-        captureForEffects = blurRootForBack && motion.isBoundaryEngaged(0, layers.size),
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().graphicsLayer {
-                val depth = motion[0].coveredDepth.value.coerceIn(0f, 1f)
-                if (useRail) {
-                    // The rail and pager form one main page, as in KernelSU's MainScreen entry.
-                    translationX = -size.width * depth * 0.25f
-                    alpha = 1f - 0.1f * depth
-                    scaleX = 1f
-                    scaleY = 1f
-                } else {
-                    translationX = -size.width * depth * BACKGROUND_PARALLAX
-                    scaleX = 1f - depth * BACKGROUND_SCALE_REDUCTION
-                    scaleY = scaleX
-                    alpha = 1f
-                }
-            }) {
-                MainNavigationScaffold(
-                    settings, tabs.selectedPage, tabs::animateToPage,
-                    // Classic navigation stays with the page when predictive back is disabled.
-                    bottomBarVisible = (!settings.predictiveBack.value && !settings.floatingBottomBar.value) ||
-                        (layers.isEmpty() && !motion[0].predictiveActive &&
-                            motion[0].coveredDepth.value < EFFECT_VISIBILITY_THRESHOLD),
-                ) { padding ->
-                    // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
-                    BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                        val bottom = padding.calculateBottomPadding() + 28.dp
-                        HorizontalPager(
-                            state = pagerState, modifier = Modifier.fillMaxSize(),
-                            beyondViewportPageCount = 1, key = { it },
-                        ) { page ->
-                            when (page) {
-                                0 -> PaymentPage(
-                                    state, settings, bottom,
-                                    updateNotice = updateNotice,
-                                    onRefresh = { if (isActive) viewModel.refresh(manual = true) },
-                                    onRecharge = ::recharge,
-                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
-                                    isActive = paymentPageSelected && !paymentPageCovered,
-                                    onScan = ::openLifeScanner,
-                                    scanEnabled = !lifeState.restoring && !hui798State.restoring && (lifeState.connectedPhone.isNotBlank() || hui798State.connected) &&
-                                        !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
-                                    lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
-                                    onLifeLogin = ::connectLifeAccount,
-                                    hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
-                                    onHui798Login = ::connectHui798Account,
-                                    additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
-                                        when (session.phase) {
-                                            WaterPhase.Ended -> "已完成"
-                                            WaterPhase.Starting -> "正在启动"
-                                            WaterPhase.Stopping -> "正在结束"
-                                            else -> "用水中"
-                                        }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
-                                        progress = if (session.active) null else 1f,
-                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) },
-                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
-                                    onOpenLifeSession = ::openLifeSession,
-                                    onDismissLifeSession = lifeModel::dismissSession,
-                                    onUnlost = {
-                                        val account = state.account?.account
-                                        if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
-                                            feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
-                                            if (!allowOnlineEntry(context, state.preview)) return@PaymentPage
-                                            rechargeModel.dismiss()
-                                            passwordModel.dismiss()
-                                            cardModel.openUnlost(state.username, account, state.preview)
+        // Match the demo: the rail stays beside a clipped navigation pane.
+        Row(Modifier.fillMaxSize()) {
+            if (useRail) MainNavigationRail(settings, tabs.selectedPage, width >= 1200.dp, tabs::animateToPage)
+            Box(Modifier.weight(1f).fillMaxHeight().then(if (useRail) Modifier.clipToBounds() else Modifier)) {
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = ::close,
+                    transition = navigationTransition,
+                    effects = navigationEffects,
+                ) {
+                    entry<Screen>(swipeDismiss = swipeDirection) { screen ->
+                        if (screen == Screen.Main) {
+                            BarBlurHost(settings.blurBottomBar.value, false) {
+                                MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage, railOutside = true) { padding ->
+                                    // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
+                                    BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+                                        val bottom = padding.calculateBottomPadding() + 28.dp
+                                        HorizontalPager(
+                                            state = pagerState, modifier = Modifier.fillMaxSize(),
+                                            verticalAlignment = Alignment.Top,
+                                        ) { page ->
+                                            when (page) {
+                                                0 -> PaymentPage(
+                                                    state, settings, bottom,
+                                                    updateNotice = updateNotice,
+                                                    onRefresh = { if (isActive) viewModel.refresh(manual = true) },
+                                                    onRecharge = ::recharge,
+                                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                                    isActive = paymentPageSelected && !paymentPageCovered,
+                                                    onScan = ::openLifeScanner,
+                                                    scanEnabled = !lifeState.restoring && !hui798State.restoring && (lifeState.connectedPhone.isNotBlank() || hui798State.connected) &&
+                                                        !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
+                                                    lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
+                                                    onLifeLogin = ::connectLifeAccount,
+                                                    hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
+                                                    onHui798Login = ::connectHui798Account,
+                                                    additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
+                                                        when (session.phase) {
+                                                            WaterPhase.Ended -> "已完成"
+                                                            WaterPhase.Starting -> "正在启动"
+                                                            WaterPhase.Stopping -> "正在结束"
+                                                            else -> "用水中"
+                                                        }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
+                                                        progress = if (session.active) null else 1f,
+                                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) },
+                                                    waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                                                    onOpenLifeSession = ::openLifeSession,
+                                                    onDismissLifeSession = lifeModel::dismissSession,
+                                                    onUnlost = {
+                                                        val account = state.account?.account
+                                                        if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
+                                                            feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
+                                                            if (!allowOnlineEntry(context, state.preview)) return@PaymentPage
+                                                            rechargeModel.dismiss()
+                                                            passwordModel.dismiss()
+                                                            cardModel.openUnlost(state.username, account, state.preview)
+                                                        }
+                                                    },
+                                                    unlostLoading = cardState.action == CampusCardAction.Unlost && cardState.loading,
+                                                    unlostEnabled = feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading,
+                                                )
+                                                1 -> HallPage(
+                                                    updateNotice = updateNotice,
+                                                    settings = settings,
+                                                    bottomPadding = bottom,
+                                                    onOpenFee = { openFee(it) },
+                                                    dorm = dormState,
+                                                    isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
+                                                    onRefreshDorm = dormModel::refresh,
+                                                    onOpenDormFee = { project, target -> openFee(project, target) },
+                                                    onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
+                                                    onAddRoom = { openFee(it, saveOnly = true) },
+                                                    feeOpening = feeOpening, feeOpeningTarget = feeTarget,
+                                                    onOpenCardService = ::cardAction,
+                                                    othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
+                                                )
+                                                2 -> BillPage(
+                                                    updateNotice = updateNotice,
+                                                    state = billState,
+                                                    settings = settings,
+                                                    onBack = { tabs.animateToPage(0) },
+                                                    onRefresh = billViewModel::refresh,
+                                                    onLoadMore = billViewModel::loadMore,
+                                                    onDateSelected = billViewModel::selectDate,
+                                                    onFiltersApplied = billViewModel::applyFilters,
+                                                    onSearch = billViewModel::search,
+                                                    onOpenStats = ::openBillStats,
+                                                    onShowDetails = billViewModel::showDetails,
+                                                    onStatsTypeChange = billViewModel::selectStatsType,
+                                                    onRefreshStats = billViewModel::refreshStats,
+                                                    onOpenDetail = ::openBillDetail,
+                                                    isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
+                                                    showBack = false,
+                                                    bottomPadding = bottom,
+                                                )
+                                                3 -> MyPage(
+                                                    updateNotice = updateNotice,
+                                                    state = myState, payment = state, settings = settings, bottomPadding = bottom,
+                                                    customAvatar = customAvatar,
+                                                    avatarImage = avatarImage, avatarPending = avatarPending,
+                                                    isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
+                                                    onRefresh = { myModel.refresh(); viewModel.refreshAccount(manual = true) },
+                                                    onProfile = { open(Screen.Profile) }, onAccount = { open(Screen.Account) },
+                                                    onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
+                                                    onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                                    onCardAction = ::cardAction,
+                                                    manageLoading = cardState.loading && cardState.action == CampusCardAction.ManageState,
+                                                    passwordLoading = passwordState.loading,
+                                                    onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
+                                                )
+                                            }
                                         }
-                                    },
-                                    unlostLoading = cardState.action == CampusCardAction.Unlost && cardState.loading,
-                                    unlostEnabled = feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading,
-                                )
-                                1 -> HallPage(
-                                    updateNotice = updateNotice,
+                                    }
+                                    PaymentSuccessDialog(paymentSuccess, viewModel::dismissPaymentSuccess)
+                                    CardServiceDialog(
+                                        cardState, cardModel::dismiss, cardModel::selectCard, cardModel::changeCard,
+                                        cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
+                                        cardModel::selectRecipient, cardModel::continueRecharge, cardModel::retryRecipientConfig, cardModel::inputEdited,
+                                    )
+                                    CardPasswordDialog(passwordState, passwordModel::dismiss, passwordModel::selectCard, passwordModel::submit, passwordModel::inputEdited)
+                                    // Keep recharge under the root Scaffold so its overlay has a popup host.
+                                    RechargeDialog(
+                                        rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
+                                        onCheck = rechargeModel::checkResult, onInputEdited = rechargeModel::inputEdited,
+                                        onFinish = {
+                                            rechargeModel.finish()
+                                        },
+                                    )
+                                    HallFeeDialog(
+                                        state = feeState, visible = isActive && dormPaymentVisible,
+                                        project = feeProject, fixedTarget = feeTarget, saveOnly = feeSaveOnly,
+                                        onDismiss = { dormPaymentVisible = false; feeOpening = null; feeModel.dismiss() },
+                                        onSelect = feeModel::select,
+                                        onRetry = { feeProject?.let { feeModel.open(it, state.username, state.preview, feeTarget) } },
+                                        onRoomAction = feeModel::requestRoomAction, onConfirmRoomAction = feeModel::confirmRoomAction,
+                                        onDismissRoomDialog = feeModel::dismissRoomDialog, onConsumeRoomNotice = feeModel::consumeRoomNotice,
+                                        onCreate = feeModel::createWithMethod, onMethod = feeModel::chooseMethod,
+                                        onProject = {
+                                            if (feeTarget == null) feeModel.selectFamilyProject(it)
+                                        }, onMeterKind = feeModel::selectDormMeterKind,
+                                        bindingProjects = dormState.bindingProjects,
+                                        onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment, onInputEdited = feeModel::inputEdited,
+                                        onContinuePayment = feeModel::continuePayment,
+                                        onCheck = feeModel::checkResult,
+                                        onFinish = {
+                                            dormPaymentVisible = false; feeOpening = null; feeModel.dismiss()
+                                        },
+                                    )
+                                }
+                            }
+                        } else {
+                            when (screen) {
+                                Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh,
+                                    onAvatar = if (isActive && layers.lastOrNull() == Screen.Profile) avatarModel::open else null,
+                                    customAvatar = customAvatar, avatarImage = avatarImage, avatarPending = avatarPending)
+                                Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
+                                    rechargeLoading = rechargeState.loading && !rechargeState.visible,
+                                    onRefresh = { viewModel.refreshAccount(manual = true) })
+                                Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
+                                    onOpenReferences = { open(Screen.References) }, onBack = ::close)
+                                Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
+                                Screen.LifeDevice -> if (lifeProvider == LifeProvider.Hui798) Hui798DevicePage(hui798State, settings, hui798Model,
+                                    active = isActive && layers.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
+                                else LifeDevicePage(lifeState, settings, lifeModel,
+                                    // Removed entries retain their content closure for the exit motion.
+                                    // Read the live stack so camera ownership ends when the pop commits.
+                                    active = isActive && backStack.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice,
+                                    previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
+                                else -> SecondaryPage(
+                                    screen = screen,
                                     settings = settings,
-                                    bottomPadding = bottom,
-                                    onOpenFee = { openFee(it) },
-                                    dorm = dormState,
-                                    isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
-                                    onRefreshDorm = dormModel::refresh,
-                                    onOpenDormFee = { project, target -> openFee(project, target) },
-                                    onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
-                                    onAddRoom = { openFee(it, saveOnly = true) },
-                                    feeOpening = feeOpening, feeOpeningTarget = feeTarget,
-                                    onOpenCardService = ::cardAction,
-                                    othersRechargeLoading = cardState.loading && cardState.action == CampusCardAction.OthersRecharge,
-                                )
-                                2 -> BillPage(
-                                    updateNotice = updateNotice,
-                                    state = billState,
-                                    settings = settings,
-                                    onBack = { tabs.animateToPage(0) },
-                                    onRefresh = billViewModel::refresh,
-                                    onLoadMore = billViewModel::loadMore,
-                                    onDateSelected = billViewModel::selectDate,
-                                    onFiltersApplied = billViewModel::applyFilters,
-                                    onSearch = billViewModel::search,
-                                    onOpenStats = ::openBillStats,
-                                    onShowDetails = billViewModel::showDetails,
-                                    onStatsTypeChange = billViewModel::selectStatsType,
-                                    onRefreshStats = billViewModel::refreshStats,
-                                    onOpenDetail = ::openBillDetail,
-                                    isActive = isActive && pagerState.currentPage == 2 && layers.isEmpty(),
-                                    showBack = false,
-                                    bottomPadding = bottom,
-                                )
-                                3 -> MyPage(
-                                    updateNotice = updateNotice,
-                                    state = myState, payment = state, settings = settings, bottomPadding = bottom,
-                                    customAvatar = customAvatar,
-                                    avatarImage = avatarImage, avatarPending = avatarPending,
-                                    isActive = isActive && pagerState.currentPage == 3 && layers.isEmpty(),
-                                    onRefresh = { myModel.refresh(); viewModel.refreshAccount(manual = true) },
-                                    onProfile = { open(Screen.Profile) }, onAccount = { open(Screen.Account) },
-                                    onBills = { billViewModel.showCurrentMonth(); tabs.animateToPage(2) },
-                                    onRecharge = ::recharge, rechargeLoading = rechargeState.loading && !rechargeState.visible,
-                                    onCardAction = ::cardAction,
-                                    manageLoading = cardState.loading && cardState.action == CampusCardAction.ManageState,
-                                    passwordLoading = passwordState.loading,
-                                    onSettings = { open(Screen.Settings) }, onAbout = { open(Screen.About) },
+                                    onBack = { close() },
+                                    onTheme = { open(Screen.Theme) },
+                                    onLogout = { if (isActive) onLogout() },
+                                    updateState = updateState,
+                                    onCheckUpdates = updateModel::checkManually,
+                                    lifeAccounts = managedAccounts,
+                                    active = isActive && layers.lastOrNull() == screen,
+                                    onCheckLifeAccount = ::checkLifeAccount,
+                                    onLoginLifeAccount = { manageLifeLogin(it, false) },
+                                    onRemoveLifeAccount = { provider ->
+                                        if (isActive) {
+                                            val removed = if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
+                                            if (!removed) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }, onLifeProgress = ::openManagedProgress,
                                 )
                             }
                         }
                     }
-                    PaymentSuccessDialog(paymentSuccess, viewModel::dismissPaymentSuccess)
-                    CardServiceDialog(
-                        cardState, cardModel::dismiss, cardModel::selectCard, cardModel::changeCard,
-                        cardModel::refreshCaptcha, cardModel::clearRecipient, cardModel::queryRecipient,
-                        cardModel::selectRecipient, cardModel::continueRecharge, cardModel::retryRecipientConfig, cardModel::inputEdited,
-                    )
-                    CardPasswordDialog(passwordState, passwordModel::dismiss, passwordModel::selectCard, passwordModel::submit, passwordModel::inputEdited)
-                    // Keep recharge under the root Scaffold so its overlay has a popup host.
-                    RechargeDialog(
-                        rechargeState, onDismiss = rechargeModel::dismiss, onSubmit = rechargeModel::submit,
-                        onCheck = rechargeModel::checkResult, onInputEdited = rechargeModel::inputEdited,
-                        onFinish = {
-                            rechargeModel.finish()
-                        },
-                    )
-                    HallFeeDialog(
-                        state = feeState, visible = isActive && dormPaymentVisible,
-                        project = feeProject, fixedTarget = feeTarget, saveOnly = feeSaveOnly,
-                        onDismiss = { dormPaymentVisible = false; feeOpening = null; feeModel.dismiss() },
-                        onSelect = feeModel::select,
-                        onRetry = { feeProject?.let { feeModel.open(it, state.username, state.preview, feeTarget) } },
-                        onRoomAction = feeModel::requestRoomAction, onConfirmRoomAction = feeModel::confirmRoomAction,
-                        onDismissRoomDialog = feeModel::dismissRoomDialog, onConsumeRoomNotice = feeModel::consumeRoomNotice,
-                        onCreate = feeModel::createWithMethod, onMethod = feeModel::chooseMethod,
-                        onProject = {
-                            if (feeTarget == null) feeModel.selectFamilyProject(it)
-                        }, onMeterKind = feeModel::selectDormMeterKind,
-                        bindingProjects = dormState.bindingProjects,
-                        onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment, onInputEdited = feeModel::inputEdited,
-                        onContinuePayment = feeModel::continuePayment,
-                        onCheck = feeModel::checkResult,
-                        onFinish = {
-                            dormPaymentVisible = false; feeOpening = null; feeModel.dismiss()
-                        },
-                    )
                 }
             }
         }
-        PredictiveBackBackdrop(
-            intensity = motion[0].backdropIntensity.value,
-            visible = motion[0].backdropIntensity.value > EFFECT_VISIBILITY_THRESHOLD,
-            modifier = Modifier.fillMaxSize(),
-            // The pager's snapshot excludes navigation. Dim the live page when needed.
-            blurEnabled = blurRootForBack,
-        )
-        BarBlurHost(false, false, captureForEffects = motion.isBoundaryEngaged(1, layers.size)) {
-            IslandLevelHost(0, layers.size, renderScreens, motion, distance) { screen ->
-                when (screen) {
-                    Screen.Profile -> PersonalProfilePage(myState, settings, ::close, myModel::refresh,
-                        onAvatar = if (isActive && layers.lastOrNull() == Screen.Profile) avatarModel::open else null,
-                        customAvatar = customAvatar, avatarImage = avatarImage, avatarPending = avatarPending)
-                    Screen.Account -> AccountDetailPage(state, settings, ::close, ::recharge,
-                        rechargeLoading = rechargeState.loading && !rechargeState.visible,
-                        onRefresh = { viewModel.refreshAccount(manual = true) })
-                    Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
-                        onOpenReferences = { open(Screen.References) }, onBack = ::close)
-                    Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
-                    Screen.LifeDevice -> if (lifeProvider == LifeProvider.Hui798) Hui798DevicePage(hui798State, settings, hui798Model,
-                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
-                    else LifeDevicePage(lifeState, settings, lifeModel,
-                        active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice)
-                    else -> SecondaryPage(
-                        screen = screen,
-                        settings = settings,
-                        onBack = { close() },
-                        onTheme = { open(Screen.Theme) },
-                        onLogout = { if (isActive) onLogout() },
-                        updateState = updateState,
-                        onCheckUpdates = updateModel::checkManually,
-                        lifeAccounts = managedAccounts,
-                        active = isActive && layers.lastOrNull() == screen,
-                        onCheckLifeAccount = ::checkLifeAccount,
-                        onLoginLifeAccount = { manageLifeLogin(it, false) },
-                        onRemoveLifeAccount = { provider ->
-                            if (isActive) {
-                                val removed = if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
-                                if (!removed) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
-                            }
-                        }, onLifeProgress = ::openManagedProgress,
-                    )
-                }
-            }
-        }
-    }
     }
     LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
     Hui798LoginSheet(hui798State, hui798Model, active = isActive && !state.needsLogin)
@@ -831,8 +788,8 @@ private fun SecondaryPage(
                         floatingBottomBarStyle = settings.floatingBottomBarStyle, onFloatingBottomBarStyleChange = settings::setFloatingStyle,
                         blurBottomBar = settings.blurBottomBar, onBlurBottomBarChange = settings::setBlurBottom,
                         blurTopBar = settings.blurTopBar, onBlurTopBarChange = settings::setBlurTop,
-                        predictiveBack = settings.predictiveBack, onPredictiveBackChange = settings::setPredictive,
-                        predictiveBackDistance = settings.predictiveBackDistance, onPredictiveBackDistanceChange = settings::setDistance,
+                        swipeBack = settings.swipeBack, onSwipeBackChange = settings::setSwipeBack,
+                        navTransitionStyle = settings.navTransitionStyle, onNavTransitionStyleChange = settings::setNavTransitionStyle,
                     )
                     Screen.References -> ReferencesPage(modifier, contentPadding)
                     else -> Unit

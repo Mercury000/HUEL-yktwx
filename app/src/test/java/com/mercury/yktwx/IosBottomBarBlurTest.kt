@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -77,11 +76,10 @@ class IosBottomBarBlurTest {
         }
     }
 
-    @Test fun effectOnlyBackgroundCaptureDoesNotEnableIosBarBlur() {
-        val captureEffects = mutableStateOf(false)
+    @Test fun enablingBarBlurChangesTheOpaqueSurface() {
         compose.setContent {
             AppTheme(ColorSchemeMode.Light) {
-                BarBlurHost(settings.blurBottomBar.value, false, captureForEffects = captureEffects.value) {
+                BarBlurHost(settings.blurBottomBar.value, false) {
                     MainNavigationScaffold(settings, selected = 0, onSelected = {}) {
                         BarBackdropContent(Modifier.fillMaxSize()) {
                             Row(Modifier.fillMaxSize()) {
@@ -94,14 +92,10 @@ class IosBottomBarBlurTest {
                 }
             }
         }
-        val opaque = capture("effects-off")
-        compose.runOnIdle { captureEffects.value = true }
-        val effectsOnly = capture("effects-on-blur-off")
-        assertTrue("Background capture for return effects must keep a disabled bar opaque",
-            changedFraction(opaque, effectsOnly) < .005f)
+        val opaque = capture("bar-blur-off")
         compose.runOnIdle { settings.setBlurBottom(true) }
-        assertTrue("The same background must remain available when bar blur is enabled",
-            changedFraction(opaque, capture("effects-on-blur-on")) > .03f)
+        assertTrue("Enabling bar blur must sample the page background",
+            changedFraction(opaque, capture("bar-blur-on")) > .03f)
     }
 
     private fun capture(name: String): Bitmap {

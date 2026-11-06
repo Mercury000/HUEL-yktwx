@@ -43,9 +43,9 @@ class MainActivityConfigurationTest {
             .performScrollToNode(hasText("应用设置"))
         compose.onNodeWithText("应用设置").performScrollTo().performClick()
         compose.onNodeWithText("主题").performClick()
-        val distanceTitle = activity.getString(R.string.predictive_back_distance)
-        compose.onNodeWithText(distanceTitle).performScrollTo()
-        val list = compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasText(distanceTitle)))
+        val swipeTitle = activity.getString(R.string.swipe_back)
+        compose.onNodeWithText(swipeTitle).performScrollTo()
+        val list = compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasText(swipeTitle)))
         list.performTouchInput { swipeUp() }
         val listId = list.fetchSemanticsNode().id
         val scrollBefore = list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
@@ -58,7 +58,7 @@ class MainActivityConfigurationTest {
             compose.waitForIdle()
             assertSame("Display changes must retain the Activity", activity, controller.get())
             assertEquals("The theme page must remain composed", listId, list.fetchSemanticsNode().id)
-            compose.onNodeWithText(distanceTitle).assertExists()
+            compose.onNodeWithText(swipeTitle).assertExists()
         }
         change { fontScale = 1.15f }
         change {

@@ -28,13 +28,15 @@ class NavigationRailBackUiTest {
 
     @Test fun collapsedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
+    @Test fun aospCardReturnKeepsTheRailFixedThroughCancelAndCommit() = verifyPredictiveReturn(style = 1)
+
     @Test
     @Config(qualifiers = "zh-rCN-w1280dp-h800dp-xhdpi")
     fun expandedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
-    private fun verifyPredictiveReturn() {
+    private fun verifyPredictiveReturn(style: Int = 0) {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(compose.activity)
+        val settings = ThemeSettings(compose.activity).apply { setNavTransitionStyle(style) }
         val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
         val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
         compose.setContent {
@@ -58,6 +60,7 @@ class NavigationRailBackUiTest {
             assertEquals("Wide-screen navigation must not shrink or vertically shift the rail",
                 initialTop.y, top.y, 1f)
             assertEquals("The rail must retain its full height", initialBottom.y, bottom.y, 1f)
+            assertEquals("The demo rail stays outside the transition pane", initialTop.x, top.x, 1f)
         }
         fun frames(count: Int) {
             repeat(count) {
@@ -112,12 +115,12 @@ class NavigationRailBackUiTest {
         frames(8)
         settle()
         val coveredLeft = railCorners().first.x
-        assertTrue("Rail and page must move left together behind the secondary page", coveredLeft < initialTop.x)
+        assertEquals("Opening a page leaves the demo rail fixed", initialTop.x, coveredLeft, 1f)
         startBack()
         progress(.35f)
         val earlierLeft = railCorners().first.x
         progress(.8f)
-        assertTrue("Returning must continuously reveal the rail", railCorners().first.x > earlierLeft)
+        assertEquals("Predictive back leaves the demo rail fixed", earlierLeft, railCorners().first.x, 1f)
         progress(.55f)
         // Slow movement and the almost-complete boundary must keep the live rail visible.
         for (value in (75..95).map { it / 100f } + listOf(.975f, .99f, .995f, .999f)) {

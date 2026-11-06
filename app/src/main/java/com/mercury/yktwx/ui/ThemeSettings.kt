@@ -13,8 +13,8 @@ class ThemeSettings(context: Context) {
     val floatingBottomBarStyle = mutableStateOf(prefs.getInt("floating_bottom_bar_style", 0).coerceIn(0, 1))
     val blurBottomBar = mutableStateOf(prefs.getBoolean("blur_bottom_bar", false))
     val blurTopBar = mutableStateOf(prefs.getBoolean("blur_top_bar", false))
-    val predictiveBack = mutableStateOf(prefs.getBoolean("predictive_back", true))
-    val predictiveBackDistance = mutableStateOf(prefs.getInt("predictive_back_distance", 50).coerceIn(0, 100))
+    val swipeBack = mutableStateOf(prefs.getBoolean("swipe_back", false))
+    val navTransitionStyle = mutableStateOf(prefs.getInt("nav_transition_style", 0).coerceIn(0, 1))
     val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
@@ -33,8 +33,8 @@ class ThemeSettings(context: Context) {
     fun setFloatingStyle(v: Int) { floatingBottomBarStyle.value = v; prefs.edit().putInt("floating_bottom_bar_style", v).apply() }
     fun setBlurBottom(v: Boolean) { blurBottomBar.value = v; prefs.edit().putBoolean("blur_bottom_bar", v).apply() }
     fun setBlurTop(v: Boolean) { blurTopBar.value = v; prefs.edit().putBoolean("blur_top_bar", v).apply() }
-    fun setPredictive(v: Boolean) { predictiveBack.value = v; prefs.edit().putBoolean("predictive_back", v).apply() }
-    fun setDistance(v: Int) { predictiveBackDistance.value = v.coerceIn(0, 100); prefs.edit().putInt("predictive_back_distance", predictiveBackDistance.value).apply() }
+    fun setSwipeBack(v: Boolean) { swipeBack.value = v; prefs.edit().putBoolean("swipe_back", v).apply() }
+    fun setNavTransitionStyle(v: Int) { navTransitionStyle.value = v.coerceIn(0, 1); prefs.edit().putInt("nav_transition_style", navTransitionStyle.value).apply() }
     fun setPaymentMotionDetection(v: Boolean) { paymentMotionDetection.value = v; prefs.edit().putBoolean("payment_motion_detection", v).apply() }
     fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
     fun setAutomaticUpdates(v: Boolean) { automaticUpdates.value = v; prefs.edit().putBoolean("automatic_updates", v).apply() }

@@ -20,6 +20,11 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.data.UpdateRelease
 import com.mercury.yktwx.ui.*
+import com.mercury.yktwx.ui.nav.rememberMiuixNavigationEffects
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.navBackStackOf
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.pages.*
@@ -38,6 +43,7 @@ import java.io.*
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeDeviceStatusUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private enum class NavigationPage : NavKey { Main, Detail }
     private data class Sessions(val water: WaterSession, val laundry: LaundrySession) {
         val clock: () -> Long = { laundry.startedAtMillis!! + 46_000 }
     }
@@ -310,63 +316,58 @@ class LifeDeviceStatusUiTest {
 
     private fun navigationReturn(floating: Boolean) {
         val sessions = sessions()
-        var covered by mutableStateOf(false)
+        val backStack = navBackStackOf(NavigationPage.Main)
         val settings = ThemeSettings(compose.activity.application).apply {
             setTheme(1); setFloating(floating); setFloatingStyle(1)
         }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
-            MainNavigationScaffold(settings, 0, {}, bottomBarVisible = !covered) { padding ->
-                PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
-                    laundrySessions = listOf(sessions.laundry), isActive = !covered, lifeNowMillis = sessions.clock)
+            NavDisplay(backStack, effects = rememberMiuixNavigationEffects()) {
+                entry<NavigationPage>(swipeDismiss = NavSwipeDirection.None) { page ->
+                    if (page == NavigationPage.Main) MainNavigationScaffold(settings, 0, {}) { padding ->
+                        PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
+                            laundrySessions = listOf(sessions.laundry), isActive = backStack.size == 1, lifeNowMillis = sessions.clock)
+                    } else Box(Modifier.fillMaxSize().background(Color.White))
+                }
             }
         } } }
         compose.mainClock.advanceTimeBy(1000)
-        val original = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}", useUnmergedTree = true).fetchSemanticsNode()
-        val originalTop = original.boundsInRoot.top
-        val originalWidth = original.boundsInRoot.width
-        val navigationTop = compose.onNodeWithTag("main-bottom-navigation", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        val island = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}", useUnmergedTree = true)
+        val navigation = compose.onNodeWithTag("main-bottom-navigation", useUnmergedTree = true)
+        val original = island.fetchSemanticsNode()
+        val originalWidth = original.layoutInfo.coordinates.size.width
+        fun origin(node: SemanticsNodeInteraction) = node.fetchSemanticsNode().layoutInfo.coordinates
+            .localToRoot(androidx.compose.ui.geometry.Offset.Zero)
+        val islandOrigin = origin(island)
+        val navigationOrigin = origin(navigation)
         compose.mainClock.autoAdvance = false
-        fun settle() {
-            repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-            compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
-        }
-        fun movingFrames(count: Int): Float {
-            var displacement = 0f
-            repeat(count) {
-                compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
-                val node = compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}", useUnmergedTree = true).fetchSemanticsNode()
-                val navigation = compose.onNodeWithTag("main-bottom-navigation", useUnmergedTree = true).fetchSemanticsNode()
-                assertEquals("Returning must retain the same island", original.id, node.id)
-                // A footer fully below the root has empty clipped semantics bounds.
-                if (navigation.boundsInRoot.width == 0f || navigation.boundsInRoot.height == 0f) return@repeat
-                displacement = navigation.boundsInRoot.top - navigationTop
-                assertEquals("Island and navigation must have exactly the same displacement",
-                    displacement, node.boundsInRoot.top - originalTop, 1f)
-                assertEquals("Returning must not replay the island entry animation", originalWidth, node.boundsInRoot.width, 1f)
+        try {
+            fun frames(count: Int): Float {
+                repeat(count) {
+                    compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+                    assertEquals("The covered island stays composed", original.id, island.fetchSemanticsNode().id)
+                    assertEquals("Miuix page motion keeps the island at full size", originalWidth,
+                        island.fetchSemanticsNode().layoutInfo.coordinates.size.width)
+                    assertEquals("Navigation and island share the page's horizontal motion",
+                        origin(navigation).x - navigationOrigin.x, origin(island).x - islandOrigin.x, 1f)
+                    assertEquals("Page return has no custom vertical footer motion", islandOrigin.y, origin(island).y, 1f)
+                }
+                return origin(navigation).x - navigationOrigin.x
             }
-            return displacement
+            compose.runOnIdle { backStack.add(NavigationPage.Detail) }
+            assertTrue("The covered page moves left with Miuix parallax", frames(8) < -1f)
+            compose.onNodeWithTag("life-status-laundry").assertIsNotEnabled()
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            val coveredLeft = origin(navigation).x
+            compose.runOnIdle { backStack.removeLastOrNull() }
+            frames(8)
+            assertTrue("Returning reveals navigation and island together", origin(navigation).x > coveredLeft)
+            frames(32)
+            assertEquals(navigationOrigin.x, origin(navigation).x, 1f)
+            assertEquals(islandOrigin.x, origin(island).x, 1f)
+            compose.onNodeWithTag("life-status-laundry").assertIsEnabled()
+        } finally {
+            compose.mainClock.autoAdvance = true
         }
-        compose.runOnIdle { covered = true }
-        assertTrue("The footer must slide down together", movingFrames(6) > 0f)
-        compose.onNodeWithTag("life-status-laundry").assertIsNotEnabled()
-        // Reverse mid-animation, then perform a full hide and return.
-        compose.runOnIdle { covered = false }
-        movingFrames(6)
-        settle()
-        assertEquals(originalTop,
-            compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot.top, 1f)
-        compose.runOnIdle { covered = true }
-        settle()
-        compose.onNodeWithTag("main-bottom-navigation").assertDoesNotExist()
-        compose.onNodeWithTag("life-status-laundry").assertDoesNotExist()
-        compose.runOnIdle { covered = false }
-        assertTrue("Return must start with the footer below its resting position", movingFrames(6) > 0f)
-        movingFrames(24)
-        compose.onNodeWithTag("life-status-laundry").assertIsEnabled()
-        assertEquals(originalTop,
-            compose.onNodeWithTag("life-session-${sessions.laundry.sessionId}").fetchSemanticsNode().boundsInRoot.top, 1f)
-        capture("return-${if (floating) "floating" else "classic"}", settle = false)
     }
 
     @Test @Config(qualifiers = "zh-rCN-w360dp-h891dp-xxhdpi")
