@@ -18,8 +18,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,8 +28,7 @@ internal fun CodeArtwork(code: String, format: BarcodeFormat, width: Int, height
     var bitmap by result
     LaunchedEffect(result) {
         bitmap = withContext(Dispatchers.Default) {
-            val hints = mapOf(EncodeHintType.MARGIN to if (format == BarcodeFormat.QR_CODE) 4 else 12)
-            val matrix = MultiFormatWriter().encode(code, format, width, height, hints)
+            val matrix = encodePaymentCode(code, format, width, height)
             val pixels = IntArray(width * height) { index ->
                 if (matrix[index % width, index / width]) android.graphics.Color.BLACK else android.graphics.Color.TRANSPARENT
             }
