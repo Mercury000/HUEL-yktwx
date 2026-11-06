@@ -23,10 +23,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun BillUiState.contentSelection() = if (!statsVisible) 0 else if (stats.type == 2) 1 else 2
 
 /** Mode and type transitions share loading coordination, while each owns its moving region. */
-internal class BillContentMotion(initialSelection: Int) {
+internal class BillContentMotion(initialSelection: Int, private val activeState: State<Boolean>) {
     private val transitions = mutableStateMapOf<Any, Boolean>()
     private var requested by mutableStateOf(false)
-    val running: Boolean get() = requested || transitions.values.any { it }
+    val active: Boolean get() = activeState.value
+    val running: Boolean get() = active && (requested || transitions.values.any { it })
     var selection = initialSelection
 
     fun select(next: Int, onSelected: () -> Unit) {
@@ -47,8 +48,9 @@ internal class BillContentMotion(initialSelection: Int) {
 @Composable
 internal fun rememberBillContentMotion(state: BillUiState, active: Boolean): BillContentMotion {
     // Queries transition only the result paint, preserving the search field and condition slot.
-    val identity = listOf(state.dateFilter, state.stats.period, state.needsLogin, active)
-    return remember(identity) { BillContentMotion(state.contentSelection()) }
+    val identity = listOf(state.dateFilter, state.stats.period, state.needsLogin)
+    val activeState = rememberUpdatedState(active)
+    return remember(identity) { BillContentMotion(state.contentSelection(), activeState) }
 }
 
 @Composable
@@ -59,13 +61,16 @@ internal fun <T> BillContentTransition(state: T, selection: Int, motion: BillCon
         val pager = rememberPagerState(initialPage = selection) { 2 }
         val scope = rememberCoroutineScope()
         val navigation = remember(pager, scope) { MainTabsPagerState(pager, scope) }
-        LaunchedEffect(selection) { navigation.animateToPage(selection) }
-        val switching = pager.currentPage != selection || navigation.isNavigating ||
-            pager.currentPageOffsetFraction != 0f
+        val active = motion.active
+        LaunchedEffect(selection, active) { if (active) navigation.animateToPage(selection) }
+        val switching = active && (pager.currentPage != selection || navigation.isNavigating ||
+            pager.currentPageOffsetFraction != 0f)
         val frames = remember { mutableStateMapOf(selection to state) }
         val id = remember { Any() }
         val moving by rememberUpdatedState(switching)
         SideEffect {
+            // Finish hidden transitions without replacing the pager and its content identity.
+            if (!active) navigation.snapToPage(selection)
             motion.update(id, switching)
             frames[selection] = state
             if (!switching) frames.keys.toList().filter { it != selection }.forEach { frames.remove(it) }

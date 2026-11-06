@@ -596,7 +596,8 @@ private fun MainContent(
                         val bottom = padding.calculateBottomPadding() + 28.dp
                         HorizontalPager(
                             state = pagerState, modifier = Modifier.fillMaxSize(),
-                            beyondViewportPageCount = 1, key = { it },
+                            // The four root pages keep their composition and scroll state between tabs.
+                            beyondViewportPageCount = 3, key = { it },
                         ) { page ->
                             when (page) {
                                 0 -> PaymentPage(

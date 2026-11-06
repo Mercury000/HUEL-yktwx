@@ -292,11 +292,13 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
 private fun paymentHeaderHeight(): Dp {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val title = measurer.measure(AnnotatedString("付款码"),
-        style = TextStyle(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold))
-    val status = measurer.measure(AnnotatedString("核验中"),
-        style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp))
-    return maxOf(32.dp, with(density) { title.size.height.toDp() }, with(density) { status.size.height.toDp() } + 10.dp)
+    return remember(density, measurer) {
+        val title = measurer.measure(AnnotatedString("付款码"),
+            style = TextStyle(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold))
+        val status = measurer.measure(AnnotatedString("核验中"),
+            style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp))
+        maxOf(32.dp, with(density) { title.size.height.toDp() }, with(density) { status.size.height.toDp() } + 10.dp)
+    }
 }
 
 /** Stable body height measured without user/account/code data, so every state uses the same slots. */
@@ -304,26 +306,28 @@ private fun paymentHeaderHeight(): Dp {
 private fun paymentContentHeight(width: Dp): Dp {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val constraints = with(density) { Constraints(maxWidth = width.roundToPx()) }
-    fun textHeight(text: String, size: Int, lineHeight: Int, weight: FontWeight = FontWeight.Normal): Dp {
-        val result = measurer.measure(AnnotatedString(text),
-            style = TextStyle(fontSize = size.sp, lineHeight = lineHeight.sp, fontWeight = weight), constraints = constraints)
-        return with(density) { result.size.height.toDp() }
+    return remember(width, density, measurer) {
+        val constraints = with(density) { Constraints(maxWidth = width.roundToPx()) }
+        fun textHeight(text: String, size: Int, lineHeight: Int, weight: FontWeight = FontWeight.Normal): Dp {
+            val result = measurer.measure(AnnotatedString(text),
+                style = TextStyle(fontSize = size.sp, lineHeight = lineHeight.sp, fontWeight = weight), constraints = constraints)
+            return with(density) { result.size.height.toDp() }
+        }
+        val codeHeight = 88.dp + 232.dp + 48.dp + maxOf(24.dp, textHeight("0000 •••• •••• ••••", 14, 20)) +
+            textHeight("向商户出示，切勿分享或截图", 13, 18)
+        val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态", "付款码暂不可用")
+            .maxOf { textHeight(it, 23, 30, FontWeight.SemiBold) }
+        val summaryHeight = listOf(
+            "确认完成前，暂不展示付款码",
+            "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用",
+            "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理",
+            "网络连接失败，请下拉刷新",
+        ).maxOf { textHeight(it, 13, 21) }
+        val actionHeight = maxOf(50.dp, with(density) { 24.sp.toDp() } + 24.dp)
+        // Minimum status spacing for large fonts; normal-sized status uses the code footprint.
+        val statusHeight = 32.dp + 92.dp + 32.dp + titleHeight + 12.dp + summaryHeight + actionHeight
+        maxOf(codeHeight, statusHeight)
     }
-    val codeHeight = 88.dp + 232.dp + 48.dp + maxOf(24.dp, textHeight("0000 •••• •••• ••••", 14, 20)) +
-        textHeight("向商户出示，切勿分享或截图", 13, 18)
-    val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态", "付款码暂不可用")
-        .maxOf { textHeight(it, 23, 30, FontWeight.SemiBold) }
-    val summaryHeight = listOf(
-        "确认完成前，暂不展示付款码",
-        "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用",
-        "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理",
-        "网络连接失败，请下拉刷新",
-    ).maxOf { textHeight(it, 13, 21) }
-    val actionHeight = maxOf(50.dp, with(density) { 24.sp.toDp() } + 24.dp)
-    // Minimum status spacing for large fonts; normal-sized status uses the code footprint.
-    val statusHeight = 32.dp + 92.dp + 32.dp + titleHeight + 12.dp + summaryHeight + actionHeight
-    return maxOf(codeHeight, statusHeight)
 }
 
 /** Verification, paused payment and read failures share the existing centered status layout. */
