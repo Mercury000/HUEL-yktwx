@@ -86,7 +86,9 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
         if (granted && active && resumed) {
             val camera = remember(context) { DeviceCamera(context, { currentScan(it) }, { cameraError = it }, { flashAvailable = it }) }
             DisposableEffect(camera) { onDispose { camera.dispose() } }
-            AndroidView(factory = { TextureView(it).also(camera::attach) }, update = { camera.torch(torch) }, modifier = Modifier.fillMaxSize())
+            AndroidView(factory = { TextureView(it).also(camera::attach) }, update = { camera.torch(torch) },
+                modifier = Modifier.fillMaxSize().deviceScannerZoomGestures(cameraError == null,
+                    camera::zoomBy, camera::toggleQuickZoom))
             if (cameraError == null) ScannerSweep()
         }
         if (!granted || cameraError != null) Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -173,6 +175,7 @@ private class DeviceCamera(
     private var capture: CameraCaptureSession? = null
     private var request: CaptureRequest.Builder? = null
     private var torchEnabled = false
+    private var zoom = DeviceCameraZoom()
     private var images: ImageReader? = null
     private var preview: Surface? = null
     private var size = Size(640, 480)
@@ -202,6 +205,9 @@ private class DeviceCamera(
             val id = manager.cameraIdList.firstOrNull { manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK }
                 ?: manager.cameraIdList.firstOrNull() ?: throw IllegalStateException()
             val config = manager.getCameraCharacteristics(id)
+            zoom = DeviceCameraZoom(config.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE),
+                config.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE),
+                config.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM))
             onFlashAvailable(config.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true)
             sensorOrientation = config.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
             val map = config.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: throw IllegalStateException()
@@ -248,6 +254,7 @@ private class DeviceCamera(
                             addTarget(output); addTarget(reader.surface)
                             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                             set(CaptureRequest.FLASH_MODE, if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
+                            applyZoom(this)
                         }
                         session.setRepeatingRequest(request!!.build(), null, main)
                     } catch (_: Exception) { close(); error() }
@@ -266,6 +273,21 @@ private class DeviceCamera(
             request?.set(CaptureRequest.FLASH_MODE, if (enabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
             request?.let { capture?.setRepeatingRequest(it.build(), null, main) }
         } catch (_: Exception) { error() }
+    }
+    fun zoomBy(factor: Float) = updateZoom { zoom.scaleBy(factor) }
+    fun toggleQuickZoom() = updateZoom { zoom.toggleQuickZoom() }
+    private fun updateZoom(change: () -> Boolean) {
+        val builder = request ?: return
+        if (disposed || !change()) return
+        try {
+            applyZoom(builder)
+            capture?.setRepeatingRequest(builder.build(), null, main)
+        } catch (_: Exception) { error() }
+    }
+    private fun applyZoom(builder: CaptureRequest.Builder) {
+        // Both preview and decoder targets share this request and the same field of view.
+        if (zoom.usesZoomRatio) builder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom.ratio)
+        else zoom.cropRegion()?.let { builder.set(CaptureRequest.SCALER_CROP_REGION, it) }
     }
     private fun readFrame(reader: ImageReader, generation: Long, startup: DeviceCameraStartupTimings?) {
         val image = runCatching { reader.acquireLatestImage() }.getOrNull() ?: return
