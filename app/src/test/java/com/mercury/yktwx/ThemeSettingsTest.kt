@@ -18,6 +18,17 @@ class ThemeSettingsTest {
 
     @Before fun reset() { prefs.edit().clear().commit() }
 
+    @Test fun swipeBackUsesTheDemoDefaultAndIgnoresRemovedPredictiveSettings() {
+        prefs.edit().putBoolean("predictive_back", true).putInt("predictive_back_distance", 25).commit()
+        val settings = ThemeSettings(context)
+        assertFalse(settings.swipeBack.value)
+        settings.setSwipeBack(true)
+        assertTrue(settings.swipeBack.value)
+        assertTrue(ThemeSettings(context).swipeBack.value)
+        settings.setSwipeBack(false)
+        assertFalse(ThemeSettings(context).swipeBack.value)
+    }
+
     @Test fun automaticUpdatesDefaultOnAndCanBePersistentlyDisabled() {
         val settings = ThemeSettings(context)
         assertTrue(settings.automaticUpdates.value)

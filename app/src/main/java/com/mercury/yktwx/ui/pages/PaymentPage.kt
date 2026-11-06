@@ -38,7 +38,6 @@ import com.mercury.yktwx.data.life.LifeFeature
 import com.mercury.yktwx.data.life.LifeProvider
 import com.mercury.yktwx.data.life.WaterSession
 import com.mercury.yktwx.data.life.LaundrySession
-import com.mercury.yktwx.ui.LocalMainNavigationMotion
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
@@ -113,7 +112,6 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     }
     val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
         additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
-    val navigationMotion = LocalMainNavigationMotion.current
     BarBlurHost(bottomBarBlurEnabled = settings.blurBottomBar.value, topBarBlurEnabled = settings.blurTopBar.value) {
         Box(Modifier.fillMaxSize()) {
         Scaffold(topBar = {
@@ -277,11 +275,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         }
         LifeDeviceStatusIslands(waterSessions, laundrySessions, onOpenLifeSession, onDismissLifeSession, settings,
             modifier = Modifier.align(Alignment.BottomCenter)
-                .then(navigationMotion?.modifier() ?: Modifier)
                 // The page receives the navigation inset plus the app's 28dp scroll margin.
                 .padding(bottom = (bottomPadding - 20.dp).coerceAtLeast(8.dp), start = 16.dp, end = 16.dp)
                 .imePadding().fillMaxWidth(),
-            enabled = isActive && !showEnlarged && navigationMotion?.visible != false,
+            enabled = isActive && !showEnlarged,
             nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries)
         }
     }
