@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -27,6 +28,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.LifeDevicesUiState
 import com.mercury.yktwx.LifeDevicesViewModel
@@ -84,8 +87,6 @@ internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, on
     }
 }
 
-private data class LifeDevicePresentation(val stage: String, val state: LifeDevicesUiState)
-
 /** Shared page container, spacing and device presentation for both features. */
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
@@ -138,22 +139,30 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             }}"
             else -> "laundry-ready"
         }
-        AnimatedContent(LifeDevicePresentation(stage, state.copy(code = "", paymentLaunch = null)),
-            contentKey = { it.stage }, modifier = Modifier.fillMaxSize(), transitionSpec = {
+        AnimatedContent(stage, modifier = Modifier.fillMaxSize(), transitionSpec = {
             ((fadeIn(tween(ContentMotion.Append, delayMillis = 120)) +
                 slideInVertically(tween(ContentMotion.Append, delayMillis = 120, easing = ContentMotion.Easing)) { it / 45 })
                 togetherWith fadeOut(tween(120))).using(SizeTransform(clip = false))
-        }, label = "life-device-stage") { presentation ->
-        val displayedStage = presentation.stage
-        val state = presentation.state
+        }, label = "life-device-stage") { displayedStage ->
         val stageActive = active && displayedStage == stage
+        // Animate routes only; retain display data while an outgoing stage finishes.
+        val state = rememberWhileShown(displayedStage == stage, state.copy(code = "", paymentLaunch = null))
         if (displayedStage == "scan") Box(Modifier.fillMaxSize().testTag("life-device-page")) {
             DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
                 onManualInput = { manual = true })
             if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
-            if (!state.error.isNullOrBlank() && !manual) Text(state.error,
-                Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 16.dp, start = 24.dp, end = 24.dp),
-                fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
+            if (!state.error.isNullOrBlank() && !manual) {
+                val errorPadding = remember(padding) {
+                    object : PaddingValues {
+                        override fun calculateLeftPadding(layoutDirection: LayoutDirection) = 24.dp
+                        override fun calculateTopPadding() = padding.calculateTopPadding() + 16.dp
+                        override fun calculateRightPadding(layoutDirection: LayoutDirection) = 24.dp
+                        override fun calculateBottomPadding() = 0.dp
+                    }
+                }
+                Text(state.error, Modifier.align(Alignment.TopCenter).padding(errorPadding),
+                    fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
+            }
         } else LazyColumn(Modifier.fillMaxSize().overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection).testTag("life-device-page"),
             contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
@@ -173,9 +182,25 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
 @Composable
 internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
     onHelp: () -> Unit, showHelp: Boolean, footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
-    val surface = if (scanning) Color(0xFF1B2025) else MiuixTheme.colorScheme.surface
-    val ink = if (scanning) Color.White else MiuixTheme.colorScheme.onSurface
-    BarBlurHost(false, settings.blurTopBar.value && !scanning) {
+    val currentContent by rememberUpdatedState(content)
+    // Preserve the stage transition and preview identity when the shell switches layouts.
+    val body = remember { movableContentOf<PaddingValues> { padding -> currentContent(padding) } }
+    if (scanning) {
+        LifeScannerShell(topBar = {
+            Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
+                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White,
+                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
+                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = Color.White) }
+                    }, actions = {
+                        if (showHelp) IconButton(onClick = onHelp) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
+                    })
+            }
+        }, content = body)
+        return
+    }
+    val surface = MiuixTheme.colorScheme.surface
+    val ink = MiuixTheme.colorScheme.onSurface
+    BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             val navigationIcon: @Composable () -> Unit = {
                 IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) }
@@ -185,15 +210,50 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
                     Icon(MiuixIcons.Info, "帮助", tint = ink)
                 }
             }
-            if (scanning) Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = ink,
-                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
-            } else BlurredBar(topGradient = true) {
+            BlurredBar(topGradient = true) {
                 TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scrollBehavior,
                     modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
             }
         }, bottomBar = { footer() }) { padding ->
-            BarBackdropContent(Modifier.fillMaxSize().background(surface)) { content(padding) }
+            BarBackdropContent(Modifier.fillMaxSize().background(surface)) { body(padding) }
+        }
+    }
+}
+
+/** The scanner needs only a full-page body and an overlaid bar, not Scaffold's seven slots. */
+@Composable
+internal fun LifeScannerShell(topBar: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
+    val padding = remember {
+        object : PaddingValues {
+            var values by mutableStateOf<PaddingValues>(PaddingValues(0.dp))
+            override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp = values.calculateLeftPadding(layoutDirection)
+            override fun calculateTopPadding(): Dp = values.calculateTopPadding()
+            override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp = values.calculateRightPadding(layoutDirection)
+            override fun calculateBottomPadding(): Dp = values.calculateBottomPadding()
+        }
+    }
+    var consumedInsets by remember { mutableStateOf(WindowInsets(0, 0, 0, 0)) }
+    val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout).exclude(consumedInsets)
+    // The app's outer Scaffold owns the root overlays. Keep preview pixels out of its blur capture.
+    BarBlurHost(false, false) {
+        Layout(content = {
+            Box(Modifier.fillMaxSize().background(Color(0xFF1B2025))) { content(padding) }
+            Box { topBar() }
+        }, modifier = Modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) { measurables, constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val bar = measurables[1].measure(loose)
+            padding.values = PaddingValues(
+                start = (if (layoutDirection == LayoutDirection.Ltr) insets.getLeft(this, layoutDirection)
+                    else insets.getRight(this, layoutDirection)).toDp(),
+                top = (if (bar.width == 0 && bar.height == 0) insets.getTop(this) else bar.height).toDp(),
+                end = (if (layoutDirection == LayoutDirection.Ltr) insets.getRight(this, layoutDirection)
+                    else insets.getLeft(this, layoutDirection)).toDp(),
+                bottom = insets.getBottom(this).toDp())
+            val body = measurables[0].measure(loose)
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                body.place(0, 0)
+                bar.place(0, 0)
+            }
         }
     }
 }
@@ -336,6 +396,7 @@ internal fun LifeDeviceActionFooter(tag: String, content: @Composable ColumnScop
 @Composable
 private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, serial: String,
     onValue: (String) -> Unit, onDismiss: () -> Unit, onIdentify: () -> Unit) {
+    if (!rememberOverlayMounted(show)) return
     OverlayBottomSheet(show = show, startAction = { SheetTitle("输入设备编号") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val value = rememberWhileShown(show, serial)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
@@ -356,6 +417,7 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
 
 @Composable
 private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit) {
+    if (!rememberOverlayMounted(show)) return
     OverlayBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),

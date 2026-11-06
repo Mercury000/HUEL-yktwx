@@ -28,7 +28,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,12 +37,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size as CanvasSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,7 +72,7 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
     var asked by rememberSaveable { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<String?>(null) }
     var torch by remember { mutableStateOf(false) }
-    var flashAvailable by remember { mutableStateOf(false) }
+    var flashAvailable by remember { mutableStateOf<Boolean?>(null) }
     var resumed by remember { mutableStateOf(lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     val currentScan by rememberUpdatedState(onScanned)
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it; asked = true }
@@ -87,7 +90,8 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
         if (granted && active && resumed) {
             val camera = remember(context) { DeviceCamera(context, { currentScan(it) }, { cameraError = it }, { flashAvailable = it }) }
             DisposableEffect(camera) { onDispose { camera.dispose() } }
-            AndroidView(factory = { TextureView(it).also(camera::attach) }, update = { camera.torch(torch) },
+            LaunchedEffect(camera, torch) { camera.torch(torch) }
+            AndroidView(factory = { TextureView(it).also(camera::attach) },
                 modifier = Modifier.fillMaxSize().deviceScannerZoomGestures(cameraError == null,
                     camera::zoomBy, camera::toggleQuickZoom))
             if (cameraError == null) ScannerSweep()
@@ -108,10 +112,7 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(22.dp)) {
                 Text("扫描设备上的二维码\n识别后核对设备与支付方式", fontSize = 12.sp, lineHeight = 20.sp,
                     color = Color(0xFFD0D8E2), textAlign = TextAlign.Center)
-                Row(horizontalArrangement = Arrangement.spacedBy(36.dp)) {
-                    if (flashAvailable) ScannerAction(if (torch) "关闭手电筒" else "手电筒", AppIcons.Electricity, { torch = !torch }, active)
-                    if (onManualInput != null) ScannerAction("输入设备编号", AppIcons.Keyboard, onManualInput, active)
-                }
+                ScannerControls(flashAvailable, torch, { torch = !torch }, onManualInput, active)
             }
         } else Text(cameraError ?: "对准设备上的二维码", Modifier.align(Alignment.BottomCenter).padding(18.dp),
             fontSize = 12.sp, color = Color.White)
@@ -119,27 +120,43 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
 }
 
 @Composable
-private fun ScannerSweep() {
+internal fun ScannerSweep() {
     val transition = rememberInfiniteTransition(label = "device-scanner-sweep")
     val progress = transition.animateFloat(0f, 1f,
         animationSpec = infiniteRepeatable(tween(2400, delayMillis = 400, easing = LinearEasing)),
         label = "device-scanner-sweep-progress")
-    Canvas(Modifier.fillMaxSize().clipToBounds()) {
-        val fraction = progress.value
-        val y = size.height * fraction
-        val alpha = minOf(fraction * 10f, (1f - fraction) * 10f, 1f).coerceAtLeast(0f)
+    Box(Modifier.fillMaxSize().clipToBounds().drawWithCache {
         val ink = Color(0xFF7CE2B0)
         val trail = 48.dp.toPx()
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, ink.copy(alpha = .12f * alpha)),
-            startY = y - trail, endY = y), topLeft = Offset(0f, y - trail), size = CanvasSize(size.width, trail))
-        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .85f * alpha), Color.Transparent)),
-            topLeft = Offset(0f, y), size = CanvasSize(size.width, 2.dp.toPx()))
+        val trailBrush = Brush.verticalGradient(listOf(Color.Transparent, ink.copy(alpha = .12f)), startY = -trail, endY = 0f)
+        val lineBrush = Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .85f), Color.Transparent))
+        val trailSize = CanvasSize(size.width, trail)
+        val lineSize = CanvasSize(size.width, 2.dp.toPx())
+        onDrawBehind {
+            val fraction = progress.value
+            val alpha = minOf(fraction * 10f, (1f - fraction) * 10f, 1f).coerceAtLeast(0f)
+            if (alpha > 0f) translate(top = size.height * fraction) {
+                drawRect(trailBrush, topLeft = Offset(0f, -trail), size = trailSize, alpha = alpha)
+                drawRect(lineBrush, size = lineSize, alpha = alpha)
+            }
+        }
+    })
+}
+
+@Composable
+internal fun ScannerControls(flashAvailable: Boolean?, torch: Boolean, onTorch: () -> Unit, onManualInput: (() -> Unit)?, active: Boolean) {
+    Row(horizontalArrangement = Arrangement.spacedBy(36.dp)) {
+        // Reserve the final position while capabilities are queried, without exposing a dead action.
+        if (flashAvailable != false) ScannerAction(if (torch) "关闭手电筒" else "手电筒", AppIcons.Electricity, onTorch,
+            active && flashAvailable == true, if (flashAvailable == null) Modifier.graphicsLayer { alpha = 0f }.clearAndSetSemantics {} else Modifier)
+        if (onManualInput != null) ScannerAction("输入设备编号", AppIcons.Keyboard, onManualInput, active)
     }
 }
 
 @Composable
-private fun ScannerAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, enabled: Boolean) {
-    ActionSurface(onClick, enabled = enabled, contentColor = Color(0xFFC8D2DE)) {
+private fun ScannerAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, enabled: Boolean,
+    modifier: Modifier = Modifier) {
+    ActionSurface(onClick, modifier = modifier, enabled = enabled, contentColor = Color(0xFFC8D2DE)) {
         Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Icon(icon, null, Modifier.size(24.dp), tint = Color(0xFFC8D2DE))
             Text(label, fontSize = 11.sp, color = Color(0xFFC8D2DE))

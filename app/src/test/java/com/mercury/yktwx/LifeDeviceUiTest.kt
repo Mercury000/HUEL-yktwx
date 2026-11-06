@@ -283,6 +283,55 @@ class LifeDeviceUiTest {
         compose.onNodeWithText("识别设备").assertIsEnabled().performClick()
         assertEquals(listOf(hui798Qr), scanned)
         assertEquals(LifeProvider.Hui798, UnifiedDeviceCode.identify(scanned.single())?.provider)
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithText("输入设备编号").performClick()
+        compose.onNodeWithTag("life-device-serial").assertIsDisplayed().assertTextContains(hui798Qr)
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-device-serial").assertDoesNotExist()
+        compose.onNodeWithContentDescription("帮助").performClick()
+        compose.onNodeWithText("知道了").assertIsDisplayed().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("知道了").assertDoesNotExist()
+        compose.onNodeWithContentDescription("帮助").performClick()
+        compose.onNodeWithText("知道了").assertIsDisplayed()
+    }
+
+    @Test fun scannerStageUpdatesKeepPreviewAndAnimateToLaundryAndBack() {
+        val model = model()
+        val settings = settings()
+        val device = LifeDevice("laundry", "test-laundry", "洗衣设备", "00", "org", "org", "shop", "imei",
+            "学校", "", "before", false, true, null,
+            listOf(LifeSku("sku", "快洗", true, "2.50", minutes = 25)), emptyList())
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, scanning = true, feature = LifeFeature.Laundry))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+                Scaffold { LifeDevicePage(state, settings, model, active = false, onBack = {}) }
+            } }
+        }
+        val original = compose.onNodeWithTag("device-scanner").fetchSemanticsNode().id
+        compose.runOnIdle { state = state.copy(loadingDevice = true, error = "识别失败") }
+        assertEquals(original, compose.onNodeWithTag("device-scanner").fetchSemanticsNode().id)
+        compose.onNodeWithText("正在识别设备…").assertIsDisplayed()
+        compose.onNodeWithText("识别失败").assertIsDisplayed()
+        assertTrue("Scanner errors must clear the measured top bar",
+            compose.onNodeWithText("识别失败").fetchSemanticsNode().boundsInRoot.top >
+                compose.onNodeWithTag("life-device-top-bar").fetchSemanticsNode().boundsInRoot.bottom)
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state = state.copy(scanning = false, loadingDevice = false, error = null, device = device) }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithTag("device-scanner").assertExists()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("device-scanner").assertDoesNotExist()
+        compose.onNodeWithText("洗衣设备").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(scanning = true, device = null) }
+        compose.mainClock.advanceTimeBy(32)
+        compose.onNodeWithText("洗衣设备").assertExists()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("device-scanner").assertIsDisplayed()
+        compose.onNodeWithText("洗衣设备").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
     }
 
     private class OfflineResponse(url: URL, val body: String) : HttpsURLConnection(url) {

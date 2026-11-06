@@ -258,6 +258,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
 @Composable
 internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel,
     nowMillis: () -> Long = System::currentTimeMillis) {
+    if (!rememberOverlayMounted(show)) return
     val overlaySession = rememberOverlaySession(show)
     val seconds = rememberLaundryPaymentSeconds(state.laundry, show, nowMillis)
     val expired = seconds == 0L
