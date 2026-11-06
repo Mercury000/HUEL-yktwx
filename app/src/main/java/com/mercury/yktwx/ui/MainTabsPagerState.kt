@@ -26,6 +26,17 @@ internal class MainTabsPagerState(
 
     private var navJob: Job? = null
 
+    fun snapToPage(targetPage: Int) {
+        navJob?.cancel()
+        navJob = null
+        selectedPage = targetPage
+        isNavigating = false
+        if (pagerState.currentPage != targetPage || pagerState.currentPageOffsetFraction != 0f ||
+            pagerState.isScrollInProgress) {
+            pagerState.requestScrollToPage(targetPage)
+        }
+    }
+
     fun animateToPage(targetPage: Int) {
         if (targetPage == selectedPage) return
 

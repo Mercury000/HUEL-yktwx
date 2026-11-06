@@ -31,6 +31,44 @@ import org.robolectric.annotation.GraphicsMode
 class BillMotionPaintTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun leavingDuringMovementReleasesOutgoingPaintAndKeepsIncomingContent() {
+        var state by mutableStateOf(PreviewData.billState())
+        var active by mutableStateOf(true)
+        lateinit var motion: BillContentMotion
+        val contents = mutableMapOf<Boolean, Any>()
+        compose.setContent {
+            AppTheme {
+                motion = rememberBillContentMotion(state, active)
+                BillContentTransition(state.statsVisible, if (state.statsVisible) 1 else 0, motion) { stats ->
+                    val instance = remember { Any() }
+                    DisposableEffect(stats) {
+                        contents[stats] = instance
+                        onDispose { contents.remove(stats) }
+                    }
+                    Box(Modifier.fillMaxSize().background(if (stats) Color.Red else Color.Blue))
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { motion.select(1) { state = state.copy(statsVisible = true) } }
+        repeat(5) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertTrue(motion.running)
+        assertEquals(setOf(false, true), contents.keys)
+        val incoming = contents.getValue(true)
+        compose.runOnIdle { active = false }
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertFalse(motion.running)
+        assertEquals(setOf(true), contents.keys)
+        assertSame("Leaving must not recreate the retained incoming subtree", incoming, contents[true])
+        compose.runOnIdle { active = true }
+        repeat(2) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        assertFalse(motion.running)
+        assertEquals(setOf(true), contents.keys)
+        assertSame("Returning must not replay the incoming page", incoming, contents[true])
+        compose.mainClock.autoAdvance = true
+    }
+
     @Test fun bothOpaqueContentsShareTheMidpointWhileTheControlLayerStaysStill() {
         var state by mutableStateOf(PreviewData.billState())
         lateinit var motion: BillContentMotion

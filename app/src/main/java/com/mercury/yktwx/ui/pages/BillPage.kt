@@ -99,7 +99,7 @@ fun BillPage(
     fun selectType(type: Int) = motion.select(if (type == 2) 1 else 2) { onStatsTypeChange(type) }
     val currentSelectType by rememberUpdatedState(::selectType)
     val readIdentity = state.readIdentity
-    val readStartedAt = remember(readIdentity, isActive) { android.os.SystemClock.uptimeMillis() }
+    val readStartedAt = remember(readIdentity) { android.os.SystemClock.uptimeMillis() }
     val listHasContent = state.items.isNotEmpty() || state.summary != null || state.counts != null ||
         state.listAvailable
     val statsHasContent = state.stats.categoriesLoaded || state.stats.rankingLoaded ||
@@ -278,8 +278,10 @@ fun BillPage(
                         }
                     }
                 }) {
-                    val frame = BillReadFrame(state, initialError, networkError, readIdentity, readStartedAt,
-                        if (state.statsVisible) statsHasContent else listHasContent)
+                    val hasContent = if (state.statsVisible) statsHasContent else listHasContent
+                    val frame = remember(state, initialError, networkError, readIdentity, readStartedAt, hasContent) {
+                        BillReadFrame(state, initialError, networkError, readIdentity, readStartedAt, hasContent)
+                    }
                     BillContentTransition(frame, if (state.statsVisible) 1 else 0, motion,
                         Modifier.fillMaxSize().testTag("bill-content-viewport")) { modeFrame ->
                         BillScrollLayer(offset = { if (modeFrame.state.statsVisible) pageScroll.typeOffset else 0f },
