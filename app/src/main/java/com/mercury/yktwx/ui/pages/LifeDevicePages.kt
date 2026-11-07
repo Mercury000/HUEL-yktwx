@@ -120,7 +120,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     val title = when {
         scanning -> "扫一扫"
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
-        state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Closed -> "洗衣订单"
+        state.feature == LifeFeature.Laundry && state.laundry?.phase in setOf(LaundryPhase.Closed, LaundryPhase.Refunding) -> "洗衣订单"
         state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
         else -> "扫码洗衣"
     }
@@ -144,6 +144,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 LaundryPhase.Running -> "running"
                 LaundryPhase.Ended -> "ended"
                 LaundryPhase.Closed -> "closed"
+                LaundryPhase.Refunding -> "refunding"
                 else -> "processing"
             }}"
             else -> "laundry-ready"
@@ -329,9 +330,9 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
         if (showOptions) {
             HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
             LifeDeviceField("免密状态") {
-                val usable = channel.available && !channel.needsOpen
+                val usable = channel.available == true && channel.needsOpen == false
                 val green = lifeSuccessInk()
-                Text(if (channel.needsOpen) "需开通" else if (usable) "可使用" else "不可用",
+                Text(if (channel.needsOpen == true) "需开通" else if (usable) "可使用" else if (channel.available == false) "不可用" else "未知",
                     Modifier.clip(RoundedCornerShape(6.dp)).background(if (usable) lifeSuccessFill() else DashboardPalette.field)
                         .padding(horizontal = 7.dp, vertical = 3.dp), fontSize = 10.sp, color = if (usable) green else DashboardPalette.muted)
             }
@@ -344,7 +345,7 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
                 Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(if (device.isShower) "出水口" else "接水选项", fontSize = 12.sp, color = DashboardPalette.muted)
                     skus.forEach { sku ->
-                        PaymentSelectionCard(selected = sku.id == state?.selectedSkuId, enabled = enabled && sku.available,
+                        PaymentSelectionCard(selected = sku.id == state?.selectedSkuId, enabled = enabled && sku.available != false,
                             onClick = { onSelect(sku.id) }) { Text(sku.name, fontSize = 13.sp, color = it) }
                     }
                 }
@@ -371,15 +372,17 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
     val device = water?.device ?: state.device
     val action = device?.waterAction ?: "接水"
     val phase = water?.phase ?: WaterPhase.Ready
+    val exceptional = water?.canDismissException == true
     val restoringAccount = state.restoring && state.scannedSerial != null
     val loginRequired = !state.restoring && state.connectedPhone.isBlank() && state.scannedSerial != null
-    val failedCommand = state.error != null && water != null && phase != WaterPhase.Running
+    val failedCommand = exceptional || state.error != null && water != null && phase != WaterPhase.Running
     val loading = restoringAccount || state.loadingDevice || state.waterBusy || phase in setOf(WaterPhase.Starting, WaterPhase.Stopping) && !failedCommand ||
         phase == WaterPhase.Ended && water?.finalized != true && !failedCommand
     val label = when {
         restoringAccount -> "正在恢复账号…"
         loginRequired -> "登录并继续"
         state.loadingDevice -> "正在识别…"
+        exceptional && !state.waterBusy -> "重新扫码"
         failedCommand && !state.waterBusy -> "重试"
         phase == WaterPhase.Starting -> "正在启动…"
         phase == WaterPhase.Stopping -> "正在结束…"
@@ -392,15 +395,20 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         deviceId = device?.serial ?: state.scannedSerial,
         phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
         paymentMethod = device?.alipay?.name,
-        supportsFinish = device?.supportsFinish == true, error = state.error, shower = device?.isShower == true,
-        status = if (restoringAccount) WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备", true) else null)
+        supportsFinish = if (exceptional) null else device?.supportsFinish, error = state.error ?: water?.fault, shower = device?.isShower == true,
+        status = when {
+            restoringAccount -> WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备", true)
+            exceptional -> WaterDeviceStatus(water?.fault ?: "启动结果未知", "可移除本条提醒或重新扫码")
+            else -> null
+        })
     val primary = WaterDeviceAction(label, !loading && when {
         loginRequired -> true
-        phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
+        phase == WaterPhase.Ready -> state.device != null && state.selectedSkuId.isNotBlank()
         else -> true
     }) {
         when {
             loginRequired -> model.connectAccount(clearPending = false)
+            exceptional -> model.rescanWaterException()
             failedCommand -> model.retryWater()
             phase == WaterPhase.Running -> model.stopWater()
             phase == WaterPhase.Ended -> model.scan()
@@ -409,9 +417,11 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
     }
     WaterDevicePage(display, settings, active, primary,
         scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, model::scan),
-        refreshAction = WaterDeviceAction("刷新设备", !state.restoring && !loginRequired && !state.waterBusy && !state.loadingDevice && phase == WaterPhase.Ready, model::refreshDevice),
+        refreshAction = WaterDeviceAction("刷新设备", !state.restoring && !loginRequired && !state.waterBusy && !state.loadingDevice, model::refreshDevice),
         onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
         loginAction = if (loginRequired) WaterDeviceAction("登录并继续", true) { model.connectAccount(clearPending = false) } else null,
+        retryAction = if (phase == WaterPhase.Running && state.error != null && !exceptional)
+            WaterDeviceAction("刷新状态", !state.waterBusy, model::retryWater) else null,
         paymentContent = if (device?.alipay == null) null else { enabled -> WaterPaymentDetails(device,
             showOptions = phase in setOf(WaterPhase.Ready, WaterPhase.Starting), state = state, onSelect = model::selectSku,
             enabled = enabled && !state.waterBusy && !state.loadingDevice) })

@@ -185,7 +185,7 @@ class Hui798UiTest {
         capture("starting-failed-${if (dark) "dark-large" else "light"}")
         compose.runOnIdle { state = state.copy(sessions = listOf(session), selectedSessionId = session.sessionId, error = null) }
         compose.mainClock.advanceTimeBy(600)
-        compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("结束用水")
+        compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("结束用水")
         compose.onNodeWithTag("hui798-elapsed").assertIsDisplayed().assertTextContains("01:00")
         compose.runOnIdle { state = state.copy(confirmedSessions = setOf(session.sessionId)) }
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled()
@@ -203,7 +203,7 @@ class Hui798UiTest {
         compose.onNodeWithTag("hui798-primary-action").performClick()
         assertEquals(1, scans)
     }
-    @Test fun waterStagesKeepCommandsGatedByConfirmedSession() = stages(false)
+    @Test fun waterStagesKeepEndEntryAvailableForFreshServerVerification() = stages(false)
     @Test @Config(fontScale = 1.3f)
     fun waterStagesFitLargeTextAndDarkMode() = stages(true)
 

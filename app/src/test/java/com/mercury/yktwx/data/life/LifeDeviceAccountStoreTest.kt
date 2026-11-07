@@ -15,6 +15,18 @@ class LifeDeviceAccountStoreTest {
     private val device = LifeDevice("77", "serial", "77", "00", "22", "22", "shop", "imei",
         "学校", "", "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", minutes = 5)), emptyList())
     private val account = LifeAccount("13800000000", "test-token")
+    @Test fun unknownWaterDeletionErasesOwnedRecordAfterExpiryAndPreservesOtherProgressAndUnknownFields() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val unknownDevice = device.copy(category = "04", bluetooth = null, supportsFinish = null,
+            skus = listOf(LifeSku("water", "接水", null)), channels = listOf(LifePayChannel("15", "支付宝", null, null)))
+        val unknown = WaterSession(unknownDevice, "water", WaterPhase.Starting, startSent = true, creationUncertain = true)
+        val running = unknown.copy(sessionId = "running", phase = WaterPhase.Running, orderNo = "order-2", creationUncertain = false)
+        store.saveWaterSessions(listOf(unknown, running))
+        assertEquals(listOf(unknown, running), LifeDeviceAccountStore(records).waterSessions())
+        store.clearAccount(); store.removeWaterSession(unknown.sessionId)
+        assertFalse(records.read("water_sessions")!!.toString().contains(unknown.sessionId))
+        store.saveAccount(account); assertEquals(listOf(running), store.waterSessions())
+    }
     @Test fun failedAccountReplacementPreservesThePreviousAccountAndProgress() {
         val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
         val session = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended)

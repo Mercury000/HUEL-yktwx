@@ -49,8 +49,10 @@ data class Hui798Session(
     val attemptedAtMillis: Long, val startAcknowledged: Boolean = false,
     val serverTime: Long? = null, val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
     val sessionId: String = java.util.UUID.randomUUID().toString(),
+    val uncertain: Boolean = false,
 ) {
     val active: Boolean get() = phase != WaterPhase.Ended
+    val canDismissException: Boolean get() = uncertain && phase == WaterPhase.Starting && serverTime == null
 }
 
 class Hui798Exception(message: String, val loginExpired: Boolean = false, val rejected: Boolean = false) : Exception(message)
@@ -74,4 +76,5 @@ interface Hui798Store {
     fun removeAccount() { if (account() != null) saveSessions(emptyList()); clearAccount() }
     fun sessions(): List<Hui798Session>
     fun saveSessions(sessions: List<Hui798Session>)
+    fun removeSession(id: String) { saveSessions(sessions().filterNot { it.sessionId == id }) }
 }

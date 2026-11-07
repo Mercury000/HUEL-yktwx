@@ -99,8 +99,7 @@ class Hui798Api(
         val data = (request("/ui/app/master?ad=true", token) as JSONObject).optJSONObject("data")
         val userId = data?.optJSONObject("account")?.identifier("id")
             ?: throw Hui798Exception("暂时无法核对慧生活798账号，请重试")
-        val devices = data.optJSONArray("favos")
-            ?: throw Hui798Exception("暂时无法读取正在使用的设备，请重试")
+        val devices = data.optJSONArray("favos") ?: org.json.JSONArray()
         return Hui798Overview(userId, (0 until devices.length()).mapNotNull { index ->
             val device = devices.optJSONObject(index) ?: return@mapNotNull null
             device.identifier("id")?.let { Hui798Device(it, device.optString("name")) }

@@ -119,7 +119,7 @@ class LaundryUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
             LifeDevicePage(state, settings, model, active = true, onBack = {})
         } } } }
-        compose.onNodeWithTag("laundry-primary-action").assertIsNotEnabled().assertTextContains("请在胖乖生活核对")
+        compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("重新扫码")
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("返回").assertIsEnabled()
     }
@@ -437,7 +437,7 @@ class LaundryUiTest {
         compose.onNode(hasText("完成") and hasClickAction()).performTouchInput { click() }
         capture("laundry-payment-paid")
     }
-    @Test fun fiveMinutePaymentCountdownExpiresToReadOnlyQueryAndServerClosureIsFinal() {
+    @Test fun fiveMinuteCountdownKeepsPaymentEnabledUntilServerClosure() {
         val model = model()
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
@@ -458,15 +458,14 @@ class LaundryUiTest {
         compose.runOnIdle { clock = 160_000L }; compose.mainClock.advanceTimeBy(1100)
         compose.onNodeWithText("剩余支付时间 04:00").assertIsDisplayed()
         compose.runOnIdle { clock = 400_000L }; compose.mainClock.advanceTimeBy(1600)
-        compose.onNodeWithText("付款时间已到，请查询订单结果").assertIsDisplayed()
-        compose.onNodeWithText("查询结果").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("建议付款时间已到").assertIsDisplayed()
         compose.onNodeWithText("支付超时").assertDoesNotExist()
         compose.onNodeWithText("继续支付").assertDoesNotExist()
-        compose.onNodeWithTag("laundry-pay-submit").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsEnabled()
         compose.runOnIdle { state = state.copy(laundry = paying.copy(phase = LaundryPhase.Closed),
-            paymentFeedback = LaundryPaymentFeedback(paying.sessionId, RechargePhase.TimedOut, detail = "订单已关闭")) }
+            paymentFeedback = LaundryPaymentFeedback(paying.sessionId, RechargePhase.Failed, detail = "订单已关闭")) }
         compose.mainClock.advanceTimeBy(600)
-        compose.onNodeWithText("支付超时").assertIsDisplayed()
+        compose.onNodeWithText("支付失败").assertIsDisplayed()
         compose.onNodeWithText("订单已关闭").assertIsDisplayed()
         compose.onNodeWithText("查询结果").assertDoesNotExist()
         compose.onNodeWithText("继续支付").assertDoesNotExist()

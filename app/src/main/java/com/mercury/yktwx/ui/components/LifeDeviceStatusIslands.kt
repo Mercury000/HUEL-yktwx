@@ -71,11 +71,11 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
         waterSessions.filter { it.active }.forEach { session ->
             add(LifeDeviceStatusEntry(LifeFeature.Water, when (session.phase) {
                 WaterPhase.Ended -> "已完成"
-                WaterPhase.Starting -> "正在启动"
+                WaterPhase.Starting -> if (session.creationUncertain) "启动结果未知" else "正在启动"
                 WaterPhase.Stopping -> "正在结束"
                 else -> "${session.device.waterAction}中"
-            }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
-                session.sessionId, completed = false))
+            }.let { session.fault ?: it }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
+                session.sessionId, completed = false, dismissible = session.canDismissException))
         }
         laundrySessions.filter { session -> !session.islandDismissed && session.phase !in setOf(LaundryPhase.Checking, LaundryPhase.Closed) &&
             session.completionReminderDeadlineMillis()?.let { now < it } != false }.forEach { session ->
@@ -89,6 +89,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 LaundryPhase.Creating -> if (session.creationUncertain) "下单结果未知" else "正在下单"
                 LaundryPhase.Paying -> "待支付"
                 LaundryPhase.Starting -> "正在启动"
+                LaundryPhase.Refunding -> "退款中"
                 else -> "洗衣中"
             }, listOf(name, session.program).filter { it.isNotBlank() }.joinToString(" · ")
                 .ifBlank { "洗衣" }, session.device.shopName, session.sessionId, completed,
@@ -239,7 +240,7 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
                 enabled = enabled, shape = CircleShape, contentColor = muted) {
                 Box(Modifier.size(20.dp).background(if (dark) panel else Color(0xFFF5F6F8), CircleShape),
                     contentAlignment = Alignment.Center) {
-                    Icon(AppIcons.Close, if (entry.completed) "移除已完成的${entry.feature.title}" else "隐藏下单异常提醒",
+                    Icon(AppIcons.Close, if (entry.completed) "移除已完成的${entry.feature.title}" else "移除异常提醒",
                         Modifier.size(12.dp), tint = muted)
                 }
             }

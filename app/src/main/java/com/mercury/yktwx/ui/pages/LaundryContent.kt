@@ -46,10 +46,10 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
                 Column(Modifier.fillMaxWidth().testTag("laundry-programs"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     device.skus.forEach { sku ->
                         val selected = sku.id == state.selectedSkuId
-                        val enabled = active && sku.available && !state.laundryBusy && !state.loadingDevice
+                        val enabled = active && sku.available != false && !state.laundryBusy && !state.loadingDevice
                         val minutes = state.laundryQuote?.takeIf { it.skuId == sku.id }?.minutes ?: sku.minutes
                         val summary = listOfNotNull(sku.feature.takeIf { it.isNotBlank() }, minutes?.let { "约 $it 分钟" },
-                            "暂不可用".takeUnless { sku.available }).joinToString(" · ")
+                            when (sku.available) { false -> "暂不可用"; null -> "可用状态未知"; else -> null }).joinToString(" · ")
                         Card(Modifier.fillMaxWidth()) {
                             RadioButtonPreference(title = sku.name, summary = summary, selected = selected,
                                 onClick = { model.selectSku(sku.id) }, enabled = enabled,
@@ -114,7 +114,7 @@ private fun LaundryProgress(session: LaundrySession, busy: Boolean, nowMillis: (
         horizontalAlignment = Alignment.CenterHorizontally) {
         if (session.phase == LaundryPhase.Closed) {
             LifeDeviceGlyph(LifeFeature.Laundry)
-            Text("订单已关闭", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (session.serverStatus == 5) "订单已退款" else "订单已关闭", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
         } else if (ended) {
             DeviceCompletedIcon("laundry-ended-icon")
             Text("洗衣已完成", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
@@ -132,12 +132,13 @@ private fun LaundryProgress(session: LaundrySession, busy: Boolean, nowMillis: (
                 Text(if (end > now) "预计剩余时间" else "预计时间已到，正在读取完成状态", fontSize = 12.sp, color = DashboardPalette.muted)
             } ?: Text("设备运行中", Modifier.padding(top = 22.dp), fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            if (!busy && session.phase in setOf(LaundryPhase.Paying, LaundryPhase.Creating, LaundryPhase.Starting)) LifeDeviceGlyph(LifeFeature.Laundry)
+            if (!busy && session.phase in setOf(LaundryPhase.Paying, LaundryPhase.Creating, LaundryPhase.Starting, LaundryPhase.Refunding)) LifeDeviceGlyph(LifeFeature.Laundry)
             else CircularProgressIndicator(Modifier.size(40.dp))
             val label = when (session.phase) {
                 LaundryPhase.Checking -> "正在检查设备"
                 LaundryPhase.Creating -> if (busy) "正在创建订单" else "下单结果未知"
                 LaundryPhase.Paying -> "完成支付后启动设备"
+                LaundryPhase.Refunding -> "订单退款中"
                 else -> if (busy) "正在读取设备启动结果" else "等待设备启动确认"
             }
             Text(label, Modifier.padding(top = 22.dp), fontSize = 20.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold,
@@ -191,7 +192,6 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
     nowMillis: () -> Long = System::currentTimeMillis) {
     val session = state.laundry
     val loading = state.loadingDevice || state.laundryBusy
-    val expired = rememberLaundryPaymentSeconds(session, active, nowMillis) == 0L
     val ended = session != null && !session.active
     val canCancel = session?.canCancel == true && state.paymentLaunch == null
     var cancelRequested by remember(session?.sessionId, active, state.paymentVisible, canCancel) { mutableStateOf(false) }
@@ -201,10 +201,11 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
         state.loadingDevice -> "正在查询设备…"
         state.laundryBusy -> "正在处理…"
         ended -> "再次扫码洗衣"
-        expired -> "查询支付结果"
         session?.phase == LaundryPhase.Paying -> "继续支付"
-        session?.phase == LaundryPhase.Creating -> "请在胖乖生活核对"
+        session?.canDismissUnknownCreation == true -> "重新扫码"
+        session?.phase == LaundryPhase.Creating -> "正在创建订单"
         session?.phase == LaundryPhase.Starting -> "查询启动结果"
+        session?.phase == LaundryPhase.Refunding -> "查询退款状态"
         retry -> "重试"
         session?.phase == LaundryPhase.Running -> "刷新进度"
         session != null -> "正在处理…"
@@ -215,23 +216,25 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             session.phase == LaundryPhase.Closed -> "可重新扫码下单"
             ended -> "本次服务已结束"
             session.phase == LaundryPhase.Paying -> "离开页面不会取消订单"
-            session.phase == LaundryPhase.Creating -> "结果未知时请勿重复下单"
+            session.phase == LaundryPhase.Creating -> "重新扫码将移除本条异常提醒"
+            session.phase == LaundryPhase.Refunding -> "退款状态以平台返回为准"
             else -> "离开页面不会停止设备"
         },
             fontSize = 12.sp, color = DashboardPalette.muted)
         Button(onClick = {
             when {
                 ended -> model.scan()
+                session?.canDismissUnknownCreation == true -> model.rescanLaundryException()
                 session?.phase == LaundryPhase.Paying -> model.showLaundryPayment()
                 session?.phase == LaundryPhase.Checking && !session.createSent -> model.showLaundryPayment()
                 retry || session != null -> model.retryLaundry()
                 else -> model.showLaundryPayment()
             }
         }, enabled = active && !loading && when {
-            session?.phase == LaundryPhase.Creating -> false
-            session != null -> ended || retry || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Paying, LaundryPhase.Starting)
+            session?.phase == LaundryPhase.Creating -> session.canDismissUnknownCreation
+            session != null -> ended || retry || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Paying, LaundryPhase.Starting, LaundryPhase.Refunding)
             retry -> true
-            else -> state.device?.laundryError == null && state.device?.skus?.any { it.id == state.selectedSkuId && it.available } == true
+            else -> state.device != null && state.selectedSkuId.isNotBlank()
         }, modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (loading) CircularProgressIndicator(Modifier.testTag("laundry-action-progress"), size = 16.dp, strokeWidth = 2.dp)
@@ -264,16 +267,8 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
     if (!rememberOverlayMounted(show)) return
     val overlaySession = rememberOverlaySession(show)
     val seconds = rememberLaundryPaymentSeconds(state.laundry, show, nowMillis)
-    val expired = seconds == 0L
     val closed = state.laundry?.phase == LaundryPhase.Closed
-    val feedback = if (expired && !state.laundryBusy && state.paymentLaunch == null &&
-        state.paymentFeedback?.phase != RechargePhase.Paid)
-        state.paymentFeedback?.copy(phase = RechargePhase.Checking, loading = false,
-            detail = state.paymentFeedback.detail.takeIf { state.paymentFeedback.phase == RechargePhase.Checking }
-                ?: LaundryPaymentExpiredMessage)
-            ?: com.mercury.yktwx.LaundryPaymentFeedback(checkNotNull(state.laundry).sessionId, RechargePhase.Checking,
-                detail = LaundryPaymentExpiredMessage)
-    else state.paymentFeedback
+    val feedback = state.paymentFeedback
     val isResult = feedback != null && feedback.phase != RechargePhase.Creating
     val targetPage = rememberWhileShown(show, if (isResult) LaundrySheetPage.Result else LaundrySheetPage.Method)
     val title = rememberWhileShown(show, if (isResult) null else "付款")
@@ -296,11 +291,11 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                             FeeMethod(it.method, it.method, it.name, false, 0)
                         }
                     }
-                    if (seconds != null && !expired) LaundryPaymentCountdown(seconds)
+                    if (seconds != null) LaundryPaymentCountdown(seconds)
                     PaymentResultContent(result.phase, result.loading, result.price.toBigDecimal().movePointRight(2).longValueExact(),
                         result.detail, { if (enabled && isResult) model.dismissLaundryPayment() }, subject = "支付",
-                        retryMethods = methods.takeUnless { expired || closed }.orEmpty(),
-                        onContinuePayment = { if (enabled && isResult && !expired) model.payLaundry(it.id) },
+                        retryMethods = methods.takeUnless { closed }.orEmpty(),
+                        onContinuePayment = { if (enabled && isResult) model.payLaundry(it.id) },
                         enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
                         onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
                         paymentApp = if (state.laundry?.payMethod == "52") "银联" else "支付宝",
@@ -331,7 +326,7 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         },
                         onSubmit = { method?.let { model.payLaundry(it.method) } },
                         enabled = enabled && !isResult && !busy && !loading && state.paymentLaunch == null,
-                        canSubmit = !expired && !closed && canPay && method != null && reason == null, error = error ?: reason,
+                        canSubmit = !closed && canPay && method != null && reason == null, error = error ?: reason,
                         modifier = Modifier.testTag("laundry-pay-submit"))
                     if (quote == null && error != null && !loading && !busy) Button(onClick = model::showLaundryPayment,
                         enabled = enabled && !isResult, modifier = Modifier.fillMaxWidth().testTag("laundry-payment-retry")) { Text("重试") }
@@ -356,7 +351,7 @@ private fun rememberLaundryPaymentSeconds(session: LaundrySession?, active: Bool
 
 @Composable
 private fun LaundryPaymentCountdown(seconds: Long, modifier: Modifier = Modifier) {
-    Text(if (seconds == 0L) "付款时间已到" else "剩余支付时间 ${String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)}",
+    Text(if (seconds == 0L) "建议付款时间已到" else "剩余支付时间 ${String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)}",
         modifier.fillMaxWidth().testTag("laundry-payment-remaining"), fontSize = 12.sp,
         textAlign = TextAlign.Center, color = DashboardPalette.muted)
 }

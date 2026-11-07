@@ -43,6 +43,7 @@ class LifeDevicesViewModelTest {
         var showerEndReading = WaterReading(5, 1, "order-1", zeroConsumption = true)
         var loginCalls = 0; var deviceCalls = 0; var unlockCalls = 0; var stopCalls = 0; var createCalls = 0; var syncCalls = 0
         var lostUnlock = false
+        var unlockFailure: Exception? = null
         var messageGate: CompletableDeferred<Unit>? = null
         var stopGate: CompletableDeferred<Unit>? = null
         var createGate: CompletableDeferred<Unit>? = null
@@ -63,6 +64,7 @@ class LifeDevicesViewModelTest {
         }
         override suspend fun unlock(skuId: String, token: String): WaterUnlock {
             unlockCalls++
+            unlockFailure?.let { throw it }
             if (lostUnlock) throw java.io.IOException("lost response")
             return WaterUnlock("message-1", "order-1")
         }
@@ -102,6 +104,34 @@ class LifeDevicesViewModelTest {
         ApplicationProvider.getApplicationContext<Application>(), api, store, dispatcher, { 100_000L }
     ).also { viewModels.put("model", it) }
 
+    @Test fun explicitlyRejectedWaterStartClearsProgressAndAnotherClickReachesTheServer() = runTest(dispatcher) {
+        val api = Api().apply { unlockFailure = LifeDeviceException("设备拒绝启动", businessRejected = true) }
+        val store = Store(LifeAccount("13800000000", "test-token")); val model = model(api, store)
+        prepare(model); model.startWater(); runCurrent()
+        assertNull(model.state.value.water); assertNull(store.savedSession)
+        assertEquals("设备拒绝启动", model.state.value.error)
+        api.unlockFailure = null; model.startWater(); runCurrent()
+        assertEquals(2, api.unlockCalls); assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+    }
+    @Test fun unknownWaterStartCanBeRemovedWithoutHiddenStorageOrReplayingTheCommand() = runTest(dispatcher) {
+        val api = Api().apply { lostUnlock = true }; val store = Store(LifeAccount("13800000000", "test-token"))
+        val model = model(api, store); prepare(model); model.startWater(); runCurrent()
+        assertTrue(model.state.value.water!!.canDismissException)
+        model.rescanWaterException(); runCurrent()
+        assertTrue(model.state.value.scanning); assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+        assertEquals(1, api.unlockCalls)
+    }
+    @Test fun staleWaterRejectionIsRefreshedBeforeStartingAndActiveCapabilitiesCanBeRefreshed() = runTest(dispatcher) {
+        val api = Api().apply { returnedDevice = device.copy(error = "旧设备错误") }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token"))); prepare(model)
+        api.returnedDevice = device.copy(supportsFinish = null)
+        model.startWater(); runCurrent()
+        assertEquals(1, api.unlockCalls); assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        api.returnedDevice = device.copy(supportsFinish = true)
+        model.refreshDevice(); runCurrent()
+        assertEquals(true, model.state.value.water!!.device.supportsFinish)
+        model.stopWater(); runCurrent(); assertEquals(1, api.stopCalls)
+    }
     @Test fun eitherEntryRequiresSameLoginAndLaundryDoesNotLoadDevices() = runTest(dispatcher) {
         val api = Api(); val store = Store(); val model = model(api, store)
         model.open(LifeFeature.Laundry); runCurrent()
@@ -196,7 +226,7 @@ class LifeDevicesViewModelTest {
         api.afterPayExpired = false; model.connectAccount(clearPending = false)
         model.phoneChanged("13800000000"); model.codeChanged("123456"); model.login(); runCurrent()
         assertFalse(model.state.value.loginVisible); assertEquals(device, model.state.value.device)
-        assertEquals(2, api.deviceCalls); assertEquals(0, api.unlockCalls); assertEquals(0, api.createCalls)
+        assertEquals(3, api.deviceCalls); assertEquals(0, api.unlockCalls); assertEquals(0, api.createCalls)
     }
 
     @Test fun leavingOrRescanningDuringRecoveryCancelsThePendingDeviceQuery() = runTest(dispatcher) {
@@ -275,8 +305,10 @@ class LifeDevicesViewModelTest {
         val model = model(api, Store(LifeAccount("13800000000", "test-token")))
         prepare(model); model.startWater(); runCurrent()
         assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
-        assertEquals("设备异常，请在胖乖生活查看", model.state.value.error)
+        assertEquals("设备异常，请更换设备使用", model.state.value.error)
         assertEquals(0, api.createCalls); assertEquals(0, api.showerStopCalls)
+        assertTrue(model.state.value.water!!.canDismissException)
+        model.rescanWaterException(); runCurrent(); assertTrue(model.state.value.waterSessions.isEmpty())
     }
 
     @Test fun showerRestartVerifiesRunningOrderWithoutReplayingCommands() = runTest(dispatcher) {
@@ -372,7 +404,7 @@ class LifeDevicesViewModelTest {
         assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
     }
 
-    @Test fun restartDropsCompletedForeignAndUnidentifiedOrdersWithoutDeviceCommands() = runTest(dispatcher) {
+    @Test fun restartDropsConfirmedCompletedAndForeignOrdersButUnknownCreationIsDismissible() = runTest(dispatcher) {
         val cases = listOf(
             savedRunning(WaterPhase.Ended) to WaterReading(1, 2, "order-1"),
             savedRunning() to WaterReading(5, 1, "order-1"),
@@ -383,26 +415,31 @@ class LifeDevicesViewModelTest {
             val api = Api().apply { this.reading = reading }
             val store = Store(LifeAccount("13800000000", "test-token"), session)
             val model = model(api, store); runCurrent()
+            if (session.orderNo.isBlank()) {
+                val restored = model.state.value.waterSessions.single()
+                assertTrue(restored.canDismissException)
+                model.dismissSession(LifeFeature.Water, restored.sessionId); runCurrent()
+            }
             assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
             assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls)
             assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
         }
     }
 
-    @Test fun restartDropsUnknownRecordsAndNeverQueriesThemAgain() = runTest(dispatcher) {
+    @Test fun restartRetainsKnownOrdersWhenStatusIsUnknownAndLaterQueriesRecoverThem() = runTest(dispatcher) {
         for (reading in listOf(WaterReading(1, 2, ""), WaterReading(null, null, "order-1"))) {
             val api = Api().apply { this.reading = reading }
             val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
             val model = model(api, store); runCurrent()
-            assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+            assertEquals(listOf(savedRunning()), model.state.value.waterSessions); assertNotNull(store.savedSession)
             model.environment(true); runCurrent()
             val reads = api.waterReads
             api.reading = WaterReading(1, 2, "order-1")
-            advanceTimeBy(30_000); runCurrent(); assertEquals(reads, api.waterReads)
+            advanceTimeBy(1500); runCurrent(); assertTrue(api.waterReads > reads)
             model.environment(false); model.environment(true); runCurrent()
-            assertEquals(reads, api.waterReads); model.environment(false)
+            assertEquals(1, model.state.value.waterSessions.size); model.environment(false)
             val restarted = model(api, store); runCurrent(); restarted.environment(true); runCurrent()
-            assertTrue(restarted.state.value.waterSessions.isEmpty()); assertEquals(reads, api.waterReads)
+            assertEquals(1, restarted.state.value.waterSessions.size); assertTrue(api.waterReads > reads)
             restarted.environment(false)
         }
     }
@@ -433,19 +470,19 @@ class LifeDevicesViewModelTest {
         assertEquals(0, api.stopCalls); assertTrue(model.state.value.waterSessions.isEmpty())
         assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
     }
-    @Test fun failedRecoveryCannotReappearInTheScannerOrAfterRestart() = runTest(dispatcher) {
+    @Test fun failedRecoveryKeepsKnownProgressAccessibleWithoutTakingOverTheScanner() = runTest(dispatcher) {
         val api = Api().apply { waterFailure = true }
         val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
         val model = model(api, store); runCurrent()
         model.openUnifiedScan(); model.environment(true); runCurrent()
         assertTrue(model.state.value.scanning); assertNull(model.state.value.water)
         api.waterFailure = false; advanceTimeBy(1500); runCurrent()
-        assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+        assertEquals(1, model.state.value.waterSessions.size); assertNotNull(store.savedSession)
         assertTrue(model.state.value.scanning); assertNull(model.state.value.water); assertNull(model.state.value.device)
         val reads = api.waterReads
         assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls); model.environment(false)
         val restarted = model(api, store); runCurrent()
-        assertTrue(restarted.state.value.waterSessions.isEmpty()); assertEquals(reads, api.waterReads)
+        assertEquals(1, restarted.state.value.waterSessions.size); assertTrue(api.waterReads > reads)
     }
 
     @Test fun afterPayFailureKeepsEndedDeviceAndDoesNotAutomaticallyRepeatMutation() = runTest(dispatcher) {

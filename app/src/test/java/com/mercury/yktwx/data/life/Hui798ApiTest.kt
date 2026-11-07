@@ -74,10 +74,14 @@ class Hui798ApiTest {
         calls.forEach { assertEquals("GET", it.requestMethod); assertEquals("fixture-token", it.getRequestProperty("Authorization")) }
     }
     @Test fun malformedRecoveryResponsesCannotPretendThatNoAccountIsUsingWater() = runBlocking {
-        for (data in listOf("{}", """{"account":{"id":null},"favos":[]}""", """{"account":{"id":"user"}}""")) {
+        for (data in listOf("{}", """{"account":{"id":null},"favos":[]}""")) {
             val api = Hui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":$data}""") })
-            try { api.overview("token"); fail("Missing identity/list must fail") } catch (_: Hui798Exception) {}
+            try { api.overview("token"); fail("Missing identity must fail") } catch (_: Hui798Exception) {}
         }
+        val withoutFavorites = Hui798Api("https://fixture.test/api/v1", "", { url ->
+            Response(url, """{"code":0,"data":{"account":{"id":"user"}}}""")
+        })
+        assertEquals(Hui798Overview("user", emptyList()), withoutFavorites.overview("token"))
         for (data in listOf("""{"device":{"gene":{"status":1}}}""",
             """{"device":{"id":"other-device","gene":{"status":99}}}""")) {
             val api = Hui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":$data}""") })

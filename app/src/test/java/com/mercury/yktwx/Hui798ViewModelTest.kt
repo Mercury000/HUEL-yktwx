@@ -42,6 +42,7 @@ class Hui798ViewModelTest {
         var authFailure = false
         var statusFailure = false
         var deviceUseFailure: Exception? = null
+        var deviceUseGate: CompletableDeferred<Unit>? = null
         var useReads = 0
         var homeName: String = device.name
         var userId: String? = account.userId
@@ -83,7 +84,9 @@ class Hui798ViewModelTest {
         override suspend fun deviceUse(id: String, token: String): Hui798DeviceUse {
             useReads++
             deviceUseFailure?.let { throw it }
-            return Hui798DeviceUse(device.copy(id = id, name = homeName), status(id, token), userId)
+            val result = Hui798DeviceUse(device.copy(id = id, name = homeName), status(id, token), userId)
+            deviceUseGate?.let { withContext(NonCancellable) { it.await() } }
+            return result
         }
         override suspend fun status(id: String, token: String): Hui798Reading {
             reads++
@@ -100,6 +103,49 @@ class Hui798ViewModelTest {
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
 
+    @Test fun anotherLocalRunningDeviceDoesNotRejectStartingTheScannedIdleDevice() = runTest(dispatcher) {
+        val api = Api().apply { reading = Hui798Reading(1, clock) }
+        val model = model(api, Store(account, listOf(running()))); runCurrent()
+        api.reading = Hui798Reading(99, null)
+        model.openDevice("123456789012346"); runCurrent(); model.startWater(); runCurrent()
+        assertEquals(1, api.starts); assertEquals(2, model.state.value.sessions.size)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase)
+    }
+    @Test fun failedOverviewWithoutUidDoesNotRejectStartingAServerConfirmedIdleDevice() = runTest(dispatcher) {
+        val api = Api().apply { overviewFailure = true }
+        val model = model(api, Store(account.copy(userId = null))); runCurrent()
+        model.openDevice(device.id); runCurrent(); model.startWater(); runCurrent()
+        assertEquals(1, api.starts)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase)
+    }
+    @Test fun recoveryOfAnIdleDeviceCannotCloseAStartSentWhileRecoveryWasWaiting() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store(null)); runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        api.overviewDevices = listOf(device); api.deviceUseGate = gate
+        model.connectAccount(); runCurrent()
+        model.phoneChanged(account.phone); model.codeChanged("123456"); model.login(); runCurrent()
+        model.openDevice(device.id); runCurrent(); model.startWater(); runCurrent()
+        assertEquals(1, api.starts); assertEquals(WaterPhase.Starting, model.state.value.session?.phase)
+        api.deviceUseGate = null; gate.complete(Unit); runCurrent()
+        assertEquals(WaterPhase.Starting, model.state.value.session?.phase)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase); assertEquals(0, api.ends)
+    }
+    @Test fun unknownStartCanBeDeletedAndIdleStatusReleasesItsOldDeviceEntry() = runTest(dispatcher) {
+        val api = Api().apply { lostStart = true }; val store = Store(account); val model = model(api, store); runCurrent()
+        model.openDevice(device.id); runCurrent(); model.startWater(); runCurrent()
+        val unknown = model.state.value.session!!
+        assertTrue(unknown.canDismissException)
+        model.dismissSession(unknown.sessionId); runCurrent()
+        assertTrue(store.saved.isEmpty()); assertTrue(model.state.value.sessions.isEmpty()); assertEquals(1, api.starts)
+        api.reading = Hui798Reading(99, null); model.openDevice(device.id); runCurrent()
+        model.startWater(); runCurrent(); assertEquals(2, api.starts)
+        api.reading = Hui798Reading(99, null); model.refreshState(); runCurrent()
+        assertTrue(model.state.value.sessions.isEmpty()); assertTrue(store.saved.isEmpty())
+        assertTrue(model.state.value.deviceReady); assertNull(model.state.value.session)
+    }
     @Test fun scanningDuringRecoveryWaitsThenQueriesOnlyTheLatestDevice() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val api = Api().apply { overviewGate = gate }
@@ -178,7 +224,7 @@ class Hui798ViewModelTest {
         assertEquals(order.sessionId, model.state.value.selectedSessionId)
         assertEquals(order, model.state.value.session)
         assertFalse(model.state.value.deviceInUse); assertFalse(model.state.value.deviceReady)
-        assertEquals(1, model.state.value.sessions.size); assertEquals(reads, api.reads)
+        assertEquals(1, model.state.value.sessions.size); assertTrue(api.reads > reads)
         assertEquals(1, api.starts); assertNull(model.state.value.error)
 
         model.stopWater(); runCurrent(); advanceTimeBy(3000); runCurrent()
@@ -268,12 +314,18 @@ class Hui798ViewModelTest {
         assertNull(model.state.value.error); assertEquals(1, api.starts); assertEquals(1, api.ends)
         model.environment(false)
     }
-    @Test fun lostStartDoesNotAdoptAnUnidentifiedRunOrReplayStartOnRetry() = runTest(dispatcher) {
-        val api = Api().apply { lostStart = true }; val model = model(api, Store(account)); runCurrent()
+    @Test fun lostStartRequiresServerOwnershipAndDoesNotReplayStartOrUseLocalTimeWindow() = runTest(dispatcher) {
+        val api = Api().apply { lostStart = true; userId = null }; val model = model(api, Store(account)); runCurrent()
         model.pageVisible(true); model.openDevice(device.id); runCurrent(); model.startWater(); runCurrent()
         assertEquals(WaterPhase.Starting, model.state.value.session?.phase); assertFalse(model.state.value.session!!.startAcknowledged)
         model.refreshState(); runCurrent()
         assertEquals(1, api.starts); assertTrue(model.state.value.confirmedSessions.isEmpty()); assertNotNull(model.state.value.error)
+        api.userId = account.userId
+        api.reading = Hui798Reading(1, clock - 300_000)
+        model.refreshState(); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.session?.phase)
+        assertEquals(clock - 300_000, model.state.value.session?.serverTime)
+        assertEquals(1, api.starts); assertNull(model.state.value.error)
     }
     @Test fun laterUsersSessionCannotBeStoppedAndOurOldProgressEnds() = runTest(dispatcher) {
         val api = Api().apply { reading = Hui798Reading(1, clock) }
@@ -281,7 +333,7 @@ class Hui798ViewModelTest {
         api.userId = "other-user"
         model.stopWater(); runCurrent()
         assertEquals(0, api.ends); assertTrue(model.state.value.confirmedSessions.isEmpty())
-        assertEquals(WaterPhase.Ended, model.state.value.sessions.single().phase)
+        assertTrue(model.state.value.sessions.isEmpty())
     }
     @Test fun foregroundPollingUpdatesStoredProgressAndCompletionCanBeRemoved() = runTest(dispatcher) {
         val api = Api().apply { reading = Hui798Reading(1, clock) }; val store = Store(account, listOf(running()))
@@ -334,8 +386,8 @@ class Hui798ViewModelTest {
     @Test fun expiryLeavesProgressOwnedByTheDisconnectedPlatform() = runTest(dispatcher) {
         val api = Api().apply { authFailure = true }; val store = Store(account, listOf(running())); val model = model(api, store)
         runCurrent(); model.environment(true); runCurrent()
-        assertNull(store.savedAccount); assertFalse(model.state.value.connected); assertTrue(model.state.value.sessions.isEmpty())
-        assertTrue(store.saved.isEmpty())
+        assertNull(store.savedAccount); assertFalse(model.state.value.connected)
+        assertEquals(listOf(running()), model.state.value.sessions); assertEquals(listOf(running()), store.saved)
         assertFalse(model.state.value.loginVisible)
     }
     @Test fun refreshedCaptchaUsesOnlyItsMatchingKeyEvenWhenTheOldImageArrivesLate() = runTest(dispatcher) {
@@ -405,24 +457,24 @@ class Hui798ViewModelTest {
         }
     }
 
-    @Test fun missingUserOrNetworkDropsTheCacheAndNeverRetriesOldProgress() = runTest(dispatcher) {
+    @Test fun missingUserOrNetworkPreservesKnownProgressAndAllowsServerReverification() = runTest(dispatcher) {
         for (missingUser in listOf(true, false)) {
             val api = Api().apply {
                 reading = Hui798Reading(1, clock)
                 if (missingUser) userId = null else statusFailure = true
             }
             val store = Store(account, listOf(running())); val model = model(api, store); runCurrent()
-            assertTrue(model.state.value.sessions.isEmpty()); assertTrue(store.saved.isEmpty())
+            assertEquals(listOf(running()), model.state.value.sessions); assertEquals(listOf(running()), store.saved)
             model.environment(true); runCurrent(); val reads = api.reads
             api.userId = account.userId; api.statusFailure = false
-            advanceTimeBy(30_000); runCurrent(); assertEquals(reads, api.reads)
+            advanceTimeBy(6000); runCurrent(); assertTrue(api.reads > reads)
             model.environment(false); model.environment(true); runCurrent()
-            assertEquals(reads, api.reads)
+            assertTrue(model.state.value.confirmedSessions.contains("fixture-session"))
             assertEquals(0, api.starts); assertEquals(0, api.ends)
             model.environment(false)
             val restarted = model(api, store); runCurrent()
-            assertTrue(restarted.state.value.sessions.isEmpty()); assertTrue(store.saved.isEmpty())
-            assertEquals(reads, api.reads)
+            assertEquals(WaterPhase.Running, restarted.state.value.sessions.single().phase)
+            assertEquals(1, store.saved.size)
         }
     }
 
@@ -435,7 +487,7 @@ class Hui798ViewModelTest {
         assertEquals(listOf(running()), model.state.value.sessions); assertTrue(model.state.value.confirmedSessions.isEmpty())
         api.statusFailure = false; api.userId = "other-user"
         advanceTimeBy(6000); runCurrent()
-        assertEquals(WaterPhase.Ended, model.state.value.sessions.single().phase)
+        assertTrue(model.state.value.sessions.isEmpty())
         assertEquals(0, api.ends); model.environment(false)
     }
     @Test fun accountIdentityMismatchDropsTheOldCacheWithoutAdoptingADevice() = runTest(dispatcher) {
@@ -450,7 +502,7 @@ class Hui798ViewModelTest {
         val model = model(api, Store(account, listOf(running()))); runCurrent(); model.openSession("fixture-session")
         api.reading = Hui798Reading(1, clock + 10_000)
         model.stopWater(); runCurrent()
-        assertEquals(0, api.ends); assertEquals(WaterPhase.Ended, model.state.value.sessions.single().phase)
+        assertEquals(0, api.ends); assertTrue(model.state.value.sessions.isEmpty())
     }
     @Test fun lateRecoveryResponseFromPreviousAccountCannotRestoreItsDevice() = runTest(dispatcher) {
         for (expiredResponse in listOf(false, true)) {
