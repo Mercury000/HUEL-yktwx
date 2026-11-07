@@ -64,7 +64,9 @@ data class WaterReading(val status: Int?, val workStatus: Int?, val orderNo: Str
     fun ended(device: LifeDevice): Boolean = if (device.isShower) status in setOf(3, 5) else status == 5 && workStatus == 1
 }
 data class WaterMessage(val state: String, val code: String)
-class LifeDeviceException(message: String, val loginExpired: Boolean = false) : Exception(message)
+class LifeDeviceException(message: String, val loginExpired: Boolean = false,
+    /** The server explicitly rejected this request or its authentication; transport/parse failures remain uncertain. */
+    val businessRejected: Boolean = false) : Exception(message)
 
 /** Accept literal captured SNs or explicit SN query fields; never guess numbers in arbitrary QR text. */
 object DeviceSerial {

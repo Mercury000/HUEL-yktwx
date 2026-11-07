@@ -132,13 +132,13 @@ private fun LaundryProgress(session: LaundrySession, busy: Boolean, nowMillis: (
                 Text(if (end > now) "预计剩余时间" else "预计时间已到，正在读取完成状态", fontSize = 12.sp, color = DashboardPalette.muted)
             } ?: Text("设备运行中", Modifier.padding(top = 22.dp), fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            if (session.phase == LaundryPhase.Paying && !busy) LifeDeviceGlyph(LifeFeature.Laundry)
+            if (!busy && session.phase in setOf(LaundryPhase.Paying, LaundryPhase.Creating, LaundryPhase.Starting)) LifeDeviceGlyph(LifeFeature.Laundry)
             else CircularProgressIndicator(Modifier.size(40.dp))
             val label = when (session.phase) {
                 LaundryPhase.Checking -> "正在检查设备"
-                LaundryPhase.Creating -> "正在创建订单"
+                LaundryPhase.Creating -> if (busy) "正在创建订单" else "下单结果未知"
                 LaundryPhase.Paying -> "完成支付后启动设备"
-                else -> "正在读取设备启动结果"
+                else -> if (busy) "正在读取设备启动结果" else "等待设备启动确认"
             }
             Text(label, Modifier.padding(top = 22.dp), fontSize = 20.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center)
@@ -203,6 +203,8 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
         ended -> "再次扫码洗衣"
         expired -> "查询支付结果"
         session?.phase == LaundryPhase.Paying -> "继续支付"
+        session?.phase == LaundryPhase.Creating -> "请在胖乖生活核对"
+        session?.phase == LaundryPhase.Starting -> "查询启动结果"
         retry -> "重试"
         session?.phase == LaundryPhase.Running -> "刷新进度"
         session != null -> "正在处理…"
@@ -213,6 +215,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             session.phase == LaundryPhase.Closed -> "可重新扫码下单"
             ended -> "本次服务已结束"
             session.phase == LaundryPhase.Paying -> "离开页面不会取消订单"
+            session.phase == LaundryPhase.Creating -> "结果未知时请勿重复下单"
             else -> "离开页面不会停止设备"
         },
             fontSize = 12.sp, color = DashboardPalette.muted)
@@ -225,7 +228,8 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
                 else -> model.showLaundryPayment()
             }
         }, enabled = active && !loading && when {
-            session != null -> ended || retry || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Paying)
+            session?.phase == LaundryPhase.Creating -> false
+            session != null -> ended || retry || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Paying, LaundryPhase.Starting)
             retry -> true
             else -> state.device?.laundryError == null && state.device?.skus?.any { it.id == state.selectedSkuId && it.available } == true
         }, modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
