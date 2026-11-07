@@ -32,7 +32,6 @@ import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.FeeRoomBinding
-import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.ReadEnvironment
@@ -648,7 +647,7 @@ private fun MainContent(
                                                     onDismissLifeSession = lifeModel::dismissSession,
                                                     onUnlost = {
                                                         val account = state.account?.account
-                                                        if (isActive && account != null && state.problem == PaymentCodeProblem.Lost &&
+                                                        if (isActive && account != null && state.accountCard?.let { it.account == account && it.lost && !it.frozen } == true &&
                                                             feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
                                                             if (!allowOnlineEntry(context, state.preview)) return@PaymentPage
                                                             rechargeModel.dismiss()

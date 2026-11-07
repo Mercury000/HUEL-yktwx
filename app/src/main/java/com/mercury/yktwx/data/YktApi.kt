@@ -115,20 +115,11 @@ class YktApi(
     override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
         val (account, selected) = paymentAccountInfo(token)
         onAccount(account)
-        // An issued barcode can still be rejected at payment time. Verify the matching card
-        // before requesting any codes; preserve balance and recharge independently.
-        val card = try { paymentCard(token, account.account) }
-        catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: AuthenticationRequired) { throw e }
-        catch (_: Exception) { throw PaymentCodeUnavailable(account, "暂时无法确认卡状态，请检查网络后重试", PaymentCodeProblem.StatusUnverified) }
-        if (card.frozen) throw PaymentCodeUnavailable(account, "校园卡已冻结，请在官网或联系校园卡服务中心处理", PaymentCodeProblem.Frozen)
-        if (card.lost) throw PaymentCodeUnavailable(account, "校园卡已挂失，当前无法使用付款码", PaymentCodeProblem.Lost)
-        if (card.status != 0) throw PaymentCodeUnavailable(account, "校园卡状态异常，请在官网检查账户", PaymentCodeProblem.Unavailable)
+        // The payment page reads card status independently; it must not delay issuing a code.
         // Activation is a separate restriction from the card's loss/freeze state.
         if (selected.optInt("status", -1) == 0) throw PaymentCodeUnavailable(account,
             (selected.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
                 ?: (selected.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "付款码暂不可用")
-        val started = System.currentTimeMillis()
         try {
             val response = request("/berserker-app/ykt/tsm/batchGetBarCodeGet", mapOf("account" to account.account, "payacc" to account.payacc, "paytype" to account.paytype), token)
             val data = response.optJSONObject("data")

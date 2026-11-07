@@ -65,6 +65,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var resumeNeedsRefresh = false
     private var ticker: Job? = null
     private var request: Job? = null
+    private var paymentCardRequest: Job? = null
     private var accountRequest: Job? = null
     private var accountReadVersion = 0L
     private var accountReadAt = 0L
@@ -155,6 +156,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
         cancelAccountRead()
+        cancelPaymentCardRead()
         setPaymentMotionActive(false); mutableSuccess.value = null
         ticker?.cancel(); codeExpiresAt = 0L; resumeNeedsRefresh = false
         if (cancelLogin) {
@@ -440,6 +442,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         setPaymentMotionActive(false)
         mutableSuccess.value = null
         requestVersion++
+        cancelPaymentCardRead()
         ticker?.cancel(); request?.cancel()
         // The request is cancelled here rather than failed. Forget its single-flight slot so a
         // return to the page can start a fresh read instead of seeing a stale in-flight marker.
@@ -494,6 +497,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 handledLoginGeneration = sessionState.value.generation
                 notifications.send("登录成功")
                 show(batch, username.trim(), version, transactionRead)
+                readPaymentCard(username.trim(), batch.account.account, version)
                 repository.saveDisplay(username.trim(), DisplayKeys.Account, batch.account, DisplayCodecs.Account)
             } catch (e: CancellationException) { throw e
             } catch (e: PaymentCodeUnavailable) {
@@ -502,6 +506,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
                 mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
+                readPaymentCard(username.trim(), e.account.account, version)
                 recordBalance(username.trim(), e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
@@ -535,6 +540,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         if (!reads.canStart(query, readTrigger, replace = !trigger.automatic) { refresh(manual, trigger) }) return
         // A newer payment refresh owns the account result, superseding any older balance read.
         cancelAccountRead()
+        cancelPaymentCardRead()
         resumeNeedsRefresh = false
         codeExpiresAt = 0L
         ticker?.cancel()
@@ -543,7 +549,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val username = mutable.value.username
         val account = mutable.value.account
         mutable.value = PaymentUiState(needsLogin = false, busy = true, username = username, refreshing = manual, account = account,
-            accountFromCache = mutable.value.accountFromCache, balanceLoading = true)
+            accountFromCache = mutable.value.accountFromCache, balanceLoading = true,
+            accountCard = mutable.value.accountCard)
         request = reads.launch(query, readTrigger, retry = { refresh(trigger = ReadTrigger.Retry) }) {
             var accountObtained = false
             var failure: ReadFailureKind? = null
@@ -556,6 +563,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                             accountObtained = true
                             recordBalance(username, fresh, transactionRead)
                             mutable.value = mutable.value.copy(account = fresh, accountFromCache = false, balanceLoading = false)
+                            readPaymentCard(username, fresh.account, version)
                             viewModelScope.launch {
                                 if (version == requestVersion) repository.saveDisplay(username, DisplayKeys.Account, fresh, DisplayCodecs.Account)
                             }
@@ -571,7 +579,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 cancelled = false
                 failure = e.readFailureKind()
-                mutable.value = PaymentUiState(needsLogin = false, username = username, account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
+                mutable.value = mutable.value.copy(busy = false, refreshing = false, balanceLoading = false,
+                    account = e.account, accountFromCache = false, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
                 recordBalance(username, e.account, transactionRead)
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             }
@@ -580,8 +589,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 cancelled = false
                 failure = e.readFailureKind()
                 if (!accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
-                mutable.value = PaymentUiState(
-                    needsLogin = false,
+                mutable.value = mutable.value.copy(
+                    needsLogin = false, busy = false, refreshing = false, balanceLoading = false,
                     errorKind = e.readFailureKind(), error = e.message ?: "服务异常，请稍后刷新",
                     username = username, account = mutable.value.account,
                     accountFromCache = mutable.value.accountFromCache,
@@ -594,7 +603,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 cancelled = false
                 failure = ReadFailureKind.Other
                 if (!accountObtained) account?.let { balanceRefresh.failed(transactionRead, balanceKey(it)) }
-                mutable.value = PaymentUiState(needsLogin = false, errorKind = ReadFailureKind.Other, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
+                mutable.value = mutable.value.copy(needsLogin = false, busy = false, refreshing = false, balanceLoading = false,
+                    errorKind = ReadFailureKind.Other, error = "服务数据异常，请稍后刷新", username = username, account = mutable.value.account,
                     accountFromCache = mutable.value.accountFromCache, accountErrorKind = ReadFailureKind.Other, accountError = "余额暂时无法更新".takeUnless { accountObtained },
                     problem = PaymentCodeProblem.StatusUnverified)
             } finally {
@@ -607,12 +617,48 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             }
         }
     }
+    private fun cancelPaymentCardRead() {
+        paymentCardRequest?.cancel(); paymentCardRequest = null
+        mutable.value = mutable.value.copy(cardStatusLoading = false)
+    }
+
+    /** Card warnings can arrive before or after the code without extending its loading state. */
+    private fun readPaymentCard(username: String, account: String, version: Long) {
+        if (!foreground || !paymentDisplayVisible()) return
+        cancelPaymentCardRead()
+        fun isCurrent() = version == requestVersion && repository.ownsAccount(username) &&
+            !mutable.value.needsLogin && mutable.value.account?.account == account
+        mutable.value = mutable.value.copy(accountCard = mutable.value.accountCard?.takeIf { it.account == account },
+            cardStatusLoading = true, cardStatusError = null, cardStatusErrorKind = null)
+        paymentCardRequest = viewModelScope.launch {
+            try {
+                val card = withContext(Dispatchers.IO) { repository.paymentCard(username, account, force = true) }
+                if (!isCurrent()) return@launch
+                mutable.value = mutable.value.copy(accountCard = card, cardStatusLoading = false,
+                    cardStatusError = null, cardStatusErrorKind = null)
+                if (card.frozen || card.status != 0) {
+                    ticker?.cancel(); codeExpiresAt = 0L
+                    mutable.value = mutable.value.copy(code = null, secondsLeft = 0,
+                        problem = if (card.frozen) PaymentCodeProblem.Frozen else PaymentCodeProblem.Unavailable,
+                        error = if (card.frozen) "校园卡已冻结，请在官网或联系校园卡服务中心处理" else "校园卡状态异常，请在官网检查账户",
+                        errorKind = ReadFailureKind.Other)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (!isCurrent()) return@launch
+                mutable.value = mutable.value.copy(accountCard = null, cardStatusLoading = false,
+                    cardStatusError = (e as? YktException)?.message ?: "校园卡状态暂时无法加载",
+                    cardStatusErrorKind = e.readFailureKind())
+            }
+        }
+    }
     /** Card-state changes invalidate both the displayed code and any older in-flight refresh. */
     fun cardStateChanged() {
         cancelPaymentDetection(); mutableSuccess.value = null
         if (preview || mutable.value.needsLogin || mutable.value.restoringLogin) return
         cancelAccountRead()
         requestVersion++
+        cancelPaymentCardRead()
         request?.cancel()
         reads.cancel(paymentReadKey())
         ticker?.cancel()
@@ -632,8 +678,14 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         }
         val interval = batch.displayIntervalSeconds
         codeExpiresAt = SystemClock.elapsedRealtime() + interval * 1000
-        mutable.value = PaymentUiState(false, username = username, account = batch.account, code = batch.codes[0], secondsLeft = interval)
-        startTicker(version)
+        val restricted = mutable.value.problem == PaymentCodeProblem.Frozen ||
+            mutable.value.problem == PaymentCodeProblem.Unavailable && mutable.value.accountCard?.status?.let { it != 0 } == true
+        mutable.value = mutable.value.copy(needsLogin = false, busy = false, refreshing = false,
+            username = username, account = batch.account, accountFromCache = false, balanceLoading = false,
+            code = batch.codes[0].takeUnless { restricted }, secondsLeft = if (restricted) 0 else interval,
+            problem = mutable.value.problem.takeIf { restricted },
+            error = mutable.value.error.takeIf { restricted }, errorKind = mutable.value.errorKind.takeIf { restricted })
+        if (restricted) codeExpiresAt = 0L else startTicker(version)
     }
     private fun startTicker(version: Long) {
         ticker?.cancel()

@@ -45,9 +45,10 @@ class PaymentInitialLoadingUiTest {
         compose.waitForIdle()
     }
 
-    private fun assertVerifying() {
-        compose.onNodeWithText("正在确认卡状态").assertIsDisplayed()
-        compose.onNodeWithText("核验中").assertIsDisplayed()
+    private fun assertLoadingCode() {
+        compose.onNodeWithTag("payment-code-loading").assertIsDisplayed()
+        compose.onNodeWithText("正在确认卡状态").assertDoesNotExist()
+        compose.onNodeWithText("核验中").assertDoesNotExist()
         compose.onNodeWithText("暂时无法确认卡状态").assertDoesNotExist()
         compose.onNodeWithText("付款码暂不可用，请下拉刷新").assertDoesNotExist()
         compose.onNodeWithTag("read-unavailable").assertDoesNotExist()
@@ -93,15 +94,15 @@ class PaymentInitialLoadingUiTest {
         // Render the actual restored state before the shell admits any network read.
         assertFalse(payment.state.value.busy)
         assertEquals(0, reads.get())
-        assertVerifying()
+        assertLoadingCode()
         if (cached) compose.onNodeWithText("¥ 128.60").assertIsDisplayed()
         compose.runOnIdle { payment.onReadEnvironment(ReadEnvironment.standalone(ReadPage.Payment)) }
         await { reads.get() == 1 }
-        assertVerifying()
+        assertLoadingCode()
         compose.runOnIdle { gate.complete(Unit) }
         await { !payment.state.value.busy }
         if (fail) {
-            compose.onNodeWithText("暂时无法确认卡状态").assertIsDisplayed()
+            compose.onNodeWithText("付款码暂不可用").assertIsDisplayed()
             compose.onNodeWithText("网络连接失败，请下拉刷新").assertIsDisplayed()
             compose.onNodeWithText("¥ 128.60").assertIsDisplayed()
             compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
@@ -114,10 +115,10 @@ class PaymentInitialLoadingUiTest {
         }
     }
 
-    @Test fun cachedAccountStartsWithVerificationAndShowsFailureOnlyAfterTheReadFails() =
+    @Test fun cachedAccountStartsWithCodeLoadingAndShowsFailureOnlyAfterTheReadFails() =
         restoredPayment(cached = true, fail = true)
 
-    @Test fun emptyAccountStartsWithVerificationAndDisplaysTheSuccessfulCode() =
+    @Test fun emptyAccountStartsWithCodeLoadingAndDisplaysTheSuccessfulCode() =
         restoredPayment(cached = false, fail = false)
 
     @Test fun offlineCachedAccountShowsConnectionFeedbackInsteadOfWaitingForANetworkRead() {

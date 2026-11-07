@@ -12,8 +12,7 @@ internal object PreviewData {
     fun paymentState(lost: Boolean): PaymentUiState {
         val account = PaymentAccount("demo", "000", "1", "统一账户", 18650)
         return PaymentUiState(needsLogin = false, username = "界面预览", account = account, preview = true,
-            code = if (lost) null else "00000000000000000000", secondsLeft = if (lost) 0 else 60,
-            problem = if (lost) PaymentCodeProblem.Lost else null,
+            code = "00000000000000000000", secondsLeft = 60,
             accountCard = CampusCard(account.account, "校园卡", "202600000001", lost, false, 0))
     }
 

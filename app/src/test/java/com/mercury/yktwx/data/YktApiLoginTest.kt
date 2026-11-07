@@ -85,7 +85,7 @@ class YktApiLoginTest {
         assertTrue(fake.calls.single().url.path.endsWith("/getCampusCards"))
     }
 
-    @Test fun paymentPublishesTheVerifiedBalanceBeforeCardPreflightWithoutAnotherAccountQuery() = runBlocking {
+    @Test fun paymentPublishesBalanceBeforeFetchingCodeWithoutAnotherAccountQuery() = runBlocking {
         val fake = ScriptedApi()
         var published: PaymentAccount? = null
         val batch = fake.api.payment("fake-token") { account ->
@@ -95,7 +95,7 @@ class YktApiLoginTest {
             published = account
         }
         assertSame(batch.account, published)
-        assertEquals(3, fake.calls.size)
+        assertEquals(2, fake.calls.size)
         assertEquals(1, fake.calls.count { it.url.path.endsWith("/codebarPayinfo") })
     }
     @Test fun malformedBalancesCannotBecomeZeroOrTruncatedAmounts() = runBlocking {
@@ -106,11 +106,11 @@ class YktApiLoginTest {
         }
         assertEquals(0L, ScriptedApi(balance = "0").api.paymentAccount("fake-token").balanceCents)
     }
-    @Test fun loginAndPaymentWithCardPreflightReachAllSixEndpoints() = runBlocking {
+    @Test fun loginAndPaymentReachFiveEndpointsWithoutWaitingForCardStatus() = runBlocking {
         val fake = ScriptedApi()
         val session = fake.api.login(Credentials("123456", "Aa1@"))
         val batch = fake.api.payment(session.accessToken)
-        assertEquals(6, fake.calls.size)
+        assertEquals(5, fake.calls.size)
         assertEquals("fake-token", session.accessToken)
         assertTrue(session.isFresh())
         assertEquals(1, batch.codes.size)
@@ -155,18 +155,19 @@ class YktApiLoginTest {
             assertNull(request.getRequestProperty("Authorization")); assertNull(request.getRequestProperty("Cookie"))
         }
     }
-    @Test fun lossOrFreezePreservesAccountButNeverRequestsAnUnusableBarcode() = runBlocking {
+    @Test fun lossOrFreezeFlagsDoNotPreventRequestingAServerIssuedBarcode() = runBlocking {
         for ((lost, frozen) in listOf(1 to 0, 0 to 1, 1 to 1)) {
             val fake = ScriptedApi(lost = lost, frozen = frozen)
-            val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
-            assertEquals(1234L, error.account.balanceCents)
-            assertEquals(if (frozen == 1) PaymentCodeProblem.Frozen else PaymentCodeProblem.Lost, error.problem)
+            val batch = fake.api.payment("fake-token")
+            assertEquals(1234L, batch.account.balanceCents)
+            assertEquals(1, batch.codes.size)
             assertEquals(2, fake.calls.size)
-            assertFalse(fake.calls.any { it.url.path.endsWith("/batchGetBarCodeGet") })
+            assertTrue(fake.calls.any { it.url.path.endsWith("/batchGetBarCodeGet") })
+            assertFalse(fake.calls.any { it.url.path.endsWith("/getCampusCards") })
         }
     }
 
-    @Test fun failedOrUnmatchedCardReadDoesNotExposeCodeOrMislabelAsLost() = runBlocking {
+    @Test fun failedOrUnmatchedCardReadRemainsAnIndependentFailure() = runBlocking {
         for (body in listOf(
             JSONObject().put("code", 500),
             JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray()
@@ -174,10 +175,9 @@ class YktApiLoginTest {
             JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray()
                 .put(JSONObject().put("account", "fake-account").put("lostflag", "invalid")))))) {
             val fake = ScriptedApi(cardBody = body)
-            val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
-            assertEquals(PaymentCodeProblem.StatusUnverified, error.problem)
-            assertEquals(1234L, error.account.balanceCents)
-            assertEquals(2, fake.calls.size)
+            assertThrows(YktException::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
+            assertEquals(1, fake.calls.size)
+            assertEquals(1, fake.api.payment("fake-token").codes.size)
         }
     }
 
@@ -187,9 +187,8 @@ class YktApiLoginTest {
             JSONArray().put(JSONObject(normal.toString()).put("freezeflag", "invalid")),
             JSONArray().put(JSONObject(normal.toString()).put("acc_status", "invalid")))) {
             val fake = ScriptedApi(cardBody = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", cards)))
-            val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
-            assertEquals(PaymentCodeProblem.StatusUnverified, error.problem)
-            assertEquals(2, fake.calls.size)
+            assertThrows(YktException::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
+            assertEquals(1, fake.calls.size)
         }
     }
 
@@ -198,12 +197,12 @@ class YktApiLoginTest {
             .put(JSONObject().put("account", "other-card").put("lostflag", 1).put("freezeflag", 0).put("acc_status", 0))
             .put(JSONObject().put("account", "fake-account").put("lostflag", 0).put("freezeflag", 0).put("acc_status", 0))
         val fake = ScriptedApi(cardBody = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", cards)))
-        assertEquals(1, fake.api.payment("fake-token").codes.size)
+        assertFalse(fake.api.paymentCard("fake-token", "fake-account").lost)
     }
 
     @Test fun cardReadAuthenticationFailureStillRequiresAuthentication() = runBlocking {
         val fake = ScriptedApi(cardHttpStatus = 401, cardBody = JSONObject().put("code", 401))
-        assertThrows(AuthenticationRequired::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        assertThrows(AuthenticationRequired::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
         Unit
     }
 
@@ -212,7 +211,7 @@ class YktApiLoginTest {
         val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
         assertEquals(1234L, error.account.balanceCents)
         assertEquals("fake-account", error.account.account)
-        assertEquals(2, fake.calls.size)
+        assertEquals(1, fake.calls.size)
     }
 
     @Test fun serverBarcodeRejectionKeepsCurrentAccountAndOriginalMessage() = runBlocking {
@@ -222,7 +221,7 @@ class YktApiLoginTest {
         val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
         assertEquals(message, error.message)
         assertEquals(1234L, error.account.balanceCents)
-        assertEquals(3, fake.calls.size)
+        assertEquals(2, fake.calls.size)
     }
 
     @Test fun emptyBarcodePreservesInnerServerReasonAndBalance() = runBlocking {
