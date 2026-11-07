@@ -16,6 +16,7 @@
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
+    <style name="Theme.AlipayBridge" parent="Theme.UnionPayBridge" />
     <string name="about_references_description">The implementation of CaiXiaoTong references the following open-source projects.</string>
     <string name="about_reference_projects">Reference projects</string>
     <string name="unknown_generic">Unknown</string>

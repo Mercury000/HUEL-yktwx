@@ -640,7 +640,7 @@ class LifeDevicesViewModel internal constructor(
         if (value.feature != LifeFeature.Laundry || !value.paymentVisible || value.laundryBusy || value.quoteLoading || value.paymentLaunch != null ||
             quote.deviceId != device.id || (value.laundry == null && quote.skuId != value.selectedSkuId) ||
             quote.channels.none { it.method == method && it.laundryUnavailableReason() == null }) return
-        laundryWork(clearError = false) { token, service ->
+        laundryWork { token, service ->
             var session = mutable.value.laundry
             if (session?.phase == LaundryPhase.Closed) return@laundryWork
             if (session == null || !session.active || session.phase == LaundryPhase.Checking && !session.createSent) {
@@ -702,7 +702,7 @@ class LifeDevicesViewModel internal constructor(
         laundryWork { token, service ->
             if (readLaundryOrder(token, service)) return@laundryWork
             val pendingOrSuccess = if (launch.method == "52") resultStatus == null || resultStatus.equals("success", true)
-                else resultStatus in setOf("9000", "8000", "6004")
+                else resultStatus == null || resultStatus in setOf("9000", "8000", "6004")
             if (!pendingOrSuccess && !service.laundryPaid(session.orderNo, session.payMethod, token)) {
                 val message = if (launch.method == "52") when {
                     resultStatus.equals("cancel", true) -> "支付已取消，可继续支付同一订单"
@@ -711,6 +711,7 @@ class LifeDevicesViewModel internal constructor(
                 } else when (resultStatus) {
                     "6001" -> "支付已取消，可继续支付同一订单"
                     "6002" -> "支付宝连接失败，可继续支付同一订单"
+                    "launch_failed" -> "支付宝支付未能启动，可继续支付同一订单"
                     else -> "支付宝未完成支付，可继续支付同一订单"
                 }
                 if (stopExpiredLaundryPayment(checkNotNull(mutable.value.laundry))) return@laundryWork
@@ -729,14 +730,6 @@ class LifeDevicesViewModel internal constructor(
         }
         paymentInFlight = requestId
         return true
-    }
-    fun launchLaundryPayment(requestId: Long, execute: suspend () -> String?) {
-        if (mutable.value.paymentLaunch?.method != "13") return
-        if (!claimLaundryPayment(requestId)) return
-        viewModelScope.launch {
-            val status = withContext(io) { execute() }
-            laundryPaymentReturned(requestId, status)
-        }
     }
     fun cancelLaundry() {
         val value = mutable.value
@@ -824,12 +817,12 @@ class LifeDevicesViewModel internal constructor(
     }
     private suspend fun checkLaundryReady(session: LaundrySession, token: String, service: LifeLaundryService) {
         val message = service.checkLaundryDevice(session.device.id, token)
-        repeat(20) {
+        repeat(40) {
             if (service.laundryMachineReady(message, token)) {
                 sessionError(LifeFeature.Laundry, session.sessionId, null)
                 return
             }
-            delay(1000)
+            delay(500)
         }
         throw LifeDeviceException("设备响应较慢，请留意现场状态后重试")
     }
