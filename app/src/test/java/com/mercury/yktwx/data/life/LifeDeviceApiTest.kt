@@ -179,6 +179,31 @@ class LifeDeviceApiTest {
         "/payChannelRoute/afterPay" to """{"code":0,"data":[{"method":15,"methodName":"支付宝支付","useStatus":true,"needOpenFlag":false},{"method":53,"methodName":"云闪付免密支付","useStatus":true,"needOpenFlag":false}]}""",
     )
 
+    @Test fun absentCapabilityFieldsStayUnknownAndDoNotInventADeviceOrChannelRejection() = runBlocking {
+        val responses = showerResponses().toMutableMap()
+        responses["/goods/normal/details"] = responses.getValue("/goods/normal/details")
+            .replace(",\"isBluetooth\":0", "").replace(",\"supportAppUserFinish\":true", "")
+        responses["/goods/normal/skus"] = responses.getValue("/goods/normal/skus")
+            .replace(",\"scanAvailable\":true", "").replace(",\"stockState\":1", "")
+        responses["/payChannelRoute/afterPay"] = responses.getValue("/payChannelRoute/afterPay")
+            .replace(",\"useStatus\":true", "").replace(",\"needOpenFlag\":false", "")
+        val device = api(responses, mutableListOf()).device("test-shower-sn", "test-token")
+        assertNull(device.bluetooth); assertNull(device.supportsFinish); assertNull(device.skus.single().available)
+        assertNull(device.alipay!!.available); assertNull(device.alipay!!.needsOpen); assertNull(device.startError)
+    }
+    @Test fun absentHealthResultDoesNotInventAFaultAndPromotionMetadataDoesNotBlockAQuote() = runBlocking {
+        for (data in listOf("null", "{}", "{\"msgId\":\"sync-1\"}")) {
+            val service = api(mapOf("/trade/check_device_status" to "{\"code\":0,\"data\":$data}"), mutableListOf())
+            assertEquals(if (data.contains("sync-1")) "sync-1" else "", service.checkLaundryDevice("77", "test-token"))
+        }
+        val device = LifeDevice("77", "code", "洗衣", "00", "22", "22", "shop", "imei", "", "", "before",
+            false, false, null, listOf(LifeSku("clean", "桶自洁", true)), emptyList())
+        val calls = mutableListOf<Response>()
+        val service = api(mapOf("/trade/preview/v4" to """{"code":0,"data":{"realPrice":"0.00","items":[{"goodsId":"77","skuId":"clean"}],"promotions":[{"isUsed":true}]}}""",
+            "/payChannelRoute/prePay" to """{"code":0,"data":[{"method":"2","methodName":"余额支付"}]}"""), calls)
+        assertEquals("0.00", service.laundryQuote(device, "clean", "test-token").price)
+        assertEquals("[]", calls.first().form()["promotions"])
+    }
     @Test fun showerScanUsesSnAndActualCategoryForAfterPayAndKeepsOutletData() = runBlocking {
         val calls = mutableListOf<Response>(); val service = api(showerResponses(), calls)
         val device = service.device("test-shower-sn", "test-token")
@@ -269,7 +294,7 @@ class LifeDeviceApiTest {
         val nqt = "00000000-0000-4000-8000-000000000001"
         val device = service.laundryDevice(nqt, "test-token")
         assertNull(device.laundryError)
-        assertFalse(device.supportsFinish)
+        assertEquals(false, device.supportsFinish)
         assertEquals(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁", 5), device.skus.single())
         assertTrue(device.channels.isEmpty())
         assertFalse(calls.any { it.url.path == "/trade/preview/v4" })

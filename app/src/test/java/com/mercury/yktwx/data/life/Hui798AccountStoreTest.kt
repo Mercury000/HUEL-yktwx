@@ -12,6 +12,17 @@ class Hui798AccountStoreTest {
         override fun write(values: Map<String, String>) { if (failWrite) throw IllegalStateException("storage unavailable"); data.putAll(values) }
         override fun remove(key: String) { data.remove(key) }
     }
+    @Test fun unknownStartDeletionWorksAfterExpiryAndCannotReappearWhenCredentialsAreRenewed() {
+        val records = Records(); val store = Hui798AccountStore(records)
+        val account = Hui798Account("13800000000", "fixture-token")
+        val unknown = Hui798Session(Hui798Device("device-1", "用水"), attemptedAtMillis = 100_000, uncertain = true)
+        val running = unknown.copy(device = Hui798Device("device-2", "用水"), sessionId = "running", phase = WaterPhase.Running,
+            serverTime = 100_000, uncertain = false)
+        store.saveAccount(account); store.saveSessions(listOf(unknown, running)); store.clearAccount()
+        store.removeSession(unknown.sessionId)
+        assertFalse(records.read("sessions")!!.toString().contains(unknown.sessionId))
+        store.saveAccount(account); assertEquals(listOf(running), store.sessions())
+    }
     @Test fun failedReplacementPreservesPreviousCredentialsAndRecoveryRecords() {
         val records = Records(); val store = Hui798AccountStore(records)
         val account = Hui798Account("13800000000", "fixture-token")

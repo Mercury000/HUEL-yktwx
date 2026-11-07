@@ -26,7 +26,8 @@ class Hui798AccountStore internal constructor(private val records: LifeDeviceRec
         return data.getJSONArray("items").objects().map {
             Hui798Session(Hui798Device(it.getString("deviceId"), it.getString("name")), WaterPhase.valueOf(it.getString("phase")),
                 it.getLong("attemptedAt"), it.optBoolean("acknowledged"), it.optLong("serverTime").takeIf { value -> value > 0 },
-                it.optLong("startedAt").takeIf { value -> value > 0 }, it.optLong("endedAt").takeIf { value -> value > 0 }, it.getString("sessionId"))
+                it.optLong("startedAt").takeIf { value -> value > 0 }, it.optLong("endedAt").takeIf { value -> value > 0 }, it.getString("sessionId"),
+                it.optBoolean("uncertain") || it.getString("phase") == WaterPhase.Starting.name && it.optLong("serverTime") <= 0)
         }
     }
     override fun saveSessions(sessions: List<Hui798Session>) {
@@ -35,8 +36,14 @@ class Hui798AccountStore internal constructor(private val records: LifeDeviceRec
             ?: throw Hui798Exception("请先登录慧生活798", loginExpired = true)
         val items = sessions.map { JSONObject().put("deviceId", it.device.id).put("name", it.device.name).put("phase", it.phase.name)
             .put("attemptedAt", it.attemptedAtMillis).put("acknowledged", it.startAcknowledged).put("serverTime", it.serverTime)
-            .put("startedAt", it.startedAtMillis).put("endedAt", it.endedAtMillis).put("sessionId", it.sessionId) }
+            .put("startedAt", it.startedAtMillis).put("endedAt", it.endedAtMillis).put("sessionId", it.sessionId).put("uncertain", it.uncertain) }
         records.write(mapOf("sessions" to JSONObject().put("owner", owner).put("items", JSONArray(items)).toString()))
+    }
+    override fun removeSession(id: String) {
+        records.read("sessions")?.let { data ->
+            val items = data.getJSONArray("items").objects().filterNot { it.text("sessionId") == id }
+            records.write(mapOf("sessions" to data.put("items", JSONArray(items)).toString()))
+        }
     }
 }
 

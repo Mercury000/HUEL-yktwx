@@ -33,7 +33,7 @@ import java.util.Locale
 internal data class WaterDeviceUiState(
     val provider: LifeProvider, val name: String, val location: String = "", val deviceId: String? = null,
     val phase: WaterPhase = WaterPhase.Ready, val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
-    val paymentMethod: String? = null, val supportsFinish: Boolean = true,
+    val paymentMethod: String? = null, val supportsFinish: Boolean? = true,
     val status: WaterDeviceStatus? = null, val error: String? = null, val shower: Boolean = false,
 ) {
     val action: String get() = if (shower) "淋浴" else if (provider == LifeProvider.Panggui) "接水" else "用水"
@@ -174,7 +174,7 @@ private fun WaterUsageNotice(state: WaterDeviceUiState) {
                 if (status?.loading == true) CircularProgressIndicator(size = 18.dp, strokeWidth = 2.dp,
                     modifier = Modifier.testTag("${state.tag}-device-loading"))
                 Text(status?.title ?: when {
-                    !state.supportsFinish -> "请按设备说明操作"
+                    state.supportsFinish == false -> "请按设备说明操作"
                     running -> if (state.provider == LifeProvider.Panggui && !state.shower) "接好后及时结束" else "用完后及时结束"
                     else -> if (state.provider == LifeProvider.Panggui && !state.shower) "接好后，点结束接水" else "用完后，点结束${state.action}"
                 }, Modifier.weight(1f), fontSize = 13.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -205,7 +205,7 @@ private fun WaterDeviceActions(state: WaterDeviceUiState, active: Boolean, prima
     scan: WaterDeviceAction, onBack: () -> Unit, footerNote: String, showRescan: Boolean) {
     LifeDeviceActionFooter("${state.tag}-action-footer") {
         Text(footerNote, fontSize = 12.sp, lineHeight = 17.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
-        if (state.phase == WaterPhase.Running && !state.supportsFinish) {
+        if (state.phase == WaterPhase.Running && state.supportsFinish == false) {
             Text("请按设备说明结束${state.action}", Modifier.fillMaxWidth(), fontSize = 13.sp, textAlign = TextAlign.Center, color = DashboardPalette.muted)
         } else Button(primary.onClick, enabled = active && primary.enabled,
             modifier = Modifier.fillMaxWidth().testTag("${state.tag}-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {

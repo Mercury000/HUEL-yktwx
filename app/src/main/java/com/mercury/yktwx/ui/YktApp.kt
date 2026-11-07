@@ -636,11 +636,11 @@ private fun MainContent(
                                                     additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
                                                         when (session.phase) {
                                                             WaterPhase.Ended -> "已完成"
-                                                            WaterPhase.Starting -> "正在启动"
+                                                            WaterPhase.Starting -> if (session.uncertain) "启动结果未知" else "正在启动"
                                                             WaterPhase.Stopping -> "正在结束"
                                                             else -> "用水中"
                                                         }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
-                                                        progress = if (session.active) null else 1f,
+                                                        progress = if (session.active) null else 1f, dismissible = session.canDismissException,
                                                         onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) },
                                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
                                                     onOpenLifeSession = ::openLifeSession,

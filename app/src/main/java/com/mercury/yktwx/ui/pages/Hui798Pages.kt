@@ -90,7 +90,8 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         state.error != null -> null
         else -> "查询成功后即可开始用水"
     }
-    val failed = state.error != null && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
+    val exceptional = state.session?.canDismissException == true
+    val failed = exceptional || state.error != null && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
     val retryDevice = phase == WaterPhase.Ready && state.connected && !state.deviceReady && (state.device != null || state.scannedDeviceId != null)
     val loading = state.restoring || state.busy || state.loadingDevice || !failed && phase in setOf(WaterPhase.Starting, WaterPhase.Stopping)
     val label = when {
@@ -99,6 +100,7 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         phase != WaterPhase.Ended && !state.connected -> "登录并继续"
         retryDevice && state.deviceInUse -> "刷新状态"
         retryDevice -> "重新查询"
+        exceptional -> "重新扫码"
         failed -> "刷新状态"
         phase == WaterPhase.Starting -> "正在启动…"
         phase == WaterPhase.Stopping -> "正在结束…"
@@ -111,12 +113,16 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         !state.connected -> true
         retryDevice -> true
         phase == WaterPhase.Ready -> state.deviceReady && state.device != null
-        phase == WaterPhase.Running -> state.session?.sessionId in state.confirmedSessions
+        phase == WaterPhase.Running -> true
         else -> failed
     }) {
         when {
             phase == WaterPhase.Ended -> onScan()
             !state.connected -> model.connectAccount(false)
+            exceptional -> {
+                state.session?.let { model.dismissSession(it.sessionId) }
+                onScan()
+            }
             retryDevice || failed -> model.refreshState()
             phase == WaterPhase.Running -> model.stopWater()
             else -> model.startWater()
@@ -134,5 +140,5 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
         scanAction = WaterDeviceAction("重新扫码", !state.busy, onScan), refreshAction = refresh,
         onBack = onBack, footerNote = display.feeNotice, nowMillis = nowMillis,
         loginAction = if (!state.restoring && !state.connected) WaterDeviceAction("登录并继续", true) { model.connectAccount(false) } else null,
-        retryAction = refresh.takeIf { state.error != null && state.connected && phase == WaterPhase.Running }, showRescan = true)
+        retryAction = refresh.takeIf { state.connected && (exceptional || state.error != null && phase == WaterPhase.Running) }, showRescan = true)
 }

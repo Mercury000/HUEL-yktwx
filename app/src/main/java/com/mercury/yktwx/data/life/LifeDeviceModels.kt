@@ -9,17 +9,17 @@ data class LifeAccount(val phone: String, val token: String) {
     val maskedPhone: String get() = if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else ""
 }
 
-data class LifeSku(val id: String, val name: String, val available: Boolean, val price: String = "", val feature: String = "",
+data class LifeSku(val id: String, val name: String, val available: Boolean?, val price: String = "", val feature: String = "",
     val minutes: Int? = null)
-data class LifePayChannel(val method: String, val name: String, val available: Boolean,
-    val needsOpen: Boolean, val remark: String? = null, val link: String? = null)
+data class LifePayChannel(val method: String, val name: String, val available: Boolean?,
+    val needsOpen: Boolean?, val remark: String? = null, val link: String? = null)
 
 /** Route shopId and detail shopId have different meanings in the captured protocol. */
 data class LifeDevice(
     val id: String, val serial: String, val name: String, val category: String,
     val routeShopId: String, val orgId: String, val shopId: String, val imei: String,
-    val shopName: String, val address: String, val payment: String, val bluetooth: Boolean,
-    val supportsFinish: Boolean, val error: String?, val skus: List<LifeSku>,
+    val shopName: String, val address: String, val payment: String, val bluetooth: Boolean?,
+    val supportsFinish: Boolean?, val error: String?, val skus: List<LifeSku>,
     val channels: List<LifePayChannel>,
 ) {
     val isShower: Boolean get() = category == "08"
@@ -27,21 +27,21 @@ data class LifeDevice(
     val alipay: LifePayChannel? get() = channels.firstOrNull { it.method == "15" }
     val startError: String? get() = when {
         category !in setOf("04", "08") -> "未知设备"
-        bluetooth -> "该设备需要蓝牙操作，请使用胖乖生活"
+        bluetooth == true -> "该设备需要蓝牙操作，请使用胖乖生活"
         payment != "after" -> "该设备的支付方式暂未接入"
         error != null -> error
-        skus.none { it.available } -> "设备当前没有可用的${if (isShower) "出水口" else "接水选项"}"
+        skus.none { it.available != false } -> "设备当前没有可用的${if (isShower) "出水口" else "接水选项"}"
         alipay == null -> "该设备没有可用的支付宝免密渠道"
         alipay?.needsOpen == true -> "请先在胖乖生活开通支付宝免密，返回后刷新设备"
-        alipay?.available != true -> alipay?.remark ?: "支付宝免密暂不可用"
+        alipay?.available == false -> alipay?.remark ?: "支付宝免密暂不可用"
         else -> null
     }
     val laundryError: String? get() = when {
         category != "00" -> "未知设备"
-        bluetooth -> "该设备需要蓝牙操作，请使用胖乖生活"
+        bluetooth == true -> "该设备需要蓝牙操作，请使用胖乖生活"
         payment != "before" -> "该设备的支付方式暂未接入"
         error != null -> error
-        skus.none { it.available } -> "设备当前没有可用的洗衣程序"
+        skus.none { it.available != false } -> "设备当前没有可用的洗衣程序"
         else -> null
     }
 }
@@ -53,8 +53,10 @@ data class WaterSession(
     val orderId: String = "", val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
     val finalized: Boolean = false,
     val sessionId: String = java.util.UUID.randomUUID().toString(),
+    val creationUncertain: Boolean = false, val fault: String? = null,
 ) {
     val active: Boolean get() = phase in setOf(WaterPhase.Starting, WaterPhase.Running, WaterPhase.Stopping)
+    val canDismissException: Boolean get() = fault != null || phase == WaterPhase.Starting && orderNo.isBlank() && creationUncertain
 }
 
 data class WaterUnlock(val messageId: String, val orderNo: String)
@@ -99,6 +101,7 @@ interface LifeDeviceService {
     suspend fun shower(skuId: String, token: String): WaterReading { throw LifeDeviceException("淋浴状态暂不可用") }
     suspend fun endWater(goodsId: String, token: String)
     suspend fun endShower(goodsId: String, orderNo: String, token: String) { throw LifeDeviceException("结束淋浴暂不可用") }
+    suspend fun finishSupported(goodsId: String, token: String): Boolean? = null
     suspend fun createAfterPay(orderNo: String, token: String): String
     suspend fun syncOrder(orderNo: String, token: String)
 }
@@ -118,6 +121,9 @@ interface LifeDeviceStore {
     fun laundrySessions(): List<LaundrySession> = listOfNotNull(laundrySession())
     fun removeLaundrySession(sessionId: String) {
         saveLaundrySessions(laundrySessions().filterNot { it.sessionId == sessionId })
+    }
+    fun removeWaterSession(sessionId: String) {
+        saveWaterSessions(waterSessions().filterNot { it.sessionId == sessionId })
     }
     fun saveWaterSessions(sessions: List<WaterSession>) {
         sessions.lastOrNull()?.let(::saveSession) ?: clearSession()

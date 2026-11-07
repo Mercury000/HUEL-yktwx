@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.math.abs
 
 data class Hui798UiState(
     val restoring: Boolean = true, val connectedPhone: String = "",
@@ -241,10 +240,6 @@ class Hui798ViewModel internal constructor(
     fun openDevice(id: String) {
         if (mutable.value.accountBusy) return
         if (mutable.value.busy) return
-        mutable.value.sessions.firstOrNull { !mutable.value.restoring && it.active && it.device.id == id }?.let {
-            openSession(it.sessionId)
-            return
-        }
         pendingDeviceId = id; generation++; deviceTask?.cancel()
         mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, deviceInUse = false,
             loadingDevice = false, selectedSessionId = null, error = null) }
@@ -260,15 +255,25 @@ class Hui798ViewModel internal constructor(
             mutable.update { it.copy(loadingDevice = true, deviceReady = false, deviceInUse = false, error = null) }
             try {
                 val device = api.device(id, owner.token)
-                if (request != generation || account != owner) return@launch
+                if (request != generation || account?.token != owner.token) return@launch
                 mutable.update { it.copy(device = device) }
                 val reading = api.status(id, owner.token)
-                if (request != generation || account != owner) return@launch
+                if (request != generation || account?.token != owner.token) return@launch
+                val previous = mutable.value.sessions.firstOrNull { it.active && it.device.id == id }
+                if (previous != null) {
+                    readSession(owner, previous.sessionId)
+                    if (request != generation || account?.token != owner.token) return@launch
+                    if (mutable.value.sessions.any { it.sessionId == previous.sessionId && it.active }) {
+                        openSession(previous.sessionId)
+                        mutable.update { it.copy(loadingDevice = false) }
+                        return@launch
+                    }
+                }
                 mutable.update { it.copy(device = device, loadingDevice = false, deviceReady = reading.status == 99,
                     deviceInUse = reading.status == 1, error = null) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (request != generation || account != owner) return@launch
+                if (request != generation || account?.token != owner.token) return@launch
                 mutable.update { it.copy(loadingDevice = false, error = failure(e)) }; expired(e, owner)
             }
         }
@@ -283,12 +288,14 @@ class Hui798ViewModel internal constructor(
     }
     fun dismissSession(id: String) {
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
-        if (session.active) return
+        if (mutable.value.busy || session.active && !session.canDismissException) return
         mutable.update { it.copy(sessions = it.sessions.filterNot { item -> item.sessionId == id },
             selectedSessionId = it.selectedSessionId?.takeUnless { selected -> selected == id },
             device = it.device.takeUnless { _ -> it.selectedSessionId == id }, confirmedSessions = it.confirmedSessions - id) }
         sessionErrors.remove(id)
-        viewModelScope.launch { try { persist() } catch (e: CancellationException) { throw e }
+        viewModelScope.launch { try {
+            persistence.withLock { withContext(io) { store.removeSession(id) } }
+        } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(error = failure(e)) } } }
     }
     fun pageVisible(active: Boolean) {
@@ -306,15 +313,9 @@ class Hui798ViewModel internal constructor(
     fun startWater() {
         val value = mutable.value; val device = value.device ?: return; val owner = account ?: return
         if (value.busy || value.loadingDevice || !value.deviceReady || value.session != null) return
-        if (owner.userId == null || recoveryInProgress > 0) {
-            mutable.update { it.copy(error = "正在核对本账号的用水设备，请稍后刷新") }; return
-        }
-        if (value.sessions.any { it.active }) {
-            mutable.update { it.copy(error = "还有设备正在用水，请先从付款页查看进度") }; return
-        }
         runCommand(owner) {
             val reading = api.status(device.id, owner.token)
-            if (account != owner) return@runCommand
+            if (account?.token != owner.token) return@runCommand
             if (reading.status == 1) {
                 mutable.update { it.copy(deviceReady = false, deviceInUse = true, error = null) }
                 return@runCommand
@@ -330,9 +331,9 @@ class Hui798ViewModel internal constructor(
                 }
                 throw e
             }
-            if (account != owner) return@runCommand
+            if (account?.token != owner.token) return@runCommand
             saveSession(sent.copy(startAcknowledged = true))
-            waitForDevice(owner, sent.sessionId, allowBind = true)
+            waitForDevice(owner, sent.sessionId)
         }
     }
     fun stopWater() {
@@ -370,20 +371,25 @@ class Hui798ViewModel internal constructor(
             try { block() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (account == owner) { error(failure(e), mutable.value.selectedSessionId); expired(e, owner) }
+                if (account?.token == owner.token) {
+                    mutable.value.session?.takeIf { it.phase == WaterPhase.Starting && it.serverTime == null }?.let {
+                        saveSession(it.copy(uncertain = true))
+                    }
+                    error(failure(e), mutable.value.selectedSessionId); expired(e, account ?: owner)
+                }
             } finally { commandTask = null; mutable.update { it.copy(busy = false) }; resumeSessions(waitBeforeFirstRead = true) }
         }
     }
-    private suspend fun waitForDevice(owner: Hui798Account, id: String, allowBind: Boolean = false) {
+    private suspend fun waitForDevice(owner: Hui798Account, id: String) {
         repeat(10) {
             delay(3000)
-            readSession(owner, id, allowBind)
+            readSession(owner, id)
             val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
             if (current.phase in setOf(WaterPhase.Running, WaterPhase.Ended)) return
         }
         throw Hui798Exception("设备响应较慢，请留意现场状态并刷新")
     }
-    /** Try candidates once and retain only verified use; failed records never form a retry queue. */
+    /** Discover running use once; retain saved progress on failed reads without replaying commands. */
     private suspend fun recoverSessions(owner: Hui798Account, cached: List<Hui798Session>) {
         recoveryInProgress++
         try { recoverOnce(owner, cached) } finally { recoveryInProgress-- }
@@ -395,6 +401,9 @@ class Hui798ViewModel internal constructor(
         catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             if (account == owner) accountVerifier.failed(failure(e))
+            if (account == owner) {
+                for (session in cached) saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
+            }
             throw e
         }
         currentCoroutineContext().ensureActive()
@@ -417,14 +426,13 @@ class Hui798ViewModel internal constructor(
                 currentCoroutineContext().ensureActive()
                 if (account != verifiedOwner) return
                 val existing = mutable.value.sessions.firstOrNull { it.active && it.device.id == device.id }
+                // Recovery must not replace a live session; its next read verifies that session separately.
+                if (existing != null) continue
                 if (use.reading.status == 99 || use.userId != null && use.userId != verifiedOwner.userId) {
-                    if (existing != null) saveSession(existing.copy(phase = WaterPhase.Ended, endedAtMillis = now()))
                     continue
                 }
                 if (use.userId == null) throw Hui798Exception("设备未返回使用人，暂时无法恢复接水进度")
                 val time = use.reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
-                // A recovery response must not replace a command that was started in this app session.
-                if (existing != null) continue
                 val previous = cached.firstOrNull { it.device.id == device.id && it.serverTime == time }
                 val session = previous?.copy(device = use.device, phase = WaterPhase.Running, endedAtMillis = null)
                     ?: Hui798Session(use.device, WaterPhase.Running, time, true, time, time)
@@ -433,6 +441,10 @@ class Hui798ViewModel internal constructor(
             catch (e: Exception) {
                 if (account != verifiedOwner) return
                 failed = true
+                cached.firstOrNull { it.device.id == device.id && mutable.value.sessions.none { active -> active.active && active.device.id == device.id } }?.let { session ->
+                    saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
+                    sessionErrors[session.sessionId] = failure(e)
+                }
                 mutable.update { it.copy(error = failure(e)) }
                 expired(e, verifiedOwner)
                 if (account != verifiedOwner) return
@@ -444,7 +456,7 @@ class Hui798ViewModel internal constructor(
         }
         persist()
     }
-    private suspend fun readSession(owner: Hui798Account, id: String, allowBind: Boolean = false, verifyUser: Boolean = false) {
+    private suspend fun readSession(owner: Hui798Account, id: String, verifyUser: Boolean = false) {
         val before = mutable.value.sessions.firstOrNull { it.sessionId == id && it.active } ?: return
         // An acknowledged start in this app session binds through the status endpoint, as before.
         // Home is still required for restored/unverified use and before sending a stop command.
@@ -457,39 +469,48 @@ class Hui798ViewModel internal constructor(
             use = api.deviceUse(before.device.id, owner.token)
             reading = use.reading
         }
-        if (account != owner) return
+        if (account?.token != owner.token) return
         val current = mutable.value.sessions.firstOrNull { it.sessionId == id && it.active } ?: return
         if (reading.status == 1) {
             val time = reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
             if (use != null) {
-                if (owner.userId == null || use.userId == null) {
+                val userId = account?.userId ?: api.overview(owner.token).userId
+                if (account?.token != owner.token) return
+                if (use.userId == null) {
                     mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
                     throw Hui798Exception("暂时无法核对设备使用人，请刷新")
                 }
-                if (use.userId != owner.userId || current.serverTime != null && current.serverTime != time) {
-                    saveSession(current.copy(phase = WaterPhase.Ended, endedAtMillis = now()))
-                    mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
-                    error(null, id)
+                if (use.userId != userId || current.serverTime != null && current.serverTime != time) {
+                    removeTrackedSession(id)
+                    mutable.update { it.copy(deviceReady = false, deviceInUse = true) }
                     return
                 }
             }
-            if (current.serverTime == null &&
-                (!current.startAcknowledged || !allowBind && abs(time - current.attemptedAtMillis) > 60_000)) {
-                mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
-                throw Hui798Exception("设备用水记录已变化，请在慧生活798核对")
-            }
             saveSession(current.copy(phase = if (current.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
-                serverTime = time, startedAtMillis = current.startedAtMillis ?: now()))
+                serverTime = time, startedAtMillis = current.startedAtMillis ?: now(), uncertain = false))
             mutable.update { it.copy(confirmedSessions = it.confirmedSessions + id) }; error(null, id)
-        } else if (reading.status == 99 && current.serverTime != null && current.phase != WaterPhase.Starting) {
-            saveSession(current.copy(phase = WaterPhase.Ended, endedAtMillis = now()))
-            mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }; error(null, id)
+        } else if (reading.status == 99) {
+            if (current.serverTime != null) {
+                saveSession(current.copy(phase = WaterPhase.Ended, endedAtMillis = now(), uncertain = false))
+                mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }; error(null, id)
+            } else if (current.uncertain || !current.startAcknowledged) {
+                removeTrackedSession(id)
+                mutable.update { it.copy(deviceReady = true, deviceInUse = false) }
+            }
         }
     }
-    private suspend fun saveSession(session: Hui798Session, select: Boolean = false) {
+    private suspend fun removeTrackedSession(id: String) {
+        mutable.update { it.copy(sessions = it.sessions.filterNot { item -> item.sessionId == id },
+            selectedSessionId = it.selectedSessionId?.takeUnless { selected -> selected == id },
+            confirmedSessions = it.confirmedSessions - id, error = if (it.selectedSessionId == id) null else it.error) }
+        sessionErrors.remove(id)
+        persistence.withLock { withContext(io) { store.removeSession(id) } }
+    }
+    private suspend fun saveSession(session: Hui798Session, select: Boolean = false, restoring: Boolean = false) {
         currentCoroutineContext().ensureActive()
-        if (!select && mutable.value.sessions.none { it.sessionId == session.sessionId }) return
-        mutable.update { it.copy(sessions = if (select) it.sessions + session else it.sessions.map { item -> if (item.sessionId == session.sessionId) session else item },
+        if (!select && !restoring && mutable.value.sessions.none { it.sessionId == session.sessionId }) return
+        mutable.update { it.copy(sessions = if (it.sessions.none { item -> item.sessionId == session.sessionId }) it.sessions + session
+            else it.sessions.map { item -> if (item.sessionId == session.sessionId) session else item },
             selectedSessionId = if (select) session.sessionId else it.selectedSessionId) }
         persist()
     }
