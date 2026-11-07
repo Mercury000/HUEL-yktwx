@@ -47,6 +47,9 @@ class LaundryViewModelTest {
     }
     private inner class Api : LifeDeviceService, LifeLaundryService {
         var creates = 0; var balancePays = 0; var alipayPrepares = 0; var details = 0; var paidReads = 0
+        var unionPayPrepares = 0
+        val preparedPayments = mutableListOf<Pair<String, String>>()
+        val paidQueries = mutableListOf<Pair<String, String>>()
         var status = 0; var paid = false; var started = false; var price = "0.00"; var readSku = "clean"
         var lostCreate = false; var lostPayment = false
         var waterReads = 0; var waterReading: WaterReading? = null; var waterFails = false
@@ -68,7 +71,8 @@ class LaundryViewModelTest {
         var cancelFailure: Exception? = null
         val balance = LifePayChannel("2", "余额支付", true, false)
         val alipay = LifePayChannel("13", "支付宝", true, false)
-        var channels = listOf(balance, alipay)
+        val unionPay = LifePayChannel("52", "银联支付", true, false)
+        var channels = listOf(balance, alipay, unionPay)
         val devices = mutableMapOf<String, LifeDevice>()
         val orders = mutableMapOf<String, Pair<String, String>>()
         val readings = mutableMapOf<String, LaundryReading>()
@@ -135,13 +139,20 @@ class LaundryViewModelTest {
             paidOrders += orderNo; orderStatuses[orderNo] = 2
             if (lostPayment) throw java.io.IOException("lost payment response")
         }
-        override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String {
-            alipayPrepares++; prepayGate?.await()
+        override suspend fun prepareLaundryPayment(orderNo: String, method: String, token: String): String {
+            preparedPayments += orderNo to method
+            when (method) {
+                "13" -> alipayPrepares++
+                "52" -> unionPayPrepares++
+                else -> error("Unsupported payment")
+            }
+            prepayGate?.await()
             if (prepayError) throw java.io.IOException("prepay unavailable")
-            return "test-signed-payload"
+            return if (method == "52") "202611071234567890123" else "test-signed-payload"
         }
         override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean {
             paidReads++
+            paidQueries += orderNo to method
             if (paidError) throw java.io.IOException("payment query unavailable")
             return if (orders.size > 1) orderNo in paidOrders else paid
         }
@@ -325,6 +336,74 @@ class LaundryViewModelTest {
         api.paid = true; api.status = 2; model.retryLaundry(); runCurrent()
         assertEquals(LaundryPhase.Running, model.state.value.laundry?.phase)
         assertEquals(1, api.creates)
+    }
+    @Test fun unionPayCallbackQueriesServerAndRetriesOnlyTheSameOrder() = runTest(dispatcher) {
+        val api = Api().apply { channels = listOf(unionPay); price = "3.50" }
+        val store = Store(); val model = model(api, store)
+        prepare(model); model.showLaundryPayment(); model.payLaundry("52"); runCurrent()
+        val first = checkNotNull(model.state.value.paymentLaunch)
+        assertEquals("52", first.method); assertEquals("202611071234567890123", first.payload)
+        model.launchLaundryPayment(first.id) { error("UnionPay must not enter Alipay") }; runCurrent()
+        assertTrue(model.claimLaundryPayment(first.id)); assertFalse(model.claimLaundryPayment(first.id))
+        model.payLaundry("52"); runCurrent()
+        assertEquals(1, api.unionPayPrepares)
+        model.laundryPaymentReturned(first.id, "CANCEL"); runCurrent()
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        assertEquals("支付已取消，可继续支付同一订单", model.state.value.paymentFeedback?.detail)
+        assertEquals(first.orderNo to "52", api.paidQueries.last())
+        model.payLaundry("52"); runCurrent()
+        val second = checkNotNull(model.state.value.paymentLaunch)
+        assertEquals(first.orderNo, second.orderNo)
+        model.laundryPaymentReturned(first.id, "success"); runCurrent()
+        assertEquals(second, model.state.value.paymentLaunch)
+        model.laundryPaymentReturned(second.id, "SUCCESS"); runCurrent()
+        advanceTimeBy(10_000); runCurrent()
+        assertFalse(model.state.value.laundry!!.paid)
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        assertEquals(1, api.creates); assertEquals(2, api.unionPayPrepares)
+        assertEquals(0, api.alipayPrepares); assertEquals(0, api.balancePays)
+        assertTrue(api.preparedPayments.all { it == first.orderNo to "52" })
+        api.status = 2; model.retryLaundry(); runCurrent()
+        assertEquals(LaundryPhase.Running, store.washing?.phase)
+        assertEquals(1, api.creates); assertEquals(2, api.unionPayPrepares)
+    }
+    @Test fun unionPayCancelCannotOverrideBackendPaymentAndDeviceStartupIsSeparate() = runTest(dispatcher) {
+        val api = Api().apply { channels = listOf(unionPay) }; val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("52"); runCurrent()
+        api.paid = true
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "cancel"); runCurrent()
+        assertEquals(RechargePhase.Paid, model.state.value.paymentFeedback?.phase)
+        assertEquals(LaundryPhase.Starting, model.state.value.laundry?.phase)
+        api.started = true; advanceTimeBy(1000); runCurrent()
+        assertEquals(LaundryPhase.Running, model.state.value.laundry?.phase)
+        assertEquals(1, api.creates); assertEquals(1, api.unionPayPrepares)
+    }
+    @Test fun missingUnionPayCallbackResultUsesBoundedReadOnlyPolling() = runTest(dispatcher) {
+        val api = Api().apply { channels = listOf(unionPay) }; val model = model(api, Store())
+        prepare(model); model.showLaundryPayment(); model.payLaundry("52"); runCurrent()
+        val reads = api.paidReads
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, null); runCurrent()
+        assertEquals(RechargePhase.Checking, model.state.value.paymentFeedback?.phase)
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(reads + 3, api.paidReads)
+        assertFalse(model.state.value.laundry!!.paid)
+        assertNull(model.state.value.paymentLaunch)
+        assertEquals(1, api.creates); assertEquals(1, api.unionPayPrepares)
+    }
+    @Test fun restoredUnionPayAttemptRejectsPreviousProcessCallbackForTheSameOrder() = runTest(dispatcher) {
+        val api = Api().apply { channels = listOf(unionPay) }; val store = Store()
+        val firstModel = model(api, store)
+        prepare(firstModel); firstModel.payLaundry("52"); runCurrent()
+        val first = checkNotNull(firstModel.state.value.paymentLaunch)
+        val restored = model(api, store)
+        runCurrent(); restored.open(LifeFeature.Laundry); restored.showLaundryPayment(); runCurrent()
+        restored.payLaundry("52"); runCurrent()
+        val next = checkNotNull(restored.state.value.paymentLaunch)
+        assertEquals(first.orderNo, next.orderNo); assertNotEquals(first.id, next.id)
+        restored.laundryPaymentReturned(first.id, "success"); runCurrent()
+        assertEquals(next, restored.state.value.paymentLaunch)
+        assertFalse(restored.state.value.laundry!!.paid)
+        assertEquals(1, api.creates); assertEquals(2, api.unionPayPrepares)
     }
     @Test fun mismatchedProgramOrPricePreventsPaymentAndDoesNotAdoptAnotherOrder() = runTest(dispatcher) {
         val api = Api().apply { readSku = "other-program" }; val model = model(api, Store())

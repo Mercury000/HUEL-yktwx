@@ -282,6 +282,7 @@ class LaundryUiTest {
             LifePayChannel("32", "微信支付", true, false),
             LifePayChannel("2", "余额支付", false, false, "余额不足"),
             LifePayChannel("52", "银联支付", true, false),
+            LifePayChannel("53", "云闪付无感支付", true, false),
             LifePayChannel("13", "支付宝支付", true, false),
             LifePayChannel("91", "农行掌银", true, false),
             LifePayChannel("999", "其他支付", true, false)
@@ -297,10 +298,13 @@ class LaundryUiTest {
         compose.onNodeWithText("余额支付").assertIsDisplayed()
         compose.onNodeWithText("¥0.00").assertIsDisplayed()
         compose.onNodeWithText("微信支付").assertDoesNotExist()
-        compose.onNodeWithText("银联支付").assertDoesNotExist()
+        compose.onNodeWithText("云闪付无感支付").assertDoesNotExist()
+        compose.onAllNodesWithText("银联支付").assertCountEquals(2)
         compose.onNodeWithText("农行掌银").assertDoesNotExist()
         compose.onNodeWithText("其他支付").assertDoesNotExist()
-        compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed().assertIsEnabled().assertTextContains("支付宝支付")
+        compose.onNodeWithTag("laundry-pay-submit").assertIsDisplayed().assertIsEnabled().assertTextContains("银联支付")
+        compose.onNodeWithText("支付宝支付").performClick()
+        compose.onNodeWithTag("laundry-pay-submit").assertTextContains("支付宝支付")
         compose.onNodeWithText("支付后自动读取设备启动结果，请先按设备说明做好准备。").assertDoesNotExist()
         compose.onNodeWithText("77 · 桶自洁").assertDoesNotExist()
         capture("laundry-light-05-payment-drawer")
@@ -323,6 +327,26 @@ class LaundryUiTest {
         compose.onNodeWithText("支付宝支付").assertDoesNotExist()
         compose.onNodeWithText("暂无支持的支付方式").assertIsDisplayed()
         compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled()
+    }
+    @Test fun unionPayFeedbackUsesItsOwnAppNameAndKeepsUnavailableChannelsDisabled() {
+        val fixture = fixture(); val model = model()
+        val session = LaundrySession(fixture.device, fixture.quote.skuId, "3.50", "52",
+            LaundryPhase.Paying, orderNo = "test-wash-52", orderId = "test-id-52")
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            laundry = session, laundryQuote = fixture.quote.copy(price = "3.50", channels = listOf(
+                LifePayChannel("52", "银联支付", false, false, "银联暂不可用"))), paymentVisible = true,
+            paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.AwaitingPayment)))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(true, state, model)
+            } } }
+        }
+        compose.onNodeWithText("请在银联中完成支付").assertIsDisplayed()
+        compose.onNodeWithText("请在支付宝中完成支付").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(paymentFeedback = null) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("银联暂不可用").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled().assertTextContains("银联支付")
     }
     @Test fun paymentDrawerReusesCampusFeedbackFromPreparationThroughAlipayAndResult() {
         val model = model()
@@ -370,7 +394,7 @@ class LaundryUiTest {
         compose.onNodeWithText("¥ 3.50").assertDoesNotExist()
         compose.onNodeWithText("余额支付").assertDoesNotExist()
         compose.onNodeWithText("微信支付").assertDoesNotExist()
-        compose.onNodeWithText("银联支付").assertDoesNotExist()
+        compose.onNodeWithText("银联支付").assertIsDisplayed()
         compose.onNodeWithText("继续支付").assertIsNotEnabled()
         compose.onNodeWithText("支付宝支付").performClick()
         compose.onNodeWithText("继续支付").assertIsEnabled()
@@ -452,7 +476,7 @@ class LaundryUiTest {
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithTag("laundry-cancel-order").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(laundryBusy = false,
-            paymentLaunch = LifeAlipayLaunch(1, pending.orderNo, "test-payload")) }
+            paymentLaunch = LifePaymentLaunch(1, pending.orderNo, "test-payload")) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithTag("laundry-cancel-order").assertDoesNotExist()
         compose.runOnIdle { state = state.copy(paymentLaunch = null, laundry = pending.copy(phase = LaundryPhase.Closed)) }

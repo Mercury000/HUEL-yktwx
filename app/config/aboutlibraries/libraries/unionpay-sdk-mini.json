@@ -1,0 +1,9 @@
+{
+  "uniqueId": "com.unionpay:unionpay-sdk-mini",
+  "artifactVersion": "3.5.16",
+  "name": "UnionPay SDK Mini",
+  "description": "Vendor SDK for UnionPay mobile cashier payments.",
+  "website": "https://open.unionpay.com/tjweb/acproduct/list?apiSvcId=450&index=5",
+  "developers": [{ "name": "China UnionPay" }],
+  "licenses": []
+}

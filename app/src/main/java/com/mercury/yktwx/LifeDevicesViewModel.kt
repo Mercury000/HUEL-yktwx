@@ -27,7 +27,7 @@ data class LifeDevicesUiState(
     val device: LifeDevice? = null, val selectedSkuId: String = "", val error: String? = null,
     val water: WaterSession? = null, val waterBusy: Boolean = false,
     val laundry: LaundrySession? = null, val laundryQuote: LaundryQuote? = null, val quoteLoading: Boolean = false,
-    val laundryBusy: Boolean = false, val paymentVisible: Boolean = false, val paymentLaunch: LifeAlipayLaunch? = null,
+    val laundryBusy: Boolean = false, val paymentVisible: Boolean = false, val paymentLaunch: LifePaymentLaunch? = null,
     val paymentFeedback: LaundryPaymentFeedback? = null,
     val waterSessions: List<WaterSession> = emptyList(), val laundrySessions: List<LaundrySession> = emptyList(),
     val changingAccount: Boolean = false, val accountBusy: Boolean = false,
@@ -58,7 +58,8 @@ class LifeDevicesViewModel internal constructor(
     private var laundryTask: Job? = null
     private var quoteTask: Job? = null
     private var quoteSequence = 0L
-    private var paymentSequence = 0L
+    // Activity results can survive process recreation; do not reuse the previous process's ids.
+    private var paymentSequence = java.util.UUID.randomUUID().mostSignificantBits
     private var paymentInFlight: Long? = null
     private var visible = false
     private var foreground = false
@@ -684,10 +685,10 @@ class LifeDevicesViewModel internal constructor(
                 service.payLaundryBalance(session.orderNo, token)
                 waitLaundryPaid(token, service)
             } else {
-                val payload = service.prepareLaundryAlipay(session.orderNo, token)
+                val payload = service.prepareLaundryPayment(session.orderNo, method, token)
                 if (stopExpiredLaundryPayment(session)) return@laundryWork
                 paymentFeedback(session.sessionId, RechargePhase.AwaitingPayment)
-                mutable.update { it.copy(paymentLaunch = LifeAlipayLaunch(++paymentSequence, session.orderNo, payload)) }
+                mutable.update { it.copy(paymentLaunch = LifePaymentLaunch(++paymentSequence, session.orderNo, payload, method)) }
             }
         }
     }
@@ -700,8 +701,14 @@ class LifeDevicesViewModel internal constructor(
         // SDK callbacks do not prove payment. Always read the server for this order.
         laundryWork { token, service ->
             if (readLaundryOrder(token, service)) return@laundryWork
-            if (resultStatus !in setOf("9000", "8000", "6004") && !service.laundryPaid(session.orderNo, session.payMethod, token)) {
-                val message = when (resultStatus) {
+            val pendingOrSuccess = if (launch.method == "52") resultStatus == null || resultStatus.equals("success", true)
+                else resultStatus in setOf("9000", "8000", "6004")
+            if (!pendingOrSuccess && !service.laundryPaid(session.orderNo, session.payMethod, token)) {
+                val message = if (launch.method == "52") when {
+                    resultStatus.equals("cancel", true) -> "支付已取消，可继续支付同一订单"
+                    resultStatus == "launch_failed" -> "银联支付未能启动，可继续支付同一订单"
+                    else -> "银联未完成支付，可继续支付同一订单"
+                } else when (resultStatus) {
                     "6001" -> "支付已取消，可继续支付同一订单"
                     "6002" -> "支付宝连接失败，可继续支付同一订单"
                     else -> "支付宝未完成支付，可继续支付同一订单"
@@ -724,6 +731,7 @@ class LifeDevicesViewModel internal constructor(
         return true
     }
     fun launchLaundryPayment(requestId: Long, execute: suspend () -> String?) {
+        if (mutable.value.paymentLaunch?.method != "13") return
         if (!claimLaundryPayment(requestId)) return
         viewModelScope.launch {
             val status = withContext(io) { execute() }
