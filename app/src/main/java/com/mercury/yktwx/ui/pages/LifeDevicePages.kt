@@ -124,9 +124,18 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
         else -> "扫码洗衣"
     }
+    val awaitingAccount = state.scannedSerial != null && (state.restoring || state.connectedPhone.isBlank())
     LifeDeviceShell(title, settings, scanning, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
         footer = {
-            if (state.feature == LifeFeature.Laundry && !scanning) LaundryActions(state, model, active, onBack, nowMillis)
+            if (state.feature == LifeFeature.Laundry && !scanning) {
+                if (awaitingAccount) LifeDeviceActionFooter("laundry-action-footer") {
+                    Button(onClick = { model.connectAccount(clearPending = false) }, enabled = active && !state.restoring,
+                        modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
+                        Text(if (state.restoring) "正在恢复账号…" else "登录并继续")
+                    }
+                    Button(onClick = model::scan, enabled = active, modifier = Modifier.fillMaxWidth()) { Text("重新扫码") }
+                } else LaundryActions(state, model, active, onBack, nowMillis)
+            }
         }) { padding ->
         val stage = when {
             scanning -> "scan"
@@ -168,7 +177,20 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            laundryContent(state, model, stageActive, nowMillis)
+            if (awaitingAccount) {
+                if (!state.restoring) item {
+                    InlineLifeLoginNotice(true, { model.connectAccount(clearPending = false) }, enabled = stageActive,
+                        text = "登录胖乖生活，继续扫码洗衣", tag = "laundry-device-login-notice")
+                }
+                item { LifeDeviceHero("洗衣设备", "", LifeFeature.Laundry) }
+                item { Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                        LifeDeviceField("设备编号") { Text(state.scannedSerial.orEmpty(), fontSize = 12.sp) }
+                        Text(if (state.restoring) "正在恢复胖乖生活账号，完成后继续查询设备" else "登录后继续查询设备",
+                            fontSize = 13.sp, color = DashboardPalette.muted)
+                    }
+                } }
+            } else laundryContent(state, model, stageActive, nowMillis)
         }
         }
     }
@@ -349,10 +371,14 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
     val device = water?.device ?: state.device
     val action = device?.waterAction ?: "接水"
     val phase = water?.phase ?: WaterPhase.Ready
+    val restoringAccount = state.restoring && state.scannedSerial != null
+    val loginRequired = !state.restoring && state.connectedPhone.isBlank() && state.scannedSerial != null
     val failedCommand = state.error != null && water != null && phase != WaterPhase.Running
-    val loading = state.loadingDevice || state.waterBusy || phase in setOf(WaterPhase.Starting, WaterPhase.Stopping) && !failedCommand ||
+    val loading = restoringAccount || state.loadingDevice || state.waterBusy || phase in setOf(WaterPhase.Starting, WaterPhase.Stopping) && !failedCommand ||
         phase == WaterPhase.Ended && water?.finalized != true && !failedCommand
     val label = when {
+        restoringAccount -> "正在恢复账号…"
+        loginRequired -> "登录并继续"
         state.loadingDevice -> "正在识别…"
         failedCommand && !state.waterBusy -> "重试"
         phase == WaterPhase.Starting -> "正在启动…"
@@ -363,14 +389,18 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         else -> "开始$action"
     }
     val display = WaterDeviceUiState(LifeProvider.Panggui, device?.name.orEmpty(), device?.shopName.orEmpty(),
+        deviceId = device?.serial ?: state.scannedSerial,
         phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
         paymentMethod = device?.alipay?.name,
-        supportsFinish = device?.supportsFinish == true, error = state.error, shower = device?.isShower == true)
+        supportsFinish = device?.supportsFinish == true, error = state.error, shower = device?.isShower == true,
+        status = if (restoringAccount) WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备", true) else null)
     val primary = WaterDeviceAction(label, !loading && when {
+        loginRequired -> true
         phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
         else -> true
     }) {
         when {
+            loginRequired -> model.connectAccount(clearPending = false)
             failedCommand -> model.retryWater()
             phase == WaterPhase.Running -> model.stopWater()
             phase == WaterPhase.Ended -> model.scan()
@@ -379,8 +409,9 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
     }
     WaterDevicePage(display, settings, active, primary,
         scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, model::scan),
-        refreshAction = WaterDeviceAction("刷新设备", !state.waterBusy && !state.loadingDevice && phase == WaterPhase.Ready, model::refreshDevice),
+        refreshAction = WaterDeviceAction("刷新设备", !state.restoring && !loginRequired && !state.waterBusy && !state.loadingDevice && phase == WaterPhase.Ready, model::refreshDevice),
         onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
+        loginAction = if (loginRequired) WaterDeviceAction("登录并继续", true) { model.connectAccount(clearPending = false) } else null,
         paymentContent = if (device?.alipay == null) null else { enabled -> WaterPaymentDetails(device,
             showOptions = phase in setOf(WaterPhase.Ready, WaterPhase.Starting), state = state, onSelect = model::selectSku,
             enabled = enabled && !state.waterBusy && !state.loadingDevice) })

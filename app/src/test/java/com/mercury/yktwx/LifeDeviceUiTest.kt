@@ -80,6 +80,44 @@ class LifeDeviceUiTest {
         compose.onNodeWithTag("water-primary-action").assertTextContains("再次扫码淋浴")
     }
     private fun settings() = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+    @Test fun sharedScannerOpensWithoutAccountsAndShowsLoginOnlyAfterIdentifyingPanggui() {
+        val model = model(); val theme = settings()
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            val state by model.state.collectAsState()
+            if (state.entryRequest == 0L) PaymentPage(PreviewData.paymentState(false), theme, 0.dp, {},
+                lifeLoginRequired = true, hui798LoginRequired = true, onScan = model::openUnifiedScan)
+            else LifeDevicePage(state, theme, model, active = true, onBack = {})
+            LifeDeviceLoginSheet(state, model, active = true)
+        } } } }
+        compose.onNodeWithTag("payment-scan-button").assertIsEnabled().performClick()
+        compose.onNodeWithTag("life-device-page").assertExists()
+        compose.onNodeWithTag("life-login-sheet").assertDoesNotExist()
+        compose.runOnIdle { model.scanned("867369079842630") }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("water-device-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("water-primary-action").assertTextContains("登录并继续").assertIsEnabled()
+        capture("scan-account-water")
+        compose.onNodeWithTag("water-device-login-notice").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-login-sheet").assertIsDisplayed()
+    }
+
+    @Test fun laundryWaitsForAccountRecoveryThenShowsInlineLoginWithTheScannedCode() {
+        val model = model(); val theme = settings()
+        val serial = "00000000-0000-4000-8000-000000000001"
+        var state by mutableStateOf(LifeDevicesUiState(feature = LifeFeature.Laundry, scannedSerial = serial))
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            LifeDevicePage(state, theme, model, active = true, onBack = {})
+        } } }
+        compose.onNodeWithTag("laundry-primary-action").assertIsNotEnabled()
+        compose.onNodeWithTag("laundry-device-login-notice").assertDoesNotExist()
+        compose.onNodeWithText(serial).assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(restoring = false) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("laundry-device-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-primary-action").assertTextContains("登录并继续").assertIsEnabled()
+        capture("scan-account-laundry")
+    }
     private fun capture(name: String) {
         compose.mainClock.advanceTimeBy(1000)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }

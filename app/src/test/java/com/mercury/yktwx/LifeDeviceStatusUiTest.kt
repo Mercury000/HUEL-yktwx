@@ -634,14 +634,14 @@ class LifeDeviceStatusUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
-                    lifeLoginRequired = loginRequired, onLifeLogin = { clicks++ }, scanEnabled = !loginRequired,
+                    lifeLoginRequired = loginRequired, onLifeLogin = { clicks++ },
                     updateNotice = { InlineUpdateNotice(AppUpdateUiState(noticeVisible = true,
                         release = UpdateRelease(7, "1.3.0", "", "https://example.com/update")), {}, {}) })
             }
         } } }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-login-notice").assertIsDisplayed()
-        compose.onNodeWithTag("payment-scan-button").assertIsNotEnabled()
+        compose.onNodeWithTag("payment-scan-button").assertIsEnabled()
         val notice = compose.onNodeWithTag("life-login-notice").fetchSemanticsNode().boundsInRoot
         val update = compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot
         assertEquals(update.height, notice.height, 1f)

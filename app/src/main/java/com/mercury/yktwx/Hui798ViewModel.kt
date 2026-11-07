@@ -114,6 +114,7 @@ class Hui798ViewModel internal constructor(
                 account?.let { expired(e, it) }
             }
             mutable.update { it.copy(restoring = false) }
+            if (visible) pendingDeviceId?.let(::openDevice)
             resumeSessions(waitBeforeFirstRead = true)
         }
     }
@@ -225,7 +226,7 @@ class Hui798ViewModel internal constructor(
                         mutable.update { it.copy(error = failure(e)) }; account?.let { expired(e, it) }
                     }
                 }
-                pendingDeviceId?.takeIf { visible }?.let(::loadDevice)
+                pendingDeviceId?.takeIf { visible }?.let(::openDevice)
                 resumeSessions(waitBeforeFirstRead = true)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
@@ -233,18 +234,19 @@ class Hui798ViewModel internal constructor(
     }
 
     fun openDevice(id: String) {
-        if (mutable.value.busy || mutable.value.restoring) return
-        mutable.value.sessions.firstOrNull { it.active && it.device.id == id }?.let {
+        if (mutable.value.busy) return
+        mutable.value.sessions.firstOrNull { !mutable.value.restoring && it.active && it.device.id == id }?.let {
             openSession(it.sessionId)
             return
         }
         pendingDeviceId = id; generation++; deviceTask?.cancel()
         mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, deviceInUse = false,
             loadingDevice = false, selectedSessionId = null, error = null) }
-        if (account != null) loadDevice(id)
+        if (!mutable.value.restoring && account != null) loadDevice(id)
     }
     fun refreshDevice() { if (!mutable.value.busy && !mutable.value.loadingDevice) pendingDeviceId?.let(::loadDevice) }
     private fun loadDevice(id: String) {
+        if (mutable.value.restoring) return
         val owner = account ?: return
         val request = ++generation
         deviceTask?.cancel()
@@ -285,7 +287,7 @@ class Hui798ViewModel internal constructor(
     }
     fun pageVisible(active: Boolean) {
         visible = active
-        if (!active) { generation++; deviceTask?.cancel(); mutable.update { it.copy(loadingDevice = false) } }
+        if (!active) { pendingDeviceId = null; generation++; deviceTask?.cancel(); mutable.update { it.copy(loadingDevice = false) } }
         else if (mutable.value.session == null && !mutable.value.deviceReady && !mutable.value.loadingDevice &&
             mutable.value.error == null && account != null) pendingDeviceId?.let(::loadDevice)
     }

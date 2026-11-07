@@ -255,6 +255,20 @@ class Hui798UiTest {
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("登录并继续")
     }
     @Test fun deviceQueryStatesKeepIdentityVisibleAndOfferRetryInsteadOfStart() = deviceQueryStates(false)
+    @Test fun accountRecoveryKeepsRescanAvailableAndDefersLogin() {
+        val model = model(); val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        val id = "123456789012345"
+        var scans = 0
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            Hui798DevicePage(Hui798UiState(scannedDeviceId = id), settings, model, active = true,
+                onScan = { scans++ }, onBack = {})
+        } } }
+        compose.onNodeWithText(id).assertIsDisplayed()
+        compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled()
+        compose.onNodeWithTag("hui798-device-login-notice").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-rescan").assertIsEnabled().performClick()
+        assertEquals(1, scans)
+    }
     @Test fun occupiedDeviceShowsTheSharedErrorInDarkMode() = deviceQueryStates(true)
 
     @Test fun hui798OnlyProgressUsesItsOwnCallbacksAndOneSharedScanner() {
