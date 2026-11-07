@@ -97,4 +97,18 @@ class LifeDeviceAccountStoreTest {
         assertEquals(0L, paying.paymentRemainingSeconds(400_000L))
         assertNull(paying.copy(paid = true).paymentRemainingSeconds(200_000L))
     }
+
+    @Test fun completionObservationSurvivesBothStorageFormatsAndOldRecordsRemainReadable() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val completed = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended,
+            completionObservedAtMillis = 1_799_999_000_000L)
+        store.saveLaundrySession(completed)
+        assertEquals(completed, LifeDeviceAccountStore(records).laundrySession())
+        store.saveLaundrySessions(listOf(completed))
+        assertEquals(listOf(completed), LifeDeviceAccountStore(records).laundrySessions())
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
+            getJSONArray("sessions").getJSONObject(0).remove("completionObservedAt")
+        }.toString()
+        assertEquals(listOf(completed.copy(completionObservedAtMillis = null)), LifeDeviceAccountStore(records).laundrySessions())
+    }
 }

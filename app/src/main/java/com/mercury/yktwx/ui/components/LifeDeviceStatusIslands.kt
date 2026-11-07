@@ -30,6 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.liquid.iosGlassSurface
@@ -44,9 +47,25 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
     settings: ThemeSettings, modifier: Modifier = Modifier, enabled: Boolean = true,
     nowMillis: () -> Long = System::currentTimeMillis, additionalEntries: List<LifeDeviceStatusEntry> = emptyList()) {
     var now by remember { mutableLongStateOf(nowMillis()) }
-    val ticking = enabled && laundrySessions.any { it.phase == LaundryPhase.Running && it.expectedEndMillis != null }
-    LaunchedEffect(ticking, nowMillis) {
-        while (ticking) { now = nowMillis(); delay(1000) }
+    val latestClock by rememberUpdatedState(nowMillis)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) now = latestClock()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(enabled, nowMillis, laundrySessions) {
+        if (!enabled) return@LaunchedEffect
+        while (true) {
+            now = nowMillis()
+            val countdown = laundrySessions.any { it.phase == LaundryPhase.Running && it.expectedEndMillis != null }
+            val deadline = laundrySessions.mapNotNull { it.completionReminderDeadlineMillis() }.filter { it > now }.minOrNull()
+            if (!countdown && deadline == null) break
+            val untilDeadline = deadline?.let { (it - now).coerceAtLeast(1) }
+            delay(if (countdown) minOf(1000L, untilDeadline ?: 1000L) else checkNotNull(untilDeadline))
+        }
     }
     val entries = buildList {
         waterSessions.filter { it.active }.forEach { session ->
@@ -58,7 +77,8 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
             }, session.device.name.ifBlank { "接水" }, session.device.shopName,
                 session.sessionId, completed = false))
         }
-        laundrySessions.filterNot { it.phase == LaundryPhase.Closed }.forEach { session ->
+        laundrySessions.filter { session -> session.phase != LaundryPhase.Closed &&
+            session.completionReminderDeadlineMillis()?.let { now < it } != false }.forEach { session ->
             val completed = !session.active
             val end = session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }
             val name = session.device.name.let { if (it.isNotBlank() && it.all(Char::isDigit)) "${it}号" else it }

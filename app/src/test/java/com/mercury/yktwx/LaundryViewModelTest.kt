@@ -698,7 +698,7 @@ class LaundryViewModelTest {
         val pending = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying,
             orderNo = "wash-1", orderId = "wash-id", createdAtMillis = 100_000L)
         val other = pending.copy(sessionId = "other-session", orderNo = "wash-2", orderId = "wash-id-2",
-            phase = LaundryPhase.Ended, paid = true)
+            phase = LaundryPhase.Ended, paid = true, finishedAtMillis = 100_000L)
         val api = Api().apply { cancelGate = CompletableDeferred() }
         val store = Store(pending).apply { laundries = listOf(pending, other) }
         val model = model(api, store)
@@ -888,7 +888,8 @@ class LaundryViewModelTest {
     @Test fun rescanEveryLaundryPhaseOpensNormalDeviceFlowAndOfficialBusyErrorInsteadOfOldProgress() = runTest(dispatcher) {
         for (phase in LaundryPhase.entries) {
             val previous = LaundrySession(device, "clean", "0.00", "13", phase,
-                orderNo = "wash-1", orderId = "wash-id", createdAtMillis = 1L)
+                orderNo = "wash-1", orderId = "wash-id", createdAtMillis = 1L,
+                finishedAtMillis = 100_000L.takeIf { phase == LaundryPhase.Ended })
             val api = Api().apply { readyError = "设备工作中，请更换设备使用" }
             val store = Store(previous); val model = model(api, store)
             runCurrent(); model.openScan(); model.pageVisible(true); model.scanned(device.serial); runCurrent()
@@ -902,6 +903,39 @@ class LaundryViewModelTest {
             assertEquals(previous.sessionId, model.state.value.laundry?.sessionId)
         }
     }
+    @Test fun missingFinishTimeIsObservedOnServerCompletionAndItsReminderDoesNotRestartAfterRestore() = runTest(dispatcher) {
+        val running = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running,
+            orderNo = "wash-1", orderId = "wash-id", paid = true)
+        val store = Store(running)
+        val api = Api().apply {
+            readings[running.orderNo] = LaundryReading(running.orderNo, running.orderId, device.id, running.skuId,
+                3, "0.00", "桶自洁", 5, 100_000L, 400_000L, null)
+        }
+        val model = model(api, store, now = { 521_000L })
+        runCurrent(); model.environment(true); runCurrent()
+        assertEquals(LaundryPhase.Ended, store.washing?.phase)
+        assertNull(store.washing?.finishedAtMillis)
+        assertEquals(521_000L, store.washing?.completionObservedAtMillis)
+        val deadline = store.washing!!.completionReminderDeadlineMillis()
+        model.environment(false); runCurrent()
+        val restored = model(api, store, now = { 90_000_000L }); runCurrent()
+        assertEquals(521_000L, restored.state.value.laundry?.completionObservedAtMillis)
+        assertEquals(deadline, restored.state.value.laundry?.completionReminderDeadlineMillis())
+        assertEquals(1, api.details)
+    }
+
+    @Test fun restoredLegacyCompletionGetsOnePersistedObservationInsteadOfResettingEachLaunch() = runTest(dispatcher) {
+        val completed = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Ended,
+            orderNo = "wash-1", orderId = "wash-id", paid = true)
+        val store = Store(completed); val api = Api()
+        val first = model(api, store, now = { 521_000L }); runCurrent()
+        assertEquals(521_000L, store.washing?.completionObservedAtMillis)
+        assertNull(store.washing?.finishedAtMillis)
+        val restored = model(api, store, now = { 90_000_000L }); runCurrent()
+        assertEquals(first.state.value.laundry, restored.state.value.laundry)
+        assertEquals(0, api.details)
+    }
+
     @Test fun serverTimingAndIndependentCompletionSurviveRestoreUntilManualDismissal() = runTest(dispatcher) {
         val first = LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Running,
             true, "wash-1", "wash-id", true, true, 5, 100_000, 400_000)
