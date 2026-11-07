@@ -24,7 +24,7 @@ internal fun AppSettingsContent(
     updateState: AppUpdateUiState, onCheckUpdates: () -> Unit,
     onTheme: () -> Unit, accounts: List<ManagedLifeAccount>, active: Boolean, onLogout: () -> Unit,
     onCheckAccount: (LifeProvider) -> Unit, onLoginAccount: (LifeProvider) -> Unit,
-    onRemoveAccount: (LifeProvider) -> Unit, onProgress: (LifeProvider) -> Unit, scrollBehavior: ScrollBehavior? = null,
+    onRemoveAccount: (LifeProvider) -> Unit, scrollBehavior: ScrollBehavior? = null,
 ) {
     var selected by remember { mutableStateOf<LifeProvider?>(null) }
     val selectedAccount = accounts.firstOrNull { it.provider == selected }
@@ -77,5 +77,5 @@ internal fun AppSettingsContent(
         }
     }
     }
-    LifeAccountLogoutDialog(selectedAccount, active, { selected = null }, onRemoveAccount, onProgress)
+    LifeAccountLogoutDialog(selectedAccount, active, { selected = null }, onRemoveAccount)
 }

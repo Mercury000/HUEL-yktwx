@@ -29,7 +29,10 @@ class LifeAccountsViewModelTest {
     private class PgStore(var owner: LifeAccount?) : LifeDeviceStore {
         var laundry = emptyList<LaundrySession>()
         override fun account() = owner
-        override fun saveAccount(account: LifeAccount) { owner = account }
+        override fun saveAccount(account: LifeAccount) {
+            if (owner?.phone != account.phone) laundry = emptyList()
+            owner = account
+        }
         override fun clearAccount() { owner = null }
         override fun session(): WaterSession? = null
         override fun saveSession(session: WaterSession) {}
@@ -95,18 +98,19 @@ class LifeAccountsViewModelTest {
         assertEquals("139****0001", model.accountConnection.value.phone)
     }
 
-    @Test fun activityBlocksPangguiRemovalAndSwitchButAllowsOriginalAccountReauthentication() = runTest(dispatcher) {
+    @Test fun runningLaundryDoesNotBlockPangguiAccountSwitch() = runTest(dispatcher) {
         val api = PgApi(); val store = PgStore(LifeAccount("13800000000", "old-token"))
         val device = LifeDevice("fixture-device", "fixture-code", "洗衣机", "00", "s", "o", "s", "i", "", "", "before",
             false, false, null, emptyList(), emptyList())
         store.laundry = listOf(LaundrySession(device, "sku", "1.00", "2", phase = LaundryPhase.Running))
         val model = pg(api, store); runCurrent()
-        assertFalse(model.manageLogin(change = true))
-        assertFalse(model.removeAccount())
-        assertTrue(model.manageLogin())
+        assertTrue(model.manageLogin(change = true))
+        api.phone = "13900000001"
         model.phoneChanged("13900000001"); model.codeChanged("123456"); model.login(); runCurrent()
-        assertEquals("old-token", store.owner?.token)
-        assertTrue(model.state.value.loginError!!.contains("原账户"))
+        assertEquals("new-token", store.owner?.token)
+        assertEquals("13900000001", store.owner?.phone)
+        assertNull(model.state.value.loginError)
+        assertTrue(store.laundry.isEmpty()); assertTrue(model.state.value.laundrySessions.isEmpty())
     }
 
     private class HuiStore(var owner: Hui798Account?) : Hui798Store {
@@ -142,14 +146,44 @@ class LifeAccountsViewModelTest {
         assertNotNull(store.owner)
     }
 
-    @Test fun huiActivityBlocksRemovalAndSwitchButAllowsLogin() = runTest(dispatcher) {
-        val api = HuiApi(); val model = hui(api, HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))); runCurrent()
+    @Test fun huiActivityAllowsRemovalAndClearsLocalProgress() = runTest(dispatcher) {
+        val api = HuiApi(); val store = HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))
+        val model = hui(api, store); runCurrent()
         assertTrue(model.hasActiveServices)
+        assertTrue(model.manageLogin(change = true))
+        assertTrue(model.removeAccount())
         assertFalse(model.removeAccount())
-        assertFalse(model.manageLogin(change = true))
-        // Reauthentication opens the existing captcha flow; its transport is not part of this fixture.
-        assertTrue(model.manageLogin())
         runCurrent()
-        assertTrue(model.state.value.loginVisible)
+        assertNull(store.owner); assertTrue(store.records.isEmpty())
+        assertTrue(model.state.value.sessions.isEmpty()); assertFalse(model.hasActiveServices)
+        assertEquals(LifeAccountStatus.NotLoggedIn, model.accountConnection.value.status)
+    }
+
+    @Test fun pangguiAllowsRemovalWithRunningAndUnknownLaundry() = runTest(dispatcher) {
+        val device = LifeDevice("fixture-device", "fixture-code", "洗衣机", "00", "s", "o", "s", "i", "", "", "before",
+            false, false, null, emptyList(), emptyList())
+        for (phase in listOf(LaundryPhase.Running, LaundryPhase.Creating)) {
+            val store = PgStore(LifeAccount("13800000000", "old-token"))
+            store.laundry = listOf(LaundrySession(device, "sku", "1.00", "2", phase = phase,
+                createSent = true, creationUncertain = phase == LaundryPhase.Creating))
+            val model = pg(PgApi(), store); runCurrent()
+            assertTrue(model.hasActiveServices)
+            assertTrue(model.removeAccount()); assertFalse(model.removeAccount()); runCurrent()
+            assertNull(store.owner); assertTrue(store.laundry.isEmpty())
+            assertNull(model.state.value.laundry); assertTrue(model.state.value.laundrySessions.isEmpty())
+            assertFalse(model.hasActiveServices)
+            assertEquals(LifeAccountStatus.NotLoggedIn, model.accountConnection.value.status)
+        }
+    }
+
+    @Test fun lateProfileCannotRestoreAnAccountAfterRemoval() = runTest(dispatcher) {
+        val api = PgApi().apply { gate = CompletableDeferred() }
+        val store = PgStore(LifeAccount("13800000000", "old-token")); val model = pg(api, store); runCurrent()
+        assertEquals(LifeAccountStatus.Checking, model.accountConnection.value.status)
+        assertTrue(model.removeAccount()); runCurrent()
+        api.gate!!.complete(Unit); runCurrent()
+        assertNull(store.owner)
+        assertEquals(LifeAccountStatus.NotLoggedIn, model.accountConnection.value.status)
+        assertFalse(model.state.value.accountBusy)
     }
 }

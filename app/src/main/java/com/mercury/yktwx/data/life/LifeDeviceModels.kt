@@ -116,6 +116,9 @@ interface LifeDeviceStore {
     fun clearLaundrySession() {}
     fun waterSessions(): List<WaterSession> = listOfNotNull(session())
     fun laundrySessions(): List<LaundrySession> = listOfNotNull(laundrySession())
+    fun removeLaundrySession(sessionId: String) {
+        saveLaundrySessions(laundrySessions().filterNot { it.sessionId == sessionId })
+    }
     fun saveWaterSessions(sessions: List<WaterSession>) {
         sessions.lastOrNull()?.let(::saveSession) ?: clearSession()
     }

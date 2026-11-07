@@ -111,7 +111,7 @@ class LifeDeviceAccountStoreTest {
         }.toString()
         assertEquals(listOf(completed.copy(completionObservedAtMillis = null)), LifeDeviceAccountStore(records).laundrySessions())
     }
-    @Test fun hiddenUnknownCreationRoundTripsWithoutLosingDuplicateProtectionAndLegacyDefaultsStayVisible() {
+    @Test fun legacyHiddenUnknownCreationRemainsReadableForCleanup() {
         val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
         val hidden = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Creating, createSent = true,
             creationUncertain = true, islandDismissed = true)
@@ -124,5 +124,25 @@ class LifeDeviceAccountStoreTest {
         }.toString()
         val legacy = LifeDeviceAccountStore(records).laundrySessions().single()
         assertFalse(legacy.islandDismissed); assertFalse(legacy.creationUncertain); assertTrue(legacy.createSent)
+    }
+    @Test fun dismissedUnknownCreationIsDeletedAfterLoginExpiryWithoutDeletingOtherOrders() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val unknown = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Creating, createSent = true,
+            creationUncertain = true)
+        val running = unknown.copy(phase = LaundryPhase.Running, orderNo = "other-order", orderId = "other-id", sessionId = "other")
+        store.saveLaundrySessions(listOf(unknown, running)); store.clearAccount()
+        store.removeLaundrySession(unknown.sessionId)
+        val remaining = records.read("laundry_sessions")!!.getJSONArray("sessions")
+        assertEquals(1, remaining.length()); assertEquals("other", remaining.getJSONObject(0).getString("sessionId"))
+        store.saveAccount(account)
+        assertEquals(listOf(running), LifeDeviceAccountStore(records).laundrySessions())
+    }
+    @Test fun dismissingLegacySingleProgressErasesItWithoutCredentials() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val unknown = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Creating, createSent = true,
+            creationUncertain = true)
+        store.saveLaundrySession(unknown); store.clearAccount()
+        store.removeLaundrySession(unknown.sessionId)
+        assertFalse(records.values.containsKey("laundry")); assertNull(store.account())
     }
 }
