@@ -51,14 +51,20 @@ class Hui798ViewModelTest {
         var overviewUserId: String = account.userId!!
         var overviewLoginExpired = false
         var captchaGate: CompletableDeferred<Unit>? = null
+        var captchaFailure: Exception? = null
+        var smsFailure: Exception? = null
+        var smsRequests = 0
         val captchaKeys = mutableListOf<String>()
         var smsKey = ""
         override suspend fun captcha(key: String): ByteArray {
             captchaKeys.add(key)
             captchaGate?.let { withContext(NonCancellable) { it.await() } }
+            captchaFailure?.let { throw it }
             return ByteArrayOutputStream().also { Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         }
-        override suspend fun sendCode(phone: String, imageCode: String, key: String) { smsKey = key }
+        override suspend fun sendCode(phone: String, imageCode: String, key: String) {
+            smsRequests++; smsKey = key; smsFailure?.let { throw it }
+        }
         override suspend fun login(phone: String, code: String) = Hui798Account(phone, "new-token", account.userId)
         override suspend fun device(id: String, token: String) = device.copy(id = id, name = homeName)
         override suspend fun overview(token: String): Hui798Overview {
@@ -301,6 +307,36 @@ class Hui798ViewModelTest {
         model.phoneChanged(account.phone); model.imageCodeChanged("aB12"); model.sendCode(); runCurrent()
         assertEquals(api.captchaKeys.last(), api.smsKey); assertEquals(60, model.state.value.codeSeconds)
         model.dismissLogin(); advanceTimeBy(60_000); runCurrent()
+    }
+    @Test fun rejectedSmsAutomaticallyRefreshesCaptchaAndRetainsTheErrorWithoutResendingSms() = runTest(dispatcher) {
+        val api = Api().apply { smsFailure = Hui798Exception("图形验证码错误") }
+        val model = model(api, Store(null)); runCurrent(); model.connectAccount(); runCurrent()
+        val oldKey = api.captchaKeys.single()
+        model.phoneChanged(account.phone); model.imageCodeChanged("aB12"); model.sendCode(); runCurrent()
+        assertEquals(2, api.captchaKeys.size); assertNotEquals(oldKey, api.captchaKeys.last())
+        assertEquals(1, api.smsRequests); assertEquals(oldKey, api.smsKey)
+        assertNotNull(model.state.value.captcha); assertEquals("", model.state.value.imageCode)
+        assertEquals("图形验证码错误", model.state.value.loginError)
+        assertFalse(model.state.value.sendingCode); assertFalse(model.state.value.captchaLoading)
+        assertEquals(0, model.state.value.codeSeconds)
+        api.smsFailure = null
+        model.imageCodeChanged("cD34"); model.sendCode(); runCurrent()
+        assertEquals(api.captchaKeys.last(), api.smsKey); assertEquals(2, api.smsRequests)
+        assertEquals(60, model.state.value.codeSeconds)
+        model.dismissLogin(); advanceTimeBy(60_000); runCurrent()
+    }
+    @Test fun failedAutomaticCaptchaReloadStopsAndCanBeRetriedManually() = runTest(dispatcher) {
+        val api = Api().apply { smsFailure = Hui798Exception("图形验证码错误") }
+        val model = model(api, Store(null)); runCurrent(); model.connectAccount(); runCurrent()
+        api.captchaFailure = IOException("fixture offline")
+        model.phoneChanged(account.phone); model.imageCodeChanged("aB12"); model.sendCode(); runCurrent()
+        assertEquals(2, api.captchaKeys.size); assertEquals(1, api.smsRequests)
+        assertNull(model.state.value.captcha); assertFalse(model.state.value.captchaLoading)
+        assertTrue(model.state.value.loginError!!.contains("图形验证码错误"))
+        model.sendCode(); runCurrent(); assertEquals(1, api.smsRequests)
+        api.captchaFailure = null; model.refreshCaptcha(); runCurrent()
+        assertNotNull(model.state.value.captcha); assertNull(model.state.value.loginError)
+        assertEquals(3, api.captchaKeys.size)
     }
     @Test fun inlineLoginDoesNotStartOrOpenADeviceUntilExplicitlyRequested() = runTest(dispatcher) {
         val api = Api(); val model = model(api, Store(null)); runCurrent(); model.connectAccount(); runCurrent()

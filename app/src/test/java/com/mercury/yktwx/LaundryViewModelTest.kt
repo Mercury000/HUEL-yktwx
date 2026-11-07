@@ -59,6 +59,9 @@ class LaundryViewModelTest {
         var readyChecks = 0
         var deviceReads = 0
         var deviceGate: CompletableDeferred<Unit>? = null
+        var quoteGate: CompletableDeferred<Unit>? = null
+        var quoteFailure: Exception? = null
+        val quotedSkus = mutableListOf<String>()
         var createdAt: Long? = null
         val cancelledOrderIds = mutableListOf<String>()
         var cancelGate: CompletableDeferred<Unit>? = null
@@ -91,7 +94,12 @@ class LaundryViewModelTest {
             deviceReads++; deviceGate?.await()
             return devices[code] ?: device
         }
-        override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String) = LaundryQuote(device.id, skuId, price, 5, channels)
+        override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String): LaundryQuote {
+            quotedSkus += skuId
+            quoteGate?.let { withContext(NonCancellable) { it.await() } }
+            quoteFailure?.let { throw it }
+            return LaundryQuote(device.id, skuId, price, 5, channels)
+        }
         override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
             readyChecks++; readyGate?.await()
             readyError?.let { throw LifeDeviceException(it) }
@@ -144,7 +152,51 @@ class LaundryViewModelTest {
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
         model.scanned(device.serial); runCurrent()
+        assertNull(model.state.value.laundryQuote)
+        model.showLaundryPayment(); runCurrent()
         assertNotNull(model.state.value.laundryQuote)
+    }
+    @Test fun scanningAndSelectingProgramsDoNotQuoteUntilThePaymentDrawerIsOpened() = runTest(dispatcher) {
+        val api = Api().apply { devices[device.serial] = device.copy(skus = device.skus + LifeSku("quick", "快洗", true, "2.50")) }
+        val model = model(api, Store()); runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent()
+        model.selectSku("quick"); model.selectSku("quick"); runCurrent()
+        assertTrue(api.quotedSkus.isEmpty()); assertNull(model.state.value.laundryQuote)
+        assertFalse(model.state.value.quoteLoading); assertEquals("quick", model.state.value.selectedSkuId)
+        api.quoteGate = CompletableDeferred()
+        model.showLaundryPayment()
+        assertTrue(model.state.value.paymentVisible); assertTrue(model.state.value.quoteLoading)
+        model.payLaundry("2"); model.showLaundryPayment(); runCurrent()
+        assertEquals(listOf("quick"), api.quotedSkus); assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+        api.quoteGate!!.complete(Unit); runCurrent()
+        assertEquals("quick", model.state.value.laundryQuote?.skuId)
+        assertFalse(model.state.value.quoteLoading); assertEquals(0, api.creates)
+    }
+    @Test fun failedPaymentQuoteCanBeRetriedInsideTheDrawerWithoutCreatingAnOrder() = runTest(dispatcher) {
+        val api = Api().apply { quoteFailure = java.io.IOException("fixture offline") }
+        val model = model(api, Store()); runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent(); model.showLaundryPayment(); runCurrent()
+        assertTrue(model.state.value.paymentVisible); assertNotNull(model.state.value.error)
+        assertNull(model.state.value.laundryQuote); assertFalse(model.state.value.quoteLoading)
+        api.quoteFailure = null; model.showLaundryPayment(); runCurrent()
+        assertNotNull(model.state.value.laundryQuote); assertNull(model.state.value.error)
+        assertEquals(2, api.quotedSkus.size); assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+    }
+    @Test fun dismissingTheDrawerDiscardsALateQuoteAfterAnotherProgramIsSelected() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val api = Api().apply {
+            quoteGate = gate
+            devices[device.serial] = device.copy(skus = device.skus + LifeSku("quick", "快洗", true, "2.50"))
+        }
+        val model = model(api, Store()); runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
+        model.scanned(device.serial); runCurrent(); model.showLaundryPayment(); runCurrent()
+        model.dismissLaundryPayment(); model.selectSku("quick")
+        api.quoteGate = null; model.showLaundryPayment(); runCurrent()
+        assertEquals("quick", model.state.value.laundryQuote?.skuId)
+        gate.complete(Unit); runCurrent()
+        assertEquals("quick", model.state.value.laundryQuote?.skuId)
+        assertNull(model.state.value.error); assertFalse(model.state.value.quoteLoading)
+        assertEquals(listOf("clean", "quick"), api.quotedSkus)
     }
     @Test fun blockedDeviceRetryReadsAgainAndRedisplaysUnchangedError() = runTest(dispatcher) {
         val message = "设备工作中，请更换设备使用"
@@ -168,7 +220,7 @@ class LaundryViewModelTest {
         assertEquals(message, model.state.value.error)
         assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
-    @Test fun blockedDeviceRetryLoadsQuoteWhenTheDeviceBecomesAvailable() = runTest(dispatcher) {
+    @Test fun blockedDeviceRetryDefersQuoteUntilPaymentWhenTheDeviceBecomesAvailable() = runTest(dispatcher) {
         val api = Api().apply { devices[device.serial] = device.copy(error = "设备工作中，请更换设备使用") }
         val model = model(api, Store())
         runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)
@@ -177,8 +229,9 @@ class LaundryViewModelTest {
         model.retryLaundry(); runCurrent()
         assertEquals(2, api.deviceReads)
         assertNull(model.state.value.error)
-        assertNotNull(model.state.value.laundryQuote)
+        assertNull(model.state.value.laundryQuote); assertTrue(api.quotedSkus.isEmpty())
         assertFalse(model.state.value.loadingDevice); assertFalse(model.state.value.quoteLoading)
+        model.showLaundryPayment(); runCurrent(); assertNotNull(model.state.value.laundryQuote)
         assertEquals(0, api.creates)
     }
     @Test fun orderDisplayUsesLatestServerNamesAndRetainsThemWhenLaterFieldsAreAbsent() = runTest(dispatcher) {
@@ -242,7 +295,7 @@ class LaundryViewModelTest {
         assertTrue(model.state.value.scanning)
         model.scanned(device.serial); runCurrent()
         assertFalse(model.state.value.scanning); assertNull(model.state.value.laundry)
-        assertNotNull(model.state.value.laundryQuote)
+        assertNull(model.state.value.laundryQuote)
         assertEquals(LaundryPhase.Creating, model.state.value.laundrySessions.single().phase)
         assertEquals(1, api.creates)
     }
@@ -670,7 +723,7 @@ class LaundryViewModelTest {
         assertTrue(model.state.value.scanning); assertNull(model.state.value.laundry)
         assertEquals(listOf(first), store.laundries)
         model.scanned(secondDevice.serial); runCurrent()
-        model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
+        model.showLaundryPayment(); runCurrent(); model.payLaundry("2"); runCurrent()
         val second = model.state.value.laundry!!
         assertEquals(2, api.creates); assertEquals(2, api.balancePays); assertEquals(2, store.laundries.size)
         assertNotEquals(first.sessionId, second.sessionId)
@@ -685,7 +738,7 @@ class LaundryViewModelTest {
         assertTrue(model.state.value.scanning); assertNull(model.state.value.device); assertNull(model.state.value.laundry)
         model.scanned(secondDevice.serial); runCurrent()
         assertFalse(model.state.value.scanning)
-        assertNull(model.state.value.laundry); assertNotNull(model.state.value.laundryQuote)
+        assertNull(model.state.value.laundry); assertNull(model.state.value.laundryQuote)
         assertEquals(secondDevice, model.state.value.device)
         assertEquals(2, api.creates)
         model.environment(false); runCurrent()
@@ -698,8 +751,8 @@ class LaundryViewModelTest {
             val store = Store(previous); val model = model(api, store)
             runCurrent(); model.openScan(); model.pageVisible(true); model.scanned(device.serial); runCurrent()
             assertNull("Rescan must not select $phase history", model.state.value.laundry)
-            assertNotNull(model.state.value.laundryQuote); assertEquals(listOf(previous), store.laundries)
-            model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
+            assertNull(model.state.value.laundryQuote); assertEquals(listOf(previous), store.laundries)
+            model.showLaundryPayment(); runCurrent(); model.payLaundry("13"); runCurrent()
             assertEquals("设备工作中，请更换设备使用", model.state.value.error)
             assertNotEquals(previous.sessionId, model.state.value.laundry?.sessionId)
             assertEquals(0, api.creates); assertEquals(0, api.alipayPrepares)
@@ -764,7 +817,7 @@ class LaundryViewModelTest {
         assertEquals(LifeFeature.Water, model.state.value.feature)
         model.scanned(device.serial); runCurrent()
         assertEquals(LifeFeature.Laundry, model.state.value.feature)
-        assertEquals(device, model.state.value.device); assertNotNull(model.state.value.laundryQuote)
+        assertEquals(device, model.state.value.device); assertNull(model.state.value.laundryQuote)
         model.openScan(); runCurrent()
         model.scanned("https://h5.qiekj.com/skip?SN=${waterDevice.serial}&NQT=${device.serial}"); runCurrent()
         assertTrue(model.state.value.scanning); assertNotNull(model.state.value.error); assertNull(model.state.value.device)

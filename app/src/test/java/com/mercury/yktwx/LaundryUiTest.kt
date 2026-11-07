@@ -109,6 +109,47 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText(message).assertIsDisplayed()
     }
+    @Test fun programSelectionKeepsTheActionAvailableBeforePaymentInformationIsLoaded() {
+        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            device = device, selectedSkuId = "quick"))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LifeDevicePage(state, settings, model, active = true, onBack = {})
+            } } }
+        }
+        compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("选择支付方式")
+        compose.onNodeWithTag("laundry-program-quick").assertTextContains("¥2.50").assertTextContains("约 25 分钟", substring = true)
+        compose.runOnIdle { state = state.copy(paymentVisible = true, quoteLoading = true) }
+        compose.onNodeWithTag("laundry-primary-action").assertTextContains("选择支付方式")
+        compose.onNodeWithText("正在读取价格…").assertDoesNotExist()
+        compose.onNodeWithText("正在准备支付…").assertDoesNotExist()
+    }
+    @Test fun paymentDrawerShowsLoadingAndOffersRetryWithoutReportingMissingChannelsDuringLoading() {
+        val model = model()
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
+            paymentVisible = true, quoteLoading = true))
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                LaundryPaymentSheet(true, state, model)
+            } } }
+        }
+        compose.onNodeWithTag("laundry-payment-loading").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsNotEnabled()
+        compose.onNodeWithText("暂无支持的支付方式").assertDoesNotExist()
+        compose.onNodeWithTag("laundry-payment-retry").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(quoteLoading = false, error = "付款信息读取失败") }
+        compose.onNodeWithTag("laundry-payment-loading").assertDoesNotExist()
+        compose.onNodeWithText("付款信息读取失败").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-payment-retry").assertIsDisplayed().assertIsEnabled()
+        compose.runOnIdle { state = state.copy(error = null,
+            laundryQuote = LaundryQuote("device", "quick", "2.50", 25, listOf(LifePayChannel("2", "余额支付", true, false)))) }
+        compose.onNodeWithText("¥2.50").assertIsDisplayed()
+        compose.onNodeWithTag("laundry-pay-submit").assertIsEnabled()
+        compose.onNodeWithTag("laundry-payment-retry").assertDoesNotExist()
+    }
     @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
         val fixture = fixture(); val model = model()
         val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
