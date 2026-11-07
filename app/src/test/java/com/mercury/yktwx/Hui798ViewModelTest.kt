@@ -55,6 +55,7 @@ class Hui798ViewModelTest {
         var smsFailure: Exception? = null
         var smsRequests = 0
         val captchaKeys = mutableListOf<String>()
+        val deviceQueries = mutableListOf<String>()
         var smsKey = ""
         override suspend fun captcha(key: String): ByteArray {
             captchaKeys.add(key)
@@ -66,7 +67,10 @@ class Hui798ViewModelTest {
             smsRequests++; smsKey = key; smsFailure?.let { throw it }
         }
         override suspend fun login(phone: String, code: String) = Hui798Account(phone, "new-token", account.userId)
-        override suspend fun device(id: String, token: String) = device.copy(id = id, name = homeName)
+        override suspend fun device(id: String, token: String): Hui798Device {
+            deviceQueries += id
+            return device.copy(id = id, name = homeName)
+        }
         override suspend fun overview(token: String): Hui798Overview {
             val result = Hui798Overview(overviewUserId, overviewDevices)
             val loginExpired = overviewLoginExpired
@@ -95,6 +99,42 @@ class Hui798ViewModelTest {
         return Hui798ViewModel(app, api, store, dispatcher) { clock }.also { models.put("model-${System.identityHashCode(it)}", it) }
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
+
+    @Test fun scanningDuringRecoveryWaitsThenQueriesOnlyTheLatestDevice() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val api = Api().apply { overviewGate = gate }
+        val model = model(api, Store(account))
+        model.openDevice(device.id); model.pageVisible(true); runCurrent()
+        assertTrue(model.state.value.restoring); assertEquals(device.id, model.state.value.scannedDeviceId)
+        assertTrue(api.deviceQueries.isEmpty()); assertFalse(model.state.value.loginVisible)
+        val latest = "123456789012346"
+        model.openDevice(latest)
+        gate.complete(Unit); runCurrent()
+        assertFalse(model.state.value.restoring); assertEquals(latest, model.state.value.device?.id)
+        assertEquals(listOf(latest), api.deviceQueries); assertTrue(model.state.value.deviceReady)
+        assertEquals(0, api.starts); assertEquals(0, api.ends)
+    }
+
+    @Test fun leavingDuringRecoveryDoesNotQueryTheScannedDevice() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val api = Api().apply { overviewGate = gate }
+        val model = model(api, Store(account))
+        model.openDevice(device.id); model.pageVisible(true); runCurrent()
+        model.pageVisible(false); gate.complete(Unit); runCurrent()
+        assertFalse(model.state.value.restoring); assertTrue(api.deviceQueries.isEmpty())
+        assertNull(model.state.value.device); assertEquals(0, api.starts); assertEquals(0, api.ends)
+    }
+
+    @Test fun scanningBeforeLoginRetainsTheDeviceAndOnlyQueriesAfterLogin() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store(null))
+        model.openDevice(device.id); model.pageVisible(true); runCurrent()
+        assertFalse(model.state.value.connected); assertEquals(device.id, model.state.value.scannedDeviceId)
+        assertTrue(api.deviceQueries.isEmpty()); assertFalse(model.state.value.loginVisible)
+        model.connectAccount(false); runCurrent()
+        model.phoneChanged(account.phone); model.codeChanged("123456"); model.login(); runCurrent()
+        assertTrue(model.state.value.connected); assertEquals(device.id, model.state.value.device?.id)
+        assertEquals(listOf(device.id), api.deviceQueries); assertEquals(0, api.starts); assertEquals(0, api.ends)
+    }
     @Test fun emptyHomeNameDoesNotPreventStatusQueryOrEnableStartBeforeConfirmation() = runTest(dispatcher) {
         val api = Api().apply { homeName = ""; statusFailure = true }
         val model = model(api, Store(account)); runCurrent()

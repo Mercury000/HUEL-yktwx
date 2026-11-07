@@ -169,6 +169,21 @@ class LaundryViewModelTest {
         model.showLaundryPayment(); runCurrent()
         assertNotNull(model.state.value.laundryQuote)
     }
+    @Test fun unifiedLaundryScanBeforeLoginContinuesTheSameDeviceWithoutQuotingOrCreatingAnOrder() = runTest(dispatcher) {
+        val api = Api(); val store = Store(washing = LaundrySession(device, "clean", "0.00", "2",
+            orderNo = "old-wash", phase = LaundryPhase.Running)).apply { owner = null }; val model = model(api, store)
+        model.openUnifiedScan(); model.pageVisible(true); model.scanned(device.serial); runCurrent()
+        assertEquals(LifeFeature.Laundry, model.state.value.feature)
+        assertEquals(device.serial, model.state.value.scannedSerial)
+        assertFalse(model.state.value.scanning); assertFalse(model.state.value.loginVisible)
+        assertEquals(0, api.deviceReads)
+        model.connectAccount(clearPending = false)
+        model.phoneChanged("13800000000"); model.codeChanged("123456"); model.login(); runCurrent()
+        assertEquals(device, model.state.value.device); assertEquals(1, api.deviceReads)
+        assertEquals(1, model.state.value.entryRequest); assertTrue(api.quotedSkus.isEmpty())
+        assertNull(model.state.value.laundry); assertEquals(1, model.state.value.laundrySessions.size)
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+    }
     @Test fun scanningAndSelectingProgramsDoNotQuoteUntilThePaymentDrawerIsOpened() = runTest(dispatcher) {
         val api = Api().apply { devices[device.serial] = device.copy(skus = device.skus + LifeSku("quick", "快洗", true, "2.50")) }
         val model = model(api, Store()); runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)

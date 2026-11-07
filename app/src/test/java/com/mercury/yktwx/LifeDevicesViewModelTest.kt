@@ -52,12 +52,15 @@ class LifeDevicesViewModelTest {
         var createFailure = false
         var zeroConsumption = false
         var incompleteOrder = false
+        var afterPayExpired = false
         var waterFailure = false
         var waterGate: CompletableDeferred<Unit>? = null
         override suspend fun sendCode(phone: String) {}
         override suspend fun login(phone: String, code: String): LifeAccount { loginCalls++; return LifeAccount(phone, "test-token") }
         override suspend fun device(serial: String, token: String): LifeDevice { deviceCalls++; return returnedDevice }
-        override suspend fun selectAfterPay(token: String) {}
+        override suspend fun selectAfterPay(token: String) {
+            if (afterPayExpired) throw LifeDeviceException("fixture expired", true)
+        }
         override suspend fun unlock(skuId: String, token: String): WaterUnlock {
             unlockCalls++
             if (lostUnlock) throw java.io.IOException("lost response")
@@ -152,6 +155,63 @@ class LifeDevicesViewModelTest {
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Water); model.pageVisible(true)
         model.scanned("https://h5.qiekj.com/skip?SN=867369079842630"); runCurrent()
+    }
+
+    @Test fun unifiedScanWaitsForRecoveryWithoutSelectingRecoveredWaterOrReplayingCommands() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val api = Api().apply { waterGate = gate }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token"), savedRunning()))
+        model.openUnifiedScan(); model.pageVisible(true)
+        assertTrue(model.state.value.restoring); assertTrue(model.state.value.scanning)
+        model.scanned(device.serial); runCurrent()
+        assertEquals(device.serial, model.state.value.scannedSerial)
+        assertFalse(model.state.value.scanning); assertFalse(model.state.value.loginVisible)
+        assertEquals(0, api.deviceCalls)
+        gate.complete(Unit); runCurrent()
+        assertFalse(model.state.value.restoring); assertEquals(device, model.state.value.device)
+        assertNull(model.state.value.water); assertEquals(1, model.state.value.waterSessions.size)
+        assertEquals(1, api.deviceCalls); assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls)
+        assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
+    }
+
+    @Test fun unconnectedScanQueriesTheSameDeviceAfterLoginWithoutAnotherScan() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        model.openUnifiedScan(); model.pageVisible(true); model.scanned(device.serial); runCurrent()
+        assertFalse(model.state.value.restoring); assertFalse(model.state.value.scanning)
+        assertFalse(model.state.value.loginVisible); assertEquals(device.serial, model.state.value.scannedSerial)
+        assertEquals(0, api.deviceCalls)
+        model.connectAccount(clearPending = false)
+        model.phoneChanged("13800000000"); model.codeChanged("123456"); model.login(); runCurrent()
+        assertFalse(model.state.value.loginVisible); assertEquals(device, model.state.value.device)
+        assertEquals(1, model.state.value.entryRequest); assertEquals(1, api.deviceCalls)
+        assertEquals(0, api.unlockCalls); assertEquals(0, api.createCalls)
+    }
+
+    @Test fun expiredLoginAfterDeviceQueryRequeriesTheDeviceWithoutReplayingStart() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); assertEquals(1, api.deviceCalls)
+        api.afterPayExpired = true; model.startWater(); runCurrent()
+        assertTrue(model.state.value.connectedPhone.isBlank()); assertNull(model.state.value.water)
+        assertTrue(model.state.value.loginVisible); assertEquals(0, api.unlockCalls)
+        api.afterPayExpired = false; model.connectAccount(clearPending = false)
+        model.phoneChanged("13800000000"); model.codeChanged("123456"); model.login(); runCurrent()
+        assertFalse(model.state.value.loginVisible); assertEquals(device, model.state.value.device)
+        assertEquals(2, api.deviceCalls); assertEquals(0, api.unlockCalls); assertEquals(0, api.createCalls)
+    }
+
+    @Test fun leavingOrRescanningDuringRecoveryCancelsThePendingDeviceQuery() = runTest(dispatcher) {
+        for (rescan in listOf(false, true)) {
+            val gate = CompletableDeferred<Unit>()
+            val api = Api().apply { waterGate = gate }
+            val model = model(api, Store(LifeAccount("13800000000", "test-token"), savedRunning()))
+            model.openUnifiedScan(); model.pageVisible(true); model.scanned(device.serial); runCurrent()
+            if (rescan) model.scan() else model.pageVisible(false)
+            gate.complete(Unit); runCurrent()
+            assertEquals(0, api.deviceCalls); assertNull(model.state.value.device)
+            assertEquals(1, model.state.value.waterSessions.size)
+            if (rescan) { assertTrue(model.state.value.scanning); assertNull(model.state.value.water) }
+            assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls)
+        }
     }
 
     private fun showerApi() = Api().apply { returnedDevice = device.copy(category = "08", name = "淋浴设备") }

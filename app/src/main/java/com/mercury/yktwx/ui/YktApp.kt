@@ -475,8 +475,7 @@ private fun MainContent(
     }
     fun openLifeScanner() {
         if (!isActive ||
-            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null ||
-            lifeState.restoring || hui798State.restoring || lifeState.connectedPhone.isBlank() && !hui798State.connected) return
+            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null) return
         if (!allowOnlineEntry(context, state.preview)) return
         lifeProvider = LifeProvider.Panggui
         lifeModel.openUnifiedScan()
@@ -643,8 +642,7 @@ private fun MainContent(
                                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                                     isActive = paymentPageSelected && !paymentPageCovered,
                                                     onScan = ::openLifeScanner,
-                                                    scanEnabled = !lifeState.restoring && !hui798State.restoring && (lifeState.connectedPhone.isNotBlank() || hui798State.connected) &&
-                                                        !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
+                                                    scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
                                                     lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
                                                     onLifeLogin = ::connectLifeAccount,
                                                     hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
