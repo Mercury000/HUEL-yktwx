@@ -22,7 +22,7 @@ internal data class ManagedLifeAccount(
     val error: String? = null,
 ) {
     val name: String get() = if (provider == LifeProvider.Hui798) "慧生活798" else "胖乖生活"
-    val services: String get() = if (provider == LifeProvider.Hui798) "生活用水" else "接水 · 洗衣"
+    val services: String get() = if (provider == LifeProvider.Hui798) "生活用水" else "接水 · 淋浴 · 洗衣"
     val tag: String get() = if (provider == LifeProvider.Hui798) "hui798" else "panggui"
     val status: String get() = if (restoring) "检查中" else when (connection.status) {
         LifeAccountStatus.NotLoggedIn -> "未登录"

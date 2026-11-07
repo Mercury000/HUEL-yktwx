@@ -120,7 +120,7 @@ class LifeDeviceApiTest {
             "/order/sync" to """{"code":0,"data":{"code":0,"messageId":""}}"""
         ), calls)
         service.endWater("11", "test-token")
-        assertEquals(WaterReading(5, 1, "order-1"), service.water("33", "test-token"))
+        assertEquals(WaterReading(5, 1, "order-1", positiveConsumption = true), service.water("33", "test-token"))
         assertEquals("id-1", service.createAfterPay("order-1", "test-token"))
         service.syncOrder("order-1", "test-token")
         assertEquals("0", calls.last().form()["payType"])
@@ -134,8 +134,68 @@ class LifeDeviceApiTest {
             val amountField = amount?.let { """, "amount":$it""" }.orEmpty()
             val service = api(mapOf("/goods/water/sync" to
                 """{"code":0,"data":{"status":5,"workStatus":1,"identify":"order-1"$amountField}}"""), calls)
-            assertEquals(WaterReading(5, 1, "order-1", zero), service.water("33", "test-token"))
+            assertEquals(WaterReading(5, 1, "order-1", zero, amount == "1"), service.water("33", "test-token"))
             assertEquals(listOf("/goods/water/sync"), calls.map { it.url.path })
+        }
+    }
+
+    private fun showerResponses(category: String = "08", detailCategory: String = category) = mapOf(
+        "/goods/scan/v2" to """{"code":0,"data":{"id":"shower-device","shopId":22,"categoryCode":"$category","type":"goods"}}""",
+        "/goods/normal/details" to """{"code":0,"data":{"goodsId":"shower-device","name":"淋浴设备","categoryCode":"$detailCategory","orgId":22,"shopId":"actual-shop","imei":"shower-imei","payment":"after","isBluetooth":0,"supportAppUserFinish":true}}""",
+        "/goods/normal/skus" to """{"code":0,"data":[{"skuId":"outlet-1","name":"01","feature":"1号出水口","scanAvailable":true,"stockState":1,"price":"0.00","unit":"33.333"}]}""",
+        "/shop/outline/v2" to """{"code":0,"data":{"shopName":"学校","address":""}}""",
+        "/payChannelRoute/afterPay" to """{"code":0,"data":[{"method":15,"methodName":"支付宝支付","useStatus":true,"needOpenFlag":false},{"method":53,"methodName":"云闪付免密支付","useStatus":true,"needOpenFlag":false}]}""",
+    )
+
+    @Test fun showerScanUsesSnAndActualCategoryForAfterPayAndKeepsOutletData() = runBlocking {
+        val calls = mutableListOf<Response>(); val service = api(showerResponses(), calls)
+        val device = service.device("test-shower-sn", "test-token")
+        assertEquals("08", device.category); assertEquals("淋浴", device.waterAction); assertNull(device.startError)
+        assertEquals(LifeSku("outlet-1", "01", true, "0.00", "1号出水口"), device.skus.single())
+        assertEquals(mapOf("SN" to "test-shower-sn", "token" to "test-token"), calls.first().form())
+        assertEquals("08", calls.last().form()["goodsCategory"]); assertEquals("22", calls.last().form()["shopId"])
+        assertEquals("15", device.alipay?.method)
+        assertNotNull(device.copy(channels = device.channels.filter { it.method == "53" }).startError)
+        assertNotNull(device.copy(bluetooth = true).startError)
+        assertNotNull(device.copy(payment = "before").startError)
+    }
+
+    @Test fun showerScanRejectsUnknownCategoryAndMismatchedDetailsWithoutCommands() = runBlocking {
+        for ((category, detailCategory, message) in listOf(Triple("99", "99", "未知设备"),
+            Triple("08", "04", "设备信息不匹配，请重新扫码"))) {
+            val calls = mutableListOf<Response>(); val service = api(showerResponses(category, detailCategory), calls)
+            try { service.device("test-shower-sn", "test-token"); fail("Must reject unrelated device") }
+            catch (e: LifeDeviceException) { assertEquals(message, e.message) }
+            assertFalse(calls.any { it.url.path.contains("unlock") || it.url.path.contains("afterPay") })
+        }
+    }
+
+    @Test fun showerCommandsUseDedicatedPathsAndSameOrderWithoutPrepayment() = runBlocking {
+        val calls = mutableListOf<Response>(); val service = api(mapOf(
+            "/payChannelRoute/addUserAfterPayChannel" to """{"code":0,"data":null}""",
+            "/goods/shower/unlock" to """{"code":0,"data":{"msgId":"shower-message","orderNo":"shower-order","cmd":"","audioFlag":false}}""",
+            "/goods/shower/sync" to """{"code":0,"data":{"status":1,"workStatus":2,"identify":"shower-order","amount":null}}""",
+            "/shower/goods/remoteEnd" to """{"code":0,"data":true}""",
+            "/goods/water/sync" to """{"code":0,"data":{"status":5,"workStatus":1,"identify":"shower-order","amount":0}}""",
+        ), calls)
+        service.selectAfterPay("test-token")
+        val unlock = service.unlockShower("outlet-1", "test-token")
+        assertEquals(WaterUnlock("shower-message", "shower-order"), unlock)
+        assertEquals(WaterReading(1, 2, unlock.orderNo), service.shower("outlet-1", "test-token"))
+        service.endShower("shower-device", unlock.orderNo, "test-token")
+        assertTrue(service.water("outlet-1", "test-token").zeroConsumption)
+        assertEquals(mapOf("skuId" to "outlet-1", "promotions" to LifeDeviceProtocol.Promotions, "token" to "test-token"),
+            calls.single { it.url.path.endsWith("unlock") }.form())
+        assertEquals(mapOf("goodsId" to "shower-device", "orderNo" to unlock.orderNo, "token" to "test-token"),
+            calls.single { it.url.path.endsWith("remoteEnd") }.form())
+        calls.forEach { assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", it.url.path, "test-token"), it.getRequestProperty("sign")) }
+    }
+
+    @Test fun showerEndDoesNotAcceptNullOrRejectedSuccess() = runBlocking {
+        for (data in listOf("null", "false")) {
+            val service = api(mapOf("/shower/goods/remoteEnd" to """{"code":0,"data":$data}"""), mutableListOf())
+            try { service.endShower("shower-device", "shower-order", "test-token"); fail("End must be acknowledged") }
+            catch (e: LifeDeviceException) { assertEquals("结束淋浴失败，请重试", e.message) }
         }
     }
 
