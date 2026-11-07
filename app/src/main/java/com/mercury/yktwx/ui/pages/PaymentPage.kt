@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import com.mercury.yktwx.ui.PaymentCodePresentationEffect
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,11 +57,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     lifeNowMillis: () -> Long = System::currentTimeMillis,
     hui798LoginRequired: Boolean = false, onHui798Login: () -> Unit = {},
     additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList()) {
-    // Restoring an account precedes the shell's read effect. An unverified account
-    // without a failed read is still waiting; keep this presentation local to the UI.
-    val awaitingVerification = !state.needsLogin && state.code == null && state.error == null &&
+    // Restoration can precede the shell's first read; show code loading without card verification.
+    val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
         (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
-    val displayState = if (awaitingVerification && !LocalReadOffline.current) state.copy(busy = true) else state
+    val displayState = if (awaitingCode && !LocalReadOffline.current) state.copy(busy = true) else state
     val displayCode = displayState.code.takeIf { displayState.problem == null && !displayState.busy && displayState.error == null }
     PaymentCodePresentationEffect(isActive && displayCode != null, increaseBrightness = settings.paymentBrightness.value)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
@@ -67,7 +68,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val readError = readError(displayState.error, displayState.errorKind)
         ?: ReadError(FeedbackText.Offline, com.mercury.yktwx.data.ReadFailureKind.Network)
             .takeIf { LocalReadOffline.current && displayCode == null && displayState.problem !in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen) }
-        ?: ReadError("暂时无法确认卡状态").takeIf { displayState.problem == PaymentCodeProblem.StatusUnverified && !displayState.busy }
+        ?: ReadError("付款码暂不可用").takeIf { displayState.problem == PaymentCodeProblem.StatusUnverified && !displayState.busy }
+    val lost = displayState.accountCard?.let { it.account == displayState.account?.account && it.lost && !it.frozen } == true
     val initialError = rememberInitialReadError(displayState.account != null || displayCode != null,
         readError, !displayState.busy)
     val networkError = rememberPageNetworkError(displayState.busy || displayState.refreshing || displayState.accountLoading || displayState.balanceLoading || displayState.cardStatusLoading,
@@ -162,21 +164,27 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             PageReadNotice(networkError, 16.dp, errorMaxLines = Int.MAX_VALUE) {
                             updateNotice()
                             lifeStatus()
+                            FeedbackTransition(lost, bottomSpacing = 16.dp) {
+                                InlineError("当前卡片已挂失，可能无法支付，点击解挂",
+                                    Modifier.testTag("payment-lost-notice").heightIn(min = 48.dp)
+                                        .clickable(enabled = isActive && lost && unlostEnabled && !unlostLoading,
+                                            role = Role.Button, onClickLabel = "解挂", onClick = onUnlost),
+                                    maxLines = Int.MAX_VALUE)
+                            }
                             Card(Modifier.fillMaxWidth().testTag("payment-code-card"), cornerRadius = 24.dp) {
                                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     Row(Modifier.fillMaxWidth().height(paymentHeaderHeight()), verticalAlignment = Alignment.CenterVertically) {
                                         Text("付款码", fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
                                         Spacer(Modifier.weight(1f))
                                         val status = when {
-                                            state.busy -> "核验中"
-                                            state.problem == PaymentCodeProblem.Lost -> "已挂失"
+                                            state.busy -> ""
                                             state.problem == PaymentCodeProblem.Frozen -> "已冻结"
                                             state.problem == PaymentCodeProblem.StatusUnverified -> ""
                                             displayCode != null -> "${state.secondsLeft}s 后刷新"
                                             state.error != null -> ""
                                             else -> "等待刷新"
                                         }
-                                        val restricted = state.problem == PaymentCodeProblem.Lost || state.problem == PaymentCodeProblem.Frozen
+                                        val restricted = state.problem == PaymentCodeProblem.Frozen
                                         val dark = isSystemInDarkTheme()
                                         Text(status, fontSize = 12.sp, lineHeight = 16.sp,
                                             color = if (restricted && !state.busy) { if (dark) Color(0xFFE7B775) else Color(0xFF996018) }
@@ -192,8 +200,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                         val bodyHeight = paymentContentHeight(maxWidth)
                                         Box(Modifier.fillMaxWidth().height(bodyHeight).testTag("payment-code-content"),
                                             contentAlignment = Alignment.Center) {
-                                            if (state.busy || state.problem != null || readError != null) {
-                                                PaymentStatusContent(state, readError, onUnlost, unlostLoading, unlostEnabled)
+                                            if (state.busy) {
+                                                CircularProgressIndicator(Modifier.size(30.dp).testTag("payment-code-loading"))
+                                            } else if (state.problem != null || readError != null) {
+                                                PaymentStatusContent(state, readError)
                                             } else {
                                                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
                                                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -292,7 +302,7 @@ private fun paymentHeaderHeight(): Dp {
     return remember(density, measurer) {
         val title = measurer.measure(AnnotatedString("付款码"),
             style = TextStyle(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold))
-        val status = measurer.measure(AnnotatedString("核验中"),
+        val status = measurer.measure(AnnotatedString("60s 后刷新"),
             style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp))
         maxOf(32.dp, with(density) { title.size.height.toDp() }, with(density) { status.size.height.toDp() } + 10.dp)
     }
@@ -312,11 +322,9 @@ private fun paymentContentHeight(width: Dp): Dp {
         }
         val codeHeight = 88.dp + 232.dp + 48.dp + maxOf(24.dp, textHeight("0000 •••• •••• ••••", 14, 20)) +
             textHeight("向商户出示，切勿分享或截图", 13, 18)
-        val titleHeight = listOf("正在确认卡状态", "付款已暂停", "暂时无法确认卡状态", "付款码暂不可用")
+        val titleHeight = listOf("付款已暂停", "付款码暂不可用")
             .maxOf { textHeight(it, 23, 30, FontWeight.SemiBold) }
         val summaryHeight = listOf(
-            "确认完成前，暂不展示付款码",
-            "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用",
             "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理",
             "网络连接失败，请下拉刷新",
         ).maxOf { textHeight(it, 13, 21) }
@@ -327,18 +335,14 @@ private fun paymentContentHeight(width: Dp): Dp {
     }
 }
 
-/** Verification, paused payment and read failures share the existing centered status layout. */
+/** Frozen cards and code failures retain the existing centered status layout. */
 @Composable
 private fun PaymentStatusContent(
     state: PaymentUiState,
     readError: ReadError?,
-    onUnlost: () -> Unit,
-    unlostLoading: Boolean,
-    unlostEnabled: Boolean,
 ) {
     val dark = isSystemInDarkTheme()
-    val lost = state.problem == PaymentCodeProblem.Lost
-    val restricted = lost || state.problem == PaymentCodeProblem.Frozen
+    val restricted = state.problem == PaymentCodeProblem.Frozen
     val tint = if (restricted && !state.busy) {
         if (dark) Color(0xFFE7B775) else Color(0xFF996018)
     } else MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -348,8 +352,7 @@ private fun PaymentStatusContent(
     @Composable
     fun statusIcon() {
         Box(Modifier.size(92.dp).background(iconBackground, CircleShape), contentAlignment = Alignment.Center) {
-            if (state.busy) CircularProgressIndicator(Modifier.size(30.dp))
-            else Icon(AppIcons.CardState, contentDescription = null, modifier = Modifier.size(44.dp), tint = tint)
+            Icon(AppIcons.CardState, contentDescription = null, modifier = Modifier.size(44.dp), tint = tint)
         }
     }
     @Composable
@@ -357,16 +360,12 @@ private fun PaymentStatusContent(
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(when {
-                state.busy -> "正在确认卡状态"
                 restricted -> "付款已暂停"
-                state.problem == PaymentCodeProblem.StatusUnverified -> "暂时无法确认卡状态"
                 else -> "付款码暂不可用"
             }, modifier = Modifier.fillMaxWidth(), fontSize = 23.sp, lineHeight = 30.sp,
                 maxLines = if (!state.busy && !restricted) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Text(when {
-                state.busy -> "确认完成前，暂不展示付款码"
-                lost -> "校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用"
                 state.problem == PaymentCodeProblem.Frozen -> "校园卡已冻结，当前无法使用付款码\n请在官网或联系校园卡服务中心处理"
                 else -> FeedbackText.read(readError ?: ReadError(""))
             }, modifier = Modifier.fillMaxWidth(), fontSize = 13.sp, lineHeight = 21.sp,
@@ -374,23 +373,11 @@ private fun PaymentStatusContent(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center)
         }
     }
-    if (!state.busy && lost) {
-        Column(Modifier.fillMaxSize().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(Modifier.fillMaxWidth().testTag("payment-status-group"),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             statusIcon()
             statusMessage()
-            Button(onClick = onUnlost, enabled = unlostEnabled && !unlostLoading,
-                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-                Text(if (unlostLoading) "读取中…" else "解挂")
-            }
-        }
-    } else {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(Modifier.fillMaxWidth().testTag("payment-status-group"),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                statusIcon()
-                statusMessage()
-            }
         }
     }
 }

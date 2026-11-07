@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.PaymentAccount
+import com.mercury.yktwx.data.CampusCard
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.ui.AppTheme
@@ -69,8 +70,7 @@ class PaymentCardLayoutTest {
         val accountTop = compose.onNodeWithText("统一账户").fetchSemanticsNode().boundsInRoot.top
         if (capture) screenshot("payment-card-normal-stable")
         for ((name, next) in listOf(
-            "verifying" to state(PaymentCodeProblem.Lost, busy = true),
-            "lost" to state(PaymentCodeProblem.Lost),
+            "loading" to state(busy = true),
             "unlost-loading" to state(busy = true),
             "frozen" to state(PaymentCodeProblem.Frozen),
             "unverified" to state(PaymentCodeProblem.StatusUnverified),
@@ -107,39 +107,38 @@ class PaymentCardLayoutTest {
     @Config(qualifiers = "zh-rCN-w360dp-h800dp-xxhdpi", fontScale = 1.5f)
     fun largeFontsAndNarrowWidthDoNotChangeHeightBetweenStates() = assertStableTransitions()
 
-    @Test fun verificationGroupIsCenteredOnBothAxes() {
+    @Test fun codeLoadingIndicatorIsCenteredOnBothAxes() {
         val current = mutableStateOf(state(busy = true))
         content(current)
         val body = bounds("payment-code-content")
-        val group = bounds("payment-status-group")
+        val group = bounds("payment-code-loading")
         assertEquals(body.center.x, group.center.x, 1f)
         assertEquals(body.center.y, group.center.y, 1f)
-        val title = compose.onNodeWithText("正在确认卡状态").fetchSemanticsNode().boundsInRoot
-        assertEquals(body.center.x, title.center.x, 1f)
+        compose.onNodeWithText("正在确认卡状态").assertDoesNotExist()
         assertTrue(group.top >= body.top && group.bottom <= body.bottom)
         compose.onNodeWithText("解挂").assertDoesNotExist()
     }
-    @Test fun unlostButtonUsesLowerSlotInsteadOfLeavingConcentratedBottomWhitespace() {
-        val current = mutableStateOf(state(PaymentCodeProblem.Lost))
+    @Test fun clickableLossWarningIsAboveTheCodeAndDoesNotChangeItsHeight() {
+        val current = mutableStateOf(state())
         content(current)
-        val card = bounds("payment-code-card")
-        val body = bounds("payment-code-content")
-        val button = compose.onNode(hasText("解挂") and hasClickAction()).fetchSemanticsNode().boundsInRoot
-        val density = compose.activity.resources.displayMetrics.density
-        assertEquals("Button should have only the planned inner bottom padding", 16f * density, body.bottom - button.bottom, 2f)
-        assertEquals("Card outer padding must remain consistent", 36f * density, card.bottom - button.bottom, 2f)
-        val summary = compose.onNodeWithText("校园卡已挂失，当前无法使用付款码\n找回卡片后，可通过解挂恢复使用").fetchSemanticsNode().boundsInRoot
-        assertTrue("Description and button should not be stacked at the top", button.top - summary.bottom >= 16f * density)
-        compose.onNodeWithText("解挂").assertIsDisplayed()
+        val bodyHeight = bounds("payment-code-content").height
+        compose.runOnIdle { current.value = state().copy(accountCard = CampusCard(account.account, "校园卡", "fake", true, false, 0)) }
+        compose.waitForIdle()
+        val notice = bounds("payment-lost-notice")
+        assertTrue(notice.bottom < bounds("payment-code-card").top)
+        assertEquals(bodyHeight, bounds("payment-code-content").height, 1f)
+        compose.onNodeWithTag("payment-lost-notice").assertHasClickAction()
+        compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
+        compose.onNodeWithText("解挂").assertDoesNotExist()
         screenshot("payment-card-lost-stable")
     }
     @Test
     @Config(qualifiers = "zh-rCN-w360dp-h800dp-xxhdpi", fontScale = 1.5f)
-    fun largeFontVerificationStillCentersWrappedTextInsideTheSharedCard() {
+    fun largeFontCodeLoadingStillCentersTheIndicatorInsideTheSharedCard() {
         val current = mutableStateOf(state(busy = true))
         content(current, dark = true)
         val body = bounds("payment-code-content")
-        val group = bounds("payment-status-group")
+        val group = bounds("payment-code-loading")
         assertTrue(abs(body.center.x - group.center.x) <= 1f)
         assertTrue(abs(body.center.y - group.center.y) <= 1f)
         screenshot("payment-card-verifying-dark")

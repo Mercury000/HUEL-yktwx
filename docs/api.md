@@ -1,6 +1,6 @@
 # 一卡通内部接口说明
 
-本文说明客户端的一卡通登录和业务接口。网络与存储结构见[项目架构](architecture.md)。
+本文说明客户端的一卡通登录、付款码、账单、卡片管理及充值缴费接口。网络与存储结构见[项目架构](architecture.md)。
 
 ## 固定源站
 
@@ -27,9 +27,24 @@ Android 的校园卡登录及一卡通业务请求均只向该 HTTPS 源站发�
 
 ## 获取付款码
 
-先通过 `GET /berserker-app/ykt/tsm/codebarPayinfo` 读取账户与余额，再通过 `GET /berserker-app/ykt/tsm/batchGetBarCodeGet` 请求付款码。账户参数从响应读取，解析 `barcode` 与 `expires`。
+1. `GET /berserker-app/ykt/tsm/codebarPayinfo?synAccessSource=h5`
+   - Android 读取统一账户 `ACCOUNT` 及余额，不按 `lostflag`／`freezeflag` 过滤账户。账户展示和充值入口不依赖取码成功；`status=0` 时停止取码。
+   - 从响应读取 `account`、`payacc`、`paytype`，不硬编码个人账户字段。
+2. 账户取得后，以下卡状态查询与取码并行，状态查询不作为取码前置条件：`GET /berserker-app/ykt/tsm/getCampusCards?synAccessSource=h5`
+   - 以当前付款账户 `account` 精确匹配唯一卡片，确认 `lostflag`／`freezeflag`／`acc_status`；其他卡片挂失不影响当前账户。
+   - 已挂失时在付款码上方复用内联错误样式与展开／收起动画，显示“当前卡片已挂失，可能无法支付，点击解挂”。点击整条提示直接打开当前卡片的确认解挂流程，不跳大厅、不自动提交操作；仍展示服务端成功签发的有效付款码。已冻结不提供解挂，并清除付款码。
+   - 查询失败或匹配不唯一时保持卡状态未知，不阻塞亮码，不能把网络异常当作挂失；网络失败复用顶部卡状态读取错误。挂失／解挂完成后获取新码并重新查询状态；取消并失效化旧请求，防止晚返回的状态或码覆盖当前结果。
+   - 取码期间仅显示居中的加载指示，不再显示“核验中”或挂失占位。内联提示支持窄屏大字体换行；取码成功就展示，不等待卡状态返回。冻结和取码失败保留原有居中状态布局；手动刷新统一使用下拉刷新。
+3. `GET /berserker-app/ykt/tsm/batchGetBarCodeGet`
+   - 参数：账户查询取得的 `account`、`payacc`、`paytype`，加 `synAccessSource=h5`。
+   - 解析 `data.barcode` 和 `data.expires`，不将完整码写入日志。取码失败时保留本次查询的账户和余额、清除旧码，优先展示 `data.errmsg` 或外层 `msg`；充值入口不依赖是否已取得付款码。
 
-业务请求使用 `synjones-auth: bearer <access_token>` 与 `synAccessSource: h5`，取码失败清除旧码并显示服务端原因，不记录完整付款码。
+取码使用自定义 Token 头，与登录的 OAuth Basic 头不同：
+
+```text
+synjones-auth: bearer <access_token>
+synAccessSource: h5
+```
 
 ## 账单
 

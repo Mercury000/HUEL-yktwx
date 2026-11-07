@@ -608,27 +608,124 @@ class PaymentViewModelTest {
         assertEquals(2, payments)
     }
 
-    @Test fun confirmedLossClearsCodeAndUnlostChangeFetchesANewBatch() {
+    @Test fun confirmedLossKeepsServerIssuedCodeAndUnlostChangeFetchesANewBatch() {
         model.initialize()
         await { !model.state.value.restoringLogin }
         codeAvailable = true
         model.onForeground()
         await { model.state.value.code != null }
         val first = model.state.value.code
-        codeAvailable = false
-        problem = PaymentCodeProblem.Lost
+        cardLost = true
         model.cardStateChanged()
         assertNull(model.state.value.code)
-        await { !model.state.value.busy }
-        assertEquals(PaymentCodeProblem.Lost, model.state.value.problem)
-        assertEquals(0L, model.state.value.secondsLeft)
+        await { !model.state.value.busy && !model.state.value.cardStatusLoading }
+        assertTrue(model.state.value.accountCard!!.lost)
+        assertNull(model.state.value.problem)
+        assertNotNull(model.state.value.code)
         assertEquals(6496L, model.state.value.account!!.balanceCents)
-        codeAvailable = true
+        cardLost = false
         model.cardStateChanged()
-        await { model.state.value.code != null }
+        await { model.state.value.code != null && model.state.value.accountCard?.lost == false }
         assertNull(model.state.value.problem)
         assertNotEquals(first, model.state.value.code)
         assertEquals(3, payments)
+    }
+
+    @Test fun codeAndCardRequestsOverlapAndSlowStatusDoesNotDelayDisplayingCode() {
+        codeAvailable = true
+        paymentGate = CompletableDeferred()
+        cardGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { payments == 1 && cardQueries == 1 }
+        assertTrue(model.state.value.busy)
+        assertTrue(model.state.value.cardStatusLoading)
+        paymentGate.complete(Unit)
+        await { model.state.value.code != null }
+        assertFalse(model.state.value.busy)
+        assertTrue(model.state.value.cardStatusLoading)
+        assertEquals(0, cardResponses)
+        val code = model.state.value.code
+        cardGate.complete(Unit)
+        await { !model.state.value.cardStatusLoading }
+        assertEquals(code, model.state.value.code)
+    }
+
+    @Test fun lossReturnedBeforeTheCodeDoesNotBlockOrDisappearWhenTheCodeArrives() {
+        codeAvailable = true
+        cardLost = true
+        paymentGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.accountCard?.lost == true }
+        assertTrue(model.state.value.busy)
+        paymentGate.complete(Unit)
+        await { model.state.value.code != null }
+        assertTrue(model.state.value.accountCard!!.lost)
+        assertNull(model.state.value.problem)
+    }
+
+    @Test fun failedParallelStatusReadKeepsTheCodeAndNeverReportsLoss() {
+        codeAvailable = true
+        cardFailure = NetworkFailure()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null && model.state.value.cardStatusError != null }
+        assertNull(model.state.value.problem)
+        assertNull(model.state.value.error)
+        assertNull(model.state.value.accountCard)
+        assertEquals(ReadFailureKind.Network, model.state.value.cardStatusErrorKind)
+    }
+
+    @Test fun lateLossFromAPreviousRefreshCannotReplaceTheCurrentNormalCard() {
+        codeAvailable = true
+        cardLost = true
+        cardGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null && cardQueries == 1 }
+        val oldGate = cardGate
+        cardLost = false
+        cardGate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        model.refresh(manual = true)
+        await { payments == 2 && model.state.value.accountCard?.lost == false && !model.state.value.busy }
+        val code = model.state.value.code
+        oldGate.complete(Unit)
+        await { cardResponses == 2 }
+        assertFalse(model.state.value.accountCard!!.lost)
+        assertEquals(code, model.state.value.code)
+    }
+
+    @Test fun frozenCardReturnedBeforeTheCodeStillPreventsDisplayingIt() {
+        codeAvailable = true
+        cardFrozen = true
+        paymentGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.problem == PaymentCodeProblem.Frozen }
+        paymentGate.complete(Unit)
+        await { !model.state.value.busy }
+        assertNull(model.state.value.code)
+        assertEquals(PaymentCodeProblem.Frozen, model.state.value.problem)
+        cardFrozen = false
+        model.refresh(manual = true)
+        await { model.state.value.code != null && model.state.value.accountCard?.frozen == false }
+        assertNull(model.state.value.problem)
+    }
+
+    @Test fun cardStatusReturnedAfterBackgroundCannotRestoreCodeOrWarning() {
+        codeAvailable = true
+        cardLost = true
+        cardGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        await { model.state.value.code != null && cardQueries == 1 }
+        model.onBackground()
+        cardGate.complete(Unit)
+        await { cardResponses == 1 }
+        assertNull(model.state.value.code)
+        assertNull(model.state.value.accountCard)
+        assertFalse(model.state.value.cardStatusLoading)
     }
 
     @Test fun latePreLossRefreshCannotRestoreItsOldCode() {
