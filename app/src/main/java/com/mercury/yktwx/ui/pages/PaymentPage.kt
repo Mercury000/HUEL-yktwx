@@ -61,7 +61,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
     val displayState = if (awaitingVerification && !LocalReadOffline.current) state.copy(busy = true) else state
     val displayCode = displayState.code.takeIf { displayState.problem == null && !displayState.busy && displayState.error == null }
-    PaymentCodePresentationEffect(isActive && displayCode != null)
+    PaymentCodePresentationEffect(isActive && displayCode != null, increaseBrightness = settings.paymentBrightness.value)
     var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
     LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
     val readError = readError(displayState.error, displayState.errorKind)

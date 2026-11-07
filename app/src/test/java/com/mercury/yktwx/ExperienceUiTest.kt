@@ -1,6 +1,10 @@
 package com.mercury.yktwx
 
 import android.view.WindowManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
@@ -371,6 +375,82 @@ class ExperienceUiTest {
         compose.waitForIdle()
         assertEquals(.2f, window.attributes.screenBrightness, .001f)
         assertEquals(0, window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    @Test fun paymentPageHonorsBrightnessPreferenceWhileKeepingValidCodeAwake() {
+        val settings = ThemeSettings(compose.activity.application)
+        settings.setPaymentBrightness(false)
+        var state by mutableStateOf(PreviewData.paymentState(false))
+        var active by mutableStateOf(true)
+        val window = compose.activity.window
+        window.attributes = window.attributes.apply { screenBrightness = .2f }
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        content { top.yukonga.miuix.kmp.basic.Scaffold { PaymentPage(state, settings, 0.dp, {}, isActive = active) } }
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+        compose.runOnIdle { settings.setPaymentBrightness(true) }
+        compose.waitForIdle()
+        assertEquals(.65f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { settings.setPaymentBrightness(false) }
+        compose.waitForIdle()
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+        compose.runOnIdle { settings.setPaymentBrightness(true); active = false }
+        compose.waitForIdle()
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        assertEquals(0, window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        compose.runOnIdle { active = true }
+        compose.waitForIdle()
+        assertEquals(.65f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { state = state.copy(code = null, error = "网络连接失败") }
+        compose.waitForIdle()
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        assertEquals(0, window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    @Test fun brightnessPreferenceRespectsLifecycleAndPreservesBrightnessWhenOff() {
+        val owner = object : LifecycleOwner {
+            override val lifecycle = LifecycleRegistry(this)
+        }
+        owner.lifecycle.currentState = Lifecycle.State.RESUMED
+        var increaseBrightness by mutableStateOf(false)
+        var shown by mutableStateOf(true)
+        val window = compose.activity.window
+        window.attributes = window.attributes.apply { screenBrightness = -1f }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        content { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+            if (shown) PaymentCodePresentationEffect(true, increaseBrightness)
+        } }
+        assertEquals(-1f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle {
+            window.attributes = window.attributes.apply { screenBrightness = .8f }
+            owner.lifecycle.currentState = Lifecycle.State.STARTED
+        }
+        assertEquals(.8f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.RESUMED }
+        assertEquals(.8f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { increaseBrightness = true }
+        compose.waitForIdle()
+        assertEquals(.8f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.STARTED }
+        assertEquals(.8f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { increaseBrightness = false }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            window.attributes = window.attributes.apply { screenBrightness = .2f }
+            owner.lifecycle.currentState = Lifecycle.State.RESUMED
+            increaseBrightness = true
+        }
+        compose.waitForIdle()
+        assertEquals(.65f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.STARTED }
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.RESUMED }
+        assertEquals(.65f, window.attributes.screenBrightness, .001f)
+        compose.runOnIdle { shown = false }
+        compose.waitForIdle()
+        assertEquals(.2f, window.attributes.screenBrightness, .001f)
+        assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
     }
 
     @Test fun compactActionsHaveAFullTouchTargetWithoutEnlargingTheirVisualHeight() {

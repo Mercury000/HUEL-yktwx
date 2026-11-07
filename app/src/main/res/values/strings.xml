@@ -28,6 +28,8 @@
     <string name="about_source_code">Source Code</string>
     <string name="about_references">References</string>
     <string name="payment_motion_detection">Turn-back Payment Detection</string>
+    <string name="payment_brightness">Automatically Brighten Payment Codes</string>
+    <string name="payment_brightness_summary">Increase screen brightness while displaying a payment code; restore it when leaving</string>
     <string name="payment_motion_detection_summary">After turning the phone back, silently check the balance. Show payment success only when it decreases.</string>
     <string name="automatic_updates">Automatically Check for Updates</string>
     <string name="automatic_updates_summary">Check silently and show an inline notice when a new version is available</string>

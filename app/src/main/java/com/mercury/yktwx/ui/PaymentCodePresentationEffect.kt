@@ -20,25 +20,27 @@ private tailrec fun Context.activity(): Activity? = when (this) {
 
 /** Only a visible, valid foreground code changes this window, never the system setting. */
 @Composable
-internal fun PaymentCodePresentationEffect(enabled: Boolean) {
+internal fun PaymentCodePresentationEffect(enabled: Boolean, increaseBrightness: Boolean = true) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(enabled, context, lifecycle) {
+    DisposableEffect(enabled, increaseBrightness, context, lifecycle) {
         val window = context.activity()?.window
         val brightness = window?.attributes?.screenBrightness ?: -1f
         val wasKeepingScreenOn = window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
         fun restore() {
             if (window != null) {
                 if (!wasKeepingScreenOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                window.attributes = window.attributes.apply { screenBrightness = brightness }
+                if (increaseBrightness) window.attributes = window.attributes.apply { screenBrightness = brightness }
             }
         }
         fun apply() {
             if (enabled && window != null && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                val original = if (brightness >= 0f) brightness else
-                    Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                window.attributes = window.attributes.apply { screenBrightness = maxOf(original, .65f).coerceAtMost(1f) }
+                if (increaseBrightness) {
+                    val original = if (brightness >= 0f) brightness else
+                        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f
+                    window.attributes = window.attributes.apply { screenBrightness = maxOf(original, .65f).coerceAtMost(1f) }
+                }
             }
         }
         apply()

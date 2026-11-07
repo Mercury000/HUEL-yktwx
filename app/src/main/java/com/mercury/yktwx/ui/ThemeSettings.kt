@@ -16,6 +16,7 @@ class ThemeSettings(context: Context) {
     val swipeBack = mutableStateOf(prefs.getBoolean("swipe_back", false))
     val navTransitionStyle = mutableStateOf(prefs.getInt("nav_transition_style", 0).coerceIn(0, 1))
     val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
+    val paymentBrightness = mutableStateOf(prefs.getBoolean("payment_brightness", true))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
     val pangguiLoginNoticeDismissed = mutableStateOf(prefs.getBoolean("panggui_login_notice_dismissed", false))
@@ -36,6 +37,7 @@ class ThemeSettings(context: Context) {
     fun setSwipeBack(v: Boolean) { swipeBack.value = v; prefs.edit().putBoolean("swipe_back", v).apply() }
     fun setNavTransitionStyle(v: Int) { navTransitionStyle.value = v.coerceIn(0, 1); prefs.edit().putInt("nav_transition_style", navTransitionStyle.value).apply() }
     fun setPaymentMotionDetection(v: Boolean) { paymentMotionDetection.value = v; prefs.edit().putBoolean("payment_motion_detection", v).apply() }
+    fun setPaymentBrightness(v: Boolean) { paymentBrightness.value = v; prefs.edit().putBoolean("payment_brightness", v).apply() }
     fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
     fun setAutomaticUpdates(v: Boolean) { automaticUpdates.value = v; prefs.edit().putBoolean("automatic_updates", v).apply() }
 }

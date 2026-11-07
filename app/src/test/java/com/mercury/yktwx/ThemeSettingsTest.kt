@@ -49,6 +49,22 @@ class ThemeSettingsTest {
         assertTrue(ThemeSettings(context).automaticUpdates.value)
     }
 
+    @Test fun paymentBrightnessDefaultsOnForNewAndExistingUsersAndPersists() {
+        assertTrue(ThemeSettings(context).paymentBrightness.value)
+        prefs.edit().putInt("theme_mode", 2).commit()
+        val settings = ThemeSettings(context)
+        assertTrue(settings.paymentBrightness.value)
+        settings.setPaymentBrightness(false)
+        assertFalse(settings.paymentBrightness.value)
+        val restored = ThemeSettings(context)
+        assertFalse(restored.paymentBrightness.value)
+        assertEquals(2, restored.themeMode.value)
+        assertTrue(restored.preventScreenshots.value)
+        settings.setPaymentBrightness(true)
+        assertTrue(settings.paymentBrightness.value)
+        assertTrue(ThemeSettings(context).paymentBrightness.value)
+    }
+
     @Test fun paymentMotionDetectionIsOffForNewAndExistingUsersWithoutThePreference() {
         assertFalse(ThemeSettings(context).paymentMotionDetection.value)
         prefs.edit().putInt("theme_mode", 2).putBoolean("prevent_screenshots", false).commit()
