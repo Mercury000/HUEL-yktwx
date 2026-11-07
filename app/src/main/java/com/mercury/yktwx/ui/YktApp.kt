@@ -1,9 +1,11 @@
 package com.mercury.yktwx.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +37,7 @@ import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.ReadEnvironment
 import com.mercury.yktwx.data.ReadPage
+import com.mercury.yktwx.data.UsageNotice
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
 import androidx.compose.ui.Modifier
@@ -62,6 +65,8 @@ import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.nav.*
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import top.yukonga.miuix.kmp.nav.core.NavKey
@@ -81,7 +86,8 @@ private enum class Screen : NavKey { Main, BillDetail, Profile, Account, About, 
 private enum class AuthPage : NavKey { Restoring, Login, Main }
 
 @Composable
-fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null) {
+fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null,
+    onExit: (() -> Unit)? = null) {
     val mode = when (settings.themeMode.value) {
         1 -> ColorSchemeMode.Light
         2 -> ColorSchemeMode.Dark
@@ -97,131 +103,144 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         // Release metadata needs consent, but never a campus account or successful login.
         AppUpdateEffect(updateModel, settings.automaticUpdates.value,
             allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current)
-        val keepLoginWhileInitializing = remember(consent) { consent?.accepted == false }
-        LaunchedEffect(agreed, authenticated) {
-            // An Activity can retain its models while a changed notice is restored.
-            // Revoke that old login before consent can expose the shell again.
-            if (!agreed && authenticated) viewModel.logout()
+        val activity = LocalActivity.current
+        Scaffold {
+            if (!agreed) {
+                // Life model constructors recover orders over the network. Defer the
+                // business composition, navigation and payment launches until agreement.
+                ConsentEntryPage(settings, state, authenticated)
+            } else {
+                ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState)
+            }
+            if (consent != null) RequiredUsageConsent(consent,
+                onExit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() })
         }
-        var hadLogin by remember { mutableStateOf(false) }
-        LaunchedEffect(authenticated, state.restoringLogin) {
-            if (!state.restoringLogin) {
-                if (hadLogin && !authenticated) consent?.revoke()
-                hadLogin = authenticated
+    }
+}
+
+@Composable
+private fun ApprovedApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel,
+    consent: UsageConsent?, state: PaymentUiState, authenticated: Boolean,
+    updateModel: AppUpdateViewModel, updateState: AppUpdateUiState) {
+    val agreed = consent?.accepted != false
+    val session by viewModel.sessionState.collectAsStateWithLifecycle()
+    var hadLogin by remember { mutableStateOf(false) }
+    LaunchedEffect(authenticated, state.restoringLogin) {
+        if (!state.restoringLogin) {
+            if (hadLogin && !authenticated) consent?.revoke()
+            hadLogin = authenticated
+        }
+    }
+    val billState by billViewModel.state.collectAsStateWithLifecycle()
+    val rechargeModel: RechargeViewModel = viewModel()
+    val feeModel: FeeViewModel = viewModel()
+    val cardModel: CardServiceViewModel = viewModel()
+    val passwordModel: CardPasswordViewModel = viewModel()
+    val myModel: MyViewModel = viewModel()
+    val avatarModel: AvatarViewModel = viewModel()
+    val dormModel: HallViewModel = viewModel()
+    val context = LocalContext.current
+    var previewWasActive by remember { mutableStateOf(false) }
+    LaunchedEffect(agreed, session, state.restoringLogin, state.needsLogin, state.username, state.preview) {
+        if ((agreed || state.needsLogin) && !state.restoringLogin) {
+            val owner = if (state.preview) state.username.takeUnless { state.needsLogin } else session.username
+            avatarModel.accountChanged(owner.orEmpty(), state.preview, session.generation)
+            if (state.preview || previewWasActive) {
+                rechargeModel.accountChanged(owner.orEmpty())
+                feeModel.accountChanged(owner.orEmpty())
+                cardModel.accountChanged(owner.orEmpty())
+                passwordModel.accountChanged(owner.orEmpty())
+                billViewModel.accountChanged(owner)
+                myModel.accountChanged(owner.orEmpty(), state.preview)
+                dormModel.accountChanged(owner.orEmpty(), state.preview)
+            }
+            previewWasActive = state.preview
+        }
+    }
+    WechatLaunchEffect(rechargeModel.events, rechargeModel::canLaunchWechat, rechargeModel::wechatLaunched, rechargeModel::launchFailed)
+    WechatLaunchEffect(feeModel.events, feeModel::canLaunchWechat, feeModel::wechatLaunched, feeModel::launchFailed)
+    LaunchedEffect(rechargeModel) {
+        rechargeModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+    }
+    LaunchedEffect(cardModel) {
+        cardModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+    }
+    LaunchedEffect(passwordModel) {
+        passwordModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+    }
+    LaunchedEffect(cardModel, rechargeModel) {
+        cardModel.rechargeRequests.collect { request ->
+            if (cardModel.accepts(request)) {
+                cardModel.dismiss()
+                rechargeModel.openOthers(request.username, request.config, request.preview)
+                rechargeModel.submit(request.amountCents)
             }
         }
-        val billState by billViewModel.state.collectAsStateWithLifecycle()
-        val rechargeModel: RechargeViewModel = viewModel()
-        val feeModel: FeeViewModel = viewModel()
-        val cardModel: CardServiceViewModel = viewModel()
-        val passwordModel: CardPasswordViewModel = viewModel()
-        val myModel: MyViewModel = viewModel()
-        val avatarModel: AvatarViewModel = viewModel()
-        val dormModel: HallViewModel = viewModel()
-        val context = LocalContext.current
-        var previewWasActive by remember { mutableStateOf(false) }
-        LaunchedEffect(agreed, session, state.restoringLogin, state.needsLogin, state.username, state.preview) {
-            if ((agreed || state.needsLogin) && !state.restoringLogin) {
-                val owner = if (state.preview) state.username.takeUnless { state.needsLogin } else session.username
-                avatarModel.accountChanged(owner.orEmpty(), state.preview, session.generation)
-                if (state.preview || previewWasActive) {
-                    rechargeModel.accountChanged(owner.orEmpty())
-                    feeModel.accountChanged(owner.orEmpty())
-                    cardModel.accountChanged(owner.orEmpty())
-                    passwordModel.accountChanged(owner.orEmpty())
-                    billViewModel.accountChanged(owner)
-                    myModel.accountChanged(owner.orEmpty(), state.preview)
-                    dormModel.accountChanged(owner.orEmpty(), state.preview)
-                }
-                previewWasActive = state.preview
-            }
-        }
-        WechatLaunchEffect(rechargeModel.events, rechargeModel::canLaunchWechat, rechargeModel::wechatLaunched, rechargeModel::launchFailed)
-        WechatLaunchEffect(feeModel.events, feeModel::canLaunchWechat, feeModel::wechatLaunched, feeModel::launchFailed)
-        LaunchedEffect(rechargeModel) {
-            rechargeModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(viewModel) {
-            viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(cardModel) {
-            cardModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(passwordModel) {
-            passwordModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
-        }
-        LaunchedEffect(cardModel, rechargeModel) {
-            cardModel.rechargeRequests.collect { request ->
-                if (cardModel.accepts(request)) {
-                    cardModel.dismiss()
-                    rechargeModel.openOthers(request.username, request.config, request.preview)
-                    rechargeModel.submit(request.amountCents)
-                }
-            }
-        }
-        val authPage = when {
-            !agreed -> AuthPage.Login
-            state.restoringLogin -> if (keepLoginWhileInitializing) AuthPage.Login else AuthPage.Restoring
-            !authenticated -> AuthPage.Login
-            else -> AuthPage.Main
-        }
-        LaunchedEffect(authPage) { updateModel.dismiss() }
-        val authBackStack = remember { navBackStackOf(authPage) }
-        val shellViewModelOwner = checkNotNull(LocalViewModelStoreOwner.current)
-        SideEffect { authBackStack[0] = authPage }
-        NavDisplay(
-            backStack = authBackStack,
-            modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
-            onBack = {},
-            transition = miuixNavigationTransition(settings.navTransitionStyle.value),
-            effects = rememberMiuixNavigationEffects(transitionStyle = settings.navTransitionStyle.value),
-        ) {
-            entry<AuthPage>(swipeDismiss = NavSwipeDirection.None) { page ->
-                val interactive = page == authPage
-                Box(
-                    Modifier.fillMaxSize()
-                        .then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})
-                        .pointerInput(interactive) {
-                            if (!interactive) awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    event.changes.forEach { it.consume() }
-                                }
+    }
+    val authPage = when {
+        state.restoringLogin -> AuthPage.Restoring
+        !authenticated -> AuthPage.Login
+        else -> AuthPage.Main
+    }
+    LaunchedEffect(authPage) { updateModel.dismiss() }
+    val authBackStack = remember { navBackStackOf(authPage) }
+    val shellViewModelOwner = checkNotNull(LocalViewModelStoreOwner.current)
+    SideEffect { authBackStack[0] = authPage }
+    NavDisplay(
+        backStack = authBackStack,
+        modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
+        onBack = {},
+        transition = miuixNavigationTransition(settings.navTransitionStyle.value),
+        effects = rememberMiuixNavigationEffects(transitionStyle = settings.navTransitionStyle.value),
+    ) {
+        entry<AuthPage>(swipeDismiss = NavSwipeDirection.None) { page ->
+            val interactive = page == authPage
+            Box(
+                Modifier.fillMaxSize()
+                    .then(if (interactive) Modifier else Modifier.clearAndSetSemantics {})
+                    .pointerInput(interactive) {
+                        if (!interactive) awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                event.changes.forEach { it.consume() }
                             }
-                        },
-                ) {
-                    when (page) {
-                        AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
                         }
-                        AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
-                            onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) },
-                            consent = consent, onInputEdited = viewModel::loginInputEdited,
-                            updateNotice = {
-                                InlineUpdateNotice(updateState.copy(noticeVisible = interactive && agreed && updateState.noticeVisible),
-                                    updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
-                            },
-                            updateDialog = {
-                                AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
-                            })
-                        AuthPage.Main -> {
-                            // Keep only shell identity for the outgoing animation.
-                            // Latest logged-out state has already removed payment codes.
-                            val shellOwner = remember { state.username }
-                            key(shellOwner) {
-                                // Service models remain owned by the app across navigation and login changes.
-                                CompositionLocalProvider(LocalViewModelStoreOwner provides shellViewModelOwner) {
-                                    // One overlay host above both tabs and secondary page layers.
-                                    Scaffold {
-                                        MainContent(
-                                            settings, state,
-                                            if (interactive) billState else BillUiState(),
-                                            viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
-                                            isActive = interactive,
-                                            onLogout = { consent?.revoke(); viewModel.logout() },
-                                            updateModel = updateModel, updateState = updateState,
-                                        )
-                                    }
+                    },
+            ) {
+                when (page) {
+                    AuthPage.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    AuthPage.Login -> LoginPage(if (agreed) state else PaymentUiState(username = state.username, busy = state.busy, restoringLogin = state.restoringLogin),
+                        onLogin = { username, password -> if (interactive && agreed) viewModel.login(username, password) },
+                        consent = consent, onInputEdited = viewModel::loginInputEdited,
+                        updateNotice = {
+                            InlineUpdateNotice(updateState.copy(noticeVisible = interactive && agreed && updateState.noticeVisible),
+                                updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
+                        },
+                        updateDialog = {
+                            AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
+                        })
+                    AuthPage.Main -> {
+                        // Keep only shell identity for the outgoing animation.
+                        // Latest logged-out state has already removed payment codes.
+                        val shellOwner = remember { state.username }
+                        key(shellOwner) {
+                            // Service models remain owned by the app across navigation and login changes.
+                            CompositionLocalProvider(LocalViewModelStoreOwner provides shellViewModelOwner) {
+                                // One overlay host above both tabs and secondary page layers.
+                                Scaffold {
+                                    MainContent(
+                                        settings, state,
+                                        if (interactive) billState else BillUiState(),
+                                        viewModel, billViewModel, rechargeModel, feeModel, cardModel, passwordModel, myModel, dormModel, avatarModel,
+                                        isActive = interactive,
+                                        onLogout = { consent?.revoke(); viewModel.logout() },
+                                        updateModel = updateModel, updateState = updateState,
+                                    )
                                 }
                             }
                         }
@@ -230,6 +249,62 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             }
         }
     }
+}
+
+@Composable
+private fun ConsentEntryPage(settings: ThemeSettings, state: PaymentUiState, authenticated: Boolean) {
+    Box(Modifier.fillMaxSize().testTag(if (authenticated) "consent-main-shell" else "consent-login-shell")) {
+        // This local page never exposes retained codes or interactive accessibility nodes.
+        Box(Modifier.fillMaxSize().clearAndSetSemantics {}.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            }
+        }) {
+            when {
+                state.restoringLogin -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                authenticated -> BarBlurHost(settings.blurBottomBar.value, false) {
+                    MainNavigationScaffold(settings, 0, {}) { padding ->
+                        BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+                            PaymentPage(PaymentUiState(needsLogin = false, username = state.username, busy = true),
+                                settings, padding.calculateBottomPadding() + 28.dp, onRefresh = {},
+                                isActive = false, scanEnabled = false)
+                        }
+                    }
+                }
+                else -> LoginPage(PaymentUiState(username = state.username, restoringLogin = true)) { _, _ -> }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequiredUsageConsent(consent: UsageConsent, onExit: () -> Unit) {
+    val context = LocalContext.current
+    var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(consent, consent.accepted) {
+        if (!hintShown) consent.confirmationHint?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            hintShown = true
+        }
+    }
+    fun exit() { if (!saving && !consent.accepted) onExit() }
+    UsageNoticeSheet(show = !consent.accepted, onDismiss = ::exit, saving = saving, error = error, onAgree = {
+        if (!saving && !consent.accepted) {
+            saving = true; error = null
+            scope.launch {
+                try { consent.accept() }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { error = "无法保存确认记录，请重试" }
+                finally { saving = false }
+            }
+        }
+    })
+    BackHandler(enabled = !consent.accepted) { exit() }
 }
 
 /** Shared allowlisted launch for recharge and living fees; payment results are server-queried. */

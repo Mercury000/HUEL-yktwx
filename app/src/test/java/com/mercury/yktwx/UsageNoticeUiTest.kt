@@ -1,7 +1,6 @@
 package com.mercury.yktwx
 
 import android.graphics.Bitmap
-import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -14,7 +13,6 @@ import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.UsageConsent
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
-import androidx.lifecycle.ViewModelProvider
 import com.mercury.yktwx.ui.pages.LoginPage
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import kotlinx.coroutines.runBlocking
@@ -23,7 +21,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -129,12 +126,12 @@ class UsageNoticeUiTest {
     fun fullyVisibleNoticeCanBeConfirmedWithoutAnArtificialScroll() {
         var agreed = false
         compose.setContent { AppTheme { Scaffold { UsageNoticeSheet(true, {}, { agreed = true }) } } }
-        compose.onNodeWithTag("usage-notice-paragraph-5").assertIsDisplayed()
+        compose.onNodeWithTag("usage-notice-paragraph-${UsageNotice.paragraphs.lastIndex}").assertIsDisplayed()
         compose.onNodeWithText("同意并继续").assertIsEnabled().performClick()
         assertTrue(agreed)
     }
 
-    @Test fun oldHashRevokesAlreadyRestoredLoginAndConfirmationDoesNotAutomaticallySignIn() {
+    @Test fun oldHashHidesRetainedPaymentCodeWithoutRevokingLoginAndAgreementRestoresTheShell() {
         val app = compose.activity.application
         app.getSharedPreferences("usage_consent", android.content.Context.MODE_PRIVATE).edit()
             .putString("accepted_hash", "old-body").commit()
@@ -144,24 +141,19 @@ class UsageNoticeUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
             YktApp(ThemeSettings(app), payments, bills, consent)
         } }
+        compose.onNodeWithTag("consent-main-shell").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
-        compose.onNodeWithText("我的").assertDoesNotExist()
-        val profile = ViewModelProvider(compose.activity)[MyViewModel::class.java]
-        assertNull(profile.state.value.profile)
-        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payments.state.value.needsLogin && !payments.state.value.busy }
-        assertEquals("使用须知已更新，请重新阅读并同意后登录。", ShadowToast.getTextOfLatestToast())
-        compose.onNodeWithText("使用须知已更新，请重新阅读并同意后登录。").assertDoesNotExist()
-        capture("login-notice-updated-light")
-        compose.onNodeWithText("同意并继续").assertDoesNotExist()
-        compose.onNodeWithTag("usage-consent-checkbox").performClick()
-        compose.onNodeWithTag("usage-notice-body").performScrollToIndex(UsageNotice.paragraphs.lastIndex)
+        assertNotNull(payments.state.value.code)
+        assertFalse(payments.state.value.needsLogin)
+        assertEquals("使用须知已更新，请重新阅读并同意后使用。", ShadowToast.getTextOfLatestToast())
+        capture("main-notice-updated-light")
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
+        end()
         compose.onNodeWithText("同意并继续").performClick()
         compose.waitUntil(5_000) { consent.accepted }
-        compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()
-        compose.onNodeWithText("登录校园一卡通").assertIsDisplayed()
+        compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
         compose.onNodeWithTag("usage-notice-body").assertDoesNotExist()
-        assertTrue(payments.state.value.needsLogin)
-        assertTrue(consent.accepted)
+        assertFalse(payments.state.value.needsLogin)
         assertEquals(1, ShadowToast.shownToastCount())
     }
 

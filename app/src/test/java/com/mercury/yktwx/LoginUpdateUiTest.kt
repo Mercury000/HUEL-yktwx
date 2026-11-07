@@ -67,7 +67,7 @@ class LoginUpdateUiTest {
             override fun clear() { credentials = null; session = null }
         }
         val repository = AccountRepository(service, vault)
-        val payments = PaymentViewModel(app, repository).apply { initialize(restoreLogin = false) }
+        val payments = PaymentViewModel(app, repository).apply { initialize() }
         val bills = BillViewModel(app, repository)
         inject(AppUpdateViewModel::class.java, model)
         inject(MyViewModel::class.java, MyViewModel(app, repository))
@@ -99,11 +99,7 @@ class LoginUpdateUiTest {
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
         assertEquals(0, checks)
-        val school = compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot
-        val username = compose.onNodeWithText("学号 / 工号").fetchSemanticsNode().boundsInRoot
-        val initialGap = username.top - school.bottom
-
-        compose.onNodeWithTag("usage-consent-checkbox").performClick()
+        compose.onNodeWithText("上滑并阅读").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("usage-notice-body").performScrollToIndex(UsageNotice.paragraphs.lastIndex)
         compose.onNodeWithText("同意并继续").assertIsEnabled()
         assertEquals("Reading alone must not check for updates", 0, checks)
@@ -115,6 +111,7 @@ class LoginUpdateUiTest {
         compose.onNodeWithTag("app-update-notice").assertIsDisplayed()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
         val notice = compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot
+        val initialGap = notice.top - compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot.bottom
         assertTrue(notice.top >= compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot.bottom)
         assertTrue(notice.bottom <= compose.onNodeWithText("学号 / 工号").fetchSemanticsNode().boundsInRoot.top)
         capture("login-update-light")
@@ -191,7 +188,7 @@ class LoginUpdateUiTest {
         assertNull(store.cachedRelease())
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
-        compose.onNodeWithText("登录").assertIsNotEnabled()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
     }
 
     @Test fun loginHonorsThePersistentAutomaticSwitchAndInspectionMode() {

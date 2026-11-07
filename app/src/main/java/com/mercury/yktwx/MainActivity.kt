@@ -34,18 +34,18 @@ class MainActivity : ComponentActivity() {
         val preview = UiPreview.enabled && UiPreview.requested(intent)
         val settings = ThemeSettings(this)
         consent = UsageConsent(this)
-        val restoreLogin = consent.accepted
         // Payments and password screens must not leak through screenshots or task previews.
         if (!preview && settings.preventScreenshots.value) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-        // Restore local account data while the first composition is being prepared.
-        if (restoreLogin || preview) initializePayment(preview, restoreLogin)
+        // Restore only local identity; foreground business remains gated by consent.
+        if (!consent.accepted && !preview) stopBusiness()
+        initializePayment(preview)
         setContent {
             val agreed = preview || consent.accepted
             LaunchedEffect(agreed) {
                 if (agreed) {
-                    initializePayment(preview, restoreLogin)
+                    initializePayment(preview)
                     billViewModel.initialize(preview)
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startBusiness()
                 } else stopBusiness()
@@ -66,12 +66,13 @@ class MainActivity : ComponentActivity() {
                     window.isNavigationBarContrastEnforced = false
                     onDispose {}
                 }
-                YktApp(settings, viewModel, billViewModel, consent = consent.takeUnless { preview })
+                YktApp(settings, viewModel, billViewModel, consent = consent.takeUnless { preview },
+                    onExit = ::finishAndRemoveTask)
             }
         }
     }
-    private fun initializePayment(preview: Boolean, restoreLogin: Boolean) {
-        viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent), restoreLogin = restoreLogin)
+    private fun initializePayment(preview: Boolean) {
+        viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))
     }
     private fun businessAllowed() = (UiPreview.enabled && UiPreview.requested(intent)) || consent.accepted
     private fun startBusiness() {
@@ -84,7 +85,6 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun stopBusiness() {
-        if (!businessStarted) return
         businessStarted = false
         feeViewModel.onBackground(); rechargeViewModel.onBackground(); viewModel.onBackground()
     }

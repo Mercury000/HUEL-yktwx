@@ -73,6 +73,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private var preview = false
     private var previewLost = false
     private var requestVersion = 0L
+    // Local restoration survives pauses and consent gating; account revocation still invalidates it.
+    private var restorationVersion = 0L
     private var loginInProgress = false
     private var handledLoginGeneration: Long? = null
     private val mutableSuccess = MutableStateFlow<Long?>(null)
@@ -148,6 +150,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
 
     private fun clearPaymentData(cancelLogin: Boolean = true) {
+        restorationVersion++
         accountReadAt = 0L
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
@@ -225,7 +228,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     }
     fun dismissPaymentSuccess() { mutableSuccess.value = null }
 
-    fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false, restoreLogin: Boolean = true) {
+    fun initialize(uiPreview: Boolean = false, previewLost: Boolean = false) {
         if (initialized) return
         initialized = true
         preview = UiPreview.enabled && uiPreview
@@ -234,25 +237,20 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             mutable.value = PreviewData.paymentState(previewLost)
             return
         }
-        val initializationVersion = requestVersion
+        val initializationVersion = restorationVersion
         viewModelScope.launch {
             try {
-                // A newly accepted notice starts at explicit login, even if older credentials remain.
-                if (!restoreLogin) {
-                    withContext(Dispatchers.IO) { repository.username(); repository.logout() }
-                    if (initializationVersion == requestVersion) mutable.value = PaymentUiState()
-                    return@launch
-                }
                 val username = withContext(Dispatchers.IO) { repository.username() }
                 val exists = username.isNotBlank()
                 val cached = if (exists) repository.cachedDisplay(username, DisplayKeys.Account, DisplayCodecs.Account) else null
-                if (initializationVersion != requestVersion) return@launch
+                if (initializationVersion != restorationVersion) return@launch
                 mutable.value = PaymentUiState(needsLogin = !exists, username = username, account = cached,
                     accountFromCache = cached != null, problem = PaymentCodeProblem.StatusUnverified.takeIf { cached != null })
                 if (exists && foreground && pageVisible) refresh(trigger = ReadTrigger.Visible)
                 else if (exists && foreground && accountPageVisible) refreshAccount(trigger = ReadTrigger.Visible)
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
+                if (initializationVersion != restorationVersion) return@launch
                 mutable.value = PaymentUiState(errorKind = ReadFailureKind.Other, error = "无法读取本机登录信息，请重新登录")
             }
         }
