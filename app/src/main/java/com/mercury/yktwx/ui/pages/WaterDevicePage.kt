@@ -34,15 +34,17 @@ internal data class WaterDeviceUiState(
     val provider: LifeProvider, val name: String, val location: String = "", val deviceId: String? = null,
     val phase: WaterPhase = WaterPhase.Ready, val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
     val paymentMethod: String? = null, val supportsFinish: Boolean = true,
-    val status: WaterDeviceStatus? = null, val error: String? = null,
+    val status: WaterDeviceStatus? = null, val error: String? = null, val shower: Boolean = false,
 ) {
-    val action: String get() = if (provider == LifeProvider.Panggui) "接水" else "用水"
+    val action: String get() = if (shower) "淋浴" else if (provider == LifeProvider.Panggui) "接水" else "用水"
     val providerName: String get() = if (provider == LifeProvider.Panggui) "胖乖生活" else "慧生活798"
     val tag: String get() = if (provider == LifeProvider.Panggui) "water" else "hui798"
     val feeNotice: String get() = "费用可在" + if (provider == LifeProvider.Panggui) "胖乖生活或支付宝查询" else "慧生活798查询"
     val feeDetail: String get() = if (provider == LifeProvider.Panggui) "支付宝免密后付，实际费用与扣款情况请查看对应记录。"
         else "实际费用与扣款情况请在慧生活798查看。"
-    val help: String get() = if (provider == LifeProvider.Panggui)
+    val help: String get() = if (shower)
+        "扫码后核对淋浴设备和出水口，再点击开始淋浴。用完后点击结束淋浴；离开页面不会自动停止设备，可从付款页状态卡返回。费用请在胖乖生活或支付宝查询。"
+        else if (provider == LifeProvider.Panggui)
         "扫码后核对饮水设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
         else "扫码后核对生活用水设备，再点击开始用水。用完后点击结束用水；离开页面不会自动停止设备。签约、绑定和费用请在慧生活798查看。"
 }
@@ -58,7 +60,7 @@ private val WaterPhase.pageStage: String get() = when (this) {
 
 private data class WaterDevicePresentation(val state: WaterDeviceUiState, val paymentContent: (@Composable (Boolean) -> Unit)?)
 
-/** Both drinking water and domestic water use this complete page and its stage transitions. */
+/** Drinking water, showers and domestic water share this page and its stage transitions. */
 @Composable
 internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings, active: Boolean,
     primaryAction: WaterDeviceAction, scanAction: WaterDeviceAction, refreshAction: WaterDeviceAction,
@@ -105,7 +107,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
                     }
                     else -> {
                         item { LifeDeviceHero(display.name.ifBlank {
-                            if (display.provider == LifeProvider.Panggui) "饮水设备" else "生活用水设备"
+                            if (display.shower) "淋浴设备" else if (display.provider == LifeProvider.Panggui) "饮水设备" else "生活用水设备"
                         }, display.location, LifeFeature.Water) }
                         item { WaterDeviceFacts(display, stageActive, payment) }
                         if (display.phase != WaterPhase.Ready || display.status != null || display.error == null)
@@ -173,13 +175,13 @@ private fun WaterUsageNotice(state: WaterDeviceUiState) {
                     modifier = Modifier.testTag("${state.tag}-device-loading"))
                 Text(status?.title ?: when {
                     !state.supportsFinish -> "请按设备说明操作"
-                    running -> if (state.provider == LifeProvider.Panggui) "接好后及时结束" else "用完后及时结束"
-                    else -> if (state.provider == LifeProvider.Panggui) "接好后，点结束接水" else "用完后，点结束用水"
+                    running -> if (state.provider == LifeProvider.Panggui && !state.shower) "接好后及时结束" else "用完后及时结束"
+                    else -> if (state.provider == LifeProvider.Panggui && !state.shower) "接好后，点结束接水" else "用完后，点结束${state.action}"
                 }, Modifier.weight(1f), fontSize = 13.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold)
             }
             val detail = if (status != null) status.detail else if (running)
                 "离开此页不会自动结束${state.action}，可从付款页状态卡返回${state.action}进度。"
-                else (if (state.provider == LifeProvider.Panggui) "请先放稳容器。" else "开始前请核对生活用水设备。") + state.feeNotice + "。"
+                else (if (state.shower) "开始前请核对淋浴设备和出水口。" else if (state.provider == LifeProvider.Panggui) "请先放稳容器。" else "开始前请核对生活用水设备。") + state.feeNotice + "。"
             if (detail != null) Text(detail, fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
         }
     }

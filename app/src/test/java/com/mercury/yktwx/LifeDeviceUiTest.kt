@@ -53,6 +53,32 @@ class LifeDeviceUiTest {
             LifeDeviceApi("test-secret", { error("No live requests in UI tests") }), store).also { viewModels.put("life", it) }
     }
     @After fun cleanup() { viewModels.clear() }
+
+    @Test fun showerPageShowsOutletActionsAndProgressWithoutInventingPrice() {
+        val model = model(); val theme = settings()
+        val device = LifeDevice("shower-device", "test-shower", "淋浴设备", "08", "org", "org", "shop", "imei",
+            "学校", "", "after", false, true, null, listOf(LifeSku("outlet", "01", true, "0.00", "1号出水口")),
+            listOf(LifePayChannel("15", "支付宝支付", true, false)))
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Water, device = device,
+            selectedSkuId = "outlet"))
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
+            AppTheme { LifeDevicePage(state, theme, model, active = true, onBack = {}, nowMillis = { 100_000L }) }
+        } }
+        compose.onAllNodesWithText("扫码淋浴").onFirst().assertExists()
+        compose.onNodeWithTag("water-primary-action").assertTextContains("开始淋浴").assertIsEnabled()
+        compose.onNodeWithText("出水口").assertIsDisplayed()
+        compose.onNodeWithText("0.00", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("请先放稳容器。", substring = true).assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(water = WaterSession(device, "outlet", WaterPhase.Running, startedAtMillis = 90_000)) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onAllNodesWithText("淋浴进度").onFirst().assertExists()
+        compose.onNodeWithText("淋浴中").assertIsDisplayed()
+        compose.onNodeWithTag("water-primary-action").assertTextContains("结束淋浴").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(water = state.water!!.copy(phase = WaterPhase.Ended, endedAtMillis = 100_000, finalized = true)) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("淋浴已结束").assertIsDisplayed()
+        compose.onNodeWithTag("water-primary-action").assertTextContains("再次扫码淋浴")
+    }
     private fun settings() = ThemeSettings(compose.activity.application).apply { setTheme(1) }
     private fun capture(name: String) {
         compose.mainClock.advanceTimeBy(1000)

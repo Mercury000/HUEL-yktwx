@@ -18,7 +18,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun InlineLifeLoginNotice(visible: Boolean, onLogin: () -> Unit, enabled: Boolean = true,
-    text: String = "登录胖乖生活，扫码接水或洗衣", tag: String = "life-login-notice", onDismiss: (() -> Unit)? = null) {
+    text: String = "登录胖乖生活，扫码接水、淋浴或洗衣", tag: String = "life-login-notice", onDismiss: (() -> Unit)? = null) {
     FeedbackTransition(visible, bottomSpacing = 12.dp) {
         val foreground = MiuixTheme.colorScheme.onSurfaceVariantSummary
         val accent = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSecondaryVariant else MiuixTheme.colorScheme.primary

@@ -301,7 +301,7 @@ class LifeDevicesViewModel internal constructor(
     fun scanned(raw: String) {
         if (!visible || mutable.value.loadingDevice || !mutable.value.scanning) return
         val (feature, serial) = LifeDeviceCode.identify(raw)
-            ?: run { mutable.update { it.copy(error = "无法识别此设备码，请扫描接水或洗衣设备二维码") }; return }
+            ?: run { mutable.update { it.copy(error = "未知设备") }; return }
         mutable.update { it.copy(feature = feature) }
         loadDevice(serial)
     }
@@ -357,7 +357,7 @@ class LifeDevicesViewModel internal constructor(
                 api.selectAfterPay(token)
                 val sent = WaterSession(device, value.selectedSkuId, WaterPhase.Starting, startSent = true)
                 saveSession(sent, select = true) // Persist before sending the command, including a lost-response attempt.
-                val unlock = api.unlock(value.selectedSkuId, token)
+                val unlock = if (device.isShower) api.unlockShower(value.selectedSkuId, token) else api.unlock(value.selectedSkuId, token)
                 saveSession(sent.copy(messageId = unlock.messageId, orderNo = unlock.orderNo))
                 waitForWater(token)
             } catch (e: CancellationException) { throw e }
@@ -378,7 +378,8 @@ class LifeDevicesViewModel internal constructor(
                 val current = mutable.value.waterSessions.firstOrNull { it.sessionId == session.sessionId }
                 if (current?.phase != WaterPhase.Running || account?.token != token) return@launch
                 saveSession(session.copy(phase = WaterPhase.Stopping))
-                api.endWater(session.device.id, token)
+                if (session.device.isShower) api.endShower(session.device.id, session.orderNo, token)
+                else api.endWater(session.device.id, token)
                 waitForWater(token)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -421,16 +422,18 @@ class LifeDevicesViewModel internal constructor(
     private suspend fun readWater(token: String, sessionId: String? = mutable.value.water?.sessionId) {
         var session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
         if (session.phase == WaterPhase.Ended) { finalizeWater(token, sessionId); return }
-        if (session.orderNo.isBlank()) throw LifeDeviceException("启动请求未返回接水订单，请在胖乖生活查看")
+        if (session.orderNo.isBlank()) throw LifeDeviceException("启动请求未返回${session.device.waterAction}订单，请在胖乖生活查看")
         if (session.phase == WaterPhase.Starting && session.messageId.isNotBlank()) {
             val message = api.message(session.messageId, token)
             if (message == null) return
             if (message.state != "OK" || message.code != "0") throw LifeDeviceException("启动失败，请在胖乖生活查看设备")
         }
-        val reading = api.water(session.skuId, token)
+        // Official showers use shower/sync at startup, then water/sync for the same outlet/order.
+        val reading = if (session.device.isShower && session.phase == WaterPhase.Starting) api.shower(session.skuId, token)
+            else api.water(session.skuId, token)
         if (account?.token != token) return
         session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
-        if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回接水订单，请重试")
+        if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回${session.device.waterAction}订单，请重试")
         if (reading.orderNo != session.orderNo) {
             if (session.phase == WaterPhase.Starting) throw LifeDeviceException("设备订单已变化，请在胖乖生活核对")
             // The device now reports another order; stop tracking ours without finalizing or controlling it.
@@ -444,12 +447,14 @@ class LifeDevicesViewModel internal constructor(
                 if (next != session) saveSession(next)
                 sessionError(LifeFeature.Water, session.sessionId, null)
             }
-            reading.workStatus == 1 && reading.status == 5 -> {
+            reading.ended(session.device) -> {
                 // The zero-consumption capture ends here without creating a payable after-pay order.
-                saveSession(session.copy(phase = WaterPhase.Ended, endedAtMillis = now(), finalized = reading.zeroConsumption))
-                if (reading.zeroConsumption) sessionError(LifeFeature.Water, session.sessionId, null)
+                val noPayment = if (session.device.isShower) !reading.positiveConsumption else reading.zeroConsumption
+                saveSession(session.copy(phase = WaterPhase.Ended, endedAtMillis = now(), finalized = noPayment))
+                if (noPayment) sessionError(LifeFeature.Water, session.sessionId, null)
                 else finalizeWater(token, session.sessionId)
             }
+            session.device.isShower && reading.status == 6 -> throw LifeDeviceException("设备异常，请在胖乖生活查看")
             else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
         }
     }
@@ -511,9 +516,9 @@ class LifeDevicesViewModel internal constructor(
         for (session in candidates) {
             try {
                 if (session.orderNo.isNotBlank()) {
-                    val reading = api.water(session.skuId, token)
+                    val reading = if (session.device.isShower) api.shower(session.skuId, token) else api.water(session.skuId, token)
                     if (account?.token != token) return
-                    if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回接水订单，请重试")
+                    if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回${session.device.waterAction}订单，请重试")
                     if (reading.orderNo == session.orderNo) {
                         when {
                             reading.status == 1 && reading.workStatus == 2 -> {
@@ -522,7 +527,7 @@ class LifeDevicesViewModel internal constructor(
                                 mutable.update { it.copy(waterSessions = it.waterSessions + running,
                                     water = if (it.restoring && it.water == null) running else it.water) }
                             }
-                            reading.status == 5 && reading.workStatus == 1 -> Unit
+                            reading.ended(session.device) -> Unit
                             else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
                         }
                     }
@@ -981,7 +986,7 @@ class LifeDevicesViewModel internal constructor(
     }
     private fun failure(e: Exception) = when (e) {
         is LifeDeviceException -> e.message ?: "操作失败，请重试"
-        is com.mercury.yktwx.data.YktException -> "无法保存账号或接水进度，请检查设备存储"
+        is com.mercury.yktwx.data.YktException -> "无法保存账号或服务进度，请检查设备存储"
         else -> "连接失败，请检查网络后重试"
     }
 }

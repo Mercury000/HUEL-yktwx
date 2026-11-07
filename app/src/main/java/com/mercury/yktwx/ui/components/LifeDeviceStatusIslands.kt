@@ -73,8 +73,8 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 WaterPhase.Ended -> "已完成"
                 WaterPhase.Starting -> "正在启动"
                 WaterPhase.Stopping -> "正在结束"
-                else -> "接水中"
-            }, session.device.name.ifBlank { "接水" }, session.device.shopName,
+                else -> "${session.device.waterAction}中"
+            }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
                 session.sessionId, completed = false))
         }
         laundrySessions.filter { session -> session.phase != LaundryPhase.Closed &&

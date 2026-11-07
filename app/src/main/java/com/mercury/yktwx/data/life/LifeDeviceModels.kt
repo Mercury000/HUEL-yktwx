@@ -22,20 +22,22 @@ data class LifeDevice(
     val supportsFinish: Boolean, val error: String?, val skus: List<LifeSku>,
     val channels: List<LifePayChannel>,
 ) {
+    val isShower: Boolean get() = category == "08"
+    val waterAction: String get() = if (isShower) "淋浴" else "接水"
     val alipay: LifePayChannel? get() = channels.firstOrNull { it.method == "15" }
     val startError: String? get() = when {
-        category != "04" -> "请扫描饮水设备"
+        category !in setOf("04", "08") -> "未知设备"
         bluetooth -> "该设备需要蓝牙操作，请使用胖乖生活"
         payment != "after" -> "该设备的支付方式暂未接入"
         error != null -> error
-        skus.none { it.available } -> "设备当前没有可用的接水选项"
+        skus.none { it.available } -> "设备当前没有可用的${if (isShower) "出水口" else "接水选项"}"
         alipay == null -> "该设备没有可用的支付宝免密渠道"
         alipay?.needsOpen == true -> "请先在胖乖生活开通支付宝免密，返回后刷新设备"
         alipay?.available != true -> alipay?.remark ?: "支付宝免密暂不可用"
         else -> null
     }
     val laundryError: String? get() = when {
-        category != "00" -> "请扫描洗衣设备"
+        category != "00" -> "未知设备"
         bluetooth -> "该设备需要蓝牙操作，请使用胖乖生活"
         payment != "before" -> "该设备的支付方式暂未接入"
         error != null -> error
@@ -57,7 +59,10 @@ data class WaterSession(
 
 data class WaterUnlock(val messageId: String, val orderNo: String)
 // amount is a device consumption field with unknown units, not a displayed payment amount.
-data class WaterReading(val status: Int?, val workStatus: Int?, val orderNo: String, val zeroConsumption: Boolean = false)
+data class WaterReading(val status: Int?, val workStatus: Int?, val orderNo: String, val zeroConsumption: Boolean = false,
+    val positiveConsumption: Boolean = false) {
+    fun ended(device: LifeDevice): Boolean = if (device.isShower) status in setOf(3, 5) else status == 5 && workStatus == 1
+}
 data class WaterMessage(val state: String, val code: String)
 class LifeDeviceException(message: String, val loginExpired: Boolean = false) : Exception(message)
 
@@ -86,9 +91,12 @@ interface LifeDeviceService {
     suspend fun device(serial: String, token: String): LifeDevice
     suspend fun selectAfterPay(token: String)
     suspend fun unlock(skuId: String, token: String): WaterUnlock
+    suspend fun unlockShower(skuId: String, token: String): WaterUnlock { throw LifeDeviceException("淋浴启动暂不可用") }
     suspend fun message(messageId: String, token: String): WaterMessage?
     suspend fun water(skuId: String, token: String): WaterReading
+    suspend fun shower(skuId: String, token: String): WaterReading { throw LifeDeviceException("淋浴状态暂不可用") }
     suspend fun endWater(goodsId: String, token: String)
+    suspend fun endShower(goodsId: String, orderNo: String, token: String) { throw LifeDeviceException("结束淋浴暂不可用") }
     suspend fun createAfterPay(orderNo: String, token: String): String
     suspend fun syncOrder(orderNo: String, token: String)
 }

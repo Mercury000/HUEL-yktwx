@@ -63,6 +63,27 @@ class LifeDeviceStatusUiTest {
         return Sessions(water, LaundrySession(laundryDevice, "laundry-sku", "0.00", "2", LaundryPhase.Running,
             startedAtMillis = started, expectedEndMillis = started + 300_000, sessionId = "laundry-session"))
     }
+
+    @Test fun showerIslandReopensSameSessionAndDisappearsOnlyAfterConfirmedEnd() {
+        val device = sessions().water.device.copy(category = "08", name = "淋浴设备")
+        var shower by mutableStateOf(WaterSession(device, "outlet", WaterPhase.Running, orderNo = "shower-order", sessionId = "shower-session"))
+        val opened = mutableListOf<Pair<LifeFeature, String>>()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
+            AppTheme { LifeDeviceStatusIslands(listOf(shower), emptyList(), { feature, id -> opened.add(feature to id) },
+                { _, _ -> error("Running shower cannot be dismissed") }, settings) }
+        } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("淋浴中").assertIsDisplayed()
+        compose.onNodeWithTag("life-session-shower-session").performClick()
+        assertEquals(listOf(LifeFeature.Water to "shower-session"), opened)
+        compose.runOnIdle { shower = shower.copy(phase = WaterPhase.Stopping) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("正在结束").assertIsDisplayed()
+        compose.runOnIdle { shower = shower.copy(phase = WaterPhase.Ended) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-shower-session").assertDoesNotExist()
+    }
     private fun capture(name: String, settle: Boolean = true) {
         if (settle) compose.mainClock.advanceTimeBy(1000)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }; compose.waitForIdle()

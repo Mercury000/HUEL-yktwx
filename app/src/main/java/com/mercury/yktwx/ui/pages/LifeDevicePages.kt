@@ -53,7 +53,7 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
     LifeAccountLoginSheet(show, if (state.changingAccount) "更换胖乖生活账户" else "登录胖乖生活", "life-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
         val display = rememberWhileShown(show, state)
         val enabled = show && !display.loggingIn && !display.sendingCode
-        Text("接水与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Text("接水、淋浴与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11,
             enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("life-login-phone"),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))
@@ -316,11 +316,11 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
             val skus = device.skus.filter { it.name.isNotBlank() }
             if (skus.size == 1) {
                 HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                LifeDeviceField("接水选项") { Text(skus.single().name, fontSize = 12.sp) }
+                LifeDeviceField(if (device.isShower) "出水口" else "接水选项") { Text(skus.single().name, fontSize = 12.sp) }
             } else if (skus.isNotEmpty()) {
                 HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
                 Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("接水选项", fontSize = 12.sp, color = DashboardPalette.muted)
+                    Text(if (device.isShower) "出水口" else "接水选项", fontSize = 12.sp, color = DashboardPalette.muted)
                     skus.forEach { sku ->
                         PaymentSelectionCard(selected = sku.id == state?.selectedSkuId, enabled = enabled && sku.available,
                             onClick = { onSelect(sku.id) }) { Text(sku.name, fontSize = 13.sp, color = it) }
@@ -346,6 +346,8 @@ private fun LifePaymentValue(device: LifeDevice) {
 private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long) {
     val water = state.water
+    val device = water?.device ?: state.device
+    val action = device?.waterAction ?: "接水"
     val phase = water?.phase ?: WaterPhase.Ready
     val failedCommand = state.error != null && water != null && phase != WaterPhase.Running
     val loading = state.loadingDevice || state.waterBusy || phase in setOf(WaterPhase.Starting, WaterPhase.Stopping) && !failedCommand ||
@@ -355,16 +357,15 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         failedCommand && !state.waterBusy -> "重试"
         phase == WaterPhase.Starting -> "正在启动…"
         phase == WaterPhase.Stopping -> "正在结束…"
-        phase == WaterPhase.Running -> "结束接水"
+        phase == WaterPhase.Running -> "结束$action"
         phase == WaterPhase.Ended && water?.finalized != true -> "正在处理…"
-        phase == WaterPhase.Ended -> "再次扫码接水"
-        else -> "开始接水"
+        phase == WaterPhase.Ended -> "再次扫码$action"
+        else -> "开始$action"
     }
-    val device = water?.device ?: state.device
     val display = WaterDeviceUiState(LifeProvider.Panggui, device?.name.orEmpty(), device?.shopName.orEmpty(),
         phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
         paymentMethod = device?.alipay?.name,
-        supportsFinish = device?.supportsFinish == true, error = state.error)
+        supportsFinish = device?.supportsFinish == true, error = state.error, shower = device?.isShower == true)
     val primary = WaterDeviceAction(label, !loading && when {
         phase == WaterPhase.Ready -> state.device?.startError == null && state.device != null
         else -> true
@@ -422,7 +423,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (state.scanning) "扫描胖乖接水、洗衣或慧生活798用水设备上的二维码，识别后自动进入对应界面。798 手动输入请填写完整二维码链接；已有服务进度可从付款页的状态卡查看。"
+            Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣或慧生活798用水设备上的二维码，识别后自动进入对应界面。798 手动输入请填写完整二维码链接；已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
                 else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)

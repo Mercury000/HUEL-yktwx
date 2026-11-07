@@ -37,6 +37,10 @@ class LifeDevicesViewModelTest {
         "", "", "after", false, true, null, listOf(LifeSku("33", "饮水", true)),
         listOf(LifePayChannel("15", "支付宝支付", true, false)))
     private inner class Api : LifeDeviceService {
+        var returnedDevice = device
+        var showerUnlockCalls = 0; var showerReads = 0; var showerStopCalls = 0
+        val afterPayOrders = mutableListOf<String>()
+        var showerEndReading = WaterReading(5, 1, "order-1", zeroConsumption = true)
         var loginCalls = 0; var deviceCalls = 0; var unlockCalls = 0; var stopCalls = 0; var createCalls = 0; var syncCalls = 0
         var lostUnlock = false
         var messageGate: CompletableDeferred<Unit>? = null
@@ -52,7 +56,7 @@ class LifeDevicesViewModelTest {
         var waterGate: CompletableDeferred<Unit>? = null
         override suspend fun sendCode(phone: String) {}
         override suspend fun login(phone: String, code: String): LifeAccount { loginCalls++; return LifeAccount(phone, "test-token") }
-        override suspend fun device(serial: String, token: String): LifeDevice { deviceCalls++; return device }
+        override suspend fun device(serial: String, token: String): LifeDevice { deviceCalls++; return returnedDevice }
         override suspend fun selectAfterPay(token: String) {}
         override suspend fun unlock(skuId: String, token: String): WaterUnlock {
             unlockCalls++
@@ -60,6 +64,21 @@ class LifeDevicesViewModelTest {
             return WaterUnlock("message-1", "order-1")
         }
         override suspend fun message(messageId: String, token: String): WaterMessage? { messageGate?.await(); return WaterMessage("OK", "0") }
+        override suspend fun unlockShower(skuId: String, token: String): WaterUnlock {
+            showerUnlockCalls++
+            if (lostUnlock) throw java.io.IOException("lost response")
+            return WaterUnlock("message-1", "order-1")
+        }
+        override suspend fun shower(skuId: String, token: String): WaterReading {
+            showerReads++; waterGate?.await()
+            if (waterFailure) throw java.io.IOException("offline")
+            return reading
+        }
+        override suspend fun endShower(goodsId: String, orderNo: String, token: String) {
+            assertEquals(returnedDevice.id, goodsId); assertEquals("order-1", orderNo)
+            showerStopCalls++; stopGate?.await()
+            if (!holdEnd) reading = showerEndReading
+        }
         override suspend fun water(skuId: String, token: String): WaterReading {
             waterReads++; waterGate?.await()
             if (waterFailure) throw java.io.IOException("offline")
@@ -67,6 +86,7 @@ class LifeDevicesViewModelTest {
         }
         override suspend fun endWater(goodsId: String, token: String) { stopCalls++; stopGate?.await(); if (!holdEnd) reading = WaterReading(5, 1, "order-1", zeroConsumption) }
         override suspend fun createAfterPay(orderNo: String, token: String): String {
+            afterPayOrders.add(orderNo)
             createCalls++
             createGate?.await()
             if (createFailure) throw java.io.IOException("lost create response")
@@ -132,6 +152,81 @@ class LifeDevicesViewModelTest {
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Water); model.pageVisible(true)
         model.scanned("https://h5.qiekj.com/skip?SN=867369079842630"); runCurrent()
+    }
+
+    private fun showerApi() = Api().apply { returnedDevice = device.copy(category = "08", name = "淋浴设备") }
+
+    @Test fun showerStartsOnceThenPollsSharedWaterAndWaitsForEndAcknowledgment() = runTest(dispatcher) {
+        val api = showerApi(); val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); api.messageGate = CompletableDeferred()
+        model.startWater(); model.startWater(); runCurrent()
+        assertEquals(1, api.showerUnlockCalls); assertEquals(0, api.unlockCalls); assertEquals(0, api.showerReads)
+        api.messageGate!!.complete(Unit); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase); assertEquals(1, api.showerReads)
+        api.stopGate = CompletableDeferred(); model.stopWater(); runCurrent()
+        assertEquals(WaterPhase.Stopping, model.state.value.water?.phase)
+        assertEquals(1, api.showerStopCalls); assertEquals(0, api.stopCalls); assertTrue(api.waterReads > 0)
+        model.stopWater(); runCurrent(); assertEquals(1, api.showerStopCalls)
+        api.stopGate!!.complete(Unit); runCurrent()
+        assertEquals(WaterPhase.Ended, model.state.value.water?.phase); assertTrue(model.state.value.water!!.finalized)
+        assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
+    }
+
+    @Test fun showerStatusThreeSettlesPositiveConsumptionForOriginalOrder() = runTest(dispatcher) {
+        val api = showerApi().apply { showerEndReading = WaterReading(3, null, "order-1", positiveConsumption = true) }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent(); model.stopWater(); runCurrent()
+        assertEquals(WaterPhase.Ended, model.state.value.water?.phase); assertTrue(model.state.value.water!!.finalized)
+        assertEquals(listOf("order-1"), api.afterPayOrders); assertEquals(1, api.syncCalls)
+        model.retryWater(); runCurrent(); assertEquals(1, api.createCalls); assertEquals(1, api.syncCalls)
+    }
+
+    @Test fun showerLostUnlockCannotBeReplayedOrAdoptDeviceOrder() = runTest(dispatcher) {
+        val api = showerApi().apply { lostUnlock = true }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent(); model.retryWater(); model.startWater(); runCurrent()
+        assertEquals(1, api.showerUnlockCalls); assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
+        assertEquals(0, api.showerReads); assertEquals(0, api.showerStopCalls); assertEquals(0, api.createCalls)
+    }
+
+    @Test fun showerLostEndResponseKeepsSessionAvailableAndRetryDoesNotSendCommand() = runTest(dispatcher) {
+        val api = showerApi(); val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent()
+        api.stopGate = CompletableDeferred(); model.stopWater(); runCurrent()
+        api.stopGate!!.completeExceptionally(java.io.IOException("lost response")); runCurrent()
+        assertEquals(WaterPhase.Stopping, model.state.value.water?.phase)
+        assertTrue(model.state.value.waterSessions.single().active); assertNotNull(model.state.value.error)
+        model.retryWater(); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        assertEquals(1, api.showerStopCalls); assertEquals(1, api.showerUnlockCalls)
+    }
+
+    @Test fun showerForeignOrderAtStopIsRemovedWithoutSendingEndOrPayment() = runTest(dispatcher) {
+        val api = showerApi(); val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent()
+        api.reading = WaterReading(3, 1, "other-order", positiveConsumption = true)
+        model.stopWater(); runCurrent()
+        assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(model.state.value.water)
+        assertEquals(0, api.showerStopCalls); assertEquals(0, api.createCalls)
+    }
+
+    @Test fun showerFaultDoesNotBecomeCompletedOrCreatePayment() = runTest(dispatcher) {
+        val api = showerApi().apply { reading = WaterReading(6, 1, "order-1", positiveConsumption = true) }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent()
+        assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
+        assertEquals("设备异常，请在胖乖生活查看", model.state.value.error)
+        assertEquals(0, api.createCalls); assertEquals(0, api.showerStopCalls)
+    }
+
+    @Test fun showerRestartVerifiesRunningOrderWithoutReplayingCommands() = runTest(dispatcher) {
+        val api = showerApi()
+        val saved = WaterSession(api.returnedDevice, "33", WaterPhase.Stopping, startSent = true,
+            orderNo = "order-1", startedAtMillis = 90_000, sessionId = "saved-shower")
+        val model = model(api, Store(LifeAccount("13800000000", "test-token"), saved)); runCurrent()
+        assertEquals(saved.copy(phase = WaterPhase.Running), model.state.value.waterSessions.single())
+        assertEquals(1, api.showerReads); assertEquals(0, api.showerUnlockCalls); assertEquals(0, api.showerStopCalls)
+        model.environment(true); runCurrent(); assertTrue(api.waterReads > 0); model.environment(false)
     }
 
     @Test fun startAndStopKeepOneOrderAndNeverFinishFromAButtonClickAlone() = runTest(dispatcher) {

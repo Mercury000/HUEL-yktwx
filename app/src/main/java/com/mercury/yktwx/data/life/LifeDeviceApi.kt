@@ -23,7 +23,7 @@ internal object LifeDeviceProtocol {
     }
 }
 
-/** Shared account, scan, device and channel transport for water and future laundry support. */
+/** Shared account and device transport for drinking water, showers and laundry. */
 class LifeDeviceApi(
     private val secret: String = BuildConfig.PANGGUI_API_SECRET,
     private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
@@ -92,13 +92,14 @@ class LifeDeviceApi(
         return LifeAccount(phone, token)
     }
     override suspend fun device(serial: String, token: String): LifeDevice {
-        return readDevice(serial, "SN", "04", token)
+        return readDevice(serial, "SN", setOf("04", "08"), token)
     }
-    override suspend fun laundryDevice(code: String, token: String): LifeDevice = readDevice(code, "NQT", "00", token)
-    private suspend fun readDevice(code: String, field: String, category: String, token: String): LifeDevice {
+    override suspend fun laundryDevice(code: String, token: String): LifeDevice = readDevice(code, "NQT", setOf("00"), token)
+    private suspend fun readDevice(code: String, field: String, categories: Set<String>, token: String): LifeDevice {
         val scan = post("/goods/scan/v2", mapOf(field to code), token).obj()
-        if (scan.text("type") != "goods" || scan.text("categoryCode") != category)
-            throw LifeDeviceException(if (category == "04") "请扫描饮水设备" else "请扫描洗衣设备")
+        val category = scan.text("categoryCode")
+        if (scan.text("type") != "goods" || category !in categories)
+            throw LifeDeviceException("未知设备")
         val id = scan.required("id")
         val detail = post("/goods/normal/details", mapOf("goodsId" to id), token).obj()
         if (detail.required("goodsId") != id || detail.text("categoryCode") != category) throw LifeDeviceException("设备信息不匹配，请重新扫码")
@@ -113,7 +114,7 @@ class LifeDeviceApi(
         val routeShopId = scan.required("shopId")
         val shop = post("/shop/outline/v2", mapOf("orgId" to orgId, "goodsId" to id), token).obj()
         val imei = detail.required("imei")
-        val channels = if (category == "04") post("/payChannelRoute/afterPay", mapOf("imei" to imei, "useTicket" to "0", "shopId" to routeShopId, "goodsCategory" to "04"), token).channels()
+        val channels = if (category in setOf("04", "08")) post("/payChannelRoute/afterPay", mapOf("imei" to imei, "useTicket" to "0", "shopId" to routeShopId, "goodsCategory" to category), token).channels()
             else emptyList()
         return LifeDevice(id, code, detail.text("name"), detail.text("categoryCode"), routeShopId, orgId,
             detail.text("shopId"), imei, shop.text("shopName"), shop.text("address"), detail.text("payment"),
@@ -122,7 +123,11 @@ class LifeDeviceApi(
     }
     override suspend fun selectAfterPay(token: String) { post("/payChannelRoute/addUserAfterPayChannel", mapOf("method" to "15"), token) }
     override suspend fun unlock(skuId: String, token: String): WaterUnlock {
-        val data = post("/goods/water/unlock", mapOf("skuId" to skuId, "promotions" to LifeDeviceProtocol.Promotions), token).obj()
+        return unlockAt("/goods/water/unlock", skuId, token)
+    }
+    override suspend fun unlockShower(skuId: String, token: String): WaterUnlock = unlockAt("/goods/shower/unlock", skuId, token)
+    private suspend fun unlockAt(path: String, skuId: String, token: String): WaterUnlock {
+        val data = post(path, mapOf("skuId" to skuId, "promotions" to LifeDeviceProtocol.Promotions), token).obj()
         return WaterUnlock(data.required("msgId"), data.required("orderNo"))
     }
     override suspend fun message(messageId: String, token: String): WaterMessage? {
@@ -130,16 +135,25 @@ class LifeDeviceApi(
         return data.obj().let { WaterMessage(it.text("state"), it.text("code")) }
     }
     override suspend fun water(skuId: String, token: String): WaterReading {
-        val data = post("/goods/water/sync", mapOf("skuId" to skuId), token).obj()
+        return readingAt("/goods/water/sync", skuId, token)
+    }
+    override suspend fun shower(skuId: String, token: String): WaterReading = readingAt("/goods/shower/sync", skuId, token)
+    private suspend fun readingAt(path: String, skuId: String, token: String): WaterReading {
+        val data = post(path, mapOf("skuId" to skuId), token).obj()
+        val amount = data.text("amount").toBigDecimalOrNull()
         return WaterReading(data.text("status").toIntOrNull(), data.text("workStatus").toIntOrNull(), data.text("identify"),
-            data.text("amount").toBigDecimalOrNull()?.signum() == 0)
+            amount?.signum() == 0, amount?.signum() == 1)
     }
     override suspend fun endWater(goodsId: String, token: String) {
         if (post("/goods/endWater", mapOf("goodsId" to goodsId), token) != true) throw LifeDeviceException("结束接水失败，请重试")
     }
+    override suspend fun endShower(goodsId: String, orderNo: String, token: String) {
+        if (post("/shower/goods/remoteEnd", mapOf("goodsId" to goodsId, "orderNo" to orderNo), token) != true)
+            throw LifeDeviceException("结束淋浴失败，请重试")
+    }
     override suspend fun createAfterPay(orderNo: String, token: String): String {
         val data = post("/order/afterPay/creating", mapOf("orderNo" to orderNo), token).obj()
-        if (data.required("orderNo") != orderNo) throw LifeDeviceException("接水订单信息不匹配")
+        if (data.required("orderNo") != orderNo) throw LifeDeviceException("用水订单信息不匹配")
         return data.required("orderId")
     }
     override suspend fun syncOrder(orderNo: String, token: String) {
