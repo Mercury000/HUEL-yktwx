@@ -140,12 +140,13 @@ class Hui798ViewModel internal constructor(
         if (!mutable.value.sendingCode && !mutable.value.loggingIn && !mutable.value.captchaLoading)
             mutable.update { it.copy(imageCode = value.take(8), loginError = null) }
     }
-    fun refreshCaptcha() {
+    fun refreshCaptcha() = loadCaptcha()
+    private fun loadCaptcha(error: String? = null) {
         if (!mutable.value.loginVisible || mutable.value.loggingIn || mutable.value.sendingCode) return
         captchaTask?.cancel(); captchaKey = ""
         val key = java.util.UUID.randomUUID().toString().replace("-", "")
         captchaTask = viewModelScope.launch {
-            mutable.update { it.copy(captchaLoading = true, captcha = null, imageCode = "", loginError = null) }
+            mutable.update { it.copy(captchaLoading = true, captcha = null, imageCode = "", loginError = error) }
             try {
                 val bytes = api.captcha(key)
                 val bitmap = withContext(io) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
@@ -155,7 +156,8 @@ class Hui798ViewModel internal constructor(
                 captchaKey = key
                 mutable.update { it.copy(captchaLoading = false, captcha = bytes) }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(captchaLoading = false, loginError = failure(e)) } }
+            catch (e: Exception) { mutable.update { it.copy(captchaLoading = false,
+                loginError = listOfNotNull(error, failure(e)).joinToString("；")) } }
         }
     }
     fun sendCode() {
@@ -182,6 +184,7 @@ class Hui798ViewModel internal constructor(
                 // The old image/key must not be submitted again after a rejected SMS request.
                 captchaKey = ""
                 mutable.update { it.copy(sendingCode = false, captcha = null, imageCode = "", loginError = failure(e)) }
+                loadCaptcha(failure(e))
             }
         }
     }

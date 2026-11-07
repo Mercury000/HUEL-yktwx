@@ -57,6 +57,7 @@ class LifeDevicesViewModel internal constructor(
     private val laundryApi = api as? LifeLaundryService
     private var laundryTask: Job? = null
     private var quoteTask: Job? = null
+    private var quoteSequence = 0L
     private var paymentSequence = 0L
     private var paymentInFlight: Long? = null
     private var visible = false
@@ -322,7 +323,6 @@ class LifeDevicesViewModel internal constructor(
                 mutable.update { it.copy(device = device, selectedSkuId = device.skus.firstOrNull { sku -> sku.available }?.id.orEmpty(),
                     loadingDevice = false, error = if (feature == LifeFeature.Water) device.startError else device.laundryError,
                     laundryQuote = null) }
-                if (feature == LifeFeature.Laundry && device.laundryError == null) loadLaundryQuote()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == scanGeneration) mutable.update { it.copy(loadingDevice = false, scanning = it.device == null, error = failure(e)) }
@@ -331,10 +331,14 @@ class LifeDevicesViewModel internal constructor(
         }
     }
     fun selectSku(id: String) {
+        if (mutable.value.loadingDevice || mutable.value.laundryBusy || mutable.value.paymentVisible || mutable.value.selectedSkuId == id) return
         if ((if (mutable.value.feature == LifeFeature.Water) mutable.value.water?.active else mutable.value.laundry?.active) == true) return
         if (mutable.value.device?.skus?.any { it.id == id && it.available } == true) {
             mutable.update { it.copy(selectedSkuId = id) }
-            if (mutable.value.feature == LifeFeature.Laundry) loadLaundryQuote()
+            if (mutable.value.feature == LifeFeature.Laundry) {
+                quoteSequence++; quoteTask?.cancel()
+                mutable.update { it.copy(laundryQuote = null, quoteLoading = false, error = it.device?.laundryError) }
+            }
         }
     }
     fun startWater() {
@@ -557,24 +561,40 @@ class LifeDevicesViewModel internal constructor(
     }
     fun loadLaundryQuote() {
         val value = mutable.value
-        if (value.feature != LifeFeature.Laundry || value.laundry?.active == true || value.loadingDevice || value.device?.laundryError != null) return
+        if (value.feature != LifeFeature.Laundry || !value.paymentVisible || value.laundry?.active == true || value.loadingDevice ||
+            value.quoteLoading || value.device?.laundryError != null) return
         val device = value.device ?: return
+        if (device.skus.none { it.id == value.selectedSkuId && it.available }) return
         val token = account?.token ?: return requireLogin()
         val service = laundryApi ?: return
         quoteTask?.cancel()
+        val request = ++quoteSequence
+        val generation = scanGeneration
+        fun current() = request == quoteSequence && generation == scanGeneration && account?.token == token &&
+            mutable.value.paymentVisible && mutable.value.device?.id == device.id && mutable.value.selectedSkuId == value.selectedSkuId
+        mutable.update { it.copy(quoteLoading = true, laundryQuote = null, error = null) }
         quoteTask = viewModelScope.launch {
-            mutable.update { it.copy(quoteLoading = true, laundryQuote = null, error = device.laundryError) }
             try {
-                if (device.laundryError != null) return@launch
                 val quote = service.laundryQuote(device, value.selectedSkuId, token)
-                if (mutable.value.device?.id == device.id && mutable.value.selectedSkuId == quote.skuId)
+                ensureActive()
+                if (current()) {
+                    if (quote.deviceId != device.id || quote.skuId != value.selectedSkuId)
+                        throw LifeDeviceException("程序信息不匹配，请重新选择")
                     mutable.update { it.copy(laundryQuote = quote, error = null) }
+                }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(error = failure(e)) }; expired(e) }
-            finally { mutable.update { it.copy(quoteLoading = false) } }
+            catch (e: Exception) {
+                ensureActive()
+                if (current()) { mutable.update { it.copy(error = failure(e)) }; expired(e) }
+            }
+            finally { if (request == quoteSequence) mutable.update { it.copy(quoteLoading = false) } }
         }
     }
-    fun dismissLaundryPayment() { mutable.update { it.copy(paymentVisible = false, paymentFeedback = null) } }
+    fun dismissLaundryPayment() {
+        quoteSequence++; quoteTask?.cancel()
+        mutable.update { it.copy(paymentVisible = false, paymentFeedback = null, quoteLoading = false,
+            error = if (it.laundry == null) it.device?.laundryError else it.error) }
+    }
     fun showLaundryPayment() {
         val value = mutable.value
         if (value.laundryBusy || value.quoteLoading || value.paymentLaunch != null || value.feature != LifeFeature.Laundry) return
@@ -606,8 +626,11 @@ class LifeDevicesViewModel internal constructor(
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels),
                     paymentVisible = true) }
             }
-        } else if (value.laundryQuote != null && value.device?.laundryError == null)
+        } else if (value.device?.laundryError == null && value.device?.skus?.any { it.id == value.selectedSkuId && it.available } == true) {
+            if (value.paymentVisible && value.laundryQuote != null) return
             mutable.update { it.copy(paymentVisible = true, paymentFeedback = null) }
+            loadLaundryQuote()
+        }
     }
     fun payLaundry(method: String) {
         val value = mutable.value
@@ -730,7 +753,7 @@ class LifeDevicesViewModel internal constructor(
         if (mutable.value.feature != LifeFeature.Laundry || mutable.value.loadingDevice || mutable.value.quoteLoading) return
         val session = mutable.value.laundry ?: run {
             if (mutable.value.device?.laundryError != null) refreshDevice()
-            else loadLaundryQuote()
+            else showLaundryPayment()
             return
         }
         laundryWork { token, service ->

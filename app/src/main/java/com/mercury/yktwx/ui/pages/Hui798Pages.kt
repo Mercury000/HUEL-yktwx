@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui.pages
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,12 +38,14 @@ internal fun Hui798LoginSheet(state: Hui798UiState, model: Hui798ViewModel, acti
             CaptchaTextField(display.imageCode, model::imageCodeChanged, label = "图形验证码", enabled = enabled && !display.captchaLoading,
                 modifier = Modifier.weight(1f).testTag("hui798-image-code"))
             val bitmap = remember(display.captcha) { display.captcha?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
-            Button(onClick = model::refreshCaptcha, enabled = enabled, modifier = Modifier.width(124.dp).height(56.dp)
-                .testTag("hui798-refresh-captcha")) {
+            Box(Modifier.width(124.dp).height(56.dp)
+                .testTag("hui798-refresh-captcha")
+                .clickable(enabled = enabled && !display.captchaLoading, onClick = model::refreshCaptcha),
+                contentAlignment = Alignment.Center) {
                 when {
                     display.captchaLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     bitmap != null -> Image(bitmap.asImageBitmap(), "图形验证码，点击刷新", Modifier.fillMaxSize())
-                    else -> Text("刷新验证码")
+                    else -> Text("加载失败，点击重试", fontSize = 12.sp)
                 }
             }
         }

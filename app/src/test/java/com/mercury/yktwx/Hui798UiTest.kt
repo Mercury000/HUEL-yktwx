@@ -120,7 +120,8 @@ class Hui798UiTest {
         captcha.performTextReplacement("aB7K123456")
         assertEquals("aB7K1234", model.state.value.imageCode)
         assertEquals(TextRange(8), captcha.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
-        compose.onNodeWithTag("hui798-refresh-captcha").performClick()
+        compose.onNodeWithText("刷新验证码").assertDoesNotExist()
+        compose.onNodeWithContentDescription("图形验证码，点击刷新").assertHasClickAction().performClick()
         compose.waitUntil { model.state.value.captcha != null && !model.state.value.captchaLoading }
         assertEquals("", model.state.value.imageCode)
         assertEquals(TextRange.Zero, captcha.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
