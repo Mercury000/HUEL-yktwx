@@ -26,6 +26,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import org.robolectric.annotation.RealObject
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowCameraCaptureSessionImpl
 import org.robolectric.shadows.ShadowCameraCharacteristics
@@ -33,6 +34,7 @@ import org.robolectric.shadows.ShadowCameraDeviceImpl
 import org.robolectric.shadows.ShadowCameraManager
 import org.robolectric.shadows.ShadowSurfaceTexture
 import org.robolectric.shadows.StreamConfigurationMapBuilder
+import org.robolectric.util.ReflectionHelpers
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -52,13 +54,41 @@ class DeviceCameraThreadingTest {
         private var queryLooper: Looper? = null
         private var configureLooper: Looper? = null
         private var closeLooper: Looper? = null
+        private var openLooper: Looper? = null
         private val idQueries = AtomicInteger()
         private val characteristicsQueries = LinkedBlockingQueue<String>()
         private val requests = LinkedBlockingQueue<Pair<Looper, CaptureRequest>>()
+        private val openCalls = AtomicInteger()
+        private val configureCalls = AtomicInteger()
+        private var holdOpened = false
+        private var holdClosed = false
+        private val openedCallbacks = LinkedBlockingQueue<() -> Unit>()
+        private val closedCallbacks = LinkedBlockingQueue<() -> Unit>()
     }
 
     @Implements(CameraManager::class)
     class RecordingManager : ShadowCameraManager() {
+        @RealObject private lateinit var real: CameraManager
+        @Implementation fun openCamera(id: String, callback: CameraDevice.StateCallback, handler: Handler) {
+            openLooper = Looper.myLooper()
+            openCalls.incrementAndGet()
+            val forwarding = object : CameraDevice.StateCallback() {
+                override fun onOpened(device: CameraDevice) {
+                    if (holdOpened) openedCallbacks.add { handler.post { callback.onOpened(device) } }
+                    else callback.onOpened(device)
+                }
+                override fun onDisconnected(device: CameraDevice) = callback.onDisconnected(device)
+                override fun onError(device: CameraDevice, error: Int) = callback.onError(device, error)
+                override fun onClosed(device: CameraDevice) {
+                    if (holdClosed) closedCallbacks.add { handler.post { callback.onClosed(device) } }
+                    else callback.onClosed(device)
+                }
+            }
+            Shadow.directlyOn<Unit, CameraManager>(real, CameraManager::class.java, "openCamera",
+                ReflectionHelpers.ClassParameter.from(String::class.java, id),
+                ReflectionHelpers.ClassParameter.from(CameraDevice.StateCallback::class.java, forwarding),
+                ReflectionHelpers.ClassParameter.from(Handler::class.java, handler))
+        }
         @Implementation public override fun getCameraIdList(): Array<String> {
             idQueries.incrementAndGet()
             queryLooper = Looper.myLooper()
@@ -77,6 +107,7 @@ class DeviceCameraThreadingTest {
         @Implementation public override fun createCaptureSession(outputs: List<Surface>,
             callback: CameraCaptureSession.StateCallback, handler: Handler) {
             configureLooper = Looper.myLooper()
+            configureCalls.incrementAndGet()
             configureEntered.countDown()
             check(configureGate.await(5, TimeUnit.SECONDS))
             super.createCaptureSession(outputs, callback, handler)
@@ -116,8 +147,10 @@ class DeviceCameraThreadingTest {
         queryEntered = CountDownLatch(1); queryGate = CountDownLatch(0)
         configureEntered = CountDownLatch(1); configureGate = CountDownLatch(0)
         deviceClosed = CountDownLatch(1)
-        queryLooper = null; configureLooper = null; closeLooper = null
+        queryLooper = null; configureLooper = null; closeLooper = null; openLooper = null
         requests.clear()
+        openCalls.set(0); configureCalls.set(0); holdOpened = false; holdClosed = false
+        openedCallbacks.clear(); closedCallbacks.clear()
         idQueries.set(0); characteristicsQueries.clear()
         val context = ApplicationProvider.getApplicationContext<Context>()
         Shadow.extract<RecordingManager>(context.getSystemService(CameraManager::class.java))
@@ -146,13 +179,112 @@ class DeviceCameraThreadingTest {
 
     @After fun cleanup() {
         queryGate.countDown(); configureGate.countDown()
+        holdOpened = false; holdClosed = false
+        while (true) (openedCallbacks.poll() ?: break).invoke()
+        while (true) (closedCallbacks.poll() ?: break).invoke()
         camera.dispose()
         camera.onSurfaceTextureDestroyed(surface)
+        ReflectionHelpers.getField<Handler>(camera, "cameraWorker").looper.thread.join(5000)
     }
 
     private fun await(latch: CountDownLatch) = assertTrue(latch.await(5, TimeUnit.SECONDS))
     private fun nextRequest(): Pair<Looper, CaptureRequest> =
         requireNotNull(requests.poll(5, TimeUnit.SECONDS)) { "Camera never started its repeating request" }
+
+    private fun drainCameraWorker(camera: DeviceCamera) {
+        val drained = CountDownLatch(1)
+        ReflectionHelpers.getField<Handler>(camera, "cameraWorker").post { drained.countDown() }
+        await(drained)
+    }
+
+    @Test fun preparingDuringNavigationOpensHardwareOnWorkerAndWaitsForPreviewSurface() {
+        holdOpened = true
+        camera.prepare()
+        camera.prepare()
+        val opened = requireNotNull(openedCallbacks.poll(5, TimeUnit.SECONDS))
+        opened()
+        drainCameraWorker(camera)
+        assertEquals(1, idQueries.get())
+        // The fake device queries its characteristics once as well.
+        assertEquals(listOf("0", "0"), characteristicsQueries.toList())
+        assertEquals(1, openCalls.get())
+        assertNotSame(Looper.getMainLooper(), openLooper)
+        assertSame(queryLooper, openLooper)
+        assertEquals(0, configureCalls.get())
+        assertTrue(requests.isEmpty())
+        camera.onSurfaceTextureAvailable(surface, 1080, 2400)
+        nextRequest()
+        assertEquals(1, idQueries.get())
+        assertEquals(1, openCalls.get())
+        assertEquals(1, configureCalls.get())
+    }
+
+    @Test fun surfaceReadyBeforeWarmedHardwareConfiguresOnceWithoutReopening() {
+        holdOpened = true
+        camera.prepare()
+        val opened = requireNotNull(openedCallbacks.poll(5, TimeUnit.SECONDS))
+        camera.onSurfaceTextureAvailable(surface, 1080, 2400)
+        drainCameraWorker(camera)
+        assertEquals(1, openCalls.get())
+        assertEquals(0, configureCalls.get())
+        assertTrue(requests.isEmpty())
+        opened()
+        nextRequest()
+        assertEquals(1, openCalls.get())
+        assertEquals(1, configureCalls.get())
+    }
+
+    @Test fun reopenWaitsForCancelledOpenAndItsClosedCallbackBeforeOpeningNextCamera() {
+        holdOpened = true; holdClosed = true
+        // Exit during navigation, before there is even a preview surface to destroy.
+        camera.prepare()
+        val opened = requireNotNull(openedCallbacks.poll(5, TimeUnit.SECONDS))
+        camera.dispose()
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val replacement = DeviceCamera(context, {}, {}, {})
+        val replacementSurface = SurfaceTexture(0)
+        try {
+            replacement.attach(TextureView(context))
+            replacement.onSurfaceTextureAvailable(replacementSurface, 1080, 2400)
+            drainCameraWorker(replacement)
+            assertEquals("A cancelled pending open still owns the hardware", 1, openCalls.get())
+            opened()
+            val closed = requireNotNull(closedCallbacks.poll(5, TimeUnit.SECONDS))
+            drainCameraWorker(replacement)
+            assertEquals("close() is asynchronous; wait for onClosed", 1, openCalls.get())
+            assertTrue(requests.isEmpty())
+            assertTrue(ReflectionHelpers.getField<Handler>(camera, "cameraWorker").looper.thread.isAlive)
+            holdOpened = false; holdClosed = false
+            closed()
+            nextRequest()
+            assertEquals(2, openCalls.get())
+            val oldThread = ReflectionHelpers.getField<Handler>(camera, "cameraWorker").looper.thread
+            oldThread.join(5000)
+            assertFalse(oldThread.isAlive)
+        } finally {
+            replacement.dispose()
+            replacement.onSurfaceTextureDestroyed(replacementSurface)
+            ReflectionHelpers.getField<Handler>(replacement, "cameraWorker").looper.thread.join(5000)
+        }
+    }
+
+    @Test fun exitAfterHardwareWarmupClosesItWithoutEverCreatingAStream() {
+        holdOpened = true
+        camera.prepare()
+        requireNotNull(openedCallbacks.poll(5, TimeUnit.SECONDS)).invoke()
+        drainCameraWorker(camera)
+        camera.dispose()
+        await(deviceClosed)
+        val cameraThread = ReflectionHelpers.getField<Handler>(camera, "cameraWorker").looper.thread
+        cameraThread.join(5000)
+        assertFalse(cameraThread.isAlive)
+        assertSame(openLooper, closeLooper)
+        assertEquals(0, configureCalls.get())
+        assertTrue(requests.isEmpty())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, flashCallbacks)
+    }
 
     @Test fun startupAndControlsUseCameraWorkerWhileUiCallbacksUseMain() {
         camera.onSurfaceTextureAvailable(surface, 1080, 2400)

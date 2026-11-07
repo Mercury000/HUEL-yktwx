@@ -63,6 +63,7 @@ import com.mercury.yktwx.ui.nav.*
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
@@ -701,7 +702,8 @@ private fun MainContent(
                                 Screen.LifeDevice -> if (lifeProvider == LifeProvider.Hui798) Hui798DevicePage(hui798State, settings, hui798Model,
                                     active = isActive && layers.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
                                 else LifeDevicePage(lifeState, settings, lifeModel,
-                                    active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice)
+                                    active = isActive && layers.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice,
+                                    previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
                                 else -> SecondaryPage(
                                     screen = screen,
                                     settings = settings,

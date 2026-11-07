@@ -91,7 +91,7 @@ internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, on
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis,
-    onScanned: (String) -> Unit = model::scanned) {
+    onScanned: (String) -> Unit = model::scanned, previewStartAllowed: Boolean = true) {
     var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
     var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
@@ -149,7 +149,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         val state = rememberWhileShown(displayedStage == stage, state.copy(code = "", paymentLaunch = null))
         if (displayedStage == "scan") Box(Modifier.fillMaxSize().testTag("life-device-page")) {
             DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
-                onManualInput = { manual = true })
+                onManualInput = { manual = true }, previewStartAllowed = previewStartAllowed)
             if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
             if (!state.error.isNullOrBlank() && !manual) {
                 val errorPadding = remember(padding) {

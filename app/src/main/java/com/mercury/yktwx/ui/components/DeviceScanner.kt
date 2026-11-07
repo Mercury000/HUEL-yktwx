@@ -23,6 +23,7 @@ import android.util.Size
 import android.view.Surface
 import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -56,25 +57,32 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.BuildConfig
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
+import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicLong
 
 /** Camera preview and on-device QR recognition for device entries. */
 @Composable
 internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifier: Modifier = Modifier,
-    immersive: Boolean = false, onManualInput: (() -> Unit)? = null) {
+    immersive: Boolean = false, onManualInput: (() -> Unit)? = null, previewStartAllowed: Boolean = true) {
     val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current
+    // Navigation caps (and can destroy) its entry lifecycle during interrupted transitions.
+    // Page visibility owns camera cancellation; the host lifecycle owns background suspension.
+    val lifecycle = (LocalActivity.current as? LifecycleOwner) ?: LocalLifecycleOwner.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var asked by rememberSaveable { mutableStateOf(false) }
-    var cameraError by remember { mutableStateOf<String?>(null) }
     var torch by remember { mutableStateOf(false) }
-    var flashAvailable by remember { mutableStateOf<Boolean?>(null) }
-    var resumed by remember { mutableStateOf(lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    val cameraActive = granted && active && resumed
+    var attempt by remember(cameraActive) { mutableIntStateOf(0) }
+    var cameraError by remember(cameraActive, attempt) { mutableStateOf<String?>(null) }
+    var flashAvailable by remember(cameraActive, attempt) { mutableStateOf<Boolean?>(null) }
+    var previewReady by remember(cameraActive, attempt) { mutableStateOf(false) }
     val currentScan by rememberUpdatedState(onScanned)
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it; asked = true }
     LaunchedEffect(active) { if (active && !granted && !asked) { asked = true; permission.launch(Manifest.permission.CAMERA) } }
@@ -88,14 +96,34 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
     }
     val shape = if (immersive) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(24.dp))
     Box(modifier.then(shape).background(Color(0xFF1B2025)).testTag("device-scanner")) {
-        if (granted && active && resumed) {
-            val camera = remember(context) { DeviceCamera(context, { currentScan(it) }, { cameraError = it }, { flashAvailable = it }) }
-            DisposableEffect(camera) { onDispose { camera.dispose() } }
+        if (cameraActive) key(attempt) {
+            val camera = remember(context) { DeviceCamera(context, { currentScan(it) }, { cameraError = it },
+                { flashAvailable = it }, { previewReady = true }) }
+            DisposableEffect(camera) {
+                camera.prepare()
+                onDispose { camera.dispose() }
+            }
+            // Once started, a cancelled back gesture must retain the same camera and texture.
+            var started by remember(camera) { mutableStateOf(false) }
+            LaunchedEffect(previewStartAllowed) { if (previewStartAllowed) started = true }
             LaunchedEffect(camera, torch) { camera.torch(torch) }
-            AndroidView(factory = { TextureView(it).also(camera::attach) },
-                modifier = Modifier.fillMaxSize().deviceScannerZoomGestures(cameraError == null,
-                    camera::zoomBy, camera::toggleQuickZoom))
-            if (cameraError == null) ScannerSweep()
+            LaunchedEffect(cameraError) { if (cameraError != null) camera.dispose() }
+            if (started && cameraError == null) {
+                AndroidView(factory = { TextureView(it).also(camera::attach) },
+                    modifier = Modifier.fillMaxSize().deviceScannerZoomGestures(previewReady,
+                        camera::zoomBy, camera::toggleQuickZoom))
+                LaunchedEffect(camera, previewReady) {
+                    if (!previewReady) {
+                        delay(8_000)
+                        camera.dispose()
+                        cameraError = "相机启动超时，请重试或输入设备编号"
+                    }
+                }
+            }
+            if (cameraError == null) {
+                if (previewReady) ScannerSweep()
+                else Text("正在启动相机…", Modifier.align(Alignment.Center), fontSize = 13.sp, color = Color.White)
+            }
         }
         if (!granted || cameraError != null) Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(cameraError ?: "需要相机权限才能扫码", fontSize = 13.sp, color = Color.White, textAlign = TextAlign.Center)
@@ -105,6 +133,7 @@ internal fun DeviceScanner(active: Boolean, onScanned: (String) -> Unit, modifie
                     context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                 else permission.launch(Manifest.permission.CAMERA)
             })
+            if (cameraActive && cameraError != null) TextButton("重试", onClick = { attempt++ })
         }
         if (immersive) {
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
@@ -168,6 +197,7 @@ private fun ScannerAction(label: String, icon: androidx.compose.ui.graphics.vect
 internal class DeviceCamera(
     private val context: Context, private val onScan: (String) -> Unit, private val onError: (String) -> Unit,
     private val onFlashAvailable: (Boolean) -> Unit,
+    private val onPreviewReady: () -> Unit = {},
 ) : TextureView.SurfaceTextureListener {
     private val main = Handler(Looper.getMainLooper())
     private val cameraThread = HandlerThread("device-qr-camera").apply { start() }
@@ -204,9 +234,34 @@ internal class DeviceCamera(
     private var sensorOrientation = 90
     @Volatile private var disposed = false
     private val streamGeneration = AtomicLong()
-    private val pendingOpens = mutableSetOf<Long>()
+    private val openLeases = mutableSetOf<DeviceCameraOpenQueue.Lease>()
+    private var openingGeneration: Long? = null
+    private var configuration: Result<Configuration>? = null
+    private var previewReady = false
     private var lastCode = ""
     private var lastCodeAt = 0L
+    private data class Configuration(val id: String, val characteristics: CameraCharacteristics, val size: Size)
+
+    /** Open hardware alongside navigation; preview streams still wait for an attached surface. */
+    fun prepare() {
+        if (disposed) return
+        val generation = streamGeneration.get()
+        val startup = startup()
+        cameraWorker.post { if (isCurrent(generation)) ensureOpen(generation, startup) }
+    }
+
+    private fun startup(): DeviceCameraStartupTimings? = startupTimings
+        ?: (if (BuildConfig.DEBUG) DeviceCameraStartupTimings() else null).also { startupTimings = it }
+
+    private fun configuration(): Configuration = (configuration ?: runCatching {
+        val (id, config) = selectCamera()
+        val map = config.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: throw IllegalStateException()
+        val previews = map.getOutputSizes(SurfaceTexture::class.java).toSet()
+        val size = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888).filter { it in previews && it.width <= 1280 }
+            .minByOrNull { kotlin.math.abs(it.width * it.height - 1280 * 720) } ?: throw IllegalStateException()
+        Configuration(id, config, size)
+    }.also { configuration = it }).getOrThrow()
+
     fun attach(view: TextureView) {
         texture = view
         displays.registerDisplayListener(displayListener, main)
@@ -218,70 +273,85 @@ internal class DeviceCamera(
 
     private fun start(surface: SurfaceTexture) {
         if (disposed) return
-        val generation = streamGeneration.incrementAndGet()
-        val startup = if (BuildConfig.DEBUG) DeviceCameraStartupTimings() else null
-        startupTimings = startup
+        val generation = streamGeneration.get()
+        val startup = startup()
+        previewReady = false
         cameraWorker.post {
             if (!isCurrent(generation)) return@post
-            close()
-            open(surface, generation, startup)
+            try {
+                val (_, config, previewSize) = configuration()
+                if (!isCurrent(generation)) return@post
+                frameGate.resetInterval()
+                zoom = DeviceCameraZoom(config.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE),
+                    config.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE),
+                    config.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM))
+                val flashAvailable = config.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                val orientation = config.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+                surface.setDefaultBufferSize(previewSize.width, previewSize.height)
+                main.post {
+                    if (isCurrent(generation)) {
+                        size = previewSize
+                        sensorOrientation = orientation
+                        transform()
+                        onFlashAvailable(flashAvailable)
+                    }
+                }
+                preview = Surface(surface)
+                images = ImageReader.newInstance(previewSize.width, previewSize.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
+                    setOnImageAvailableListener({ reader -> readFrame(reader, generation, startup) }, cameraWorker)
+                }
+                // Either the hardware or surface may become ready first; configure exactly once.
+                ensureOpen(generation, startup)
+                camera?.let { configure(it, generation, startup) }
+            } catch (_: Exception) { fail(generation) }
+        }
+    }
+
+    private fun ensureOpen(generation: Long, startup: DeviceCameraStartupTimings?) {
+        if (openingGeneration == generation) return
+        openingGeneration = generation
+        DeviceCameraOpenQueue.acquire { lease ->
+            if (!cameraWorker.post {
+                if (isCurrent(generation)) open(generation, startup, lease)
+                else lease.release()
+            }) lease.release()
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun open(surface: SurfaceTexture, generation: Long, startup: DeviceCameraStartupTimings?) {
-        frameGate.resetInterval()
-        worker.post { if (!disposed && decoder.prepare()) frameGate.start() }
+    private fun open(generation: Long, startup: DeviceCameraStartupTimings?, lease: DeviceCameraOpenQueue.Lease) {
         try {
-            val (id, config) = selectCamera()
-            zoom = DeviceCameraZoom(config.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE),
-                config.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE),
-                config.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM))
-            val flashAvailable = config.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-            val orientation = config.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-            val map = config.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: throw IllegalStateException()
-            val previews = map.getOutputSizes(SurfaceTexture::class.java).toSet()
-            val previewSize = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888).filter { it in previews && it.width <= 1280 }
-                .minByOrNull { kotlin.math.abs(it.width * it.height - 1280 * 720) } ?: throw IllegalStateException()
-            if (!isCurrent(generation)) return
-            surface.setDefaultBufferSize(previewSize.width, previewSize.height)
-            main.post {
-                if (isCurrent(generation)) {
-                    size = previewSize
-                    sensorOrientation = orientation
-                    transform()
-                    onFlashAvailable(flashAvailable)
-                }
+            val id = configuration().id
+            if (!isCurrent(generation)) {
+                lease.release()
+                return
             }
-            preview = Surface(surface)
-            images = ImageReader.newInstance(previewSize.width, previewSize.height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
-                setOnImageAvailableListener({ reader -> readFrame(reader, generation, startup) }, cameraWorker)
-            }
-            pendingOpens.add(generation)
+            openLeases.add(lease)
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
-                    pendingOpens.remove(generation)
-                    if (!isCurrent(generation)) { device.close(); finishDisposal(); return }
+                    if (!isCurrent(generation)) { device.close(); return }
                     startup?.record("opened")
                     camera = device
                     configure(device, generation, startup)
                 }
                 override fun onDisconnected(device: CameraDevice) {
-                    pendingOpens.remove(generation)
                     device.close()
                     fail(generation)
-                    finishDisposal()
                 }
                 override fun onError(device: CameraDevice, error: Int) {
-                    pendingOpens.remove(generation)
                     device.close()
                     fail(generation)
+                }
+                override fun onClosed(device: CameraDevice) {
+                    openLeases.remove(lease)
+                    lease.release()
                     finishDisposal()
                 }
             }, cameraWorker)
         } catch (_: Exception) {
-            pendingOpens.remove(generation)
+            openLeases.remove(lease)
             fail(generation)
+            lease.release()
             finishDisposal()
         }
     }
@@ -422,6 +492,7 @@ internal class DeviceCamera(
         }
     }
     private fun close() {
+        openingGeneration = null
         capture?.close(); capture = null
         request = null
         camera?.close(); camera = null
@@ -448,8 +519,8 @@ internal class DeviceCamera(
         worker.post { decoder.close(); thread.quitSafely() }
     }
     private fun finishDisposal() {
-        // An in-flight open can deliver a device after dispose; close it before quitting.
-        if (disposed && pendingOpens.isEmpty()) cameraThread.quitSafely()
+        // Late opens and asynchronous closes still need their callback looper alive.
+        if (disposed && openLeases.isEmpty()) cameraThread.quitSafely()
     }
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) { start(surface) }
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) { transform() }
@@ -459,7 +530,14 @@ internal class DeviceCamera(
         if (!cameraWorker.post { close(); surface.release() }) surface.release()
         return false
     }
-    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) { startupTimings?.record("firstPreview") }
+    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+        if (disposed || previewReady) return
+        previewReady = true
+        startupTimings?.record("firstPreview")
+        onPreviewReady()
+        // Let the preview present its first frame before native model initialization competes for CPU.
+        worker.post { if (!disposed && decoder.prepare()) frameGate.start() }
+    }
 }
 
 /** Debug-only milestones measure camera startup independently of recognition. */
