@@ -58,7 +58,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
             }, session.device.name.ifBlank { "接水" }, session.device.shopName,
                 session.sessionId, completed = false))
         }
-        laundrySessions.forEach { session ->
+        laundrySessions.filterNot { it.phase == LaundryPhase.Closed }.forEach { session ->
             val completed = !session.active
             val end = session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }
             val name = session.device.name.let { if (it.isNotBlank() && it.all(Char::isDigit)) "${it}号" else it }

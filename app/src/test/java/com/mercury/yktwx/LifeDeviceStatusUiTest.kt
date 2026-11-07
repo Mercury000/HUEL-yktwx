@@ -208,6 +208,36 @@ class LifeDeviceStatusUiTest {
         compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
         assertEquals(WaterPhase.Ended, waters.single().phase)
     }
+    @Test fun closedLaundryAutomaticallyLeavesTheIslandsWhileUnfinishedWaterRemainsAccessible() {
+        val sessions = sessions()
+        val pending = sessions.laundry.copy(phase = LaundryPhase.Paying)
+        val savedClosed = pending.copy(sessionId = "previously-closed-laundry", phase = LaundryPhase.Closed)
+        var laundries by mutableStateOf(listOf(savedClosed, pending))
+        var water by mutableStateOf(sessions.water)
+        val opened = mutableListOf<Pair<LifeFeature, String>>()
+        val dismissed = mutableListOf<String>()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            LifeDeviceStatusIslands(listOf(water), laundries,
+                { feature, id -> opened.add(feature to id) }, { _, id -> dismissed.add(id) }, settings)
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${savedClosed.sessionId}").assertDoesNotExist()
+        compose.onNodeWithText("待支付").assertIsDisplayed()
+        compose.onNodeWithTag("life-status-laundry").performScrollTo().performClick()
+        compose.runOnIdle { laundries = listOf(savedClosed, pending.copy(phase = LaundryPhase.Closed)) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${pending.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("dismiss-life-session-${pending.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("life-status-water").assertIsDisplayed().performClick()
+        assertEquals(listOf(LifeFeature.Laundry to pending.sessionId, LifeFeature.Water to water.sessionId), opened)
+        assertTrue(dismissed.isEmpty())
+        assertEquals(2, laundries.size)
+        compose.runOnIdle { water = water.copy(phase = WaterPhase.Ended) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+    }
+
     @Test fun paymentKeepsCompletedLaundryUntilDismissalAndExcludesCompletedWater() {
         val sessions = sessions()
         val finished = sessions.laundry.copy(phase = LaundryPhase.Ended, finishedAtMillis = sessions.laundry.expectedEndMillis!! + 121_000)
