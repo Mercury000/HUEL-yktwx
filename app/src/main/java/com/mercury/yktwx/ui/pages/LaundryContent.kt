@@ -298,7 +298,8 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         retryMethods = methods.takeUnless { expired || closed }.orEmpty(),
                         onContinuePayment = { if (enabled && isResult && !expired) model.payLaundry(it.id) },
                         enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
-                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() }, paymentApp = "支付宝",
+                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
+                        paymentApp = if (state.laundry?.payMethod == "52") "银联" else "支付宝",
                         retryMethodLabel = { it.name })
                 } else {
                     // Keep display-only form values during the transition; never retain SDK payloads.
@@ -319,7 +320,11 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                     val canPay = state.laundry?.let { !it.active || it.phase == LaundryPhase.Paying ||
                         it.phase == LaundryPhase.Checking && !it.createSent } ?: true
                     PaymentMethodActions(channels.map { it.name }, selected, { selected = it },
-                        label = if (busy) "正在发起…" else if (method?.method == "13") "支付宝支付" else "确认支付",
+                        label = if (busy) "正在发起…" else when (method?.method) {
+                            "13" -> "支付宝支付"
+                            "52" -> "银联支付"
+                            else -> "确认支付"
+                        },
                         onSubmit = { method?.let { model.payLaundry(it.method) } },
                         enabled = enabled && !isResult && !busy && !loading && state.paymentLaunch == null,
                         canSubmit = !expired && !closed && canPay && method != null && reason == null, error = error ?: reason,

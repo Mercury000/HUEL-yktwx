@@ -3,11 +3,58 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <queries>
+        <package android:name="com.unionpay" />
+        <package android:name="com.unionpay.tsmservice" />
+        <package android:name="com.unionpay.tsmservice.mi" />
+        <package android:name="com.huawei.wallet" />
+        <package android:name="com.pingan.paces.ccms" />
+        <package android:name="com.chinamworld.main" />
+        <package android:name="com.ccb.longjiLife" />
+        <package android:name="com.ecitic.bank.mobile" />
+        <package android:name="com.citiccard.mobilebank" />
+        <package android:name="com.cebbank.mobile.cemb" />
+        <package android:name="com.ebank.creditcard" />
+        <package android:name="cn.com.cmbc.newmbank" />
+        <package android:name="com.cmbc.cc.mbank" />
+        <package android:name="cn.com.spdb.mobilebank.per" />
+        <package android:name="com.spdbccc.app" />
+        <package android:name="com.bankcomm.Bankcomm" />
+        <package android:name="com.bankcomm.maidanba" />
+        <package android:name="cmb.pb" />
+        <package android:name="com.cmbchina.ccd.pluto.cmbActivity" />
+        <package android:name="cn.com.shbank.mper" />
+        <package android:name="cn.com.shbank.pension" />
+        <package android:name="com.bankofbeijing.mobilebanking" />
+        <package android:name="com.csii.bj.ui" />
+        <package android:name="com.icbc" />
+        <package android:name="com.icbc.elife" />
+        <package android:name="com.android.bankabc" />
+        <package android:name="com.abchina.ebizbtob" />
+        <package android:name="com.yitong.mbank.psbc" />
+        <package android:name="com.yitong.mbank.psbc.creditcard" />
+        <package android:name="com.chinamworld.bocmbci" />
+        <package android:name="com.forms" />
+        <package android:name="com.cgbchina.xpt" />
+        <package android:name="com.cs_credit_bank" />
+        <package android:name="com.cib.cibmb" />
+        <package android:name="com.cib.xyk" />
+        <package android:name="com.hxb.mobile.client" />
+        <package android:name="com.HuaXiaBank.HuaCard" />
+        <package android:name="cn.com.lzb.mobilebank.per" />
+    </queries>
     <application android:allowBackup="false" android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name" android:theme="@style/Theme.YktWx" android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true">
+        <activity android:name=".LifeUnionPayActivity" android:exported="false"
+            android:theme="@style/Theme.UnionPayBridge"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+        <activity android:name="com.unionpay.UPPayWapActivity" android:exported="false"
+            android:configChanges="orientation|keyboardHidden"
+            android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.UnionPay" />
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:windowSoftInputMode="adjustResize">

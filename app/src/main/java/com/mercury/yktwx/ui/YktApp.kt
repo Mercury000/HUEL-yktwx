@@ -370,8 +370,8 @@ private fun MainContent(
             lifeState.accountBusy || lifeState.loggingIn || lifeState.waterBusy || lifeState.laundryBusy,
             lifeState.waterSessions.count { it.active } + lifeState.laundrySessions.count { it.active }, lifeState.accountError))
     var lifeProvider by remember { mutableStateOf(LifeProvider.Panggui) }
-    LifeAlipayEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
-        lifeModel::launchLaundryPayment)
+    LifePaymentEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
+        lifeModel::launchLaundryPayment, lifeModel::claimLaundryPayment, lifeModel::laundryPaymentReturned)
     val customAvatar = avatarState.bytes != null && avatarState.owner == state.username && avatarState.preview == state.preview && !state.needsLogin
     val avatarPending = !state.needsLogin && (avatarState.owner != state.username || avatarState.preview != state.preview || avatarState.restoring)
     val avatarImage = avatarState.image.takeIf { customAvatar }

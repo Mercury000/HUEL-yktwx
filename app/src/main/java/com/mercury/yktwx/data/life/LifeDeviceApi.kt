@@ -201,8 +201,9 @@ class LifeDeviceApi(
     override suspend fun payLaundryBalance(orderNo: String, token: String) {
         post("/pay/unify/pay", mapOf("orderNo" to orderNo, "payType" to "2"), token)
     }
-    override suspend fun prepareLaundryAlipay(orderNo: String, token: String): String {
-        val data = post("/pay/unify/prePay", mapOf("orderNo" to orderNo, "payType" to "13"), token).obj()
+    override suspend fun prepareLaundryPayment(orderNo: String, method: String, token: String): String {
+        if (method !in setOf("13", "52")) throw LifeDeviceException("该支付方式暂未接入")
+        val data = post("/pay/unify/prePay", mapOf("orderNo" to orderNo, "payType" to method), token).obj()
         return data.required("prepayParam")
     }
     override suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean =

@@ -55,7 +55,7 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
 }
 
 internal const val LaundryPaymentExpiredMessage = "付款时间已到，请查询订单结果"
-data class LifeAlipayLaunch(val id: Long, val orderNo: String, val payload: String)
+data class LifePaymentLaunch(val id: Long, val orderNo: String, val payload: String, val method: String = "13")
 
 interface LifeLaundryService {
     suspend fun laundryDevice(code: String, token: String): LifeDevice
@@ -67,12 +67,12 @@ interface LifeLaundryService {
     suspend fun laundryOrder(orderNo: String, token: String): LaundryReading
     suspend fun laundryChannels(session: LaundrySession, token: String): List<LifePayChannel>
     suspend fun payLaundryBalance(orderNo: String, token: String)
-    suspend fun prepareLaundryAlipay(orderNo: String, token: String): String
+    suspend fun prepareLaundryPayment(orderNo: String, method: String, token: String): String
     suspend fun laundryPaid(orderNo: String, method: String, token: String): Boolean
     suspend fun laundryStarted(orderNo: String, token: String): Boolean
 }
 
-val LifePayChannel.laundrySupported: Boolean get() = method == "2" || method == "13"
+val LifePayChannel.laundrySupported: Boolean get() = method in setOf("2", "13", "52")
 
 fun LifePayChannel.laundryUnavailableReason(): String? = when {
     !available -> remark ?: "暂不可用"

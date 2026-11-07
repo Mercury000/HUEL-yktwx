@@ -101,6 +101,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
     implementation(files("libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar"))
     implementation("com.alipay.sdk:alipaysdk-android:15.8.42")
+    implementation(files("libs/unionpay-sdk-mini-3.5.16.jar"))
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")

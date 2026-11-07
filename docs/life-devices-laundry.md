@@ -123,7 +123,7 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 - 程序价格来自 skus，仅作为标价；应付价来自当前程序 preview.realPrice。skuInfo 在真实 preview 中是 JSON 字符串，也兼容对象；预计分钟优先读取 markMinutes，洗衣 SKU 缺失时读取 unit。用户确认 unit 为分钟，因此扫码加载完就显示所有程序预计时长；选择后优先使用 preview.skuInfo.markMinutes，不用预计分钟判定洗衣完成。
 - 当前主动不使用优惠：preview 的 promotions=[]、forbiddenPromotions=[]、isAutoSelectPromotion=0；create 的 promotions=[]。这是按字段含义选择的无优惠请求，未捕获同参数的真实服务器响应。不会硬编码本次 oldPromotionId；预览若仍返回使用优惠，或创建后订单价格与已确认价格不一致，会停止支付并给出说明。
 - 余额渠道2按服务器返回可用性启用，包括零元桶自洁；支付宝渠道13调用 `com.alipay.sdk:alipaysdk-android:15.8.42` 的 payV2，原样传递服务端签名串，不进行二次签名。SDK由阿里云 Maven 镜像取得。SDK结果不直接标记已支付，继续查询同订单 pay_status 与设备启动/订单状态。
-- 洗衣付款只展示服务端返回的余额2和支付宝13，并保留服务端可用性与开通限制；微信32、银联52、农行91等未接入渠道不显示。没有支持的渠道时提示并禁用付款。微信抓包为 App 支付参数，与校园微信 URI 不同；官方文档明确校验 Android 应用包名与签名，需要原 AppID 所属方的应用配置，按用户要求搁置。银联抓包返回21位交易号，官方 Android SDK指南提供 TN 调用方式，但用户已要求先搁置银联接入；未添加银联 SDK或唤起代码。不会为未返回的渠道造选项。
+- 洗衣付款展示服务端返回的余额2、支付宝13和银联52，并保留服务端可用性与开通限制；微信32、银联无感53、农行91等未接入渠道不显示。没有支持的渠道时提示并禁用付款。微信抓包为 App 支付参数，与校园微信 URI 不同；官方文档明确校验 Android 应用包名与签名，需要原 AppID 所属方的应用配置，按用户要求搁置。银联52使用官方 SDK Mini 3.5.16，将服务端返回的交易号 TN 原样交给 startPay，详见第16节。不会为未返回的渠道造选项。
 - 已创建订单继续使用同一 orderNo；创建请求发送前保存 createSent，丢失创建响应后不重建订单。支付丢失响应时先读取服务器结果，不自动重复付款。会话按稳定 sessionId 分别加密保存，支持同时洗多台；旧版单条记录恢复后迁移到列表。换账号不会读取上一账号的记录。
 - UI 使用 miuix SmallTopAppBar、IconButton、Card、Surface、TextField、Button、CircularProgressIndicator、OverlayBottomSheet；复用现有 APP 的色板、间距、按压反馈及 ContentMotion 曲线。洗衣选择页沿原设计采用紧凑设备行、纵向程序列表；进度页大数字和完成页沿接水风格。
 - 页面进出跟随主题设置中的 Miuix / AOSP 转场；设备内容阶段使用淡入和轻微位移，离开的阶段保留自身快照并关闭操作。程序选择沿 miuix 单选控件，卡片底色保持不变；通用关门提醒不随程序名切换。完成图标轻微放大。抽屉、选择标记及按压反馈沿 miuix/APP 共用实现，遵从系统动画时长设置。
@@ -224,3 +224,15 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 - 扫码读取程序列表后直接展示标价和预计时长；首次默认选择、切换程序或重复点击同一程序均不请求付款预览，底部保持“选择支付方式”。
 - 点击“选择支付方式”立即打开付款抽屉，再读取当前程序的服务端应付金额与可用支付方式。加载状态仅在抽屉内显示，数据未就绪前禁用确认支付，不提前显示“暂无支持的支付方式”。
 - 读取失败在抽屉内显示原因并提供重试；关闭抽屉后丢弃迟到的结果，切换程序后不能使用之前的付款信息。查询和重试均不创建订单或发起支付。
+
+## 16. 银联52接入（2026-11-07）
+
+- 按用户要求接入普通银联52，使用银联官方 Android 开发包中的 SDK Mini 3.5.16，固定保留 JAR 和 ARM64 原生库。下载来源、版本及 SHA-256 见 `app/libs/README.md`。配置官方指南要求的支付 Activity、包可见性和混淆保留规则。
+- 支付准备共用 `/pay/unify/prePay`，传入当前 orderNo 和实际选中的 payType（支付宝13或银联52）。银联的 prepayParam 是交易号 TN，原样调用 `UPPayAssistEx.startPay(activity, null, null, tn, "00")`，不转换成网页链接，也不在客户端签名。
+- SDK 由独立 Activity 接收 requestCode=10 的 pay_result，再通过 Activity Result API 带回原始请求 ID。请求编号使用每个 ViewModel 的随机起点，避免进程重建后复用旧编号。每次请求只能认领一次，Activity 重建不重新提交 TN；SDK 未调起付款页面时有限等待后返回，已结束 Activity 拒绝迟到的唤起。
+- success、fail、cancel 和缺失结果都查询同一订单的服务端状态。SDK success 不是到账证明，缺失结果使用现有有界只读轮询；确认付款后分别确认设备启动。取消或失败后的再次付款继续使用原订单，刷新 againPay 渠道和设备检查，不重复创建订单。
+- 支付表单与重试列表按实际返回的52及其 useStatus、needOpenFlag 生成；等待反馈使用银联名称。银联无感53及其他银行独立渠道保持未接入。
+- 用户确认捕获的优惠实际是广告，当前空优惠集合是预期行为，不作为支付接入问题，也不为本次银联接入修改该参数。
+- 验证只使用虚构接口和 Android 本地回归，不发送真实预支付、扣款或设备请求；真实银联 App 回跳和付款仍需真机确认。
+
+19项直接相关的定向检查通过，覆盖支付宝／钱包共享路径、银联参数、成功／取消／无结果、同订单重试、旧回调与进程恢复、Activity重建和未唤起支付App，以及支付方式和反馈界面。Debug APK打包与Release R8混淆检查通过；ARM64原生库的加载段对齐为64KB，可满足16KB页面对齐要求。官方JAR在D8／R8中产生缺少栈映射表的字节码警告，当前构建通过，保留官方二进制原样。

@@ -232,8 +232,20 @@ class LifeDeviceApiTest {
         val session = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Paying, orderNo = "wash-1")
         assertEquals("13", service.laundryChannels(session, "test-token").single().method)
         assertEquals("actual-shop", calls.first().form()["shopId"])
-        assertEquals(payload, service.prepareLaundryAlipay("wash-1", "test-token"))
+        assertEquals(payload, service.prepareLaundryPayment("wash-1", "13", "test-token"))
         assertEquals("13", calls.last().form()["payType"])
+    }
+    @Test fun laundryUnionPayPassesTransactionNumberAndUsesChannel52ForResultQuery() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val tn = "202611071234567890123"
+        val service = api(mapOf(
+            "/pay/unify/prePay" to """{"code":0,"data":{"prepayParam":"$tn"}}""",
+            "/order/pay_status" to """{"code":0,"data":true}"""
+        ), calls)
+        assertEquals(tn, service.prepareLaundryPayment("wash-52", "52", "test-token"))
+        assertTrue(service.laundryPaid("wash-52", "52", "test-token"))
+        assertTrue(calls.all { it.form()["orderNo"] == "wash-52" && it.form()["payType"] == "52" })
+        assertEquals(listOf("/pay/unify/prePay", "/order/pay_status"), calls.map { it.url.path })
     }
     @Test fun closedLaundryReadsServerCreateTimeWithoutInventingPaymentTimes() = runBlocking {
         val payload = """{"code":0,"data":{"id":"wash-id","orderNo":"wash-1","orderStatus":1,"createTime":"2026-11-04 18:50:39","payPrice":"2.50","showStart":false,"machineName":"77","shopName":"河南财经政法大学","machineFunctionName":"快洗","markMinutes":25,"tradeOrderItem":[{"goodsId":"77","skuId":"quick","skuInfo":{"feature":"适用不太脏的衣物"}}]}}"""
