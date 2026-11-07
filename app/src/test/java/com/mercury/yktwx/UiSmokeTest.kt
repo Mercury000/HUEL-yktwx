@@ -199,6 +199,24 @@ class UiSmokeTest {
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertExists()
     }
+    @Test fun paymentBrightnessSwitchIsInSettingsOnByDefaultAndPersists() {
+        content()
+        compose.onNode(hasText("我的") and hasClickAction())
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("应用设置").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("付款码自动提亮").performScrollTo().assertIsDisplayed()
+        fun switch() = compose.onNode(isToggleable() and
+            (hasTestTag("payment-brightness-switch") or
+                hasAnyAncestor(hasTestTag("payment-brightness-switch"))))
+        switch().assertIsOn().performClick().assertIsOff()
+        assertFalse(settings.paymentBrightness.value)
+        assertFalse(ThemeSettings(compose.activity).paymentBrightness.value)
+        switch().performClick().assertIsOn()
+        assertTrue(settings.paymentBrightness.value)
+        assertTrue(ThemeSettings(compose.activity).paymentBrightness.value)
+    }
+
     @Test fun paymentMotionDetectionSwitchIsInSettingsOffByDefaultAndPersists() {
         content()
         compose.onNode(hasText("我的") and hasClickAction())
