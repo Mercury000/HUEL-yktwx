@@ -267,6 +267,29 @@ class LifeDeviceStatusUiTest {
 
     private fun laundryTime(value: String) = LocalDateTime.parse(value).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
 
+    @Test fun onlyUnknownCreationHasAnExceptionDismissButtonAndHidingKeepsItsRecord() {
+        val base = sessions().laundry.copy(startedAtMillis = null, expectedEndMillis = null)
+        val unknown = base.copy(sessionId = "unknown-create", phase = LaundryPhase.Creating, createSent = true, creationUncertain = true)
+        val paying = base.copy(sessionId = "pending-order", phase = LaundryPhase.Paying, orderNo = "wash-1", orderId = "wash-id")
+        val starting = paying.copy(sessionId = "starting-order", phase = LaundryPhase.Starting)
+        val checking = base.copy(sessionId = "unestablished-check", phase = LaundryPhase.Checking)
+        var laundries by mutableStateOf(listOf(unknown, paying, starting, checking))
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            LifeDeviceStatusIslands(emptyList(), laundries, { _, _ -> }, { _, id ->
+                laundries = laundries.map { if (it.sessionId == id) it.copy(islandDismissed = true) else it }
+            }, settings)
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${checking.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("dismiss-life-session-${paying.sessionId}").assertDoesNotExist()
+        compose.onNodeWithTag("dismiss-life-session-${starting.sessionId}").assertDoesNotExist()
+        compose.onNodeWithContentDescription("隐藏下单异常提醒").performScrollTo().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${unknown.sessionId}").assertDoesNotExist()
+        assertEquals(4, laundries.size); assertTrue(laundries.first().createSent); assertTrue(laundries.first().islandDismissed)
+    }
+
     @Test fun completedLaundryExpiresAtNextDayThreeEvenWhenItIsTheOnlyIsland() {
         val finished = sessions().laundry.copy(phase = LaundryPhase.Ended,
             finishedAtMillis = laundryTime("2026-11-07T23:50:00"))

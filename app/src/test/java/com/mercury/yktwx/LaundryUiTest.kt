@@ -109,6 +109,33 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText(message).assertIsDisplayed()
     }
+    @Test fun unknownCreationShowsNoIneffectiveRetryOrEndlessBusyIndicator() {
+        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
+        val session = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Creating, createSent = true, creationUncertain = true)
+        val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = device,
+            laundry = session, error = LaundryCreationUnknownMessage)
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            LifeDevicePage(state, settings, model, active = true, onBack = {})
+        } } } }
+        compose.onNodeWithTag("laundry-primary-action").assertIsNotEnabled().assertTextContains("请在胖乖生活核对")
+        compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("返回").assertIsEnabled()
+    }
+    @Test fun restoredStartingOrderOffersReadActionWithoutRequiringAnotherError() {
+        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
+            "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
+        val session = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Starting,
+            orderNo = "wash-1", orderId = "wash-id", paid = true)
+        val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = device, laundry = session)
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            LifeDevicePage(state, settings, model, active = true, onBack = {})
+        } } } }
+        compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("查询启动结果")
+        compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
+    }
     @Test fun programSelectionKeepsTheActionAvailableBeforePaymentInformationIsLoaded() {
         val model = model(); val settings = ThemeSettings(compose.activity.application)
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",

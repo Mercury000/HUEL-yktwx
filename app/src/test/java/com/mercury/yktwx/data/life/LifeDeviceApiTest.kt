@@ -36,14 +36,15 @@ class LifeDeviceApiTest {
         try { service.profile("fixture-token"); fail("Expired token must be rejected") }
         catch (e: LifeDeviceException) { assertTrue(e.loginExpired) }
     }
-    private class Response(url: URL, val body: String) : HttpsURLConnection(url) {
+    private class Response(url: URL, val body: String, val status: Int = 200) : HttpsURLConnection(url) {
         val sent = ByteArrayOutputStream()
         var closed = false
         override fun connect() {}
         override fun disconnect() { closed = true }
         override fun usingProxy() = false
-        override fun getResponseCode() = 200
+        override fun getResponseCode() = status
         override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
+        override fun getErrorStream(): InputStream = ByteArrayInputStream(body.toByteArray())
         override fun getOutputStream(): OutputStream = sent
         override fun getCipherSuite() = "TLS_TEST"
         override fun getLocalCertificates(): Array<Certificate>? = null
@@ -61,6 +62,37 @@ class LifeDeviceApiTest {
             assertEquals("userapi.qiekj.com", url.host)
             Response(url, responses[url.path] ?: error("Unexpected request: ${url.path}")).also(calls::add)
         }, { 123456789L })
+
+    @Test fun creationRejectsParsedBusinessErrorsButMissingOrMalformedResultsRemainUncertain() = runBlocking {
+        val rejected = api(mapOf("/trade/create" to """{"code":7,"msg":"30s内不能在同一设备下单","data":null}"""), mutableListOf())
+        try { rejected.createLaundryOrder("77", "clean", "test-token"); fail("Creation must be rejected") }
+        catch (e: LifeDeviceException) { assertTrue(e.businessRejected); assertEquals("30s内不能在同一设备下单", e.message) }
+        for (body in listOf("invalid", """{"msg":"30s内不能在同一设备下单"}""",
+            """{"code":0,"data":null}""", """{"code":0,"data":{"tradeNo":"wash-1"}}""")) {
+            val service = api(mapOf("/trade/create" to body), mutableListOf())
+            try { service.createLaundryOrder("77", "clean", "test-token"); fail("Incomplete response must stay uncertain") }
+            catch (e: LifeDeviceException) { assertFalse(e.businessRejected) }
+        }
+    }
+    @Test fun healthyDeviceWithoutSyncMessageIsReadyButFaultStillBlocksCreation() = runBlocking {
+        for (msgField in listOf("", ",\"msgId\":\"\"", ",\"msgId\":null")) {
+            val service = api(mapOf("/trade/check_device_status" to """{"code":0,"data":{"health":true$msgField}}"""), mutableListOf())
+            assertEquals("", service.checkLaundryDevice("77", "test-token"))
+        }
+        val service = api(mapOf("/trade/check_device_status" to """{"code":0,"data":{"health":false,"faultDesc":"设备工作中，请更换设备使用"}}"""), mutableListOf())
+        try { service.checkLaundryDevice("77", "test-token"); fail("Fault must block creation") }
+        catch (e: LifeDeviceException) { assertEquals("设备工作中，请更换设备使用", e.message) }
+    }
+    @Test fun authorizationRejectionCannotLeaveAnUnknownCreationButServerTransportFailureCan() = runBlocking {
+        for (status in listOf(401, 403, 500)) {
+            val service = LifeDeviceApi("test-secret", { url -> Response(url, "unavailable", status) })
+            try { service.createLaundryOrder("77", "clean", "test-token"); fail("HTTP error must fail") }
+            catch (e: LifeDeviceException) {
+                assertEquals(status != 500, e.businessRejected)
+                assertEquals(status != 500, e.loginExpired)
+            }
+        }
+    }
 
     @Test fun observedQrFormatParsesWithoutGuessingNumbersInOtherLinks() {
         assertEquals("867369079842630", DeviceSerial.parse("https://h5.qiekj.com/skip?SN=867369079842630"))

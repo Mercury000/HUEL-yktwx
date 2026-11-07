@@ -174,9 +174,13 @@ class LifeDevicesViewModel internal constructor(
                 water = it.water?.takeUnless { item -> item.sessionId == sessionId }) }
         } else {
             val session = value.laundrySessions.firstOrNull { it.sessionId == sessionId } ?: return
-            if (session.active) return
-            mutable.update { it.copy(laundrySessions = it.laundrySessions.filterNot { item -> item.sessionId == sessionId },
-                laundry = it.laundry?.takeUnless { item -> item.sessionId == sessionId }) }
+            if (session.active && !session.canDismissUnknownCreation) return
+            // Keep uncertain creation records for duplicate-order protection; × only hides their reminder.
+            mutable.update { it.copy(laundrySessions = if (session.canDismissUnknownCreation)
+                it.laundrySessions.map { item -> if (item.sessionId == sessionId) item.copy(islandDismissed = true) else item }
+                else it.laundrySessions.filterNot { item -> item.sessionId == sessionId },
+                laundry = it.laundry?.takeUnless { item -> item.sessionId == sessionId },
+                error = if (it.laundry?.sessionId == sessionId && it.feature == feature) null else it.error) }
         }
         sessionErrors.remove(sessionId)
         viewModelScope.launch {
@@ -197,7 +201,7 @@ class LifeDevicesViewModel internal constructor(
             val washing = mutable.value.laundry
             val interrupted = if (feature == LifeFeature.Laundry && laundryTask?.isActive != true) when (washing?.phase) {
                 LaundryPhase.Checking -> "设备检查已中断，请重试"
-                LaundryPhase.Creating -> "订单创建结果未返回，请在胖乖生活核对，避免重复下单"
+                LaundryPhase.Creating -> LaundryCreationUnknownMessage
                 else -> null
             } else null
             mutable.update { it.copy(feature = feature, entryRequest = it.entryRequest + 1, loginVisible = false, scannedSerial = null,
@@ -621,7 +625,7 @@ class LifeDevicesViewModel internal constructor(
     fun dismissLaundryPayment() {
         quoteSequence++; quoteTask?.cancel()
         mutable.update { it.copy(paymentVisible = false, paymentFeedback = null, quoteLoading = false,
-            error = if (it.laundry == null) it.device?.laundryError else it.error) }
+            error = it.error ?: it.device?.laundryError) }
     }
     fun showLaundryPayment() {
         val value = mutable.value
@@ -641,7 +645,7 @@ class LifeDevicesViewModel internal constructor(
                 return
             }
             if (session.phase != LaundryPhase.Paying || session.orderNo.isBlank()) return
-            mutable.update { it.copy(paymentVisible = true, paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Creating)) }
+            mutable.update { it.copy(paymentVisible = true, paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)) }
             laundryWork(clearError = false) { token, service ->
                 if (readLaundryOrder(token, service)) return@laundryWork
                 if (service.laundryPaid(session.orderNo, session.payMethod, token)) {
@@ -652,12 +656,13 @@ class LifeDevicesViewModel internal constructor(
                 if (stopExpiredLaundryPayment(checkNotNull(mutable.value.laundry))) return@laundryWork
                 val channels = service.laundryChannels(session, token)
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels),
-                    paymentVisible = true) }
+                    paymentVisible = true, paymentFeedback = null) }
             }
         } else if (value.device?.laundryError == null && value.device?.skus?.any { it.id == value.selectedSkuId && it.available } == true) {
             if (value.paymentVisible && value.laundryQuote != null) return
             mutable.update { it.copy(paymentVisible = true, paymentFeedback = null) }
-            loadLaundryQuote()
+            if (value.laundryQuote?.let { it.deviceId == value.device.id && it.skuId == value.selectedSkuId } != true)
+                loadLaundryQuote()
         }
     }
     fun payLaundry(method: String) {
@@ -671,17 +676,22 @@ class LifeDevicesViewModel internal constructor(
             var session = mutable.value.laundry
             if (session?.phase == LaundryPhase.Closed) return@laundryWork
             if (session == null || !session.active || session.phase == LaundryPhase.Checking && !session.createSent) {
+                // Rescanning must not bypass a create request whose response was lost.
+                val uncertain = mutable.value.laundrySessions.firstOrNull {
+                    it.device.id == device.id && it.phase == LaundryPhase.Creating && it.createSent && it.orderNo.isBlank()
+                }
+                if (uncertain != null) {
+                    saveLaundrySession(uncertain, select = true)
+                    mutable.update { it.copy(paymentVisible = false, paymentFeedback = null) }
+                    throw LifeDeviceException(LaundryCreationUnknownMessage)
+                }
                 session = session?.takeIf { it.active }?.copy(payMethod = method, payTypeName = "",
                     device = device.copy(channels = quote.channels))
                     ?: LaundrySession(device.copy(channels = quote.channels), quote.skuId, quote.price, method, minutes = quote.minutes)
                 saveLaundrySession(session, select = true)
                 mutable.update { it.copy(paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Creating)) }
                 checkLaundryReady(session, token, service)
-                session = session.copy(phase = LaundryPhase.Creating, createSent = true)
-                saveLaundrySession(session) // A lost create response must never create a second order.
-                val order = service.createLaundryOrder(device.id, quote.skuId, token)
-                session = session.copy(orderNo = order.orderNo, orderId = order.orderId, phase = LaundryPhase.Paying)
-                saveLaundrySession(session)
+                session = createLaundrySession(session, token, service)
             } else {
                 if (session.phase != LaundryPhase.Paying || session.orderNo.isBlank()) return@laundryWork
                 mutable.update { it.copy(paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Creating)) }
@@ -692,8 +702,6 @@ class LifeDevicesViewModel internal constructor(
                 }
                 session = checkNotNull(mutable.value.laundry)
                 if (stopExpiredLaundryPayment(session)) return@laundryWork
-                session = session.copy(payMethod = method, payTypeName = "")
-                saveLaundrySession(session)
                 val channels = service.laundryChannels(session, token)
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels)) }
                 if (channels.none { it.method == method && it.laundryUnavailableReason() == null })
@@ -702,6 +710,8 @@ class LifeDevicesViewModel internal constructor(
                 session = session.copy(device = session.device.copy(channels = channels))
                 saveLaundrySession(session)
                 checkLaundryReady(session, token, service)
+                session = session.copy(payMethod = method, payTypeName = "")
+                saveLaundrySession(session)
             }
             if (readLaundryOrder(token, service)) return@laundryWork
             session = checkNotNull(mutable.value.laundry)
@@ -709,7 +719,11 @@ class LifeDevicesViewModel internal constructor(
             saveLaundrySession(session.copy(phase = LaundryPhase.Paying, paymentSent = true))
             if (method == "2") {
                 paymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)
-                service.payLaundryBalance(session.orderNo, token)
+                try { service.payLaundryBalance(session.orderNo, token) }
+                catch (e: LifeDeviceException) {
+                    if (e.businessRejected) paymentFeedback(session.sessionId, RechargePhase.Failed, detail = failure(e))
+                    throw e
+                }
                 waitLaundryPaid(token, service)
             } else {
                 val payload = service.prepareLaundryPayment(session.orderNo, method, token)
@@ -784,16 +798,13 @@ class LifeDevicesViewModel internal constructor(
             else showLaundryPayment()
             return
         }
+        if (session.phase == LaundryPhase.Checking && !session.createSent) {
+            showLaundryPayment()
+            return
+        }
         laundryWork { token, service ->
             when (session.phase) {
-                LaundryPhase.Checking -> {
-                    checkLaundryReady(session, token, service)
-                    saveLaundrySession(session.copy(phase = LaundryPhase.Creating, createSent = true))
-                    val order = service.createLaundryOrder(session.device.id, session.skuId, token)
-                    saveLaundrySession(session.copy(orderNo = order.orderNo, orderId = order.orderId, phase = LaundryPhase.Paying, createSent = true))
-                    if (!readLaundryOrder(token, service)) mutable.update { it.copy(paymentVisible = false) }
-                }
-                LaundryPhase.Creating -> throw LifeDeviceException("订单创建结果未返回，请在胖乖生活核对，避免重复下单")
+                LaundryPhase.Checking, LaundryPhase.Creating -> throw LifeDeviceException(LaundryCreationUnknownMessage)
                 LaundryPhase.Paying -> waitLaundryPaid(token, service)
                 LaundryPhase.Starting -> waitLaundryStart(token, service)
                 LaundryPhase.Running, LaundryPhase.Ended -> readLaundryOrder(token, service)
@@ -832,8 +843,19 @@ class LifeDevicesViewModel internal constructor(
             try { block(token, service) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                val message = failure(e)
+                val session = mutable.value.laundry
+                if (session?.phase == LaundryPhase.Checking && !session.createSent && session.orderNo.isBlank()) removeLaundrySession(session.sessionId)
+                if (session?.phase == LaundryPhase.Creating && session.createSent && session.orderNo.isBlank()) {
+                    saveLaundrySession(session.copy(creationUncertain = true))
+                    mutable.update { it.copy(paymentVisible = false, paymentFeedback = null) }
+                }
+                val message = if (session?.phase == LaundryPhase.Creating && session.orderNo.isBlank())
+                    LaundryCreationUnknownMessage else failure(e)
                 serviceError(LifeFeature.Laundry, message)
+                mutable.value.paymentFeedback?.takeIf { it.phase == RechargePhase.Creating }?.let {
+                    // Creation/check/prepay has stopped. Restore the form and its error instead of a stale processing result.
+                    mutable.update { value -> value.copy(paymentFeedback = null) }
+                }
                 mutable.value.paymentFeedback?.takeIf { it.phase in setOf(RechargePhase.AwaitingPayment, RechargePhase.Checking) }?.let {
                     paymentFeedback(it.sessionId, RechargePhase.Checking, detail = message)
                 }
@@ -844,6 +866,10 @@ class LifeDevicesViewModel internal constructor(
     }
     private suspend fun checkLaundryReady(session: LaundrySession, token: String, service: LifeLaundryService) {
         val message = service.checkLaundryDevice(session.device.id, token)
+        if (message.isBlank()) {
+            sessionError(LifeFeature.Laundry, session.sessionId, null)
+            return
+        }
         repeat(40) {
             if (service.laundryMachineReady(message, token)) {
                 sessionError(LifeFeature.Laundry, session.sessionId, null)
@@ -902,7 +928,7 @@ class LifeDevicesViewModel internal constructor(
     private suspend fun readLaundryOrder(token: String, service: LifeLaundryService,
         sessionId: String? = mutable.value.laundry?.sessionId): Boolean {
         val session = mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId } ?: return false
-        if (session.orderNo.isBlank()) throw LifeDeviceException("订单创建结果未返回，请在胖乖生活核对，避免重复下单")
+        if (session.orderNo.isBlank()) throw LifeDeviceException(LaundryCreationUnknownMessage)
         val reading = service.laundryOrder(session.orderNo, token)
         if (reading.orderNo != session.orderNo || reading.orderId != session.orderId || reading.deviceId != session.device.id || reading.skuId != session.skuId)
             throw LifeDeviceException("洗衣订单信息不匹配，请在胖乖生活核对")
@@ -935,10 +961,31 @@ class LifeDevicesViewModel internal constructor(
         return mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId }?.phase in setOf(LaundryPhase.Running, LaundryPhase.Ended, LaundryPhase.Closed)
     }
     private suspend fun restoreLaundrySessions(saved: List<LaundrySession>) {
-        val restored = saved.map { it.withCompletionObservation(now()) }
-        mutable.update { it.copy(laundry = if (!it.scanning && it.scannedSerial == null) restored.lastOrNull() else it.laundry,
-            laundrySessions = restored) }
+        // A device check sends no order creation/payment command and needs no persistent progress card.
+        val restored = saved.filterNot { it.phase == LaundryPhase.Checking && !it.createSent && it.orderNo.isBlank() }
+            .map { session -> session.withCompletionObservation(now()).let {
+                if (it.phase == LaundryPhase.Creating && it.createSent && it.orderNo.isBlank()) it.copy(creationUncertain = true) else it
+            } }
+        mutable.update { it.copy(laundry = if (!it.scanning && it.scannedSerial == null)
+            restored.lastOrNull { session -> !session.islandDismissed } else it.laundry, laundrySessions = restored) }
         if (restored != saved) persistence.withLock { withContext(io) { store.saveLaundrySessions(restored) } }
+    }
+    private suspend fun createLaundrySession(session: LaundrySession, token: String, service: LifeLaundryService): LaundrySession {
+        val creating = session.copy(phase = LaundryPhase.Creating, createSent = true)
+        saveLaundrySession(creating) // Persist before sending, so a lost response cannot create a second order.
+        val order = try { service.createLaundryOrder(session.device.id, session.skuId, token) }
+        catch (e: LifeDeviceException) {
+            if (e.businessRejected) removeLaundrySession(session.sessionId)
+            throw e
+        }
+        return creating.copy(orderNo = order.orderNo, orderId = order.orderId, phase = LaundryPhase.Paying)
+            .also { saveLaundrySession(it) }
+    }
+    private suspend fun removeLaundrySession(sessionId: String) {
+        mutable.update { it.copy(laundrySessions = it.laundrySessions.filterNot { session -> session.sessionId == sessionId },
+            laundry = it.laundry?.takeUnless { session -> session.sessionId == sessionId }) }
+        sessionErrors.remove(sessionId)
+        persistSessions()
     }
     private suspend fun saveLaundrySession(value: LaundrySession, select: Boolean = false) {
         val session = value.withCompletionObservation(now())

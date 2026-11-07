@@ -45,8 +45,11 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
     val paid: Boolean = false, val minutes: Int? = null, val startedAtMillis: Long? = null,
     val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null,
     val sessionId: String = java.util.UUID.randomUUID().toString(), val createdAtMillis: Long? = null,
-    val payTypeName: String = "", val completionObservedAtMillis: Long? = null) {
+    val payTypeName: String = "", val completionObservedAtMillis: Long? = null,
+    val creationUncertain: Boolean = false, val islandDismissed: Boolean = false) {
     val active: Boolean get() = phase !in setOf(LaundryPhase.Ended, LaundryPhase.Closed)
+    val canDismissUnknownCreation: Boolean get() = phase == LaundryPhase.Creating && createSent &&
+        orderNo.isBlank() && creationUncertain
     val canCancel: Boolean get() = phase == LaundryPhase.Paying && !paid && orderNo.isNotBlank() && orderId.isNotBlank()
     val program: String get() = device.skus.firstOrNull { it.id == skuId }?.name.orEmpty()
     /** The user confirmed five minutes; its origin is always the server's createTime. */
@@ -68,6 +71,7 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
 }
 
 internal const val LaundryPaymentExpiredMessage = "付款时间已到，请查询订单结果"
+internal const val LaundryCreationUnknownMessage = "下单结果未知，请在胖乖生活核对，避免重复下单"
 data class LifePaymentLaunch(val id: Long, val orderNo: String, val payload: String, val method: String = "13")
 
 interface LifeLaundryService {

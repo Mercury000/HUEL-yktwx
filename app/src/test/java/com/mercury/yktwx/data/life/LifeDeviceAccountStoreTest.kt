@@ -111,4 +111,18 @@ class LifeDeviceAccountStoreTest {
         }.toString()
         assertEquals(listOf(completed.copy(completionObservedAtMillis = null)), LifeDeviceAccountStore(records).laundrySessions())
     }
+    @Test fun hiddenUnknownCreationRoundTripsWithoutLosingDuplicateProtectionAndLegacyDefaultsStayVisible() {
+        val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+        val hidden = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Creating, createSent = true,
+            creationUncertain = true, islandDismissed = true)
+        store.saveLaundrySession(hidden)
+        assertEquals(hidden, LifeDeviceAccountStore(records).laundrySession())
+        store.saveLaundrySessions(listOf(hidden))
+        assertEquals(listOf(hidden), LifeDeviceAccountStore(records).laundrySessions())
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
+            getJSONArray("sessions").getJSONObject(0).apply { remove("creationUncertain"); remove("islandDismissed") }
+        }.toString()
+        val legacy = LifeDeviceAccountStore(records).laundrySessions().single()
+        assertFalse(legacy.islandDismissed); assertFalse(legacy.creationUncertain); assertTrue(legacy.createSent)
+    }
 }

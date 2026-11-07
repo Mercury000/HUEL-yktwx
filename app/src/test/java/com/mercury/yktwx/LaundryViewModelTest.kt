@@ -52,6 +52,9 @@ class LaundryViewModelTest {
         val paidQueries = mutableListOf<Pair<String, String>>()
         var status = 0; var paid = false; var started = false; var price = "0.00"; var readSku = "clean"
         var lostCreate = false; var lostPayment = false
+        var createFailure: Exception? = null
+        var balanceFailure: Exception? = null
+        var readyMessage = "msg-1"
         var waterReads = 0; var waterReading: WaterReading? = null; var waterFails = false
         var scannedWaterDevice: LifeDevice? = null
         var readyGate: CompletableDeferred<Unit>? = null
@@ -109,11 +112,12 @@ class LaundryViewModelTest {
         override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
             readyChecks++; readyGate?.await()
             readyError?.let { throw LifeDeviceException(it) }
-            return "msg-1"
+            return readyMessage
         }
         override suspend fun laundryMachineReady(messageId: String, token: String): Boolean = ++machineChecks >= machineReadyAfter
         override suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder {
             creates++; if (lostCreate) throw java.io.IOException("lost create response")
+            createFailure?.let { throw it }
             val order = LaundryOrder("wash-$creates", if (creates == 1) "wash-id" else "wash-id-$creates")
             orders[order.orderNo] = deviceId to skuId
             orderStatuses[order.orderNo] = 0
@@ -137,7 +141,9 @@ class LaundryViewModelTest {
         }
         override suspend fun laundryChannels(session: LaundrySession, token: String) = channels
         override suspend fun payLaundryBalance(orderNo: String, token: String) {
-            balancePays++; paid = true; started = true; status = 2
+            balancePays++
+            balanceFailure?.let { throw it }
+            paid = true; started = true; status = 2
             paidOrders += orderNo; orderStatuses[orderNo] = 2
             if (lostPayment) throw java.io.IOException("lost payment response")
         }
@@ -327,6 +333,81 @@ class LaundryViewModelTest {
         assertEquals(LaundryPhase.Creating, model.state.value.laundrySessions.single().phase)
         assertEquals(1, api.creates)
     }
+    @Test fun explicitCreationRejectionClearsLocalProgressAndRetryCanCreateAndPay() = runTest(dispatcher) {
+        val message = "30s内不能在同一设备下单"
+        val api = Api().apply { createFailure = LifeDeviceException(message, businessRejected = true) }
+        val store = Store(); val model = model(api, store)
+        prepare(model); model.payLaundry("13"); runCurrent()
+        assertEquals(message, model.state.value.error)
+        assertNull(model.state.value.laundry); assertTrue(store.laundries.isEmpty())
+        assertNull(model.state.value.paymentFeedback); assertNull(model.state.value.paymentLaunch)
+        assertTrue(model.state.value.paymentVisible); assertFalse(model.state.value.laundryBusy)
+        api.createFailure = null
+        model.payLaundry("13"); runCurrent()
+        assertEquals(2, api.creates); assertEquals(1, api.alipayPrepares)
+        assertNotNull(model.state.value.paymentLaunch); assertEquals(1, store.laundries.size)
+    }
+    @Test fun dismissingUnknownCreationSurvivesRestoreAndRescanCannotBypassDuplicateProtection() = runTest(dispatcher) {
+        val api = Api().apply { lostCreate = true }; val store = Store(); val model = model(api, store)
+        prepare(model); model.payLaundry("13"); runCurrent()
+        val unknown = model.state.value.laundry!!
+        assertTrue(unknown.canDismissUnknownCreation); assertFalse(model.state.value.paymentVisible)
+        model.dismissSession(LifeFeature.Laundry, unknown.sessionId); runCurrent()
+        assertNull(model.state.value.laundry)
+        val hidden = store.laundries.single()
+        assertTrue(hidden.islandDismissed); assertTrue(hidden.createSent); assertEquals(LaundryPhase.Creating, hidden.phase)
+        val restored = model(api, store); runCurrent()
+        assertNull(restored.state.value.laundry); assertEquals(listOf(hidden), restored.state.value.laundrySessions)
+        prepare(restored); restored.payLaundry("13"); runCurrent()
+        assertEquals(LaundryCreationUnknownMessage, restored.state.value.error)
+        assertEquals(1, api.creates); assertEquals(0, api.alipayPrepares); assertEquals(0, api.balancePays)
+        assertTrue(store.laundries.single().islandDismissed)
+    }
+    @Test fun dismissCannotHidePendingOrStartingOrdersThatStillHaveDetailActions() = runTest(dispatcher) {
+        for (phase in listOf(LaundryPhase.Paying, LaundryPhase.Starting)) {
+            val pending = LaundrySession(device, "clean", "0.00", "13", phase, createSent = true,
+                orderNo = "wash-1", orderId = "wash-id")
+            val store = Store(pending); val api = Api().apply { paidError = true }; val model = model(api, store)
+            runCurrent(); model.open(LifeFeature.Laundry); model.retryLaundry(); runCurrent()
+            if (phase == LaundryPhase.Starting) { advanceTimeBy(30_000); runCurrent() }
+            assertNotNull(model.state.value.error)
+            model.dismissSession(LifeFeature.Laundry, pending.sessionId); runCurrent()
+            assertFalse(store.laundries.single().islandDismissed); assertNotNull(model.state.value.laundry)
+        }
+    }
+    @Test fun successfulHealthCheckWithoutMessageIdSkipsMachineSyncAndPaysOnce() = runTest(dispatcher) {
+        val api = Api().apply { readyMessage = "" }; val model = model(api, Store())
+        prepare(model); model.payLaundry("2"); runCurrent()
+        assertEquals(1, api.readyChecks); assertEquals(0, api.machineChecks)
+        assertEquals(1, api.creates); assertEquals(1, api.balancePays)
+        assertEquals(LaundryPhase.Running, model.state.value.laundry?.phase)
+    }
+    @Test fun walletBusinessRejectionOffersSameOrderPaymentWhileLostResponseOffersOnlyReadRetry() = runTest(dispatcher) {
+        val api = Api().apply { balanceFailure = LifeDeviceException("余额不足", businessRejected = true) }
+        val model = model(api, Store()); prepare(model); model.payLaundry("2"); runCurrent()
+        assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+        assertEquals("余额不足", model.state.value.error); assertFalse(model.state.value.laundryBusy)
+        api.balanceFailure = java.io.IOException("lost payment response")
+        model.payLaundry("2"); runCurrent()
+        assertEquals(RechargePhase.Checking, model.state.value.paymentFeedback?.phase)
+        assertFalse(model.state.value.paymentFeedback!!.loading)
+        val payments = api.balancePays
+        model.checkLaundryPayment(); runCurrent(); advanceTimeBy(10_000); runCurrent()
+        assertEquals(payments, api.balancePays); assertEquals(1, api.creates)
+    }
+    @Test fun deviceCheckFailureBeforeChangingPaymentMethodPreservesThePreviousQueryChannel() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store())
+        prepare(model); model.payLaundry("13"); runCurrent()
+        model.laundryPaymentReturned(model.state.value.paymentLaunch!!.id, "6001"); runCurrent()
+        api.readyError = "设备工作中，请更换设备使用"
+        model.payLaundry("52"); runCurrent()
+        assertEquals("13", model.state.value.laundry?.payMethod)
+        assertEquals(0, api.unionPayPrepares); assertTrue(api.paidQueries.all { it.second == "13" })
+        api.readyError = null
+        model.payLaundry("52"); runCurrent()
+        assertEquals("52", model.state.value.laundry?.payMethod); assertEquals(1, api.unionPayPrepares)
+        assertEquals(1, api.creates)
+    }
     @Test fun lostBalanceResponseChecksServerWithoutPayingOrCreatingAgain() = runTest(dispatcher) {
         val api = Api().apply { lostPayment = true }; val model = model(api, Store())
         prepare(model); model.showLaundryPayment(); model.payLaundry("2"); runCurrent()
@@ -483,16 +564,17 @@ class LaundryViewModelTest {
         val message = "设备工作中，请更换设备使用"
         val api = Api().apply { readyError = message }; val model = model(api, Store())
         prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
-        val sessionId = model.state.value.laundry!!.sessionId
         assertTrue(model.state.value.paymentVisible)
-        assertEquals(RechargePhase.Creating, model.state.value.paymentFeedback?.phase)
+        assertNull(model.state.value.laundry)
+        assertTrue(model.state.value.laundrySessions.isEmpty())
+        assertNull(model.state.value.paymentFeedback)
         assertEquals(message, model.state.value.error)
         assertEquals(0, api.creates); assertEquals(0, api.alipayPrepares)
         model.dismissLaundryPayment(); model.showLaundryPayment(); runCurrent()
         assertEquals(message, model.state.value.error)
         api.readyError = null
         model.payLaundry("13"); model.payLaundry("13"); runCurrent()
-        assertEquals(sessionId, model.state.value.laundry?.sessionId)
+        assertNotNull(model.state.value.laundry)
         assertEquals(1, api.creates); assertEquals(1, api.alipayPrepares)
         assertNotNull(model.state.value.paymentLaunch); assertNull(model.state.value.error)
         assertEquals(RechargePhase.AwaitingPayment, model.state.value.paymentFeedback?.phase)
@@ -541,7 +623,7 @@ class LaundryViewModelTest {
         val api = Api().apply { prepayError = true }; val model = model(api, Store())
         prepare(model); model.showLaundryPayment(); model.payLaundry("13"); runCurrent()
         assertTrue(model.state.value.paymentVisible); assertNull(model.state.value.paymentLaunch)
-        assertEquals(RechargePhase.Creating, model.state.value.paymentFeedback?.phase)
+        assertNull(model.state.value.paymentFeedback)
         assertNotNull(model.state.value.error)
         api.prepayError = false
         model.payLaundry("13"); runCurrent()
@@ -810,21 +892,20 @@ class LaundryViewModelTest {
         val reads = api.details; advanceTimeBy(20_000); runCurrent(); assertEquals(reads, api.details)
         assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
-    @Test fun interruptedCheckCanRetryAndInterruptedCreationCannotCreateAgainAfterRestore() = runTest(dispatcher) {
+    @Test fun interruptedCheckIsDiscardedAndInterruptedCreationCannotCreateAgainAfterRestore() = runTest(dispatcher) {
         val api = Api()
         val checking = Store(LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Checking))
         val model = model(api, checking)
         runCurrent(); model.open(LifeFeature.Laundry); runCurrent()
-        assertNotNull(model.state.value.error)
-        model.retryLaundry(); runCurrent()
-        assertEquals(1, api.creates)
-        assertEquals(LaundryPhase.Paying, model.state.value.laundry?.phase)
+        assertNull(model.state.value.laundry)
+        assertTrue(checking.laundries.isEmpty())
+        assertEquals(0, api.creates)
         val lost = Store(LaundrySession(device, "clean", "0.00", "2", LaundryPhase.Creating, createSent = true))
         val restored = model(api, lost)
         runCurrent(); restored.open(LifeFeature.Laundry); runCurrent()
         assertNotNull(restored.state.value.error)
         restored.retryLaundry(); runCurrent()
-        assertEquals(1, api.creates)
+        assertEquals(0, api.creates)
         assertEquals(LaundryPhase.Creating, restored.state.value.laundry?.phase)
     }
     @Test fun bothHomeSessionsResumeWithoutOpeningAPageAndKeepPollingAcrossFeatureChanges() = runTest(dispatcher) {

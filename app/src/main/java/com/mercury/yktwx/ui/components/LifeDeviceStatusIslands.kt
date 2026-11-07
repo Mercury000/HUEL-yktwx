@@ -77,7 +77,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
             }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
                 session.sessionId, completed = false))
         }
-        laundrySessions.filter { session -> session.phase != LaundryPhase.Closed &&
+        laundrySessions.filter { session -> !session.islandDismissed && session.phase !in setOf(LaundryPhase.Checking, LaundryPhase.Closed) &&
             session.completionReminderDeadlineMillis()?.let { now < it } != false }.forEach { session ->
             val completed = !session.active
             val end = session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }
@@ -86,7 +86,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 LaundryPhase.Ended -> "已完成"
                 LaundryPhase.Closed -> "已关闭"
                 LaundryPhase.Checking -> "正在检查"
-                LaundryPhase.Creating -> "正在下单"
+                LaundryPhase.Creating -> if (session.creationUncertain) "下单结果未知" else "正在下单"
                 LaundryPhase.Paying -> "待支付"
                 LaundryPhase.Starting -> "正在启动"
                 else -> "洗衣中"
@@ -94,11 +94,11 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 .ifBlank { "洗衣" }, session.device.shopName, session.sessionId, completed,
                 remainingMinutes = end?.takeIf { it > now }?.let { (it - now + 59_999) / 60_000 },
                 timeElapsed = end != null && end <= now,
-                progress = if (completed) 1f else session.startedAtMillis?.let { start ->
+                progress = if (completed) 1f else if (session.canDismissUnknownCreation) 0f else session.startedAtMillis?.let { start ->
                     end?.takeIf { it > start && it > now }?.let {
                         ((now - start).toFloat() / (it - start)).coerceIn(0f, .99f)
                     }
-                }))
+                }, dismissible = completed || session.canDismissUnknownCreation))
         }
         addAll(additionalEntries.filterNot { it.feature == LifeFeature.Water && it.completed })
     }
@@ -108,7 +108,8 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
 data class LifeDeviceStatusEntry(val feature: LifeFeature, val title: String, val subtitle: String,
     val location: String, val sessionId: String, val completed: Boolean,
     val remainingMinutes: Long? = null, val timeElapsed: Boolean = false, val progress: Float? = null,
-    val onOpen: (() -> Unit)? = null, val onDismiss: (() -> Unit)? = null)
+    val onOpen: (() -> Unit)? = null, val onDismiss: (() -> Unit)? = null,
+    val dismissible: Boolean = completed)
 
 @Composable
 private fun StatusEntries(entries: List<LifeDeviceStatusEntry>, enabled: Boolean,
@@ -178,6 +179,7 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
         entry.remainingMinutes != null -> "预计剩余 ${entry.remainingMinutes} 分钟"
         entry.timeElapsed -> "预计时间已到，仍在读取设备状态"
         entry.title == "待支付" -> "继续支付"
+        entry.title == "下单结果未知" -> "请在胖乖生活核对"
         else -> "查看进度"
     }
     Surface(Modifier.width(width).testTag("life-session-${entry.sessionId}")
@@ -191,7 +193,7 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
                         entry.subtitle, entry.location, detail).filter { it.isNotBlank() }.joinToString("，") },
                 enabled = enabled, shape = CircleShape, contentColor = ink) {
                 Row(Modifier.fillMaxWidth().padding(start = 11.dp,
-                    end = if (entry.completed) 0.dp else 8.dp, top = 9.dp, bottom = 9.dp),
+                    end = if (entry.dismissible) 0.dp else 8.dp, top = 9.dp, bottom = 9.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(Modifier.size(26.dp).background(panel, CircleShape), contentAlignment = Alignment.Center) {
                         val animatedProgress by animateFloatAsState(entry.progress ?: 0f,
@@ -232,12 +234,13 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
                     }
                 }
             }
-            if (entry.completed) ActionSurface({ if (enabled) { entry.onDismiss?.invoke() ?: onDismiss(entry.feature, entry.sessionId) } },
+            if (entry.dismissible) ActionSurface({ if (enabled) { entry.onDismiss?.invoke() ?: onDismiss(entry.feature, entry.sessionId) } },
                 Modifier.padding(end = 5.dp).size(30.dp).testTag("dismiss-life-session-${entry.sessionId}"),
                 enabled = enabled, shape = CircleShape, contentColor = muted) {
                 Box(Modifier.size(20.dp).background(if (dark) panel else Color(0xFFF5F6F8), CircleShape),
                     contentAlignment = Alignment.Center) {
-                    Icon(AppIcons.Close, "移除已完成的${entry.feature.title}", Modifier.size(12.dp), tint = muted)
+                    Icon(AppIcons.Close, if (entry.completed) "移除已完成的${entry.feature.title}" else "隐藏下单异常提醒",
+                        Modifier.size(12.dp), tint = muted)
                 }
             }
         }

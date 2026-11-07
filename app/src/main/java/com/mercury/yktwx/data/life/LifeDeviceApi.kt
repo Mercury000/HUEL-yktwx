@@ -59,7 +59,7 @@ class LifeDeviceApi(
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
             ensureActive()
-            if (status in setOf(401, 403)) throw LifeDeviceException("胖乖登录已失效，请重新登录", true)
+            if (status in setOf(401, 403)) throw LifeDeviceException("胖乖登录已失效，请重新登录", true, businessRejected = true)
             if (status !in 200..299) throw LifeDeviceException("连接失败，请稍后重试")
             val response = runCatching { JSONObject(text) }.getOrElse { throw LifeDeviceException("服务器返回内容异常") }
             val code = response.text("code")
@@ -67,7 +67,8 @@ class LifeDeviceApi(
                 val message = response.text("msg").ifBlank { response.text("message") }.ifBlank { "请求失败，请稍后重试" }
                 val expired = code in setOf("401", "403") || listOf("未登录", "未登陆", "请先登录", "登录失效", "登录过期").any(message::contains) ||
                     message.contains("token", true) && listOf("过期", "无效", "expired", "invalid").any { message.contains(it, true) }
-                throw LifeDeviceException(if (expired) "胖乖登录已失效，请重新登录" else message, expired)
+                throw LifeDeviceException(if (expired) "胖乖登录已失效，请重新登录" else message, expired,
+                    businessRejected = code.toIntOrNull() != null)
             }
             response.opt("data").takeUnless { it == JSONObject.NULL }
         } finally { connection.disconnect() }
@@ -184,7 +185,7 @@ class LifeDeviceApi(
     override suspend fun checkLaundryDevice(deviceId: String, token: String): String {
         val data = post("/trade/check_device_status", mapOf("goodsId" to deviceId), token).obj()
         if (!data.optBoolean("health", false)) throw LifeDeviceException(data.text("faultDesc").ifBlank { "设备暂不可用，请稍后重试" })
-        return data.required("msgId")
+        return data.text("msgId")
     }
     override suspend fun laundryMachineReady(messageId: String, token: String): Boolean =
         post("/machine/sync", mapOf("msgId" to messageId), token) == true
