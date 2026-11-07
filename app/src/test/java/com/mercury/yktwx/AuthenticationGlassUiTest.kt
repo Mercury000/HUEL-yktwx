@@ -140,12 +140,8 @@ class AuthenticationGlassUiTest {
             assertNull(UsageConsent(app).confirmationHint)
             assertNull(credentials)
             assertNull(session)
-            compose.onNodeWithText("同意并继续").assertDoesNotExist()
-            compose.onNodeWithText("学号 / 工号").performTextInput("202600000001")
-            compose.onNodeWithText("密码").performTextInput("fictional-password")
-            compose.onNodeWithText("登录").assertIsNotEnabled()
+            compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
             if (readNotice) {
-                compose.onNodeWithTag("usage-consent-checkbox").performClick()
                 compose.onNodeWithTag("usage-notice-body").performScrollToIndex(UsageNotice.paragraphs.lastIndex)
                 compose.onNodeWithText("同意并继续").performClick()
             } else {
@@ -155,6 +151,9 @@ class AuthenticationGlassUiTest {
             // The sheet covers the form until its exit finishes; a real user
             // cannot tap the login button through that modal surface.
             settle()
+            compose.onNodeWithText("学号 / 工号").performTextInput("202600000001")
+            compose.onNodeWithText("密码").performTextInput("fictional-password")
+            compose.waitForIdle()
             assertEquals(turn, logins)
             compose.mainClock.autoAdvance = false
             compose.onNodeWithText("登录").assertIsEnabled().performClick()

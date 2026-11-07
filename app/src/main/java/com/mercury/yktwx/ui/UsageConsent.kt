@@ -15,13 +15,13 @@ import kotlinx.coroutines.withContext
 class UsageConsent internal constructor(private val prefs: SharedPreferences, private val hash: String, private val previousLogin: Boolean = false) {
     constructor(context: Context) : this(context.getSharedPreferences("usage_consent", Context.MODE_PRIVATE), UsageNotice.hash,
         context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE).contains("credentials"))
-    // This history explains why confirmation is needed; it never authorizes login.
+    // This history explains why confirmation is needed; it never authorizes business requests.
     private var previousHash by mutableStateOf(prefs.getString("accepted_hash", null) ?: prefs.getString("known_hash", null))
     val confirmationHint: String?
         get() = when {
             accepted -> null
-            previousHash != null && previousHash != hash -> "使用须知已更新，请重新阅读并同意后登录。"
-            previousHash == null && previousLogin -> "登录前需阅读并同意使用须知。"
+            previousHash != null && previousHash != hash -> "使用须知已更新，请重新阅读并同意后使用。"
+            previousHash == null && previousLogin -> "使用前需阅读并同意使用须知。"
             else -> null
         }
     var accepted by mutableStateOf(prefs.getString("accepted_hash", null) == hash)

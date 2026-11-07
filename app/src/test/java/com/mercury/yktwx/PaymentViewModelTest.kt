@@ -20,6 +20,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -87,22 +89,68 @@ class PaymentViewModelTest {
 
     @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
-    @Test fun newlyAcceptedNoticeClearsOldCredentialsAndWaitsForExplicitLogin() {
+    @Test fun localInitializationPreservesCredentialsWithoutBusinessRequests() {
         codeAvailable = true
-        model.onForeground()
-        model.initialize(restoreLogin = false)
+        val credentials = vault.credentials()
+        val session = vault.session()
+        model.initialize()
         await { !model.state.value.restoringLogin }
-        assertTrue(model.state.value.needsLogin)
-        assertEquals("", model.state.value.username)
-        assertNull(vault.credentials())
-        assertNull(vault.session())
+        assertFalse(model.state.value.needsLogin)
+        assertEquals(credentials?.username, model.state.value.username)
+        assertEquals(credentials, vault.credentials())
+        assertEquals(session, vault.session())
+        assertNull(model.state.value.code)
         assertEquals(0, logins)
         assertEquals(0, payments)
-        model.login("456", "new-password")
+        model.onForeground()
         await { !model.state.value.busy }
         assertFalse(model.state.value.needsLogin)
-        assertEquals("456", model.state.value.username)
-        assertEquals(1, logins)
+        assertEquals(credentials?.username, model.state.value.username)
+        assertEquals(0, logins)
+        assertEquals(1, payments)
+    }
+
+    @Test fun logoutDuringLocalRestorationCannotPublishTheOldLoginWhileCredentialsAreClearing() {
+        val readGate = CountDownLatch(1)
+        val clearGate = CountDownLatch(1)
+        val reading = AtomicBoolean(false)
+        val clearing = AtomicBoolean(false)
+        val delayedVault = object : Vault by vault {
+            override fun credentials(): Credentials? {
+                reading.set(true)
+                check(readGate.await(10, TimeUnit.SECONDS))
+                return vault.credentials()
+            }
+            override fun clear() {
+                clearing.set(true)
+                check(clearGate.await(10, TimeUnit.SECONDS))
+                vault.clear()
+            }
+        }
+        val restoring = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(),
+            AccountRepository(service, delayedVault), initialEnvironment = ReadEnvironment.Inactive)
+        store.put("restoring-payment", restoring)
+        try {
+            restoring.initialize()
+            await { reading.get() }
+            restoring.logout()
+            readGate.countDown()
+            await { clearing.get() }
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(restoring.state.value.needsLogin)
+            assertTrue(restoring.state.value.busy)
+            assertNull(restoring.state.value.code)
+            clearGate.countDown()
+            await { !restoring.state.value.busy }
+            assertTrue(restoring.state.value.needsLogin)
+            assertNull(vault.credentials())
+            assertNull(vault.session())
+            assertEquals(0, logins)
+            assertEquals(0, payments)
+        } finally {
+            readGate.countDown()
+            clearGate.countDown()
+        }
     }
 
     @Test fun balancePendingEndsBeforeTheRemainingPaymentVerification() {
