@@ -364,11 +364,9 @@ private fun MainContent(
     val hui798Connection by hui798Model.accountConnection.collectAsStateWithLifecycle()
     val managedAccounts = listOf(
         ManagedLifeAccount(LifeProvider.Hui798, hui798Connection, hui798State.restoring,
-            hui798State.accountBusy || hui798State.loggingIn || hui798State.busy,
-            hui798State.sessions.count { it.active }, hui798State.accountError),
+            hui798State.accountBusy || hui798State.loggingIn, hui798State.accountError),
         ManagedLifeAccount(LifeProvider.Panggui, pangguiConnection, lifeState.restoring,
-            lifeState.accountBusy || lifeState.loggingIn || lifeState.waterBusy || lifeState.laundryBusy,
-            lifeState.waterSessions.count { it.active } + lifeState.laundrySessions.count { it.active }, lifeState.accountError))
+            lifeState.accountBusy || lifeState.loggingIn, lifeState.accountError))
     var lifeProvider by remember { mutableStateOf(LifeProvider.Panggui) }
     LifePaymentEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
         lifeModel::claimLaundryPayment, lifeModel::laundryPaymentReturned)
@@ -496,7 +494,7 @@ private fun MainContent(
         if (!isActive || !allowOnlineEntry(context, state.preview)) return
         val opened = if (provider == LifeProvider.Hui798) { lifeModel.dismissLogin(); hui798Model.manageLogin(change) }
             else { hui798Model.dismissLogin(); lifeModel.manageLogin(change) }
-        if (!opened) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
+        if (!opened) Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
     }
     fun checkLifeAccount(provider: LifeProvider) {
         if (!isActive || !allowOnlineEntry(context, state.preview)) return
@@ -514,17 +512,6 @@ private fun MainContent(
         lifeProvider = LifeProvider.Hui798
         hui798Model.openSession(id)
         if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
-    }
-    fun openManagedProgress(provider: LifeProvider) {
-        if (!isActive) return
-        val hui = hui798State.sessions.firstOrNull { it.active }
-        val water = lifeState.waterSessions.firstOrNull { it.active }
-        val laundry = lifeState.laundrySessions.firstOrNull { it.active }
-        if (provider == LifeProvider.Hui798 && hui == null || provider == LifeProvider.Panggui && water == null && laundry == null) return
-        backStack.subList(1, backStack.size).clear()
-        if (provider == LifeProvider.Hui798) openHui798Session(checkNotNull(hui).sessionId)
-        else if (laundry != null) openLifeSession(LifeFeature.Laundry, laundry.sessionId)
-        else openLifeSession(LifeFeature.Water, checkNotNull(water).sessionId)
     }
     fun scannedLifeDevice(raw: String) {
         if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() != Screen.LifeDevice ||
@@ -793,10 +780,9 @@ private fun MainContent(
                                     onLoginLifeAccount = { manageLifeLogin(it, false) },
                                     onRemoveLifeAccount = { provider ->
                                         if (isActive) {
-                                            val removed = if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
-                                            if (!removed) Toast.makeText(context, "请先查看并处理正在进行的服务", Toast.LENGTH_SHORT).show()
+                                            if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
                                         }
-                                    }, onLifeProgress = ::openManagedProgress,
+                                    },
                                 )
                             }
                         }
@@ -827,7 +813,6 @@ private fun SecondaryPage(
     onCheckLifeAccount: (LifeProvider) -> Unit,
     onLoginLifeAccount: (LifeProvider) -> Unit,
     onRemoveLifeAccount: (LifeProvider) -> Unit,
-    onLifeProgress: (LifeProvider) -> Unit,
 ) {
     var showLogout by remember { mutableStateOf(false) }
     val title = when (screen) {
@@ -852,7 +837,7 @@ private fun SecondaryPage(
                     Screen.Settings -> AppSettingsContent(modifier, contentPadding, settings, updateState,
                         onCheckUpdates, onTheme, lifeAccounts, active, onLogout = { showLogout = true },
                         onCheckAccount = onCheckLifeAccount, onLoginAccount = onLoginLifeAccount,
-                        onRemoveAccount = onRemoveLifeAccount, onProgress = onLifeProgress, scrollBehavior = scroll)
+                        onRemoveAccount = onRemoveLifeAccount, scrollBehavior = scroll)
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, contentPadding = contentPadding,
                         themeMode = settings.themeMode, onThemeModeChange = settings::setTheme,

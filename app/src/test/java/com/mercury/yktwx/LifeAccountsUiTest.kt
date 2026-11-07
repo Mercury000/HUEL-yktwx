@@ -68,22 +68,22 @@ class LifeAccountsUiTest {
     @Composable
     private fun SettingsFixture(accounts: List<ManagedLifeAccount>, dark: Boolean = false,
         onCheck: (LifeProvider) -> Unit = {}, onLogin: (LifeProvider) -> Unit = {},
-        onRemove: (LifeProvider) -> Unit = {}, onProgress: (LifeProvider) -> Unit = {}) {
+        onRemove: (LifeProvider) -> Unit = {}) {
         AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
             Scaffold(topBar = { DashboardTopBar("设置") }) { padding ->
                 AppSettingsContent(Modifier.fillMaxSize(), PaddingValues(top = padding.calculateTopPadding(), bottom = 28.dp),
-                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove, onProgress)
+                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove)
             }
         }
     }
 
     @Test @Config(qualifiers = "+zh-rCN")
-    fun settingsContainsBothAccountsAndProtectsActiveServiceInDialog() {
+    fun settingsContainsBothAccountsAndAllowsExitDuringServiceRecovery() {
         val accounts = listOf(
-            ManagedLifeAccount(LifeProvider.Hui798, LifeAccountConnection("138****0000", LifeAccountStatus.Verified), activeServices = 1),
+            ManagedLifeAccount(LifeProvider.Hui798, LifeAccountConnection("138****0000", LifeAccountStatus.Verified), restoring = true),
             ManagedLifeAccount(LifeProvider.Panggui, LifeAccountConnection()))
-        var logins = 0; var progress = 0
-        compose.setContent { SettingsFixture(accounts, onLogin = { logins++ }, onProgress = { progress++ }) }
+        var logins = 0; var removed: LifeProvider? = null
+        compose.setContent { SettingsFixture(accounts, onLogin = { logins++ }, onRemove = { removed = it }) }
         compose.onNodeWithText("生活服务账户", substring = false).assertIsDisplayed()
         compose.onNodeWithText("通用", substring = false).assertIsDisplayed()
         compose.onNodeWithText("应用更新", substring = false).assertIsDisplayed()
@@ -95,12 +95,14 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("hui798-account-row").performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("life-account-logout-dialog").assertIsDisplayed()
-        compose.onNodeWithText("暂时无法退出").assertIsDisplayed()
-        compose.onNodeWithTag("life-account-exit").assertDoesNotExist()
+        compose.onNodeWithText("退出慧生活798账户").assertIsDisplayed()
+        compose.onNodeWithText("暂时无法退出").assertDoesNotExist()
+        compose.onNodeWithText("查看进度").assertDoesNotExist()
+        compose.onNodeWithTag("life-account-exit").assertIsEnabled()
         compose.onNodeWithText("更换账户").assertDoesNotExist()
-        capture("account-logout-active")
-        compose.onNodeWithText("查看进度").performClick()
-        assertEquals(1, progress)
+        capture("account-logout-recovering")
+        compose.onNodeWithTag("life-account-exit").performClick()
+        assertEquals(LifeProvider.Hui798, removed)
     }
 
     @Test @Config(qualifiers = "+zh-rCN")

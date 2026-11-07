@@ -56,6 +56,7 @@ class Hui798ViewModel internal constructor(
     private var pollTask: Job? = null
     private var recoveryInProgress = 0
     private var accountTask: Job? = null
+    private var restoreTask: Job? = null
     private val accountVerifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: Hui798Account ->
         val overview = api.overview(owner.token)
         if (owner.userId != null && owner.userId != overview.userId)
@@ -63,7 +64,7 @@ class Hui798ViewModel internal constructor(
     }, ::expired, ::failure)
     val accountConnection = accountVerifier.state
     val hasActiveServices: Boolean get() = mutable.value.sessions.any { it.active }
-    private fun accountChangeBlocked(): Boolean = hasActiveServices || mutable.value.restoring ||
+    private fun accountWorkPending(): Boolean = mutable.value.restoring ||
         mutable.value.busy || mutable.value.accountBusy || recoveryInProgress > 0
 
     fun checkAccount(force: Boolean = false) {
@@ -73,7 +74,7 @@ class Hui798ViewModel internal constructor(
 
     fun manageLogin(change: Boolean = false): Boolean {
         if (mutable.value.restoring || mutable.value.loggingIn || mutable.value.busy || mutable.value.accountBusy ||
-            change && accountChangeBlocked()) return false
+            change && accountWorkPending()) return false
         pendingDeviceId = null
         mutable.update { it.copy(loginVisible = true, changingAccount = change, phone = "", code = "", imageCode = "", loginError = null, accountError = null) }
         refreshCaptcha()
@@ -81,16 +82,20 @@ class Hui798ViewModel internal constructor(
     }
 
     fun removeAccount(): Boolean {
-        if (accountChangeBlocked() || mutable.value.loggingIn) return false
-        accountVerifier.reset()
+        if (mutable.value.accountBusy || accountTask?.isActive == true) return false
+        mutable.update { it.copy(accountBusy = true, accountError = null, loginVisible = false) }
+        accountVerifier.stop()
+        generation++
+        val pending = listOfNotNull(restoreTask, authTask, captchaTask, timerTask, deviceTask, commandTask, pollTask)
+        pending.forEach { it.cancel() }
         accountTask = viewModelScope.launch {
-            mutable.update { it.copy(accountBusy = true, accountError = null) }
             try {
+                pending.joinAll()
                 persistence.withLock {
                     withContext(io) { store.removeAccount() }
                     account = null; ownerPhone = ""
                 }
-                generation++; pendingDeviceId = null; deviceTask?.cancel(); pollTask?.cancel(); sessionErrors.clear()
+                pendingDeviceId = null; captchaKey = ""; sessionErrors.clear()
                 accountVerifier.cleared()
                 mutable.value = Hui798UiState(restoring = false)
             } catch (e: CancellationException) { throw e }
@@ -101,7 +106,7 @@ class Hui798ViewModel internal constructor(
     }
 
     init {
-        viewModelScope.launch {
+        restoreTask = viewModelScope.launch {
             try {
                 val saved = withContext(io) { store.account() to store.sessions() }
                 account = saved.first; ownerPhone = account?.phone.orEmpty()
@@ -143,7 +148,7 @@ class Hui798ViewModel internal constructor(
     }
     fun refreshCaptcha() = loadCaptcha()
     private fun loadCaptcha(error: String? = null) {
-        if (!mutable.value.loginVisible || mutable.value.loggingIn || mutable.value.sendingCode) return
+        if (!mutable.value.loginVisible || mutable.value.loggingIn || mutable.value.sendingCode || mutable.value.accountBusy) return
         captchaTask?.cancel(); captchaKey = ""
         val key = java.util.UUID.randomUUID().toString().replace("-", "")
         captchaTask = viewModelScope.launch {
@@ -163,7 +168,7 @@ class Hui798ViewModel internal constructor(
     }
     fun sendCode() {
         val value = mutable.value
-        if (!value.loginVisible || value.loggingIn || value.sendingCode || value.captchaLoading || value.codeSeconds > 0) return
+        if (!value.loginVisible || value.loggingIn || value.sendingCode || value.captchaLoading || value.codeSeconds > 0 || value.accountBusy) return
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.imageCode.isBlank() || captchaKey.isBlank()) {
             mutable.update { it.copy(loginError = "请输入正确的手机号和图形验证码") }; return
         }
@@ -191,7 +196,7 @@ class Hui798ViewModel internal constructor(
     }
     fun login() {
         val value = mutable.value
-        if (!value.loginVisible || value.loggingIn || value.sendingCode) return
+        if (!value.loginVisible || value.loggingIn || value.sendingCode || value.accountBusy) return
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.code.isBlank()) {
             mutable.update { it.copy(loginError = "请输入手机号和短信验证码") }; return
         }
@@ -201,8 +206,8 @@ class Hui798ViewModel internal constructor(
                 val next = api.login(value.phone, value.code)
                 ensureActive()
                 if (ownerPhone.isNotBlank() && ownerPhone != next.phone &&
-                    (hasActiveServices || mutable.value.busy || mutable.value.accountBusy))
-                    throw Hui798Exception("还有服务进行中，请使用原账户重新登录")
+                    (mutable.value.busy || mutable.value.accountBusy))
+                    throw Hui798Exception("正在处理请求，请稍后更换账户")
                 accountVerifier.reset()
                 generation++; deviceTask?.cancel(); pollTask?.cancel(); pollTask = null
                 val sameOwner = ownerPhone == next.phone
@@ -234,6 +239,7 @@ class Hui798ViewModel internal constructor(
     }
 
     fun openDevice(id: String) {
+        if (mutable.value.accountBusy) return
         if (mutable.value.busy) return
         mutable.value.sessions.firstOrNull { !mutable.value.restoring && it.active && it.device.id == id }?.let {
             openSession(it.sessionId)
@@ -357,7 +363,7 @@ class Hui798ViewModel internal constructor(
         }
     }
     private fun runCommand(owner: Hui798Account, block: suspend () -> Unit) {
-        if (commandTask?.isActive == true) return
+        if (mutable.value.accountBusy || commandTask?.isActive == true) return
         pollTask?.cancel(); pollTask = null
         commandTask = viewModelScope.launch {
             mutable.update { it.copy(busy = true, error = null) }
@@ -481,14 +487,16 @@ class Hui798ViewModel internal constructor(
         }
     }
     private suspend fun saveSession(session: Hui798Session, select: Boolean = false) {
+        currentCoroutineContext().ensureActive()
         if (!select && mutable.value.sessions.none { it.sessionId == session.sessionId }) return
         mutable.update { it.copy(sessions = if (select) it.sessions + session else it.sessions.map { item -> if (item.sessionId == session.sessionId) session else item },
             selectedSessionId = if (select) session.sessionId else it.selectedSessionId) }
         persist()
     }
-    private suspend fun persist() = persistence.withLock { withContext(io) {
-        store.saveSessions(mutable.value.sessions)
-    } }
+    private suspend fun persist() = persistence.withLock {
+        if (account == null || mutable.value.accountBusy) return@withLock
+        withContext(io) { store.saveSessions(mutable.value.sessions) }
+    }
     private fun error(message: String?, id: String?) {
         if (id != null) { if (message == null) sessionErrors.remove(id) else sessionErrors[id] = message }
         mutable.update { if (id == null || it.selectedSessionId == id) it.copy(error = message) else it }
@@ -506,7 +514,7 @@ class Hui798ViewModel internal constructor(
     private fun pollIntervalMillis(): Long = if (mutable.value.sessions.any { it.active && it.phase != WaterPhase.Running }) 3000 else 6000
     private fun resumeSessions(waitBeforeFirstRead: Boolean = false) {
         val owner = account ?: return
-        if (!foreground || mutable.value.restoring || commandTask?.isActive == true || pollTask?.isActive == true ||
+        if (!foreground || mutable.value.restoring || mutable.value.accountBusy || commandTask?.isActive == true || pollTask?.isActive == true ||
             mutable.value.sessions.none { it.active }) return
         pollTask = viewModelScope.launch {
             if (waitBeforeFirstRead) delay(pollIntervalMillis())

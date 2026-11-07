@@ -78,6 +78,17 @@ class LifeDeviceAccountStore internal constructor(private val vault: LifeDeviceR
             .put("creationUncertain", session.creationUncertain).put("islandDismissed", session.islandDismissed).toString()))
     }
     override fun clearLaundrySession() { vault.remove("laundry") }
+    override fun removeLaundrySession(sessionId: String) {
+        // Local dismissal also works after credentials expire; it needs no platform request.
+        vault.read("laundry_sessions")?.let { data ->
+            val sessions = data.getJSONArray("sessions").objects().filterNot { it.text("sessionId") == sessionId }
+            vault.write(mapOf("laundry_sessions" to data.put("sessions", JSONArray(sessions)).toString()))
+        }
+        vault.read("laundry")?.let { data ->
+            val id = data.text("sessionId").ifBlank { "legacy-laundry-${data.text("orderNo")}-${data.getString("skuId")}" }
+            if (id == sessionId) clearLaundrySession()
+        }
+    }
     override fun waterSessions(): List<WaterSession> = records("water_sessions")?.map { data ->
         WaterSession(readDevice(data.getJSONObject("device")), data.getString("skuId"),
             WaterPhase.valueOf(data.getString("phase")), data.optBoolean("startSent"), data.text("messageId"),

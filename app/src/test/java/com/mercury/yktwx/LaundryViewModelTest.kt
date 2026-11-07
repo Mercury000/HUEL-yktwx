@@ -44,6 +44,7 @@ class LaundryViewModelTest {
         override fun laundrySessions() = laundries
         override fun saveWaterSessions(sessions: List<WaterSession>) { waters = sessions; water = sessions.lastOrNull() }
         override fun saveLaundrySessions(sessions: List<LaundrySession>) { laundries = sessions; washing = sessions.lastOrNull() }
+        override fun removeAccount() { owner = null; waters = emptyList(); laundries = emptyList(); water = null; washing = null }
     }
     private inner class Api : LifeDeviceService, LifeLaundryService {
         var creates = 0; var balancePays = 0; var alipayPrepares = 0; var details = 0; var paidReads = 0
@@ -52,6 +53,7 @@ class LaundryViewModelTest {
         val paidQueries = mutableListOf<Pair<String, String>>()
         var status = 0; var paid = false; var started = false; var price = "0.00"; var readSku = "clean"
         var lostCreate = false; var lostPayment = false
+        var createGate: CompletableDeferred<Unit>? = null
         var createFailure: Exception? = null
         var balanceFailure: Exception? = null
         var readyMessage = "msg-1"
@@ -117,6 +119,7 @@ class LaundryViewModelTest {
         override suspend fun laundryMachineReady(messageId: String, token: String): Boolean = ++machineChecks >= machineReadyAfter
         override suspend fun createLaundryOrder(deviceId: String, skuId: String, token: String): LaundryOrder {
             creates++; if (lostCreate) throw java.io.IOException("lost create response")
+            createGate?.let { withContext(NonCancellable) { it.await() } }
             createFailure?.let { throw it }
             val order = LaundryOrder("wash-$creates", if (creates == 1) "wash-id" else "wash-id-$creates")
             orders[order.orderNo] = deviceId to skuId
@@ -347,21 +350,52 @@ class LaundryViewModelTest {
         assertEquals(2, api.creates); assertEquals(1, api.alipayPrepares)
         assertNotNull(model.state.value.paymentLaunch); assertEquals(1, store.laundries.size)
     }
-    @Test fun dismissingUnknownCreationSurvivesRestoreAndRescanCannotBypassDuplicateProtection() = runTest(dispatcher) {
+    @Test fun dismissingUnknownCreationRemovesLocalRecordAndAllowsNewOrderAfterRescan() = runTest(dispatcher) {
         val api = Api().apply { lostCreate = true }; val store = Store(); val model = model(api, store)
         prepare(model); model.payLaundry("13"); runCurrent()
         val unknown = model.state.value.laundry!!
         assertTrue(unknown.canDismissUnknownCreation); assertFalse(model.state.value.paymentVisible)
         model.dismissSession(LifeFeature.Laundry, unknown.sessionId); runCurrent()
-        assertNull(model.state.value.laundry)
-        val hidden = store.laundries.single()
-        assertTrue(hidden.islandDismissed); assertTrue(hidden.createSent); assertEquals(LaundryPhase.Creating, hidden.phase)
+        assertNull(model.state.value.laundry); assertTrue(model.state.value.laundrySessions.isEmpty())
+        assertTrue(store.laundries.isEmpty())
+        assertEquals(1, api.creates); assertTrue(api.cancelledOrderIds.isEmpty())
         val restored = model(api, store); runCurrent()
-        assertNull(restored.state.value.laundry); assertEquals(listOf(hidden), restored.state.value.laundrySessions)
+        assertNull(restored.state.value.laundry); assertTrue(restored.state.value.laundrySessions.isEmpty())
+        api.lostCreate = false
         prepare(restored); restored.payLaundry("13"); runCurrent()
-        assertEquals(LaundryCreationUnknownMessage, restored.state.value.error)
-        assertEquals(1, api.creates); assertEquals(0, api.alipayPrepares); assertEquals(0, api.balancePays)
-        assertTrue(store.laundries.single().islandDismissed)
+        assertEquals(2, api.creates); assertEquals(1, api.alipayPrepares)
+        assertNotNull(restored.state.value.paymentLaunch); assertEquals(1, store.laundries.size)
+    }
+    @Test fun restoreDiscardsLegacyDismissedUnknownCreation() = runTest(dispatcher) {
+        val hidden = LaundrySession(device, "clean", "0.00", "13", LaundryPhase.Creating, createSent = true,
+            creationUncertain = true, islandDismissed = true)
+        val api = Api(); val store = Store(hidden); val model = model(api, store); runCurrent()
+        assertNull(model.state.value.laundry); assertTrue(model.state.value.laundrySessions.isEmpty())
+        assertTrue(store.laundries.isEmpty())
+        prepare(model); model.payLaundry("13"); runCurrent()
+        assertEquals(1, api.creates); assertNotNull(model.state.value.paymentLaunch)
+    }
+    @Test fun unknownCreationDoesNotBlockExplicitNewOrderAfterRescan() = runTest(dispatcher) {
+        val api = Api().apply { lostCreate = true }; val store = Store(); val model = model(api, store)
+        prepare(model); model.payLaundry("13"); runCurrent()
+        assertEquals(1, api.creates)
+        api.lostCreate = false
+        model.openUnifiedScan(); model.scanned(device.serial); runCurrent()
+        model.showLaundryPayment(); runCurrent(); model.payLaundry("13"); runCurrent()
+        assertEquals(2, api.creates); assertEquals(1, api.alipayPrepares)
+        assertNotNull(model.state.value.paymentLaunch)
+    }
+    @Test fun removalDuringCreationClearsProgressAndLateResultCannotLaunchPayment() = runTest(dispatcher) {
+        val api = Api().apply { createGate = CompletableDeferred() }; val store = Store(); val model = model(api, store)
+        prepare(model); model.payLaundry("13"); runCurrent()
+        assertTrue(model.state.value.laundryBusy); assertEquals(1, api.creates)
+        assertTrue(model.removeAccount()); runCurrent()
+        assertTrue(model.state.value.accountBusy); assertNull(model.state.value.paymentLaunch)
+        api.createGate!!.complete(Unit); runCurrent()
+        assertNull(store.owner); assertTrue(store.laundries.isEmpty())
+        assertTrue(model.state.value.laundrySessions.isEmpty()); assertNull(model.state.value.laundry)
+        assertNull(model.state.value.paymentLaunch); assertEquals(0, api.alipayPrepares)
+        assertTrue(api.cancelledOrderIds.isEmpty()); assertFalse(model.state.value.accountBusy)
     }
     @Test fun dismissCannotHidePendingOrStartingOrdersThatStillHaveDetailActions() = runTest(dispatcher) {
         for (phase in listOf(LaundryPhase.Paying, LaundryPhase.Starting)) {
