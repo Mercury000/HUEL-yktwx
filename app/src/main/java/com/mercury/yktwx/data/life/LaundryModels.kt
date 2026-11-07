@@ -3,6 +3,8 @@ package com.mercury.yktwx.data.life
 import java.net.URI
 import java.net.URLDecoder
 import java.math.BigDecimal
+import java.time.Instant
+import java.time.ZoneId
 
 /** Device codes use explicit fields; a UUID is the observed laundry NQT, not an IMEI. */
 object LifeDeviceCode {
@@ -43,7 +45,7 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
     val paid: Boolean = false, val minutes: Int? = null, val startedAtMillis: Long? = null,
     val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null,
     val sessionId: String = java.util.UUID.randomUUID().toString(), val createdAtMillis: Long? = null,
-    val payTypeName: String = "") {
+    val payTypeName: String = "", val completionObservedAtMillis: Long? = null) {
     val active: Boolean get() = phase !in setOf(LaundryPhase.Ended, LaundryPhase.Closed)
     val canCancel: Boolean get() = phase == LaundryPhase.Paying && !paid && orderNo.isNotBlank() && orderId.isNotBlank()
     val program: String get() = device.skus.firstOrNull { it.id == skuId }?.name.orEmpty()
@@ -52,6 +54,17 @@ data class LaundrySession(val device: LifeDevice, val skuId: String, val price: 
         ?.let { (((it + 5 * 60_000L - nowMillis).coerceAtLeast(0) + 999) / 1000).coerceAtMost(300) }
     fun paymentExpired(nowMillis: Long): Boolean = paymentRemainingSeconds(nowMillis) == 0L
     fun paymentDeadlineReached(nowMillis: Long): Boolean = createdAtMillis?.let { nowMillis >= it + 5 * 60_000L } == true
+    /** Only confirmed completion has a reminder deadline; estimated finish does not expire a running order. */
+    fun completionReminderDeadlineMillis(): Long? {
+        if (phase != LaundryPhase.Ended) return null
+        val completed = finishedAtMillis ?: completionObservedAtMillis ?: return null
+        val zone = ZoneId.of("Asia/Shanghai")
+        return Instant.ofEpochMilli(completed).atZone(zone).toLocalDate().plusDays(1)
+            .atTime(3, 0).atZone(zone).toInstant().toEpochMilli()
+    }
+    internal fun withCompletionObservation(nowMillis: Long): LaundrySession =
+        if (phase == LaundryPhase.Ended && finishedAtMillis == null && completionObservedAtMillis == null)
+            copy(completionObservedAtMillis = nowMillis) else this
 }
 
 internal const val LaundryPaymentExpiredMessage = "付款时间已到，请查询订单结果"

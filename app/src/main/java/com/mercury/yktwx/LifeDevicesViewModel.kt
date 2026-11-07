@@ -117,8 +117,8 @@ class LifeDevicesViewModel internal constructor(
                 account = saved.first
                 ownerPhone = account?.phone.orEmpty()
                 accountVerifier.restored(account?.maskedPhone.orEmpty())
-                mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty(),
-                    laundry = saved.third.lastOrNull(), laundrySessions = saved.third) }
+                mutable.update { it.copy(connectedPhone = account?.maskedPhone.orEmpty()) }
+                restoreLaundrySessions(saved.third)
                 account?.let { recoverWaterSessions(it.token, saved.second.filter { session -> session.active }) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(restoring = false, loginError = failure(e)) } }
@@ -270,7 +270,7 @@ class LifeDevicesViewModel internal constructor(
                 val restored = withContext(io) { store.waterSessions() to store.laundrySessions() }
                 val candidates = restored.first.filter { item -> item.active &&
                     mutable.value.waterSessions.none { it.sessionId == item.sessionId } }
-                mutable.update { it.copy(laundry = restored.second.lastOrNull(), laundrySessions = restored.second) }
+                restoreLaundrySessions(restored.second)
                 try { recoverWaterSessions(next.token, candidates) }
                 catch (e: CancellationException) { throw e }
                 catch (e: Exception) { mutable.update { it.copy(error = failure(e)) } }
@@ -907,7 +907,13 @@ class LifeDevicesViewModel internal constructor(
         }
         return mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId }?.phase in setOf(LaundryPhase.Running, LaundryPhase.Ended, LaundryPhase.Closed)
     }
-    private suspend fun saveLaundrySession(session: LaundrySession, select: Boolean = false) {
+    private suspend fun restoreLaundrySessions(saved: List<LaundrySession>) {
+        val restored = saved.map { it.withCompletionObservation(now()) }
+        mutable.update { it.copy(laundry = restored.lastOrNull(), laundrySessions = restored) }
+        if (restored != saved) persistence.withLock { withContext(io) { store.saveLaundrySessions(restored) } }
+    }
+    private suspend fun saveLaundrySession(value: LaundrySession, select: Boolean = false) {
+        val session = value.withCompletionObservation(now())
         // A response that finishes after manual dismissal must not restore the removed card.
         if (!select && mutable.value.laundrySessions.none { it.sessionId == session.sessionId }) return
         mutable.update {

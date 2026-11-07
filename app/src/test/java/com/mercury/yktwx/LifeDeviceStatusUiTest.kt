@@ -16,6 +16,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.data.UpdateRelease
@@ -37,6 +41,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.*
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -236,6 +242,63 @@ class LifeDeviceStatusUiTest {
         compose.runOnIdle { water = water.copy(phase = WaterPhase.Ended) }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+    }
+
+    private fun laundryTime(value: String) = LocalDateTime.parse(value).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+
+    @Test fun completedLaundryExpiresAtNextDayThreeEvenWhenItIsTheOnlyIsland() {
+        val finished = sessions().laundry.copy(phase = LaundryPhase.Ended,
+            finishedAtMillis = laundryTime("2026-11-07T23:50:00"))
+        val expired = finished.copy(sessionId = "old-completion", finishedAtMillis = laundryTime("2026-11-06T23:50:00"))
+        val laundries = listOf(expired, finished)
+        val cutoff = laundryTime("2026-11-08T03:00:00")
+        var clock = cutoff - 500
+        val nowMillis = { clock }
+        var dismissals = 0
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            LifeDeviceStatusIslands(emptyList(), laundries, { _, _ -> }, { _, _ -> dismissals++ }, settings,
+                nowMillis = nowMillis)
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${expired.sessionId}").assertDoesNotExist()
+        compose.onNodeWithText("已完成").assertIsDisplayed()
+        compose.runOnIdle { clock = cutoff }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+        assertEquals(0, dismissals)
+        assertEquals(listOf(expired, finished), laundries)
+    }
+
+    @Test fun resumingAfterThreeHidesCompletionAndKeepsRunningLaundryAndWaterAccessible() {
+        val sessions = sessions()
+        val finished = sessions.laundry.copy(phase = LaundryPhase.Ended,
+            finishedAtMillis = laundryTime("2026-11-07T20:00:00"))
+        val running = sessions.laundry.copy(sessionId = "still-running", expectedEndMillis = laundryTime("2026-11-07T21:00:00"))
+        val owner = object : LifecycleOwner { override val lifecycle = LifecycleRegistry(this) }
+        var enabled by mutableStateOf(false)
+        var clock = laundryTime("2026-11-08T02:50:00")
+        val nowMillis = { clock }
+        val opened = mutableListOf<String>()
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.RESUMED }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true, LocalLifecycleOwner provides owner) { AppTheme {
+            LifeDeviceStatusIslands(listOf(sessions.water), listOf(finished, running), { _, id -> opened.add(id) },
+                { _, _ -> }, settings, enabled = enabled, nowMillis = nowMillis)
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${finished.sessionId}").assertExists()
+        compose.runOnIdle {
+            owner.lifecycle.currentState = Lifecycle.State.STARTED
+            clock = laundryTime("2026-11-08T03:01:00")
+            owner.lifecycle.currentState = Lifecycle.State.RESUMED
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("life-session-${finished.sessionId}").assertDoesNotExist()
+        compose.runOnIdle { enabled = true }
+        compose.onNodeWithTag("life-status-water").performScrollTo().performClick()
+        compose.onNodeWithTag("life-status-laundry").performScrollTo().performClick()
+        assertEquals(listOf(sessions.water.sessionId, running.sessionId), opened)
     }
 
     @Test fun paymentKeepsCompletedLaundryUntilDismissalAndExcludesCompletedWater() {
