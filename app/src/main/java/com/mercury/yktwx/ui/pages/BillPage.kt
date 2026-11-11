@@ -157,7 +157,7 @@ fun BillPage(
         if (query.text.isNotBlank()) delay(350)
         submitSearch(query.text)
     }
-    val arrivalAt = remember(state.listUpdateId) { android.os.SystemClock.elapsedRealtime() }
+    val recordArrival = rememberContentArrivalState(state.listUpdateId)
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
     val queryMotion = rememberBillQueryMotion(state, detailsState, isActive, motion.running)
     val pendingResultHeight = with(LocalDensity.current) { queryMotion.pendingHeight.toDp() }
@@ -460,7 +460,7 @@ fun BillPage(
                                                                         key(record.stableId) {
                                                                             val arrives = remember(resultState.listUpdateId) {
                                                                                 record.stableId in resultState.animatedOrderIds &&
-                                                                                android.os.SystemClock.elapsedRealtime() - arrivalAt < 450
+                                                                                recordArrival.claim(resultState.listUpdateId, record.stableId)
                                                                             }
                                                                             val animateArrival = arrives && !motion.running && !queryMotion.running
                                                                             val appended = resultState.listUpdate != com.mercury.yktwx.BillListUpdate.Refresh
