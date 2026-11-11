@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -62,6 +63,50 @@ class LifeDeviceStatusUiTest {
         val started = 1_700_000_000_000L
         return Sessions(water, LaundrySession(laundryDevice, "laundry-sku", "0.00", "2", LaundryPhase.Running,
             startedAtMillis = started, expectedEndMillis = started + 300_000, sessionId = "laundry-session"))
+    }
+
+    @Test fun existingIslandsDoNotReplayOnPageRecreationButNewSessionsStillEnter() {
+        val water = sessions().water
+        var waters by mutableStateOf(listOf(water))
+        var showPayment by mutableStateOf(true)
+        var creations = 0
+        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent {
+            val holder = rememberSaveableStateHolder()
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+                if (showPayment) holder.SaveableStateProvider("payment") {
+                    DisposableEffect(Unit) { creations++; onDispose {} }
+                    LifeDeviceStatusIslands(waters, emptyList(), { _, _ -> }, { _, _ -> }, settings,
+                        Modifier.fillMaxWidth())
+                }
+            } }
+        }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        fun frames(count: Int = 1) {
+            repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        }
+        fun paint(): Bitmap = compose.onNodeWithTag("life-session-${water.sessionId}").captureToImage()
+            .asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
+        val settled = paint()
+        val bounds = compose.onNodeWithTag("life-session-${water.sessionId}").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { showPayment = false }
+        frames(2)
+        compose.onNodeWithTag("payment-life-status").assertDoesNotExist()
+        compose.runOnIdle { showPayment = true }
+        frames(2)
+        assertEquals(2, creations)
+        assertEquals(bounds, compose.onNodeWithTag("life-session-${water.sessionId}").fetchSemanticsNode().boundsInRoot)
+        assertTrue("Existing session must return at full opacity and width", settled.sameAs(paint()))
+        val newSession = water.copy(sessionId = "new-water-session")
+        compose.runOnIdle { waters = listOf(water, newSession) }
+        frames(5)
+        val entering = compose.onNodeWithTag("life-session-${newSession.sessionId}").captureToImage().asAndroidBitmap()
+            .copy(Bitmap.Config.ARGB_8888, false)
+        frames(25)
+        assertFalse("A new device session must still animate into view", entering.sameAs(
+            compose.onNodeWithTag("life-session-${newSession.sessionId}").captureToImage().asAndroidBitmap()))
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun showerIslandReopensSameSessionAndDisappearsOnlyAfterConfirmedEnd() {

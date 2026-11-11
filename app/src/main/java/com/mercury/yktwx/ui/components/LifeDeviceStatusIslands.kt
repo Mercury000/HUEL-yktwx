@@ -117,8 +117,13 @@ private fun StatusEntries(entries: List<LifeDeviceStatusEntry>, enabled: Boolean
     onOpen: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit,
     settings: ThemeSettings, modifier: Modifier) {
     val ids = remember { mutableStateListOf<String>() }
+    // Pager restoration shows existing sessions immediately; new sessions still enter.
+    val arrivals = rememberContentArrivalState()
     val displayedIds = (ids + entries.map { it.sessionId }).distinct()
-    SideEffect { entries.forEach { if (it.sessionId !in ids) ids.add(it.sessionId) } }
+    SideEffect {
+        entries.forEach { if (it.sessionId !in ids) ids.add(it.sessionId) }
+        arrivals.retain(displayedIds)
+    }
     val scrollState = rememberScrollState()
     if (displayedIds.isEmpty()) return
     BoxWithConstraints(modifier.testTag("payment-life-status")) {
@@ -138,10 +143,13 @@ private fun StatusEntries(entries: List<LifeDeviceStatusEntry>, enabled: Boolean
                 val currentEntry by rememberUpdatedState(entry)
                 val currentEnabled by rememberUpdatedState(enabled)
                 val display = rememberWhileShown(entry != null, entry)
-                val visibility = remember { MutableTransitionState(false) }
+                val visibility = remember { MutableTransitionState(!arrivals.claim(id)) }
                 visibility.targetState = entry != null
                 LaunchedEffect(visibility.isIdle, visibility.currentState, entry) {
-                    if (entry == null && visibility.isIdle && !visibility.currentState) ids.remove(id)
+                    if (entry == null && visibility.isIdle && !visibility.currentState) {
+                        ids.remove(id)
+                        arrivals.forget(id)
+                    }
                 }
                 AnimatedVisibility(visibility,
                     enter = fadeIn(tween(ContentMotion.Append)) + expandHorizontally(
