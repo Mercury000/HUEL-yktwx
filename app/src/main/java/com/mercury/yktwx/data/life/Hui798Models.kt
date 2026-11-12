@@ -2,6 +2,7 @@ package com.mercury.yktwx.data.life
 
 import java.net.URI
 import java.net.URLDecoder
+import kotlinx.serialization.Serializable
 
 enum class LifeProvider { Panggui, Hui798 }
 data class DeviceScanRoute(val provider: LifeProvider, val feature: LifeFeature, val code: String)
@@ -37,14 +38,15 @@ object Hui798DeviceCode {
     }.getOrNull()
 }
 
-data class Hui798Account(val phone: String, val token: String, val userId: String? = null) {
+@Serializable data class Hui798Account(val phone: String, val token: String, val userId: String? = null) {
     val maskedPhone: String get() = phone.take(3) + "****" + phone.takeLast(4)
+    override fun toString() = "Hui798Account([redacted])"
 }
-data class Hui798Device(val id: String, val name: String)
+@Serializable data class Hui798Device(val id: String, val name: String)
 data class Hui798Reading(val status: Int, val sessionTime: Long?)
 data class Hui798Overview(val userId: String, val devices: List<Hui798Device>)
 data class Hui798DeviceUse(val device: Hui798Device, val reading: Hui798Reading, val userId: String?)
-data class Hui798Session(
+@Serializable data class Hui798Session(
     val device: Hui798Device, val phase: WaterPhase = WaterPhase.Starting,
     val attemptedAtMillis: Long, val startAcknowledged: Boolean = false,
     val serverTime: Long? = null, val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
