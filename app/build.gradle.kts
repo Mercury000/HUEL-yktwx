@@ -74,16 +74,11 @@ android {
             resValue("string", "app_name", "财小通 Preview")
             matchingFallbacks += "debug"
         }
-        create("personal") {
-            initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += "release"
-        }
     }
     sourceSets {
         // Only these builds compile UI fixtures, preview notes and intent extras.
         listOf("debug", "preview").forEach { getByName(it).kotlin.directories.add("src/uiPreview/kotlin") }
-        listOf("release", "personal").forEach { getByName(it).kotlin.directories.add("src/production/kotlin") }
+        getByName("release").kotlin.directories.add("src/production/kotlin")
     }
 }
 androidComponents {
@@ -99,7 +94,7 @@ androidComponents {
 }
 tasks.withType<Test>().configureEach {
     // Existing UI tests require debug fixtures and its test activity manifest.
-    if (name in setOf("testPreviewUnitTest", "testReleaseUnitTest", "testPersonalUnitTest")) {
+    if (name in setOf("testPreviewUnitTest", "testReleaseUnitTest")) {
         filter { includeTestsMatching("com.mercury.yktwx.UiPreviewIsolationTest") }
     }
 }

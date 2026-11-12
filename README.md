@@ -9,7 +9,7 @@
 - 系统要求：**Android 14 / API 34 及以上，仅支持 ARM64（arm64-v8a）设备**。
 - 更新检测：设置中可关闭默认开启的自动检查，并通过唯一的“检查更新”入口手动查询，右侧显示当前版本；发现更新后打开后端返回的下载页面。检查频率与接口说明见[应用更新检测](docs/app-updates.md)。
 - 安装包：[最新正式发布](https://github.com/Mercury000/HUEL-yktwx/releases/latest) · [全部版本](https://github.com/Mercury000/HUEL-yktwx/releases)。如尚无 Release，可按下方构建说明生成 APK。
-- 正式安装选择 `CaiXiaoTong-<版本>-release.apk`。`debug` 用于调试，`preview` 使用独立包名用于界面预览；本机 `personal` 使用 debug 签名。
+- 正式安装选择 `CaiXiaoTong-<版本>-release.apk`。`debug` 用于调试，`preview` 使用独立包名用于界面预览。
 - 首次打开自动弹出「使用须知与隐私说明」，全文显示至末尾后才能同意；同意后输入本人学号 / 工号及校园卡查询密码登录。须知统一说明一卡通、胖乖生活与慧生活798的账户及业务数据处理。
 - 须知正文变更后保留各平台登录信息，进入应用时 Toast 提示并弹出新须知；同意前不发起业务或更新请求、不展示付款码，也不能操作软件功能。不同意、返回或关闭弹层会退出应用，再次打开仍需确认。
 - 后续启动在同意记录和登录凭据有效时恢复账户；退出登录位于 **我的 → 应用设置**。同包名、同签名的 APK 可覆盖更新，调试签名与正式签名之间不能直接覆盖安装。
@@ -92,8 +92,8 @@ CI 在仓库 **Settings → Secrets and variables → Actions → Secrets** 配�
 # 独立包名的 UI 预览版
 .\gradlew.bat :app:assemblePreview
 
-# 压缩优化，仍使用本机 debug 签名的个人版
-.\gradlew.bat :app:assemblePersonal
+# 压缩优化的正式版，本地构建不配置签名
+.\gradlew.bat :app:assembleRelease
 ```
 
 macOS / Linux 使用 `./gradlew`。
@@ -102,11 +102,11 @@ macOS / Linux 使用 `./gradlew`。
 | --- | --- | --- |
 | debug | `com.mercury.yktwx` | `app/build/outputs/apk/debug/app-debug.apk` |
 | preview | `com.mercury.yktwx.preview` | `app/build/outputs/apk/preview/app-preview.apk` |
-| personal | `com.mercury.yktwx` | `app/build/outputs/apk/personal/app-personal.apk` |
+| release | `com.mercury.yktwx` | `app/build/outputs/apk/release/app-release-unsigned.apk` |
 
-本地 `release` 构建不配置签名；`personal` **不是正式发布签名构建**。不要把私钥、密码或签名配置提交到 Git。
+本地 `release` 构建不配置签名，需要签名后才能安装。不要把私钥、密码或签名配置提交到 Git。
 
-`release` / `personal` 保留 R8 代码优化和资源裁剪，并压缩 APK 内的 DEX，以减小下载文件；`debug` / `preview` 不压缩 DEX，便于快速打包调试。DEX 压缩不改变代码内容，APK 变小不代表安装后的磁盘占用同比减少。
+`release` 保留 R8 代码优化和资源裁剪，并压缩 APK 内的 DEX，以减小下载文件；`debug` / `preview` 不压缩 DEX，便于快速打包调试。DEX 压缩不改变代码内容，APK 变小不代表安装后的磁盘占用同比减少。
 
 本地默认开启 Gradle 构建缓存、配置缓存和项目并行执行，最多使用 4 个 Gradle worker 控制并发内存峰值（可用 `--max-workers` 覆盖）。重复执行相同构建命令可复用配置；任务输出也可在输入一致时从构建缓存恢复。日常构建无需先执行 `clean`。首次构建仍需要生成缓存；排查配置缓存兼容问题时可临时追加 `--no-configuration-cache`。
 
@@ -145,7 +145,7 @@ adb shell am start -n com.mercury.yktwx.preview/com.mercury.yktwx.MainActivity -
 
 预览模式关闭截图限制，**不可用于真实付款**。同签名、同包名可覆盖更新；独立 preview 包不与常规包共享账户数据。
 
-预览假数据、提示文案和启动参数仅位于 `app/src/uiPreview/kotlin/`，由 `debug` / `preview` 的 Kotlin source set 编译。`release` / `personal` 使用 `app/src/production/kotlin/` 的禁用实现；共用代码中的预览分支由 `UiPreview.enabled` 编译期常量关闭，正式包不包含预览数据和文案，传入 `ui_preview` / `ui_preview_lost` 也不会开启预览。
+预览假数据、提示文案和启动参数仅位于 `app/src/uiPreview/kotlin/`，由 `debug` / `preview` 的 Kotlin source set 编译。`release` 使用 `app/src/production/kotlin/` 的禁用实现；共用代码中的预览分支由 `UiPreview.enabled` 编译期常量关闭，正式包不包含预览数据和文案，传入 `ui_preview` / `ui_preview_lost` 也不会开启预览。
 
 ## 测试与验证
 
@@ -193,7 +193,7 @@ app/
     MainActivity.kt
     PaymentViewModel.kt
   src/uiPreview/kotlin/   # 仅 debug / preview 编译的预览数据与文案
-  src/production/kotlin/  # release / personal 的预览禁用实现
+  src/production/kotlin/  # release 的预览禁用实现
   src/main/res/           # 应用资源、双语文案、备份规则
   src/test/               # 数据层回归测试与 UI 冒烟测试
 docs/api.md               # 内部接口协议说明
