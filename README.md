@@ -112,13 +112,17 @@ macOS / Linux 使用 `./gradlew`。
 
 ### 自动发布
 
-`.github/workflows/build.yml` 在推送 `main` 时读取 `app/build.gradle.kts` 的 `versionCode` / `versionName`，并检查 `versionCode` 对应的 tag 是否存在：
+产品版本由 Release Please 版本 PR 管理，读取 `version.txt`；本地编号与 CI 编号偏移读取 `ci-version.properties`。`.github/workflows/build.yml` 共用于 main/beta，自动生成 APK 的全局递增 versionCode：
 
-- 已存在：构建 debug APK 并上传为 workflow artifact。
-- 不存在：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，并创建 tag 为 `versionCode`、名称为 `versionName` 的 GitHub Release。
+- main/beta 普通提交：构建 debug 产物；Release Please 自动创建或更新对应分支的版本发布 PR，汇总版本与日志。
+- 合并 main 版本 PR：构建 release APK，使用仓库 Actions Secrets（`SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`）签名，上传并公开正式 Release。
+- 合并 beta 版本 PR：同样构建签名，发布 `1.5.0-beta`、`1.5.0-beta.1` 等 Pre-release，并更新 beta 清单，不抢占 GitHub Latest。
+- beta 测试通过后合入 main，由正式版本 PR 发布对应正式版；将正式版本 PR 同步回 beta 后开始下一周期。版本名称与安装编号都不需要逐次手改。
 - 也可手动触发 workflow，选择 debug 或 release；手动 release 只构建签名 APK，不创建 Release。
 
-APK 工作流仅由 Android 源码、Gradle 配置和该工作流文件的修改自动触发，也支持手动运行。工作流负责目标 APK 的编译打包、Release 签名及自动发布，仅调用对应构建类型的 `assemble` 任务。单元测试和 `lintDebug` 按下方命令在本地按需运行。构建失败时，不上传可分发 APK、不执行签名或创建 Release。
+APK 工作流跳过纯文档和生成清单提交，也支持手动运行；只调用对应构建类型的 `assemble` 任务。单元测试和 `lintDebug` 按下方命令在本地按需运行。两个渠道先创建带 tag 的 Draft Release，构建/上传失败时草稿可能保留，但不公开 APK、不切换更新清单。清单任务核对签名证书和五个 CDN 后发布；每日自动续期并补发遗漏的清单。
+
+首次启用权限、Release Please Token 的适用情形、分支流程和失败恢复见 [自动构建与发版](docs/releases.md)，更新签名密钥配置见 [清单上线配置](updates/README.md)。
 
 构建任务使用只读仓库权限，不接触签名 Secrets；release 任务仅在成功的 release 构建后执行，单独取得发布写权限。签名材料缺失时直接失败，不生成标为 release 的未签名安装包；密码通过环境变量传给签名工具，临时密钥文件在任务结束时清理，APK 经 `apksigner verify` 校验后才上传或发布。
 

@@ -7,12 +7,16 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+__pycache__/
+*.py[cod]
 
 # IDE and machine-local Android SDK configuration
 .idea/
 .vscode/
 *.iml
 /local.properties
+/build-version.properties
+/build-metadata.json
 
 # Installers and extracted dependency inspection files
 *.apk

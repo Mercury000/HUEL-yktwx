@@ -68,7 +68,8 @@ internal fun AppSettingsContent(
         }
         item { SmallTitle("应用更新") }
         item { Box(Modifier.padding(horizontal = 16.dp)) {
-            UpdateSettingsCard(updateState, settings.automaticUpdates.value, settings::setAutomaticUpdates, onCheckUpdates)
+            UpdateSettingsCard(updateState, settings.automaticUpdates.value, settings::setAutomaticUpdates, onCheckUpdates,
+                settings.updateChannel.value, settings::setUpdateChannel)
         } }
         item {
             Box(Modifier.padding(top = 20.dp, start = 16.dp, end = 16.dp)) {

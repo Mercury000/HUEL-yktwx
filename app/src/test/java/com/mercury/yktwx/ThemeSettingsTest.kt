@@ -16,7 +16,20 @@ class ThemeSettingsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val prefs = context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE)
 
-    @Before fun reset() { prefs.edit().clear().commit() }
+    @Before fun reset() {
+        prefs.edit().clear().commit()
+        context.getSharedPreferences("app_updates", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test fun updateChannelPersistsIndependentlyOfTheInstalledBuildChannel() {
+        val settings = ThemeSettings(context)
+        assertEquals(BuildConfig.UPDATE_CHANNEL, settings.updateChannel.value)
+        settings.setUpdateChannel("beta")
+        assertEquals("beta", ThemeSettings(context).updateChannel.value)
+        settings.setUpdateChannel("stable")
+        assertEquals("stable", ThemeSettings(context).updateChannel.value)
+        assertThrows(IllegalArgumentException::class.java) { settings.setUpdateChannel("unknown") }
+    }
 
     @Test fun transitionStyleDefaultsToMiuixAndPersistsTheSelection() {
         val settings = ThemeSettings(context)
