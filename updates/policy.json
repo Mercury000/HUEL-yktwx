@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "channels": {
+    "stable": { "maxForcedVersionCode": 0, "reason": "暂不启用强制更新" },
+    "beta": { "maxForcedVersionCode": 0, "reason": "暂不启用强制更新" }
+  }
+}

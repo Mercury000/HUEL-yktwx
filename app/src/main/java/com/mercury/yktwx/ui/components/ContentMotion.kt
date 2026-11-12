@@ -118,6 +118,11 @@ internal fun UpdatedText(
     }
 }
 
+/** Fit whole single-line labels using the same measured sizing as read-only numbers. */
+@Composable
+internal fun rememberSingleLineTextAutoSize(preferredSize: TextUnit): TextAutoSize =
+    remember(preferredSize) { WholeNumberAutoSize(preferredSize) }
+
 /** Keep signs and decimal digits together; fitting happens during text measurement, before paint. */
 private data class WholeNumberAutoSize(val preferredSize: TextUnit) : TextAutoSize {
     override fun TextAutoSizeLayoutScope.getFontSize(constraints: Constraints, text: AnnotatedString): TextUnit {

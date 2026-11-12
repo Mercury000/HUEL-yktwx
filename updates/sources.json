@@ -1,0 +1,15 @@
+{
+  "apkCandidates": [
+    "https://ghfast.top/{officialUrl}",
+    "https://gh-proxy.com/{officialUrl}",
+    "https://ghproxy.net/{officialUrl}",
+    "https://gh.llkk.cc/{officialUrl}",
+    "https://ghp.keleyaa.com/{officialUrl}",
+    "https://gh.monlor.com/{officialUrl}",
+    "https://xget.xi-xu.me/gh/{owner}/{repo}/releases/download/{tag}/{apk}",
+    "https://gh.jasonzeng.dev/{officialUrl}",
+    "https://gh.3w.pm/{officialUrl}",
+    "https://gh-proxy.org/{officialUrl}",
+    "https://v6.gh-proxy.org/{officialUrl}"
+  ]
+}

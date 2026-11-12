@@ -49,6 +49,49 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AppUpdateUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun releasePleaseNotesShowVersionOnceAndKeepMarkdownContent() {
+        val release = UpdateRelease(10, "1.5.0", """
+            ## [1.5.0](https://github.com/Mercury000/HUEL-yktwx/compare/v1.4.1...v1.5.0) (2026-11-12)
+
+            ### Features
+
+            * **update:** 完善应用内更新并接入双渠道自动发版 ([710e02c](https://github.com/Mercury000/HUEL-yktwx/commit/710e02c0a3d5970848310bf2ffabe05fcdf6cd7b))
+
+            ### Bug Fixes
+
+            * **ui:** 统一入场动画状态并避免切页重复播放 ([1adce9b](https://github.com/Mercury000/HUEL-yktwx/commit/1adce9bd613d8495da9a08fdb5a618a05c5733d8))
+        """.trimIndent(), "https://github.com/release", publishedAt = java.time.Instant.parse("2026-11-12T10:30:00Z"))
+        compose.setContent {
+            AppTheme(ColorSchemeMode.Light) {
+                Scaffold { AppUpdateDialog(AppUpdateUiState(release = release, visible = true), onDismiss = {}) }
+            }
+        }
+        compose.onAllNodesWithText("1.5.0").assertCountEquals(1)
+        compose.onNodeWithText("正式版").assertExists()
+        compose.onNodeWithText("发布时间：", substring = true).assertExists()
+        compose.onNodeWithText("1.5.0 (2026-11-12)").assertDoesNotExist()
+        compose.onNodeWithText("Features").assertExists()
+        compose.onNodeWithText("Bug Fixes").assertExists()
+        compose.onNodeWithText("• update: 完善应用内更新并接入双渠道自动发版 (710e02c)").assertExists()
+        compose.onNodeWithText("• ui: 统一入场动画状态并避免切页重复播放 (1adce9b)").assertExists()
+        compose.onNodeWithText("下载安装").assertIsDisplayed()
+    }
+    @Test fun channelSwitchUpdatesThePersistedPreference() {
+        val settings = settings()
+        settings.setUpdateChannel("stable")
+        compose.setContent {
+            AppTheme(ColorSchemeMode.Light) {
+                Scaffold {
+                    UpdateSettingsCard(AppUpdateUiState(), false, {}, {}, settings.updateChannel.value, settings::setUpdateChannel)
+                }
+            }
+        }
+        compose.onNodeWithTag("update-channel-switch").performClick()
+        compose.runOnIdle {
+            assertEquals("beta", settings.updateChannel.value)
+            assertEquals("beta", ThemeSettings(compose.activity).updateChannel.value)
+        }
+    }
     private fun settings(): ThemeSettings {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
@@ -62,7 +105,7 @@ class AppUpdateUiTest {
         }
     }
 
-    @Test fun settingsHaveOneManualEntryWithVersionOnTheRightAndDisablingAutomaticPersists() {
+    @Test fun settingsExplainReminderOnlyControlAndPersistItWithOneManualEntry() {
         val settings = settings()
         val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
         val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
@@ -74,9 +117,11 @@ class AppUpdateUiTest {
         compose.onNodeWithText("应用设置").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         capture("settings-entry")
-        compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasText("转回检测支付"))).performScrollToIndex(1)
+        compose.onNodeWithTag("settings-page-list").performScrollToIndex(5)
+        compose.onNodeWithText("普通更新提醒").assertExists()
+        compose.onNodeWithText("关闭后仍会检查版本，强制更新和手动检查不受影响").assertExists()
         compose.onNode(isToggleable() and (hasTestTag("automatic-updates-switch") or
-            hasAnyAncestor(hasTestTag("automatic-updates-switch")))).performClick()
+            hasAnyAncestor(hasTestTag("automatic-updates-switch")))).performSemanticsAction(SemanticsActions.OnClick)
         compose.runOnIdle { assertFalse(ThemeSettings(compose.activity).automaticUpdates.value) }
         compose.onNodeWithTag("check-updates").performScrollTo()
         compose.onAllNodesWithTag("check-updates").assertCountEquals(1)
@@ -153,43 +198,64 @@ class AppUpdateUiTest {
                 Scaffold { AppUpdateDialog(state) { state = state.copy(visible = false) } }
             }
         }
-        compose.onNodeWithText("发现新版本 1.2.0").assertIsDisplayed()
-        compose.onNodeWithText("1.2.0").assertDoesNotExist()
-        compose.onNodeWithText("前往下载").assertIsDisplayed()
-        compose.onNodeWithText("稍后").assertIsDisplayed()
+        compose.onNodeWithText("更新详情").assertIsDisplayed()
+        compose.onNodeWithText("1.2.0").assertIsDisplayed()
+        compose.onNodeWithText("下载安装").assertIsDisplayed()
+        compose.onNodeWithText("忽略").assertIsDisplayed()
         capture("update-light")
         val notes = compose.onNodeWithTag("app-update-notes")
         notes.performTouchInput { swipeUp() }
         assertTrue(notes.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
-        compose.onNodeWithText("前往下载").assertIsDisplayed()
+        compose.onNodeWithText("下载安装").assertIsDisplayed()
         compose.runOnIdle { dark = true }
         capture("update-dark")
-        compose.onNodeWithText("稍后").performClick()
+        compose.onNodeWithText("忽略").performClick()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
     }
 
-    @Test fun downloadUsesBackendAddressAndDismissesTheDialog() {
-        val body = JSONObject().put("schemaVersion", 1).put("updateAvailable", true)
-            .put("reason", "updateAvailable").put("latest", JSONObject()
-                .put("versionCode", 4).put("versionName", "1.2.0").put("notes", "修复与优化")
-                .put("downloadPageUrl", "https://cxt.303889.xyz/download/"))
-        val release = AppUpdateApi.parse(body.toString()).release!!
+    @Test fun downloadActionKeepsTheDialogOpenAndErrorsAreInline() {
+        val release = UpdateRelease(10, "1.5.0", "修复与优化", "https://github.com/release")
+        var downloads = 0
         var state by mutableStateOf(AppUpdateUiState(release = release, visible = true))
         compose.setContent {
             AppTheme(ColorSchemeMode.Light) {
-                Scaffold { AppUpdateDialog(state) { state = state.copy(visible = false) } }
+                Scaffold { AppUpdateDialog(state, onDownload = { downloads++ }) { state = state.copy(visible = false) } }
             }
         }
-        compose.onNodeWithText("前往下载").performClick()
-        compose.runOnIdle {
-            val intent = shadowOf(compose.activity).nextStartedActivity
-            assertEquals(Intent.ACTION_VIEW, intent.action)
-            assertEquals("https://cxt.303889.xyz/download/", intent.data.toString())
-            assertFalse(state.visible)
-        }
-        compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
+        compose.onNodeWithText("下载安装").performClick()
+        assertEquals(1, downloads)
+        compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(download = com.mercury.yktwx.data.UpdateDownloadState(
+            com.mercury.yktwx.data.UpdateDownloadPhase.Failed, error = "安装包校验失败")) }
+        compose.onNodeWithText("安装包校验失败").assertIsDisplayed()
+        compose.onNodeWithText("重试下载").assertIsDisplayed()
+        compose.onNodeWithText("跳过此版本").assertIsDisplayed()
     }
 
+    @Test fun forcedRootBlocksBusinessPagesAndHasNoDismissActions() {
+        val settings = settings()
+        val model = AppUpdateViewModel(compose.activity.application, UpdateCheckStore(
+            compose.activity.getSharedPreferences("forced-root-test", Context.MODE_PRIVATE), "v9"), {
+            UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
+                UpdateRelease(10, "1.5.0", "## 必须更新\n\n- 修复问题", "https://github.com/release", maxForcedVersionCode = 9))
+        })
+        compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + AppUpdateViewModel::class.java.name, model)
+        val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
+        val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
+        }
+        compose.runOnIdle { model.configure(true, true, true) }
+        compose.waitForIdle()
+        compose.onNodeWithText("需要更新后继续使用").assertIsDisplayed()
+        compose.onNodeWithText("付款码").assertDoesNotExist()
+        compose.onNodeWithText("学号 / 工号").assertDoesNotExist()
+        compose.onNodeWithText("忽略").assertDoesNotExist()
+        compose.onNodeWithText("跳过此版本").assertDoesNotExist()
+        compose.runOnIdle { model.dismiss(); model.presentIfAllowed(false) }
+        compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
+        capture("forced-update-light")
+    }
     @Test fun inlineNoticesArePassiveSharedAcrossPagesAndOpenDetailsOnlyWhenTapped() {
         val settings = settings()
         val prefs = compose.activity.getSharedPreferences("inline-update-ui-test", Context.MODE_PRIVATE)
@@ -243,7 +309,7 @@ class AppUpdateUiTest {
         compose.onNodeWithText("明细").performClick()
         notice("bill-scroll-surface").performClick()
         compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
-        compose.onNodeWithText("稍后").performClick()
+        compose.onNodeWithText("忽略").performClick()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
 
         tab("我的")
