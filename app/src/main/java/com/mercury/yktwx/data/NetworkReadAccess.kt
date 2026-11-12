@@ -63,9 +63,10 @@ internal sealed interface ReadDecision {
  * retry budget. It deliberately does not know how a page loads data; callers own their jobs and
  * call [started]/[finished] around the actual network request.
  *
- * Consecutive failed automatic reads get at most [maxAutoAttempts] attempts per epoch. Success
- * clears that failure budget so normal periodic reads can continue. A manual read
- * resets that budget. A reconnect never starts a second read while one is in flight; if that
+ * Consecutive failed automatic reads get at most [maxAutoAttempts] attempts per recovery cycle.
+ * Success clears that budget so normal periodic reads can continue. A manual read resets it;
+ * the controller also opens a new cycle on an actual page/foreground activation. A reconnect
+ * never starts a second read while one is in flight; if that
  * request fails, the caller can spend the remaining automatic attempt. This guarantees that
  * every offline -> online transition eventually tries again, without an unbounded request loop.
  */
@@ -165,6 +166,11 @@ internal class ReadGate(
     }
 
     fun failure(query: Any): ReadFailureKind? = failures[query]
+
+    /** A real page/foreground activation may recover transport failures without a reconnect. */
+    fun recoverNetworkFailures() {
+        attempts.keys.removeAll { failures[it] == ReadFailureKind.Network || it in inFlight }
+    }
 
     fun reset(query: Any) {
         attempts.remove(query)

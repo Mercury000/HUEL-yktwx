@@ -6,9 +6,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.URL
 import java.net.URLDecoder
-import java.security.Principal
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,35 +14,33 @@ import org.junit.Test
 
 /** Exercises the production request builder and parser, but never contacts a server. */
 class YktApiLoginTest {
-    private class FakeHttps(url: URL, private val status: Int, body: JSONObject) : HttpsURLConnection(url) {
+    private class FakeResponse(url: URL, private val status: Int, body: JSONObject) : HttpFixture(url) {
         private val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val sent = ByteArrayOutputStream()
         var disconnected = false
-        override fun connect() {}
-        override fun disconnect() { disconnected = true }
-        override fun usingProxy() = false
-        override fun getResponseCode() = status
-        override fun getInputStream(): InputStream = ByteArrayInputStream(bytes)
-        override fun getErrorStream(): InputStream = ByteArrayInputStream(bytes)
-        override fun getOutputStream(): OutputStream = sent
-        override fun getCipherSuite() = "TLS_FAKE_FOR_TEST"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
+
+        override fun close() { disconnected = true }
+
+        override fun statusCode() = status
+        override fun bodyStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun errorBodyStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun requestBodyStream(): OutputStream = sent
+
     }
     private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JSONObject? = null,
         private val balance: Any? = 1234, private val paymentStatus: Int = 1, private val lost: Int = 0, private val frozen: Int = 0,
         private val barcodeBody: JSONObject? = null, private val barcodeHttpStatus: Int = 200,
-        private val cardBody: JSONObject? = null, private val cardHttpStatus: Int = 200) {
-        val calls = mutableListOf<FakeHttps>()
+        private val cardBody: JSONObject? = null, private val cardHttpStatus: Int = 200,
+        private val barcodeFailure: Exception? = null) {
+        val calls = mutableListOf<FakeResponse>()
         private val methods = JSONArray().put(JSONObject().put("key", "snoNew").put("encryption", "keyboard").put("openCaptcha", captcha))
         private val config = JSONObject().put("getFrontConfig", JSONObject().put("loginType", methods.toString()).toString())
         private val keyboard = JSONObject().put("uuid", "fake-uuid").also { obj ->
             KeyboardEncoder.layouts.forEach { (key, value) -> obj.put(key, value.reversed()) }
         }
-        val api = YktApi { url ->
+        val api = fixtureYktApi { url ->
             check(url.protocol == "https" && url.host == "yktwx2.huel.edu.cn")
+            if (url.path.endsWith("/batchGetBarCodeGet")) barcodeFailure?.let { throw it }
             val body = when (url.path) {
                 "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", config)
                 "/berserker-secure/keyboard" -> JSONObject().put("code", 200).put("data", keyboard)
@@ -59,7 +54,7 @@ class YktApiLoginTest {
                 "/berserker-app/ykt/tsm/batchGetBarCodeGet" -> barcodeBody ?: JSONObject().put("code", 200).put("data", JSONObject().put("barcode", JSONArray().put("00000000000000000000")).put("expires", 17280))
                 else -> error("Unexpected request path")
             }
-            FakeHttps(url, when { url.path.endsWith("/oauth/token") -> tokenStatus
+            FakeResponse(url, when { url.path.endsWith("/oauth/token") -> tokenStatus
                 url.path.endsWith("/getCampusCards") -> cardHttpStatus
                 url.path.endsWith("/batchGetBarCodeGet") -> barcodeHttpStatus
                 else -> 200 }, body).also { calls.add(it) }
@@ -121,16 +116,16 @@ class YktApiLoginTest {
     @Test fun loginFormAndHeadersMatchWebsiteProtocol() = runBlocking {
         val fake = ScriptedApi(); fake.api.login(Credentials("123456", "Aa1@"))
         val post = fake.calls[2]
-        assertEquals("POST", post.requestMethod)
-        assertEquals("application/x-www-form-urlencoded", post.getRequestProperty("Content-Type"))
-        assertEquals("Basic bW9iaWxlX3NlcnZpY2VfcGxhdGZvcm06bW9iaWxlX3NlcnZpY2VfcGxhdGZvcm1fc2VjcmV0", post.getRequestProperty("Authorization"))
+        assertEquals("POST", post.request.method)
+        assertEquals("application/x-www-form-urlencoded", post.request.header("Content-Type"))
+        assertEquals("Basic bW9iaWxlX3NlcnZpY2VfcGxhdGZvcm06bW9iaWxlX3NlcnZpY2VfcGxhdGZvcm1fc2VjcmV0", post.request.header("Authorization"))
         val encoded = KeyboardEncoder.encode("Aa1@", KeyboardEncoder.layouts.mapValues { it.value.reversed() }, "fake-uuid")
         assertEquals(mapOf("username" to "123456", "password" to encoded, "grant_type" to "password", "scope" to "all",
             "loginFrom" to "h5", "logintype" to "snoNew", "device_token" to "h5", "synAccessSource" to "h5"), form(post.sent.toString("UTF-8")))
         assertFalse(post.sent.toString("UTF-8").contains("Aa1@"))
         assertEquals(mapOf("type" to "Standard", "order" to "0", "synAccessSource" to "h5"), form(fake.calls[1].url.query))
-        assertFalse(fake.calls.any { it.instanceFollowRedirects })
-        assertFalse(fake.calls.any { it.getRequestProperty("Cookie") != null })
+        assertFalse(fake.calls.any { AppHttp.service.followRedirects })
+        assertFalse(fake.calls.any { it.request.header("Cookie") != null })
     }
     @Test fun encodedSymbolsSurviveFormEncoding() = runBlocking {
         val fake = ScriptedApi(); val password = KeyboardEncoder.layouts.values.joinToString("")
@@ -151,8 +146,8 @@ class YktApiLoginTest {
     @Test fun paymentRequestsUseTokenNotBasicOrCookies() = runBlocking {
         val fake = ScriptedApi(); val session = fake.api.login(Credentials("123", "Aa1@")); fake.api.payment(session.accessToken)
         for (request in fake.calls.drop(3)) {
-            assertEquals("bearer fake-token", request.getRequestProperty("synjones-auth"))
-            assertNull(request.getRequestProperty("Authorization")); assertNull(request.getRequestProperty("Cookie"))
+            assertEquals("bearer fake-token", request.request.header("synjones-auth"))
+            assertNull(request.request.header("Authorization")); assertNull(request.request.header("Cookie"))
         }
     }
     @Test fun lossOrFreezeFlagsDoNotPreventRequestingAServerIssuedBarcode() = runBlocking {
@@ -222,6 +217,18 @@ class YktApiLoginTest {
         assertEquals(message, error.message)
         assertEquals(1234L, error.account.balanceCents)
         assertEquals(2, fake.calls.size)
+        assertEquals(ReadFailureKind.Other, error.readFailureKind())
+    }
+
+    @Test fun barcodeTransportFailureKeepsAccountAndNetworkCategoryForRecovery() {
+        val transportFailure = java.io.IOException("connection reset")
+        val fake = ScriptedApi(barcodeFailure = transportFailure)
+        val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
+        assertEquals(1234L, error.account.balanceCents)
+        assertEquals(ReadFailureKind.Network, error.readFailureKind())
+        assertEquals(PaymentCodeProblem.StatusUnverified, error.problem)
+        assertTrue(error.cause is NetworkFailure)
+        assertTrue(generateSequence(error as Throwable) { it.cause }.any { it === transportFailure })
     }
 
     @Test fun emptyBarcodePreservesInnerServerReasonAndBalance() = runBlocking {

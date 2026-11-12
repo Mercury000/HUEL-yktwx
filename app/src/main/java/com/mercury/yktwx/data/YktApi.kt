@@ -1,13 +1,11 @@
 package com.mercury.yktwx.data
 
+import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
-import java.net.URI
-import java.net.URL
-import java.net.URLEncoder
-import java.util.Base64
-import javax.net.ssl.HttpsURLConnection
 
 interface YktService {
     suspend fun login(credentials: Credentials): Session
@@ -35,46 +33,43 @@ interface YktService {
 
 /** First-party HTTPS only; no cookie jar, redirects, insecure TLS or automatic login retries. */
 class YktApi(
-    private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
+    private val client: Call.Factory = AppHttp.service,
 ) : YktService {
-    private suspend fun request(path: String, params: Map<String, String> = emptyMap(), token: String? = null, login: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
-        val query = (params + ("synAccessSource" to "h5")).entries.joinToString("&") { "${escape(it.key)}=${escape(it.value)}" }
-        val connection = openConnection(URI(BASE + path + if (login) "" else "?$query").toURL())
+    private suspend fun request(path: String, params: Map<String, String> = emptyMap(), token: String? = null, login: Boolean = false): JSONObject {
+        val fields = params + ("synAccessSource" to "h5")
+        val url = (BASE + path).toHttpUrl().newBuilder().apply {
+            if (!login) fields.forEach { (key, value) -> addQueryParameter(key, value) }
+        }.build()
+        val request = AppHttp.request(url.toString()).header("synAccessSource", "h5")
+        if (token != null) request.header("synjones-auth", "bearer $token")
+        if (login) {
+            request.post(AppHttp.form(fields))
+            request.header("Authorization", "Basic " + Base64.getEncoder()
+                .encodeToString("mobile_service_platform:mobile_service_platform_secret".toByteArray(Charsets.UTF_8)))
+        }
         try {
-            connection.connectTimeout = 15_000; connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false; connection.useCaches = false
-            connection.setRequestProperty("synAccessSource", "h5")
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Cache-Control", "no-store")
-            if (token != null) connection.setRequestProperty("synjones-auth", "bearer $token")
-            if (login) {
-                connection.requestMethod = "POST"; connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                connection.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("mobile_service_platform:mobile_service_platform_secret".toByteArray()))
-                connection.outputStream.use { it.write(query.toByteArray(Charsets.UTF_8)) }
+            return client.readResponse(request.build()) { response ->
+                val status = response.code
+                val bytes = response.readBytesAtMost(1_048_576)
+                if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
+                val payload = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
+                val code = payload?.optInt("code", -1) ?: -1
+                if (status >= 500) throw YktException("服务器暂不可用，请稍后重试")
+                if (status in 300..399) throw YktException("服务发生跳转，请在官网检查登录状态")
+                if (status == 429) throw YktException("请求过于频繁，请稍后重试")
+                if (login) {
+                    if (code in listOf(8002, 8003)) throw CaptchaRequired()
+                    if (status !in 200..299 || payload?.has("access_token") != true) throw InvalidCredentials()
+                } else {
+                    if (status in listOf(401, 403) || code in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
+                    if (status !in 200..299 || code != 200 || payload?.opt("success") == false) throw YktException(
+                        (payload?.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "服务暂不可用，请在官网检查账户状态",
+                    )
+                }
+                payload ?: throw YktException("服务器响应异常")
             }
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val bytes = stream?.use { it.readNBytes(1_048_577) } ?: byteArrayOf()
-            if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
-            val payload = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
-            val code = payload?.optInt("code", -1) ?: -1
-            if (status >= 500) throw YktException("服务器暂不可用，请稍后重试")
-            if (status in 300..399) throw YktException("服务发生跳转，请在官网检查登录状态")
-            if (status == 429) throw YktException("请求过于频繁，请稍后重试")
-            if (login) {
-                if (code in listOf(8002, 8003)) throw CaptchaRequired()
-                if (status !in 200..299 || payload?.has("access_token") != true) throw InvalidCredentials()
-            } else {
-                if (status in listOf(401, 403) || code in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
-                if (status !in 200..299 || code != 200 || payload?.opt("success") == false) throw YktException(
-                    (payload?.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "服务暂不可用，请在官网检查账户状态",
-                )
-            }
-            payload ?: throw YktException("服务器响应异常")
         } catch (e: YktException) { throw e }
-        catch (_: java.io.IOException) { throw NetworkFailure() }
-        finally { connection.disconnect() }
+        catch (e: java.io.IOException) { throw NetworkFailure(cause = e) }
     }
     override suspend fun login(credentials: Credentials): Session {
         if (credentials.username.isEmpty() || credentials.username.any { it !in '0'..'9' }) throw YktException("请输入正确的学号或工号")
@@ -110,7 +105,7 @@ class YktApi(
     override suspend fun paymentAccount(token: String): PaymentAccount = paymentAccountInfo(token).first
 
     override suspend fun paymentCard(token: String, account: String): CampusCard =
-        CardServiceApi(openConnection).paymentCard(token, account)
+        CardServiceApi(client).paymentCard(token, account)
 
     override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
         val (account, selected) = paymentAccountInfo(token)
@@ -135,8 +130,10 @@ class YktApi(
             return PaymentBatch(codes, expiry, account)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: AuthenticationRequired) { throw e }
-        catch (e: YktException) { throw PaymentCodeUnavailable(account, e.message ?: "付款码暂不可用") }
-        catch (_: Exception) { throw PaymentCodeUnavailable(account, "付款码数据异常") }
+        catch (e: NetworkFailure) { throw PaymentCodeUnavailable(account, e.message ?: "网络连接失败",
+            PaymentCodeProblem.StatusUnverified, ReadFailureKind.Network, cause = e) }
+        catch (e: YktException) { throw PaymentCodeUnavailable(account, e.message ?: "付款码暂不可用", cause = e) }
+        catch (e: Exception) { throw PaymentCodeUnavailable(account, "付款码数据异常", cause = e) }
     }
     override suspend fun bills(
         token: String,
@@ -206,6 +203,5 @@ class YktApi(
         )
         return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data")).items
     }
-    private fun escape(value: String) = URLEncoder.encode(value, Charsets.UTF_8)
     private companion object { const val BASE = "https://yktwx2.huel.edu.cn" }
 }

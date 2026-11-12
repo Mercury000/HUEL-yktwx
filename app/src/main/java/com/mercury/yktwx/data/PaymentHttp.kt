@@ -1,54 +1,49 @@
 package com.mercury.yktwx.data
 
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.URI
-import java.net.URL
-import java.net.URLEncoder
-import javax.net.ssl.HttpsURLConnection
 
 /** Shared first-party transport; no Cookie jar, redirects or retries of POSTs. */
-internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnection) {
+internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
     internal class Response(val status: Int, val body: String, val location: String?)
     suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null,
         chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response {
         require(form == null || jsonBody == null)
-        return exchange(URI(RechargeProtocol.SCHOOL + path + if (form == null && jsonBody == null)
-            "?" + encode(params + ("synAccessSource" to "h5")) else ""), token, form, chargeClient = chargeClient, jsonBody = jsonBody)
+        val url = (RechargeProtocol.SCHOOL + path).toHttpUrl().newBuilder().apply {
+            if (form == null && jsonBody == null) (params + ("synAccessSource" to "h5")).forEach { (key, value) -> addQueryParameter(key, value) }
+        }.build()
+        return exchange(url.toUri(), token, form, chargeClient = chargeClient, jsonBody = jsonBody)
     }
     private suspend fun exchange(uri: URI, token: String?, form: Map<String, String>?, bridge: Boolean = false,
-        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response = withContext(Dispatchers.IO) {
-        val connection = openConnection(uri.toURL())
+        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response {
         try {
-            connection.connectTimeout = 15_000; connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false; connection.useCaches = false
-            connection.setRequestProperty("Cache-Control", "no-store")
+            val request = AppHttp.request(uri.toString())
             if (bridge) {
-                connection.setRequestProperty("Referer", RechargeProtocol.SCHOOL + "/")
-                connection.setRequestProperty("Accept", "text/html")
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                request.header("Referer", RechargeProtocol.SCHOOL + "/")
+                request.header("Accept", "text/html")
+                request.header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
             } else {
-                connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("synAccessSource", "h5")
-                connection.setRequestProperty("synjones-auth", "bearer " + token)
-                if (chargeClient) connection.setRequestProperty("Authorization", "Basic " + java.util.Base64.getEncoder()
+                request.header("synAccessSource", "h5")
+                request.header("synjones-auth", "bearer " + token)
+                if (chargeClient) request.header("Authorization", "Basic " + java.util.Base64.getEncoder()
                     .encodeToString("charge:charge_secret".toByteArray(Charsets.UTF_8)))
             }
             if (form != null || jsonBody != null) {
-                connection.requestMethod = "POST"; connection.doOutput = true
-                connection.setRequestProperty("Content-Type", if (jsonBody != null) "application/json;charset=UTF-8" else "application/x-www-form-urlencoded")
-                val bytes = (jsonBody?.toString() ?: encode(form!!)).toByteArray(Charsets.UTF_8)
-                connection.setFixedLengthStreamingMode(bytes.size)
-                connection.outputStream.use { it.write(bytes) }
+                request.post(jsonBody?.toString()?.toRequestBody("application/json;charset=UTF-8".toMediaType()) ?: AppHttp.form(form!!))
             }
-            val status = connection.responseCode
-            val bytes = (if (status in 200..299) connection.inputStream else connection.errorStream)?.use { it.readNBytes(1_048_577) } ?: byteArrayOf()
-            if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
-            Response(status, String(bytes, Charsets.UTF_8), connection.getHeaderField("Location"))
+            return client.readResponse(request.build()) { response ->
+                val bytes = response.readBytesAtMost(1_048_576)
+                if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
+                Response(response.code, String(bytes, Charsets.UTF_8), response.header("Location"))
+            }
         } catch (e: YktException) { throw e }
-        catch (_: java.io.IOException) { throw NetworkFailure() }
-        finally { connection.disconnect() }
+        catch (e: java.io.IOException) { throw NetworkFailure(cause = e) }
     }
     suspend fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false,
         rechargePayment: Boolean = false): JSONObject = withContext(Dispatchers.Default) {
@@ -81,8 +76,5 @@ internal class PaymentHttp(private val openConnection: (URL) -> HttpsURLConnecti
         val response = exchange(action, null, emptyMap(), bridge = true)
         if (response.status != 200) throw YktException("微信支付跳转失败")
         RechargeProtocol.wechatUri(response.body, RechargeProtocol.query(action).getValue("prepay_id"))
-    }
-    private fun encode(params: Map<String, String>) = params.entries.joinToString("&") {
-        URLEncoder.encode(it.key, Charsets.UTF_8) + "=" + URLEncoder.encode(it.value, Charsets.UTF_8)
     }
 }

@@ -74,8 +74,10 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         readError, !displayState.busy)
     val networkError = rememberPageNetworkError(displayState.busy || displayState.refreshing || displayState.accountLoading || displayState.balanceLoading || displayState.cardStatusLoading,
         displayState.account != null || displayCode != null, null,
-        ReadRegion("余额", readError(displayState.accountError, displayState.accountErrorKind), displayState.account != null),
-        ReadRegion("卡状态", readError(displayState.cardStatusError, displayState.cardStatusErrorKind), displayState.accountCard != null))
+        ReadRegion("余额", readError(displayState.accountError, displayState.accountErrorKind), displayState.account != null,
+            displayState.accountLoading || displayState.balanceLoading),
+        ReadRegion("卡状态", readError(displayState.cardStatusError, displayState.cardStatusErrorKind), displayState.accountCard != null,
+            displayState.cardStatusLoading))
         .takeIf { initialError == null && readError == null && !displayState.busy }
     val showEnlarged = isActive && displayCode != null && enlarged != null
     // Only the format survives exit. The popup may still compose its previous content

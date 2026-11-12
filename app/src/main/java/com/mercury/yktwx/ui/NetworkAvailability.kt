@@ -11,11 +11,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.data.AndroidNetworkMonitor
 import com.mercury.yktwx.data.NetworkState
-import com.mercury.yktwx.data.networkAvailable
-import com.mercury.yktwx.data.networkState
 import com.mercury.yktwx.ui.components.FeedbackText
-
-internal fun isNetworkAvailable(context: Context) = networkAvailable(context)
 
 /** Keep connectivity epochs aligned with page ViewModels across Activity recreation. */
 internal class NetworkStateViewModel(app: Application) : AndroidViewModel(app) {
@@ -75,8 +71,8 @@ internal fun rememberForegroundState(): State<ForegroundState> {
  * Block only a known-offline click or dialog entry. Pull-to-refresh deliberately does not use
  * this: it must end with an inline notice, never a Toast.
  */
-internal fun allowOnlineEntry(context: Context, preview: Boolean = false): Boolean {
-    val offline = !preview && networkState(context) == false
+internal fun allowOnlineEntry(context: Context, online: Boolean?, preview: Boolean = false): Boolean {
+    val offline = !preview && online == false
     if (offline) Toast.makeText(context, FeedbackText.Offline, Toast.LENGTH_SHORT).show()
     return !offline
 }

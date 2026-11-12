@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.fixtureLifeDeviceApi
+
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -26,9 +29,6 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.*
 import java.net.URL
-import java.security.Principal
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
@@ -46,7 +46,7 @@ class LaundryUiTest {
             override fun clearAccount() {}
             override fun clearSession() {}
         }
-        return LifeDevicesViewModel(compose.activity.application, LifeDeviceApi("test-secret", { error("No live requests") }), store)
+        return LifeDevicesViewModel(compose.activity.application, fixtureLifeDeviceApi("test-secret", { error("No live requests") }), store)
             .also { models.put("life", it) }
     }
     private data class Fixture(val device: LifeDevice, val quote: LaundryQuote, val running: LaundryReading, val ended: LaundryReading)
@@ -54,7 +54,7 @@ class LaundryUiTest {
         val file = File("../tools/laundry-ui-capture.json")
         assumeTrue("Optional local capture fixture", file.isFile)
         val payload = JSONObject(file.readText())
-        fun service(orderKey: String) = LifeDeviceApi("test-secret", { url ->
+        fun service(orderKey: String) = fixtureLifeDeviceApi("test-secret", { url ->
             OfflineResponse(url, payload.getJSONObject(if (url.path == "/order/detail") orderKey else url.path).toString())
         })
         return runBlocking {
@@ -525,17 +525,13 @@ class LaundryUiTest {
         compose.onNodeWithText("继续支付").assertDoesNotExist()
         compose.onNodeWithText("洗衣已完成").assertDoesNotExist()
     }
-    private class OfflineResponse(url: URL, private val body: String) : HttpsURLConnection(url) {
-        override fun connect() {}
-        override fun disconnect() {}
-        override fun usingProxy() = false
-        override fun getResponseCode() = 200
-        override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
-        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
-        override fun getCipherSuite() = "TLS_TEST"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
+    private class OfflineResponse(url: URL, private val body: String) : HttpFixture(url) {
+
+        override fun close() {}
+
+        override fun statusCode() = 200
+        override fun bodyStream(): InputStream = ByteArrayInputStream(body.toByteArray())
+        override fun requestBodyStream(): OutputStream = ByteArrayOutputStream()
+
     }
 }

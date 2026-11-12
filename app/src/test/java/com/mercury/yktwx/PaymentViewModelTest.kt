@@ -209,6 +209,113 @@ class PaymentViewModelTest {
         assertEquals(2, analyticsBackend.events.count { it.first == "login_result" })
     }
 
+    @Test fun shellBackgroundClearsCodeAndReturnRequestsANewCodeOnTheSameNetwork() {
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        val active = ReadEnvironment(ReadPage.Payment, true, true, 0, paymentVisible = true, resumeEpoch = 1)
+        model.onReadEnvironment(active)
+        await { model.state.value.code != null }
+        val first = model.state.value.code
+        val balance = model.state.value.account
+        model.onReadEnvironment(active.copy(page = null, foreground = false))
+        assertNull(model.state.value.code)
+        assertSame(balance, model.state.value.account)
+        shadowOf(Looper.getMainLooper()).idleFor(5, TimeUnit.SECONDS)
+        assertEquals(1, payments)
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        await { model.state.value.code != null && model.state.value.code != first }
+        assertEquals(2, payments)
+        assertNull(model.state.value.error)
+    }
+
+    private fun beginFirstLogin() {
+        vault.clear()
+        paymentGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        model.login("123", "fake-password")
+        await { payments == 1 && repository.sessionState.value.username == "123" }
+    }
+
+    @Test fun firstShellResumeDuringLoginCannotLeaveTheSavedAccountNeedingLogin() {
+        codeAvailable = true
+        beginFirstLogin()
+        // MainActivity has already started business. The newly composed shell publishes
+        // its lifecycle epoch while the first payment response is still in flight.
+        model.onReadEnvironment(ReadEnvironment(ReadPage.Payment, true, true, 0,
+            paymentVisible = true, resumeEpoch = 2))
+        assertTrue(model.state.value.busy)
+        paymentGate.complete(Unit)
+        await { responses == 1 && !model.state.value.busy }
+        assertFalse(model.state.value.needsLogin)
+        assertEquals("123", model.state.value.username)
+        assertNotNull(model.state.value.code)
+        assertNotNull(model.state.value.account)
+        assertEquals(1, logins)
+        assertEquals(1, payments)
+    }
+
+    @Test fun firstShellResumeWithUnavailableBarcodeStillFinishesAccountLogin() {
+        beginFirstLogin()
+        model.onReadEnvironment(ReadEnvironment(ReadPage.Payment, true, true, 0,
+            paymentVisible = true, resumeEpoch = 2))
+        paymentGate.complete(Unit)
+        await { responses == 1 && !model.state.value.busy }
+        assertFalse(model.state.value.needsLogin)
+        assertEquals("123", model.state.value.username)
+        assertNotNull(model.state.value.account)
+        assertNull(model.state.value.code)
+        assertEquals(problem, model.state.value.problem)
+        assertEquals(1, logins)
+    }
+
+    @Test fun backgroundDuringFirstLoginKeepsAuthenticationButDefersBarcodeDisplay() {
+        codeAvailable = true
+        beginFirstLogin()
+        model.onBackground()
+        assertTrue(model.state.value.busy)
+        paymentGate.complete(Unit)
+        await { responses == 1 && !model.state.value.busy }
+        assertFalse(model.state.value.needsLogin)
+        assertNotNull(model.state.value.account)
+        assertNull(model.state.value.code)
+        model.onForeground()
+        await { model.state.value.code != null }
+        assertEquals(1, logins)
+        assertEquals(2, payments)
+    }
+
+    @Test fun logoutDuringFirstLoginStillCancelsTheAccountTransitionAndLateBarcode() {
+        codeAvailable = true
+        beginFirstLogin()
+        model.logout()
+        assertTrue(model.state.value.needsLogin)
+        paymentGate.complete(Unit)
+        await { responses == 1 && !model.state.value.busy && repository.sessionState.value.username == null }
+        assertTrue(model.state.value.needsLogin)
+        assertNull(model.state.value.account)
+        assertNull(model.state.value.code)
+        assertNull(vault.credentials())
+        model.onForeground()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, payments)
+    }
+
+    @Test fun coalescedShellResumeCannotKeepACodeWithAStoppedTicker() {
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        val active = ReadEnvironment(ReadPage.Payment, true, true, 0, paymentVisible = true, resumeEpoch = 1)
+        model.onReadEnvironment(active)
+        await { model.state.value.code != null }
+        val first = model.state.value.code
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        await { model.state.value.code != null && model.state.value.code != first }
+        assertEquals(2, payments)
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(2, payments)
+    }
+
     @Test fun localInitializationPreservesCredentialsWithoutBusinessRequests() {
         codeAvailable = true
         val credentials = vault.credentials()
