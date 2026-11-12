@@ -1,10 +1,10 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application")
-    id("com.mikepenz.aboutlibraries.plugin.android") version "15.3.0"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.aboutlibraries)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 val machineProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
@@ -114,37 +114,37 @@ tasks.withType<Test>().configureEach {
 java { toolchain { languageVersion = JavaLanguageVersion.of(22) } }
 kotlin { jvmToolchain(22) }
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.1")
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    implementation("com.squareup.okhttp3:okhttp:5.3.0")
-    "releaseImplementation"("com.umeng.umsdk:common:10.0.1")
-    "releaseImplementation"("com.umeng.umsdk:asms:1.8.7")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    debugImplementation(libs.compose.tooling)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.coroutines.android)
+    implementation(libs.okhttp)
+    "releaseImplementation"(libs.umeng.common)
+    "releaseImplementation"(libs.umeng.asms)
     // Payment QR and barcode generation; camera decoding uses wechat-qrcode-lite.
-    implementation("com.google.zxing:core:3.5.4")
+    implementation(libs.zxing.core)
     implementation(files("libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar"))
-    implementation("com.alipay.sdk:alipaysdk-android:15.8.42")
+    implementation(libs.alipay)
     implementation(files("libs/unionpay-sdk-mini-3.5.16.jar"))
-    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
-    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
-    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
-    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
-    implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4")
-    implementation("com.mikepenz:aboutlibraries-core:15.3.0")
-    testImplementation("org.robolectric:robolectric:4.17")
-    testImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("org.json:json:20260814")
-    testImplementation("com.squareup.okhttp3:mockwebserver3:5.3.0")
-    testImplementation("com.squareup.okhttp3:okhttp-tls:5.3.0")
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.icons)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.nav)
+    implementation(libs.aboutlibraries.core)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.org.json)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
 }
 
 aboutLibraries {

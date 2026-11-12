@@ -1,4 +1,4 @@
 buildscript {
-    dependencies { classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21") }
+    dependencies { classpath(libs.kotlin.gradle.plugin) }
 }
-plugins { id("com.android.application") version "9.5.0" apply false }
+plugins { alias(libs.plugins.android.application) apply false }
