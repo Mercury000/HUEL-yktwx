@@ -66,7 +66,7 @@ class UpdateInstallRecoveryTest {
     private fun model(candidate: UpdateRelease = release, now: () -> Long = System::currentTimeMillis): AppUpdateViewModel {
         val prefs = app.getSharedPreferences("installation-recovery", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        return AppUpdateViewModel(app, UpdateCheckStore(prefs, "recovery"), {
+        return AppUpdateViewModel(app, updateStoreFixture(prefs, "recovery"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable, candidate)
         }, installer, now).also { models.put("recovery", it) }
     }

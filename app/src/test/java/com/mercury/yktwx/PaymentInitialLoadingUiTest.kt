@@ -128,7 +128,7 @@ class PaymentInitialLoadingUiTest {
             problem = PaymentCodeProblem.StatusUnverified,
             error = "网络连接失败", errorKind = ReadFailureKind.Network,
             accountError = "网络连接失败", accountErrorKind = ReadFailureKind.Network))
-        val settings = themeSettingsFixture(compose.activity)
+        val settings = com.mercury.yktwx.ui.ThemeSettings(compose.activity)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides false) {
                 AppTheme { PaymentPage(state, settings, 0.dp, onRefresh = {}) }

@@ -40,7 +40,7 @@ class LoginUpdateUiTest {
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + type.name, model)
     }
 
-    private fun store(): UpdateCheckStore = UpdateCheckStore(
+    private fun store(): UpdateCheckStore = updateStoreFixture(
         compose.activity.getSharedPreferences("login-update-test", Context.MODE_PRIVATE).apply { edit().clear().commit() }, "v4")
 
     private fun consent(): UsageConsent {

@@ -42,7 +42,8 @@ class AppUpdateApiTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("signed-update-api-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        return UpdateCheckStore(prefs, "package:stable:9", "package", 9)
+        resetUpdateFixture(prefs)
+        return updateStoreFixture(prefs, "package:stable:9", "package", 9, verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
     }
     private open class FakeResponse(url: URL, private val body: String, private val status: Int = 200) : HttpFixture(url) {
         var disconnected = false
@@ -108,7 +109,7 @@ class AppUpdateApiTest {
         val prefs = ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences("python-publisher-interoperability", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
+        fun restored() = updateStoreFixture(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
             now = { instant }, verifyCached = { body, channel -> verifier.manifest(body, channel).first })
         val api = AppUpdateApi(fixtureUpdateHttp { url ->
             when {
@@ -187,7 +188,23 @@ class AppUpdateApiTest {
 
 
 
-
+    @Test fun publishedRevisionResetIsRejectedWithItsReasonAndKeepsTheAcceptedPolicy() = runBlocking {
+        val updates = store()
+        updates.repository.update { it.copy(updateChannel = "beta") }
+        val (previous, digest) = fixture.verifier.manifest(
+            fixture.sign(fixture.json(version = 10, revision = 2, channel = "beta")), "beta")
+        updates.acceptPolicy("beta", previous, digest)
+        val policy = updates.repository.snapshot().policies
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 11, revision = 1, channel = "beta"))
+        val rejected = assertThrows(UpdateMetadataRejected::class.java) { runBlocking {
+            api { url ->
+                if (url.path.contains("/stable/")) "" to 404
+                else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+            }.check(fixture.request.copy(channel = "beta"), updates)
+        } }
+        assertEquals(UpdateMetadataRejection.Stale, rejected.reason)
+        assertEquals(policy, updates.repository.snapshot().policies)
+    }
     @Test fun unpublishedAuthorityOverridesOldSignedMirrors() = runBlocking {
         val (pointer, manifest) = fixture.pair(fixture.json())
         val updates = store()
@@ -197,9 +214,28 @@ class AppUpdateApiTest {
         }.check(fixture.request, updates)
         assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
         assertNull(result.release)
-        assertNull(updates.cachedRelease())
+        assertTrue(updates.repository.snapshot().policies.isEmpty())
     }
-
+    @Test fun failedBetaChannelCannotBeReportedAsCurrentOrClearTheKnownUpdate() = runBlocking {
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 9))
+        val updates = store()
+        updates.repository.update { it.copy(updateChannel = "beta") }
+        val (known, digest) = fixture.verifier.manifest(fixture.sign(fixture.json(channel = "beta")), "beta")
+        updates.acceptPolicy("beta", known, digest)
+        val metadata = api { url ->
+            if (url.path.contains("/beta/")) "" to 503
+            else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+        }
+        val result = metadata.check(fixture.request.copy(channel = "beta"), updates)
+        assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
+        assertEquals(known, result.release)
+        assertEquals(setOf("stable"), result.resolvedChannels)
+        val knownPolicy = updates.repository.snapshot().policies.getValue("${fixture.request.packageName}:beta")
+        updates.checked(1_000_000, true, "beta", result)
+        assertEquals(knownPolicy, updates.repository.snapshot().policies.getValue("${fixture.request.packageName}:beta"))
+        assertEquals(known, updates.cachedRelease())
+        Unit
+    }
     @Test fun verifiedMirrorsReturnWithoutWaitingForBlockedAuthority() = runBlocking {
         val releaseAuthority = java.util.concurrent.CountDownLatch(1)
         val (pointer, manifest) = fixture.pair(fixture.json())
@@ -326,18 +362,50 @@ class AppUpdateApiTest {
         Unit
     }
 
-    @Test fun channelSwitchClearsOptionalBetaCacheButRetainsConfirmedForcedPolicy() {
+    @Test fun betaSelectsTheHigherVerifiedVersionFromEitherChannel() = runBlocking {
+        for (higher in listOf("stable", "beta")) {
+            val pairs = listOf("stable", "beta").associateWith { channel ->
+                fixture.pair(fixture.json(version = if (channel == higher) 12 else 11, channel = channel))
+            }
+            val result = api { url ->
+                val pair = pairs.getValue(if (url.path.contains("/beta/")) "beta" else "stable")
+                (if (url.path.endsWith("latest.json")) pair.first else pair.second) to 200
+            }.check(fixture.request.copy(channel = "beta"), store())
+            assertEquals(12, result.release!!.versionCode)
+            assertEquals(higher, result.release!!.channel)
+            assertEquals(setOf("stable", "beta"), result.availableChannels)
+        }
+    }
+
+    @Test fun unavailableChannelDoesNotReplaceAHigherKnownUpdateWithALowerNewRelease() = runBlocking {
+        val updates = store()
+        updates.repository.update { it.copy(updateChannel = "beta") }
+        val (known, digest) = fixture.verifier.manifest(fixture.sign(fixture.json(version = 12, channel = "beta")), "beta")
+        updates.acceptPolicy("beta", known, digest)
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 11))
+        val result = api { url ->
+            if (url.path.contains("/beta/")) "" to 503
+            else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+        }.check(fixture.request.copy(channel = "beta"), updates)
+        assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
+        assertEquals(known, result.release)
+        assertEquals(setOf("stable"), result.resolvedChannels)
+        assertEquals(known, updates.cachedRelease())
+        Unit
+    }
+
+    @Test fun channelSwitchClearsOptionalBetaCacheButRetainsConfirmedForcedPolicy() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("channel-policy-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "package:beta:9", "package", 9) { body, channel ->
+        fun restored() = updateStoreFixture(prefs, "package:beta:9", "package", 9) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }
         val store = restored()
         val optional = fixture.verifier.manifest(fixture.sign(fixture.json(channel = "beta")), "beta")
         store.acceptPolicy("beta", optional.first, optional.second)
         assertNotNull(store.cachedRelease())
-        store.selectChannel("stable")
+        store.repository.update { it.copy(updateChannel = "stable") }
         assertNull(store.cachedRelease())
         assertEquals("stable", restored().channel)
         val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2, channel = "beta")
@@ -410,15 +478,16 @@ class AppUpdateApiTest {
                 .check(fixture.request, store())
         } }
     }
-    @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() {
+    @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() = runBlocking {
         val store = store()
         val first = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2).withField("maxForcedVersionCode", 8)), "stable")
         store.acceptPolicy("stable", first.first, first.second)
         val lower = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 1)), "stable")
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", lower.first, lower.second) }
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", first.first, "b".repeat(64)) }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", lower.first, lower.second) } }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", first.first, "b".repeat(64)) } }
         val reset = fixture.verifier.manifest(fixture.sign(fixture.json(version = 11, revision = 3)), "stable")
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", reset.first, reset.second) }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", reset.first, reset.second) } }
+        Unit
     }
     @Test fun timestampParsingAndDangerousUrlsAreBounded() {
         val invalidTime = fixture.verifier.manifest(fixture.sign(fixture.json().withField("publishedAt", "not a date")), "stable").first
@@ -426,23 +495,23 @@ class AppUpdateApiTest {
         listOf("http://example.com/a", "https://user@example.com/a", "file:///a", "https://example.com:8080/a")
             .forEach { url -> assertThrows(Exception::class.java) { httpsUri(url) } }
     }
-    @Test fun forcedSignedPolicySurvivesRestartButActualNewInstalledVersionClearsIt() {
+    @Test fun forcedSignedPolicySurvivesRestartButActualNewInstalledVersionClearsIt() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("forced-restart-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
-        fun restored(version: Int) = UpdateCheckStore(prefs, "package:stable:$version", "package", version) { body, channel ->
+        fun restored(version: Int) = updateStoreFixture(prefs, "package:stable:$version", "package", version) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }
         restored(9).acceptPolicy("stable", release, digest)
         assertTrue(restored(9).cachedRelease()!!.required(9))
         assertNull(restored(10).cachedRelease())
     }
-    @Test fun expiredOptionalCacheIsHiddenButConfirmedForcedUpdatesRemainBlocked() {
+    @Test fun expiredOptionalCacheIsHiddenButConfirmedForcedUpdatesRemainBlocked() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("expired-cache-review-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "package:stable:9", "package", 9,
+        fun restored() = updateStoreFixture(prefs, "package:stable:9", "package", 9,
             now = { Instant.parse("2026-11-11T00:00:00Z") }) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }

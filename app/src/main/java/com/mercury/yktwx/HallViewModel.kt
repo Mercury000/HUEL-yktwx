@@ -24,6 +24,7 @@ class HallViewModel internal constructor(
     app: Application, private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Hall),
+    private val preferences: AppPreferencesRepository = AppPreferencesRepository.from(app),
 ) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
     private val mutable = MutableStateFlow(DormUiState())
@@ -49,7 +50,6 @@ class HallViewModel internal constructor(
     private val transactionRefresh: TransactionRefresh = TransactionRefresh(viewModelScope, retryDelaysMillis,
         needsRefresh = { transactionPending() }, isReading = { task?.isActive == true },
         retry = { startRefresh(transactionRetry = true, silent = true, trigger = ReadTrigger.Transaction) })
-    private val displayPreferences = app.getSharedPreferences("hall_display", Application.MODE_PRIVATE)
     private fun digest(value: String) = java.security.MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
         .joinToString("") { "%02x".format(it) }
     private fun displayKey() = digest(owner) + ".selection"
@@ -90,12 +90,19 @@ class HallViewModel internal constructor(
         owner = username; preview = enabledPreview
         displayPrepared = false
         lastSelectedTargets = if (owner.isBlank()) emptySet() else
-            displayPreferences.getStringSet(displayKey(), emptySet()).orEmpty().toSet()
+            preferences.readyOrNull()?.roomSelections?.get(displayKey()).orEmpty()
         mutable.value = if (UiPreview.enabled && preview && username.isNotBlank()) PreviewData.hallState()
             else DormUiState(restoringDisplay = username.isNotBlank() && !preview)
         if (mutable.value.rooms.isNotEmpty()) update(selectedIndex = rememberedRoomIndex(mutable.value.rooms).coerceAtLeast(0))
         if (!preview && username.isNotBlank()) {
-            displayTask = viewModelScope.launch { restoreDisplay(username) }
+            val attempt = generation
+            val selectionKey = displayKey()
+            displayTask = viewModelScope.launch {
+                val saved = preferences.awaitReady()
+                if (attempt != generation || owner != username) return@launch
+                lastSelectedTargets = saved.roomSelections[selectionKey].orEmpty()
+                restoreDisplay(username)
+            }
         }
     }
     fun onActivate() {
@@ -149,7 +156,10 @@ class HallViewModel internal constructor(
         if (owner.isBlank() || s.managing) return
         val room = s.rooms.getOrNull(index) ?: return
         lastSelectedTargets = room.bindings.map { targetKey(it.project, it.binding) }.toSet()
-        displayPreferences.edit().putStringSet(displayKey(), lastSelectedTargets).apply()
+        val selectionKey = displayKey()
+        val targets = lastSelectedTargets
+        // Capture the owner key; a queued write must never follow a later account switch.
+        preferences.enqueueUpdate { it.copy(roomSelections = it.roomSelections + (selectionKey to targets)) }
         update(selectedIndex = index)
     }
 
