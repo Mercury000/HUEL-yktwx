@@ -1,7 +1,6 @@
 package com.mercury.yktwx
 
 import androidx.activity.BackEventCompat
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -24,7 +23,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w393dp-h851dp-port-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UpdateDownloadUiRegressionTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val release = UpdateRelease(10, "1.5.0-beta.1", "- 修复下载与更新交互", "https://github.com/release")
 
     @Test fun blockedBackGesturesNeverMoveTheDialogAndOptionalDismissalRecovers() {

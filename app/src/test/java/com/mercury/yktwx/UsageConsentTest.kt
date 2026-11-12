@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.UsageNotice
@@ -32,21 +33,21 @@ class UsageConsentTest {
 
     @Test fun consentSurvivesRestartAndOnlyTheCurrentBodyHashIsAccepted() = runBlocking {
         val prefs = context.getSharedPreferences("usage-test", Context.MODE_PRIVATE)
-        val first = UsageConsent(prefs, UsageNotice.hash)
+        val first = usageConsentFixture(prefs, UsageNotice.hash)
         assertFalse(first.accepted)
         first.accept()
         assertTrue(first.accepted)
         assertEquals(UsageNotice.hash, prefs.getString("accepted_hash", null))
         assertTrue(prefs.getLong("accepted_at", 0) > 0)
-        assertTrue(UsageConsent(prefs, UsageNotice.hash).accepted)
-        val updated = UsageConsent(prefs, "different-body-hash")
+        assertTrue(usageConsentFixture(prefs, UsageNotice.hash).accepted)
+        val updated = usageConsentFixture(prefs, "different-body-hash")
         assertFalse(updated.accepted)
         updated.accept()
-        assertFalse(UsageConsent(prefs, UsageNotice.hash).accepted)
-        assertTrue(UsageConsent(prefs, "different-body-hash").accepted)
+        assertFalse(usageConsentFixture(prefs, UsageNotice.hash).accepted)
+        assertTrue(usageConsentFixture(prefs, "different-body-hash").accepted)
         updated.revoke()
         assertFalse(updated.accepted)
-        assertFalse(UsageConsent(prefs, "different-body-hash").accepted)
+        assertFalse(usageConsentFixture(prefs, "different-body-hash").accepted)
     }
 
     @Test fun failedPersistenceCannotMarkTheNoticeAsAccepted() {
@@ -61,29 +62,29 @@ class UsageConsentTest {
                 }
             }
         }
-        val consent = UsageConsent(failing, UsageNotice.hash)
+        val consent = usageConsentFixture(failing, UsageNotice.hash)
         assertThrows(IllegalStateException::class.java) { runBlocking { consent.accept() } }
         assertFalse(consent.accepted)
-        assertFalse(UsageConsent(prefs, UsageNotice.hash).accepted)
+        assertFalse(usageConsentFixture(prefs, UsageNotice.hash).accepted)
     }
 
     @Test fun noticeHistoryDistinguishesUpdatesFromLogoutWithoutRetainingConsent() = runBlocking {
         val prefs = context.getSharedPreferences("usage-history-test", Context.MODE_PRIVATE)
-        assertNull(UsageConsent(prefs, "first-body").confirmationHint)
-        assertEquals("使用前需阅读并同意使用须知。", UsageConsent(prefs, "first-body", previousLogin = true).confirmationHint)
-        val first = UsageConsent(prefs, "first-body")
+        assertNull(usageConsentFixture(prefs, "first-body").confirmationHint)
+        assertEquals("使用前需阅读并同意使用须知。", usageConsentFixture(prefs, "first-body", previousLogin = true).confirmationHint)
+        val first = usageConsentFixture(prefs, "first-body")
         first.accept(); first.revoke()
         assertNull(prefs.getString("accepted_hash", null))
         assertEquals(0, prefs.getLong("accepted_at", 0))
-        val returning = UsageConsent(prefs, "first-body")
+        val returning = usageConsentFixture(prefs, "first-body")
         assertFalse(returning.accepted)
         assertNull(returning.confirmationHint)
         assertNull(first.confirmationHint)
-        val changed = UsageConsent(prefs, "second-body")
+        val changed = usageConsentFixture(prefs, "second-body")
         assertFalse(changed.accepted)
         assertEquals("使用须知已更新，请重新阅读并同意后使用。", changed.confirmationHint)
         changed.accept()
         assertNull(changed.confirmationHint)
-        assertNull(UsageConsent(prefs, "second-body").confirmationHint)
+        assertNull(usageConsentFixture(prefs, "second-body").confirmationHint)
     }
 }

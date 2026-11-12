@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.appUpdateInstallerFixture
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureUpdateHttp
-
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelStore
@@ -35,13 +36,13 @@ class AppUpdateViewModelTest {
     private val update = UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
         UpdateRelease(4, "1.2.0", "修复与优化", "https://cxt.303889.xyz/download/"))
     private fun model(key: String = "v3", check: suspend () -> UpdateCheckResult = { count++; update }) =
-        AppUpdateViewModel(app, updateStoreFixture(prefs, key), check) { time }
+        appUpdateViewModelFixture(app, updateStoreFixture(prefs, key), check) { time }
             .also { model ->
                 models.put("model-${System.nanoTime()}", model)
                 listeners.launch(start = CoroutineStart.UNDISPATCHED) { model.messages.collect { events += it } }
             }
     @Before fun setup() { resetUpdateFixtures(); prefs.edit().clear().commit(); Dispatchers.setMain(dispatcher) }
-    @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain(); AppAnalytics.instance = null }
+    @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain(); AnalyticsFixtures.instance = null }
 
     @Test fun initialPolicyReadinessDoesNotExposeBusinessBeforeForcedPolicyLoads() = runTest(dispatcher) {
         val loaded = CompletableDeferred<AppPreferences>()
@@ -51,10 +52,10 @@ class AppUpdateViewModelTest {
             override val data = kotlinx.coroutines.flow.flow { emit(loaded.await()); awaitCancellation() }
             override suspend fun updateData(transform: suspend (AppPreferences) -> AppPreferences) = transform(loaded.await())
         }
-        val repository = AppPreferencesRepository(source, backgroundScope, fixture.verifier::manifest)
+        val repository = appPreferencesRepositoryFixture(source, backgroundScope, fixture.verifier::manifest)
         val store = UpdateCheckStore(repository, fixture.request.packageName, 9,
             verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
-        val model = AppUpdateViewModel(app, store, { count++; update })
+        val model = appUpdateViewModelFixture(app, store, { count++; update })
         models.put("loading-policy", model)
         model.configure(true, false, true); runCurrent()
         assertFalse(model.state.value.ready)
@@ -479,7 +480,7 @@ class AppUpdateViewModelTest {
             val accepted = store.repository.snapshot().policies.values.single()
             var outcome = update
             var checks = 0
-            fun fresh() = AppUpdateViewModel(app, updateStoreFixture(identity, "v3"),
+            fun fresh() = appUpdateViewModelFixture(app, updateStoreFixture(identity, "v3"),
                 { checks++; outcome }) { time }.also { models.put("withdrawn-$reason-$checks", it) }
             val first = fresh()
             first.configure(true, true, true); runCurrent()
@@ -557,7 +558,7 @@ class AppUpdateViewModelTest {
     @Test fun manualRecheckKeepsAnActiveDownloadDialogOpenForTheSameApk() = runTest(dispatcher) {
         val started = CompletableDeferred<Unit>()
         val finish = java.util.concurrent.CountDownLatch(1)
-        val installer = AppUpdateInstaller(app, fixtureUpdateHttp { url ->
+        val installer = appUpdateInstallerFixture(app, fixtureUpdateHttp { url ->
             object : HttpFixture(url) {
                 override fun statusCode(): Int {
                     started.complete(Unit)
@@ -571,7 +572,7 @@ class AppUpdateViewModelTest {
         val result = update.copy(release = update.release!!.copy(versionCode = 10, sha256 = "a".repeat(64), size = 100,
             urls = (1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk"))
         val checked = CompletableDeferred<UpdateCheckResult>()
-        val model = AppUpdateViewModel(app, updateStoreFixture(prefs, "download-review"), {
+        val model = appUpdateViewModelFixture(app, updateStoreFixture(prefs, "download-review"), {
             count++
             if (count == 1) result else checked.await()
         }, installer) { time }

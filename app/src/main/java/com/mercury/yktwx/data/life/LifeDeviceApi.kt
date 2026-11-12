@@ -24,7 +24,7 @@ internal object LifeDeviceProtocol {
 /** Shared account and device transport for drinking water, showers and laundry. */
 class LifeDeviceApi(
     private val secret: String = BuildConfig.PANGGUI_API_SECRET,
-    private val client: Call.Factory = AppHttp.service,
+    private val client: Call.Factory,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : LifeDeviceService, LifeLaundryService, LifeAccountService {
     private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? {

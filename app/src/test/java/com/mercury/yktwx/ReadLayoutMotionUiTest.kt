@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.*
@@ -34,7 +35,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadLayoutMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val ready = PreviewData.hallState()
 
     private fun content(block: @Composable () -> Unit) {
@@ -66,7 +67,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun singleWaterMeterReplacesTwoSkeletonsAtFinalWidthAndMovesFollowingCardContinuously() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val current = mutableStateOf(DormUiState(network = ready.network, roomsLoaded = false))
         var paid: FeeRoomBinding? = null
         content { HallPage(settings, 0.dp, dorm = current.value, onOpenDormFee = { _, room -> paid = room }) }
@@ -103,7 +104,7 @@ class ReadLayoutMotionUiTest {
 
     @Test @Config(qualifiers = "zh-rCN-w320dp-h740dp-xxhdpi", fontScale = 1.5f)
     fun unboundValueLabelsWrapInsteadOfBeingClipped() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         content { HallPage(settings, 0.dp, dorm = DormUiState(loaded = true)) }
         val layout = textLayout("尚未添加")
         assertTrue("Large text must be allowed to wrap", layout.lineCount > 1)
@@ -114,7 +115,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun twoMeterButtonsAlignWhenOnlyOneDescriptionWraps() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val room = ready.rooms.first()
         val long = "附加说明".repeat(25)
         val light = room.meters.first()
@@ -131,7 +132,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun longNumericMeterReadingsFitOneLineAndUnitsRemainBesideThem() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val room = ready.rooms.first()
         val number = "123456789.1234"
         val label = "剩余可用电量及本期结算余额"
@@ -155,7 +156,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun singleLineWaterReadingStaysNearItsButtonBesideMultilineElectricity() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val binding = ready.rooms.first().binding
         val number = "-30136.69"
         val meters = listOf(
@@ -372,7 +373,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun profileNameExpandsFromSkeletonAndUnchangedRefreshKeepsHeight() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val current = mutableStateOf(MyUiState())
         content { PersonalProfilePage(current.value, settings, {}, {}) }
         val before = bounds("profile-details-card").height
@@ -388,7 +389,7 @@ class ReadLayoutMotionUiTest {
     }
 
     @Test fun cachedUtilityPanelsStayMountedAndPaintUnchangedThroughoutPartialRefresh() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val room = ready.rooms.first()
         val current = mutableStateOf(DormUiState(listOf(room), loaded = true,
             network = ready.network, displayRestored = true))

@@ -52,7 +52,7 @@ class AppUpdateApiTest {
         override fun close() { disconnected = true }
 
     }
-    private fun api(responses: (URL) -> Pair<String, Int>): AppUpdateApi = AppUpdateApi(fixtureUpdateHttp { url ->
+    private fun api(responses: (URL) -> Pair<String, Int>): AppUpdateApi = appUpdateApiFixture(fixtureUpdateHttp { url ->
         val (body, status) = responses(url); FakeResponse(url, body, status)
     }, fixture.verifier, now = { Instant.parse("2026-11-10T00:00:00Z") })
 
@@ -84,7 +84,7 @@ class AppUpdateApiTest {
                 }
             }
         }
-        try { verify(AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = sourceTimeoutMillis)) }
+        try { verify(appUpdateApiFixture(http, fixture.verifier, sourceTimeoutMillis = sourceTimeoutMillis)) }
         finally { releaseOtherSources.countDown() }
     }
 
@@ -111,7 +111,7 @@ class AppUpdateApiTest {
         prefs.edit().clear().commit()
         fun restored() = updateStoreFixture(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
             now = { instant }, verifyCached = { body, channel -> verifier.manifest(body, channel).first })
-        val api = AppUpdateApi(fixtureUpdateHttp { url ->
+        val api = appUpdateApiFixture(fixtureUpdateHttp { url ->
             when {
                 url.path.contains("/stable/") -> FakeResponse(url, "", 404)
                 url.path.endsWith("latest.json") -> FakeResponse(url, pointer)
@@ -161,7 +161,7 @@ class AppUpdateApiTest {
         }
         try {
             val result = withTimeout(2_000) {
-                AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 2_000)
+                appUpdateApiFixture(http, fixture.verifier, sourceTimeoutMillis = 2_000)
                     .check(fixture.request, store())
             }
             assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
@@ -186,7 +186,7 @@ class AppUpdateApiTest {
             val updates = store()
             val started = System.nanoTime()
             val result = withTimeout(1_500) {
-                AppUpdateApi(http, fixture.verifier).check(fixture.request, updates)
+                appUpdateApiFixture(http, fixture.verifier).check(fixture.request, updates)
             }
             println("api403-raw404 elapsedMs=${(System.nanoTime() - started) / 1_000_000}")
             assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
@@ -208,7 +208,7 @@ class AppUpdateApiTest {
             }
             else -> FakeResponse(url, "", 503)
         } }
-        val result = AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+        val result = appUpdateApiFixture(http, fixture.verifier).check(fixture.request, store())
         assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
         assertEquals(10, result.release!!.versionCode)
     }
@@ -244,7 +244,7 @@ class AppUpdateApiTest {
             updates.repository.update { it.copy(updateChannel = "beta") }
             val started = System.nanoTime()
             val result = withTimeout(1_500) {
-                AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), updates)
+                appUpdateApiFixture(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), updates)
             }
             println("fast-beta-blocked-stable elapsedMs=${(System.nanoTime() - started) / 1_000_000}")
             assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
@@ -279,7 +279,7 @@ class AppUpdateApiTest {
                 }
             }
         }
-        val result = AppUpdateApi(http, fixture.verifier)
+        val result = appUpdateApiFixture(http, fixture.verifier)
             .check(fixture.request.copy(channel = "beta"), store())
         assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
         assertEquals(12, result.release!!.versionCode)
@@ -301,7 +301,7 @@ class AppUpdateApiTest {
         }
         try {
             val result = withTimeout(1_500) {
-                AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
+                appUpdateApiFixture(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
             }
             assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
             assertNull(result.release)
@@ -327,7 +327,7 @@ class AppUpdateApiTest {
             }
         }
         val result = withTimeout(4_000) {
-            AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+            appUpdateApiFixture(http, fixture.verifier).check(fixture.request, store())
         }
         assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
     }
@@ -349,7 +349,7 @@ class AppUpdateApiTest {
             }
         }
         val result = withTimeout(6_000) {
-            AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
+            appUpdateApiFixture(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
         }
         assertEquals(2, reads.get())
         assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
@@ -420,7 +420,7 @@ class AppUpdateApiTest {
         }
         try {
             val result = withTimeout(1_000) {
-                AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 2_500)
+                appUpdateApiFixture(http, fixture.verifier, sourceTimeoutMillis = 2_500)
                     .check(fixture.request, store())
             }
             assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
@@ -443,7 +443,7 @@ class AppUpdateApiTest {
         }
         try {
             val result = withTimeout(1_000) {
-                AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+                appUpdateApiFixture(http, fixture.verifier).check(fixture.request, store())
             }
             assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
             assertEquals(10, result.release!!.versionCode)
@@ -499,7 +499,7 @@ class AppUpdateApiTest {
         try {
             val failure = withTimeout(2_000) {
                 runCatching {
-                    AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 500)
+                    appUpdateApiFixture(http, fixture.verifier, sourceTimeoutMillis = 500)
                         .check(fixture.request, store())
                 }.exceptionOrNull()
             }
@@ -697,7 +697,7 @@ class AppUpdateApiTest {
         val connection = FakeResponse(URL("https://example.com/update"), "{}")
         assertEquals("{}", fixtureUpdateHttp { connection }.json("https://example.com/update"))
         assertTrue(connection.disconnected)
-        assertFalse(AppHttp.service.followRedirects)
+        assertFalse(testHttpClients.service.followRedirects)
         assertEquals("no-cache, no-store", connection.request.header("Cache-Control"))
         assertNull(connection.request.header("Authorization"))
         assertNull(connection.request.header("Cookie"))

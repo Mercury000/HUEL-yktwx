@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
@@ -94,14 +95,15 @@ data class BillUiState(
         get() = (if (typeId != null) 1 else 0) + (if (amountFromCents != null || amountToCents != null) 1 else 0)
 }
 
+@HiltViewModel
 class BillViewModel internal constructor(
-    app: Application,
     private val repository: AccountRepository,
     private val now: () -> Long = ReadCachePolicy::now,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Bill),
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics)
     private val mutable = MutableStateFlow(BillUiState())
     val state = mutable.asStateFlow()
     private var initialized = false
@@ -364,7 +366,7 @@ class BillViewModel internal constructor(
                 typeChanged -> AnalyticsFilter.Type
                 else -> AnalyticsFilter.Amount
             }
-            AppAnalytics.from(getApplication()).filterApplied(kind)
+            analytics.filterApplied(kind)
         }
         cancelListJobs()
         mutable.value = current.copy(
@@ -393,7 +395,7 @@ class BillViewModel internal constructor(
     fun clearQuery() {
         val current = mutable.value
         if (current.activeFilterCount == 0 && current.info.isBlank()) return
-        if (!preview && !current.needsLogin) AppAnalytics.from(getApplication()).filterApplied(AnalyticsFilter.Clear)
+        if (!preview && !current.needsLogin) analytics.filterApplied(AnalyticsFilter.Clear)
         cancelListJobs()
         mutable.value = current.copy(typeId = null, amountFromCents = null, amountToCents = null, info = "",
             items = emptyList(), currentPage = 0, pages = 0, loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null,

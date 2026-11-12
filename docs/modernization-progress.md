@@ -7,9 +7,15 @@
 | Version Catalog | 完成 | root/app 统一引用 `gradle/libs.versions.toml`；迁移前后 debug、preview、release 和 debug 单元测试的编译依赖及根构建脚本依赖完全一致 |
 | kotlinx.serialization | 完成 | 生产代码及测试依赖移除 org.json；18 组、224 项 JSON 相关定向测试通过；专门存储兼容集中到 `StoredRecordJson` |
 | DataStore 与启动准备状态 | 完成 | 一个类型化文件与仓库；1.4.1 一次性迁移；9 个相关类中的 68 项定向验证通过，含真实文件迁移与启动阻断 |
-| Hilt 全图接入 | 待实施 | 尚未完成应用依赖图和三种构建绑定验证 |
+| Hilt 全图接入 | 完成 | debug、preview、release 的生产和测试图均编译通过；104 项定向测试通过、无跳过 |
 | Macrobenchmark 与 Profiles | 待实施 | 尚未生成/打包 profile，也没有发布配置测量数据 |
 | Camera2 session API | 待实施 | 尚未更新重载及完成相机定向验证 |
+
+以上迁移验证后，按新增要求完整迁移页面状态恢复：SavedStateHandle、带参数的类型化路由和业务对象恢复入口一起交付，覆盖全部页面、弹层与账户切换；不兼容本轮之前未发布的页面状态格式。性能与相机的设备验证仍须取得实际设备证据。
+
+所有更改完成后进行完整 review，发现问题修入所属迁移提交，并再次复查修正结果，直到没有未解决的审查项；不另留独立修补提交。
+
+以上工作完成后，检查指定后续聊天的工作是否完成；已完成时按线性历史接入 main，并适配本轮完成的存储、注入和页面恢复架构。
 
 ## Version Catalog
 
@@ -24,6 +30,10 @@
 全部业务 JSON 统一为 kotlinx.serialization：动态接口使用不可变 JsonObject/JsonArray 和明确的混合类型转换，展示缓存改为具名白名单 DTO，凭据及生活平台订单使用生成的序列化器。JSON 运行时为显式依赖，移除 org.json 测试依赖。更新继续先验证原始 payload 字节再解析，清单摘要仍针对原始文件字节；支付金额、错误分类和请求签名的业务规则保持原口径。
 
 展示缓存使用 `display-v2`，旧快照直接淘汰、重新查询。专门的历史存储规则集中到 `data/StoredRecordJson.kt`：接受 1.4.1 的无版本号记录、补基线已有单条订单的确定性 ID、在列表不存在时读取单条来源；有空列表时不能恢复旧记录。写入统一带版本 2，包括登录失效后的本地订单删除。范围和后续删除条件见 [JSON 存储格式与兼容清理](json-storage-compatibility.md)。
+
+补齐旧存储回收：进程启动后在后台 IO 按版本一次性删除 `display-v1` 及残留临时文件，成功后原子记录完成，后续启动跳过，失败或中断可重试；DataStore 成功持久化后删除 `ui_settings`、`hall_display`、`app_updates` 的 XML 和备份，残留空文件也可重试。核对历史目录与订单格式转换，继续保留正在使用的凭据、订单、头像、扫码模型及安装包存储；单条订单仍在列表保存成功后删除。
+
+回收补充验证仅运行 `RetiredStorageCleanupTest` 与 `LegacyPreferencesMigrationTest`，共 7 项通过、无跳过，覆盖实际文件删除、完成后的跳过、标记保存失败重试、空备份回收及迁移失败后保留新设置；相关生产和测试 Hilt 图编译通过。未追加全量测试、发布构建或 Lint。
 
 验证覆盖 18 个直接相关测试类，共 224 项，全部通过、无跳过：更新签名及严格数字类型，账单和身份编码，登录、个人资料、校园卡和缴费/充值协议，展示缓存，以及两家生活平台的接口和加密记录编解码。旧格式凭据和未知订单使用固定历史 JSON 样本验证，另覆盖账户隔离、删除后不恢复、保存失败和旧缓存淘汰。仅执行 `testDebugUnitTest` 的明确筛选，没有运行全量 UI 测试、发布 APK 构建或 Lint；生产及测试 Kotlin 编译、暂存前空白检查通过。
 
@@ -40,3 +50,21 @@ Android 启动验证发现系统 Ed25519 KeyFactory 无法导入发布公钥，�
 设置及更新状态明确为 Loading、Ready、Failed。主 Activity 在异步读盘前设置截图保护，准备完成前不创建业务模型，生命周期回调也不会提前创建；读取失败显示重试入口。付款本地身份恢复、业务前台启动和同意处理在加载后继续按原规则运行，强制更新阻断业务页面与前台读取。usage_consent 与加密凭据/生活订单继续独立保存。损坏文件和缺少当前持久字段的文件进入读取失败，不配置默认空对象覆盖；重试只重读原文件，不清空已接受策略。
 
 定向验证共 68 项、全部通过、无跳过，涉及 9 个类：AppPreferencesRepositoryTest（5）、LegacyPreferencesMigrationTest（2）、ThemeSettingsTest（2）、AppUpdateApiTest（24）、AppUpdateViewModelTest（25）、PreferencesStartupTest（2）、UsageConsentStartupTest（4），以及 HallViewModelTest 的三项选择恢复/账户隔离测试和 LoginUpdateUiTest 的强制更新阻断测试。覆盖真实文件保存和清理失败重试、签名账本序列化恢复、并发策略冲突/回滚、迟到快照、写入失败、渠道取消、加载前截图保护与生命周期阻断、同意恢复及强制页。仅筛选直接相关测试；未运行全量测试、发布构建或 Lint。
+
+## Hilt 全图接入
+
+统一为 `YktApplication` 和 `MainActivity` 的 Hilt 入口。应用仓库、设置、DataStore、统计、加密存储和 HTTP 客户端由同一个 SingletonComponent 提供；业务模型使用普通 ViewModel 与构造注入，删除生产静态取实例入口及默认创建依赖的构造路径。debug/preview 的统计停用实现和 release 的 SDK 实现继续由各自源码集提供，provider 只构造对象，Application 在有效同意成立时初始化 SDK。MainActivity 在 Hilt 初始化设置图之前开启截图保护。
+
+| 依赖 | 提供位置与作用域 | 保留的职责 |
+| --- | --- | --- |
+| 统计、授权依据 | ApplicationModule / SingletonComponent | 同意判断及撤销；冷启动初始化早于 Activity |
+| 设置、DataStore、加密存储 | StorageModule、PreferencesModule / SingletonComponent | 设置独立 IO + SupervisorJob；原子保存与一次性基线迁移 |
+| HTTP、业务服务、更新验签与安装器 | ServicesModule / SingletonComponent | 三类客户端共用连接池与调度器；保留各类请求重试规则 |
+| 账户仓库、共享读取、数据变更 | RepositoryModule / SingletonComponent | 两类独立 SharedReadStore；Default + SupervisorJob；账户撤销和最后读取者离开取消 |
+| 网络监听 | ViewModelModule / ViewModelComponent | 由页面壳启动和停止；模型清理时注销监听 |
+
+MainActivity 与 Compose 壳继续使用原 Activity 的 ViewModelStoreOwner，避免形成重复业务实例。单元测试仍直接构造真实对象、显式传替身；便利构造和测试注册表仅存在 test 源码。实际入口与实例共享由 Hilt 集成测试检查。Hilt 2.60.1、KSP 2.3.13 使用 KSP 管线，生成 Java 编译任务跟随项目的 Java 22 工具链。
+
+debug 通过 12 个直接相关类中的 94 项定向测试、无跳过，覆盖 HiltGraphTest、PreferencesStartupTest、UsageConsentStartupTest、SharedReadStoreTest、AccountRepositoryTest、AppHttpTest、NetworkMonitorTest、AppUpdateViewModelTest、UiPreviewIsolationTest，以及缴费/充值统计和强制更新页各一个定向用例。preview、release 分别通过 UiPreviewIsolationTest 的 5 项测试，验证 SDK 依赖范围、统一 Application、有效同意的冷启动初始化及预览参数隔离。合计 104 项，全部通过、无跳过；三种构建的生产和测试 Hilt 图均已完成 Java 编译。
+
+提交前两轮检查覆盖生产创建入口、限定符与作用域、Activity 模型归属、截图保护顺序、同意初始化及测试替身边界，没有剩余已识别问题。只执行以上直接相关测试及依赖图编译，没有运行全量测试、发布 APK 构建或 Lint。本地诊断日志为未提交的 `tools/modernization/hilt-verification.log`。

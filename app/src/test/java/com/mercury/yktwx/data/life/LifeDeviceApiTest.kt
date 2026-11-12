@@ -1,9 +1,9 @@
 package com.mercury.yktwx.data.life
 
+import com.mercury.yktwx.data.testHttpClients
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.AppHttp
 import com.mercury.yktwx.data.fixtureLifeDeviceApi
-
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -123,7 +123,7 @@ class LifeDeviceApiTest {
             assertEquals("POST", call.request.method)
             assertEquals("1.109.1", call.request.header("Version"))
             assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", call.url.path, "test-token"), call.request.header("sign"))
-            assertFalse(AppHttp.service.followRedirects)
+            assertFalse(testHttpClients.service.followRedirects)
         }
     }
 

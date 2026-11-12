@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
@@ -34,7 +35,7 @@ import java.net.URL
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LaundryUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val models = ViewModelStore()
     @After fun cleanup() { models.clear() }
     private fun model(): LifeDevicesViewModel {
@@ -46,7 +47,7 @@ class LaundryUiTest {
             override fun clearAccount() {}
             override fun clearSession() {}
         }
-        return LifeDevicesViewModel(compose.activity.application, fixtureLifeDeviceApi("test-secret", { error("No live requests") }), store)
+        return lifeDevicesViewModelFixture(compose.activity.application, fixtureLifeDeviceApi("test-secret", { error("No live requests") }), store)
             .also { models.put("life", it) }
     }
     private data class Fixture(val device: LifeDevice, val quote: LaundryQuote, val running: LaundryReading, val ended: LaundryReading)
@@ -81,7 +82,7 @@ class LaundryUiTest {
     }
     @Test fun blockedDeviceRetryShowsProgressAndRedisplaysTheSameErrorAfterCompletion() {
         val model = model()
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val message = "设备工作中，请更换设备使用"
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, message, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
@@ -110,7 +111,7 @@ class LaundryUiTest {
         compose.onNodeWithText(message).assertIsDisplayed()
     }
     @Test fun unknownCreationShowsNoIneffectiveRetryOrEndlessBusyIndicator() {
-        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application)
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
         val session = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Creating, createSent = true, creationUncertain = true)
@@ -124,7 +125,7 @@ class LaundryUiTest {
         compose.onNodeWithText("返回").assertIsEnabled()
     }
     @Test fun restoredStartingOrderOffersReadActionWithoutRequiringAnotherError() {
-        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application)
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
         val session = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Starting,
@@ -137,7 +138,7 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
     }
     @Test fun programSelectionKeepsTheActionAvailableBeforePaymentInformationIsLoaded() {
-        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application)
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50", minutes = 25)), emptyList())
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
@@ -179,7 +180,7 @@ class LaundryUiTest {
     }
     @Test fun allProgramDurationsAppearBeforeSelectionAndQuoteLoadingKeepsRowsStill() {
         val fixture = fixture(); val model = model()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
             device = fixture.device, selectedSkuId = fixture.device.skus.first().id))
         compose.setContent {
@@ -219,7 +220,7 @@ class LaundryUiTest {
     }
     private fun renderCapturedFlow(dark: Boolean, largeFont: Boolean) {
         val fixture = fixture(); val model = model()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
         val label = (if (dark) "dark" else "light") + if (largeFont) "-large" else ""
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = fixture.device,
             selectedSkuId = fixture.quote.skuId, laundryQuote = fixture.quote))
@@ -273,7 +274,7 @@ class LaundryUiTest {
     @Test fun capturedLaundryDarkFlowAndCompletionAnimationFitDesign() = renderCapturedFlow(true, false)
     @Test @Config(fontScale = 1.3f) fun capturedLaundryLargeFontKeepsActionsReachable() = renderCapturedFlow(false, true)
     @Test fun laundryShowsServerDescriptionsAndPaymentNamesWithGenericInstructions() {
-        val model = model(); val settings = ThemeSettings(compose.activity.application)
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application)
         val device = LifeDevice("77", "nqt", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", "设备桶自洁")), emptyList())
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
@@ -478,7 +479,7 @@ class LaundryUiTest {
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
         val pending = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Paying,
             orderNo = "test-order", orderId = "test-order-id")
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
             device = device, laundry = pending))
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
@@ -514,7 +515,7 @@ class LaundryUiTest {
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
         val closed = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Closed, orderNo = "test-order")
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val state = LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry, device = device, laundry = closed)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
             LifeDevicePage(state, settings, model, active = true, onBack = {})

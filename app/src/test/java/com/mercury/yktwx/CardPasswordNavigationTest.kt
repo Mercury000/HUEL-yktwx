@@ -1,5 +1,10 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.cardServiceApiFixture
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,7 +29,7 @@ import org.robolectric.shadows.ShadowToast
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CardPasswordNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private class MemoryVault : Vault {
         var value: Credentials? = Credentials("fake-user", "fake-password")
         var token: Session? = Session("fake-token", Long.MAX_VALUE)
@@ -45,35 +50,35 @@ class CardPasswordNavigationTest {
         var writes = 0
         var logins = 0
         val card = CampusCard("fake-card", "校园卡", "202600000001", false, false, 0)
-        val service = object : CardService by CardServiceApi({ error("Unexpected real HTTP request") }) {
+        val service = object : CardService by cardServiceApiFixture({ error("Unexpected real HTTP request") }) {
             override suspend fun passwordConfiguration(token: String) = CardPasswordConfiguration(listOf(card))
             override suspend fun modifyCardPassword(token: String, card: CampusCard, oldPassword: String, newPassword: String, confirmation: String) {
                 assertEquals("123456", oldPassword); assertEquals("654321", newPassword); assertEquals(newPassword, confirmation)
                 writes++
             }
         }
-        val ykt = object : YktService by YktApi({ error("Unexpected real HTTP request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("Unexpected real HTTP request") }) {
             override suspend fun login(credentials: Credentials): Session { logins++; error("Must not automatically login") }
         }
         val profiles = object : ProfileService {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-user", "示例部门", "", null)
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val repository = AccountRepository(ykt, vault,
-            feeService = FeeApi({ error("Unexpected real HTTP request") }),
+        val repository = accountRepositoryFixture(ykt, vault,
+            feeService = feeApiFixture({ error("Unexpected real HTTP request") }),
             cardService = service, profileService = profiles)
-        val payment = PaymentViewModel(app, repository)
-        val password = CardPasswordViewModel(app, repository)
-        val bills = BillViewModel(app, repository)
-        val mine = MyViewModel(app, repository)
-        val dorm = HallViewModel(app, repository)
+        val payment = paymentViewModelFixture(app, repository)
+        val password = cardPasswordViewModelFixture(app, repository)
+        val bills = billViewModelFixture(app, repository)
+        val mine = myViewModelFixture(app, repository)
+        val dorm = hallViewModelFixture(app, repository)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + MyViewModel::class.java.name, mine)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + HallViewModel::class.java.name, dorm)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + CardPasswordViewModel::class.java.name, password)
         assertSame(password, androidx.lifecycle.ViewModelProvider(compose.activity)[CardPasswordViewModel::class.java])
         compose.runOnIdle { payment.initialize(); bills.initialize(true) }
         compose.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
         }
         compose.waitUntil(5000) {
             shadowOf(Looper.getMainLooper()).idle()

@@ -43,7 +43,7 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class ScannerLifecycleTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private enum class Page : NavKey { Main, Scanner }
 
     @Before fun permission() {

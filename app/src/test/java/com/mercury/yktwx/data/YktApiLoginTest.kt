@@ -120,7 +120,7 @@ class YktApiLoginTest {
             "loginFrom" to "h5", "logintype" to "snoNew", "device_token" to "h5", "synAccessSource" to "h5"), form(post.sent.toString("UTF-8")))
         assertFalse(post.sent.toString("UTF-8").contains("Aa1@"))
         assertEquals(mapOf("type" to "Standard", "order" to "0", "synAccessSource" to "h5"), form(fake.calls[1].url.query))
-        assertFalse(fake.calls.any { AppHttp.service.followRedirects })
+        assertFalse(fake.calls.any { testHttpClients.service.followRedirects })
         assertFalse(fake.calls.any { it.request.header("Cookie") != null })
     }
     @Test fun encodedSymbolsSurviveFormEncoding() = runBlocking {

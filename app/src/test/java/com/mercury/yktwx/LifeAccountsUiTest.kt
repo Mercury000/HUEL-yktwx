@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.appPreferencesRepositoryFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
@@ -33,8 +35,8 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w390dp-h844dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeAccountsUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    private fun settings() = ThemeSettings(com.mercury.yktwx.data.AppPreferencesRepository(
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
+    private fun settings() = themeSettingsFixture(com.mercury.yktwx.data.appPreferencesRepositoryFixture(
         com.mercury.yktwx.data.MemoryPreferences(),
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)))
     private fun capture(name: String) {
@@ -60,7 +62,7 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("payment-code-card").assertIsDisplayed()
-        assertTrue(ThemeSettings(compose.activity).pangguiLoginNoticeDismissed.value)
+        assertTrue(themeSettingsFixture(compose.activity).pangguiLoginNoticeDismissed.value)
         capture("payment-light")
     }
 

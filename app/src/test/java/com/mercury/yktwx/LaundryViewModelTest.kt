@@ -169,7 +169,7 @@ class LaundryViewModelTest {
         }
         override suspend fun laundryStarted(orderNo: String, token: String) = if (orders.size > 1) orderStatuses[orderNo] == 2 else started
     }
-    private fun model(api: Api, store: Store, now: () -> Long = { 100_000L }) = LifeDevicesViewModel(ApplicationProvider.getApplicationContext<Application>(), api, store,
+    private fun model(api: Api, store: Store, now: () -> Long = { 100_000L }) = lifeDevicesViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), api, store,
         dispatcher, now).also { models.put("model", it) }
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true)

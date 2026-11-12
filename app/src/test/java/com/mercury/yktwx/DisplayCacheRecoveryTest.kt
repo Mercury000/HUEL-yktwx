@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -70,12 +72,12 @@ class DisplayCacheRecoveryTest {
             }
             override suspend fun avatar(path: String): ByteArray? = throw AssertionError("Prewarming must not download avatar")
         }
-        val fees = object : FeeService by FeeApi() {
+        val fees = object : FeeService by feeApiFixture() {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
                 requests++; throw AssertionError("Prewarming must not read hall")
             }
         }
-        val repository = AccountRepository(service, vault, profileService = profiles, feeService = fees, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, profileService = profiles, feeService = fees, displayCache = cache)
         val hall = PreviewData.hallState()
         val bill = PreviewData.billState()
         val my = PreviewData.myState()
@@ -89,9 +91,9 @@ class DisplayCacheRecoveryTest {
             }
             repository.saveDisplay("fake-owner", DisplayKeys.Network, hall.network!!, DisplayCodecs.Query)
         }
-        val bills = BillViewModel(app, repository).also { store.put("bill", it); it.initialize(); it.accountChanged("fake-owner") }
-        val mine = MyViewModel(app, repository).also { store.put("my", it); it.accountChanged("fake-owner") }
-        val dorm = HallViewModel(app, repository).also { store.put("hall", it); it.accountChanged("fake-owner") }
+        val bills = billViewModelFixture(app, repository).also { store.put("bill", it); it.initialize(); it.accountChanged("fake-owner") }
+        val mine = myViewModelFixture(app, repository).also { store.put("my", it); it.accountChanged("fake-owner") }
+        val dorm = hallViewModelFixture(app, repository).also { store.put("hall", it); it.accountChanged("fake-owner") }
         await { bills.state.value.displayRestored && mine.state.value.displayRestored && dorm.state.value.displayRestored }
         assertEquals(0, requests)
         assertFalse(bills.state.value.loaded); assertFalse(bills.state.value.loading)
@@ -109,10 +111,10 @@ class DisplayCacheRecoveryTest {
                 logins++; gate.await(); throw NetworkFailure()
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache)
         val account = PaymentAccount("card", "pay", "1", "示例账户", 100)
         runBlocking { repository.username(); repository.saveDisplay("fake-owner", DisplayKeys.Account, account, DisplayCodecs.Account) }
-        val model = PaymentViewModel(app, repository)
+        val model = paymentViewModelFixture(app, repository)
         store.put("payment", model); model.onForeground(); model.initialize()
         await { logins == 1 }
         val cached = runBlocking { kotlinx.coroutines.withTimeout(1000) {
@@ -129,7 +131,7 @@ class DisplayCacheRecoveryTest {
             check(finish.await(5, TimeUnit.SECONDS))
             bytes
         })
-        val repository = AccountRepository(FakeAccountService(), vault, displayCache = slowCache)
+        val repository = accountRepositoryFixture(FakeAccountService(), vault, displayCache = slowCache)
         repository.username()
         repository.saveDisplay("fake-owner", DisplayKeys.Account, PaymentAccount("a", "p", "1", "old", 10), DisplayCodecs.Account)
         val read = async(Dispatchers.Default) { repository.cachedDisplay("fake-owner", DisplayKeys.Account, DisplayCodecs.Account) }
@@ -159,13 +161,13 @@ class DisplayCacheRecoveryTest {
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int = throw NetworkFailure()
             override suspend fun billTypes(token: String) = emptyList<BillType>()
         }
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache)
         runBlocking {
             repository.username()
             repository.saveDisplay("fake-owner", DisplayKeys.bills(period, null, null, null, ""), BillPageData(listOf(old), 1, 2), DisplayCodecs.Page)
             repository.saveDisplay("fake-owner", DisplayKeys.summary(period.timeFrom, period.timeTo), BillSummary(1, 2), DisplayCodecs.Summary)
         }
-        val model = BillViewModel(app, repository)
+        val model = billViewModelFixture(app, repository)
         store.put("bill", model)
         model.initialize(); model.accountChanged("fake-owner"); model.onActivate()
         await { model.state.value.items.isNotEmpty() && pagesRead == 1 }
@@ -231,7 +233,7 @@ class DisplayCacheRecoveryTest {
                 return emptyList()
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = slowCache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = slowCache)
         runBlocking {
             repository.username()
             if (statistics) {
@@ -243,7 +245,7 @@ class DisplayCacheRecoveryTest {
                     BillPageData(listOf(display.items.first().copy(orderId = "hidden")), 1, 1), DisplayCodecs.Page)
             }
         }
-        val model = BillViewModel(app, repository, { clock })
+        val model = billViewModelFixture(app, repository, { clock })
         store.put("bill", model)
         try {
             model.setPageVisible(false, online = false)
@@ -286,9 +288,9 @@ class DisplayCacheRecoveryTest {
                 gate.await(); throw NetworkFailure()
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache)
         runBlocking { repository.username(); repository.saveDisplay("fake-owner", DisplayKeys.Account, account, DisplayCodecs.Account) }
-        val model = PaymentViewModel(app, repository)
+        val model = paymentViewModelFixture(app, repository)
         store.put("payment", model)
         model.onForeground(); model.initialize()
         await { model.state.value.busy && model.state.value.account != null }
@@ -303,18 +305,18 @@ class DisplayCacheRecoveryTest {
 
     @Test fun failedHallReadKeepsCachedReadingsAndRestartHasNoUpdatingLabels() {
         val ready = PreviewData.hallState()
-        val fees = object : FeeService by FeeApi() {
+        val fees = object : FeeService by feeApiFixture() {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
                 gate.await(); throw NetworkFailure()
             }
         }
-        val repository = AccountRepository(FakeAccountService(), vault, feeService = fees, displayCache = cache)
+        val repository = accountRepositoryFixture(FakeAccountService(), vault, feeService = fees, displayCache = cache)
         runBlocking {
             repository.username()
             for (room in ready.rooms.flatMap { it.bindings }) repository.saveDisplay("fake-owner", DisplayKeys.room(room.project), room, DisplayCodecs.Room)
             repository.saveDisplay("fake-owner", DisplayKeys.Network, ready.network!!, DisplayCodecs.Query)
         }
-        val model = HallViewModel(app, repository)
+        val model = hallViewModelFixture(app, repository)
         store.put("hall", model); model.accountChanged("fake-owner"); model.onActivate()
         await { model.state.value.rooms.isNotEmpty() }
         val readings = model.state.value.rooms.flatMap { it.meters }.map { it.query!!.display }
@@ -325,7 +327,7 @@ class DisplayCacheRecoveryTest {
     }
 
     @Test fun logoutClearsSavedDataAndRevokesUnownedWrites() {
-        val repository = AccountRepository(FakeAccountService(), vault, displayCache = cache)
+        val repository = accountRepositoryFixture(FakeAccountService(), vault, displayCache = cache)
         runBlocking {
             repository.username()
             repository.saveDisplay("fake-owner", DisplayKeys.Account, PaymentAccount("a", "p", "1", "old", 10), DisplayCodecs.Account)
@@ -348,7 +350,7 @@ class DisplayCacheRecoveryTest {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(1, 2)
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 1
         }
-        val model = MyViewModel(app, AccountRepository(service, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(service, vault, profileService = profiles))
         store.put("my", model); model.accountChanged("fake-owner"); model.refresh()
         await { model.state.value.loaded && !model.state.value.loading }
         val original = model.state.value.avatar
@@ -376,8 +378,8 @@ class DisplayCacheRecoveryTest {
             }
             override suspend fun avatar(path: String) = image?.copyOf()
         }
-        val repository = AccountRepository(FakeAccountService(), vault, profileService = profiles, displayCache = cache)
-        val first = MyViewModel(app, repository)
+        val repository = accountRepositoryFixture(FakeAccountService(), vault, profileService = profiles, displayCache = cache)
+        val first = myViewModelFixture(app, repository)
         store.put("first", first); first.accountChanged("fake-owner"); first.refresh()
         await { first.state.value.loaded && !first.state.value.loading }
         assertNotNull(first.state.value.avatar)
@@ -387,9 +389,9 @@ class DisplayCacheRecoveryTest {
         assertNull(first.state.value.avatar)
         store.clear()
         holdProfile = true
-        val restartedRepository = AccountRepository(FakeAccountService(), vault, profileService = profiles, displayCache = cache)
+        val restartedRepository = accountRepositoryFixture(FakeAccountService(), vault, profileService = profiles, displayCache = cache)
         runBlocking { restartedRepository.username() }
-        val restarted = MyViewModel(app, restartedRepository)
+        val restarted = myViewModelFixture(app, restartedRepository)
         store.put("restarted", restarted); restarted.accountChanged("fake-owner"); restarted.refresh()
         await { restarted.state.value.profile != null }
         assertEquals("student-b", restarted.state.value.profile!!.sno)

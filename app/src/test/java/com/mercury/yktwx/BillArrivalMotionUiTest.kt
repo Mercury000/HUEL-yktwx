@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -24,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillArrivalMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun frames(count: Int = 1) {
         repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
@@ -40,7 +41,7 @@ class BillArrivalMotionUiTest {
         var state by mutableStateOf(base)
         var showBills by mutableStateOf(true)
         var creations = 0
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             val holder = rememberSaveableStateHolder()
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {

@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import android.app.Application
@@ -25,8 +26,8 @@ class FeeRoomViewModelTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val fees = FakeFees()
     private val vault = MemoryVault()
-    private val repository = AccountRepository(FakeAccountService(), vault, feeService = fees)
-    private val model = FeeViewModel(app, repository, 0L)
+    private val repository = accountRepositoryFixture(FakeAccountService(), vault, feeService = fees)
+    private val model = feeViewModelFixture(app, repository, 0L)
     private val store = ViewModelStore().apply { put("rooms", model) }
 
     @After fun cleanup() {

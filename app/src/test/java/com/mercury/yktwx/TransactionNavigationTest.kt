@@ -1,5 +1,9 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -25,7 +29,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TransactionNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var payment: PaymentViewModel
     private val resultGate = CompletableDeferred<Unit>()
     private var paid = false
@@ -74,7 +78,7 @@ class TransactionNavigationTest {
             override fun clearSession() = Unit
             override fun clear() = Unit
         }
-        val service = object : YktService by YktApi({ error("Unexpected HTTP request") }) {
+        val service = object : YktService by yktApiFixture({ error("Unexpected HTTP request") }) {
             override suspend fun paymentCard(token: String, account: String) = CampusCard(account, "校园卡", "fake-user", false, false, 0)
             override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 codes++; onAccount(account())
@@ -104,20 +108,20 @@ class TransactionNavigationTest {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-user", "示例部门", "", null)
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val repository = AccountRepository(service, vault, rechargeService, profileService = profiles,
-            feeService = FeeApi({ error("Unexpected HTTP request") }))
-        payment = PaymentViewModel(app, repository)
-        val mine = MyViewModel(app, repository)
-        val bills = BillViewModel(app, repository).also { it.initialize() }
-        val recharge = RechargeViewModel(app, repository, 0L)
-        for (model in listOf(payment, mine, bills, recharge, HallViewModel(app, repository))) {
+        val repository = accountRepositoryFixture(service, vault, rechargeService, profileService = profiles,
+            feeService = feeApiFixture({ error("Unexpected HTTP request") }))
+        payment = paymentViewModelFixture(app, repository)
+        val mine = myViewModelFixture(app, repository)
+        val bills = billViewModelFixture(app, repository).also { it.initialize() }
+        val recharge = rechargeViewModelFixture(app, repository, 0L)
+        for (model in listOf(payment, mine, bills, recharge, hallViewModelFixture(app, repository))) {
             compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         }
         compose.runOnIdle { payment.initialize() }
         await { !payment.state.value.restoringLogin }
         compose.runOnIdle { payment.onForeground() }
         await { payment.state.value.account != null && !payment.state.value.busy }
-        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) } }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) } }
         compose.onNode(hasText("账单") and hasClickAction()).performClick()
         await { bills.state.value.loaded }
         compose.onNode(hasText("我的") and hasClickAction()).performClick()

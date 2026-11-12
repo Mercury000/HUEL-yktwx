@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -31,9 +34,9 @@ class HallViewModelTest {
         override fun clear() = Unit
     }
     private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
-    private val preferences = AppPreferencesRepository(MemoryPreferences(), preferenceScope)
-    private val model = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-        AccountRepository(YktApi(), vault, feeService = fees), preferences = preferences)
+    private val preferences = appPreferencesRepositoryFixture(MemoryPreferences(), preferenceScope)
+    private val model = hallViewModelFixture(ApplicationProvider.getApplicationContext<Application>(),
+        accountRepositoryFixture(yktApiFixture(), vault, feeService = fees), preferences = preferences)
     private val store = ViewModelStore().apply { put("hall", model) }
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
@@ -345,8 +348,8 @@ class HallViewModelTest {
         fees.saved[FeeProject.Wenbei] = fees.room(FeeProject.Wenbei, "B")
         open()
         model.selectRoom(1)
-        val restored = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-            AccountRepository(YktApi(), vault, feeService = fees), preferences = preferences)
+        val restored = hallViewModelFixture(ApplicationProvider.getApplicationContext<Application>(),
+            accountRepositoryFixture(yktApiFixture(), vault, feeService = fees), preferences = preferences)
         val restoredStore = ViewModelStore().apply { put("hall", restored) }
         try {
             restored.accountChanged("fake-owner")
@@ -368,8 +371,8 @@ class HallViewModelTest {
         val otherVault = object : Vault by vault {
             override fun credentials() = Credentials("another-owner", "fake-password")
         }
-        val other = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-            AccountRepository(YktApi(), otherVault, feeService = fees), preferences = preferences)
+        val other = hallViewModelFixture(ApplicationProvider.getApplicationContext<Application>(),
+            accountRepositoryFixture(yktApiFixture(), otherVault, feeService = fees), preferences = preferences)
         val otherStore = ViewModelStore().apply { put("hall", other) }
         try {
             other.accountChanged("another-owner"); other.refresh()
@@ -480,7 +483,7 @@ class HallViewModelTest {
         assertEquals(1, fees.configReads.getValue(FeeProject.Zhengdong))
     }
 
-    private class FakeFees : FeeService by FeeApi({ error("No live request") }) {
+    private class FakeFees : FeeService by feeApiFixture({ error("No live request") }) {
         val saved = mutableMapOf<FeeProject, FeeRoomBinding?>()
         val configReads = java.util.concurrent.ConcurrentHashMap<FeeProject, Int>()
         val writes = mutableListOf<FeeProject>()

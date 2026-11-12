@@ -35,7 +35,7 @@ internal abstract class HttpFixture(val url: URL) {
 
 internal fun fixtureHttp(respond: (URL) -> HttpFixture): Call.Factory {
     val active = ConcurrentHashMap<Call, HttpFixture>()
-    return AppHttp.service.newBuilder()
+    return testHttpClients.service.newBuilder()
         .eventListener(object : EventListener() {
             override fun canceled(call: Call) { active[call]?.close() }
         })
@@ -87,17 +87,17 @@ internal fun fixtureHttp(respond: (URL) -> HttpFixture): Call.Factory {
         }.build()
 }
 
-internal fun fixtureYktApi(respond: (URL) -> HttpFixture) = YktApi(fixtureHttp(respond))
-internal fun fixtureCardServiceApi(respond: (URL) -> HttpFixture) = CardServiceApi(fixtureHttp(respond))
-internal fun fixtureRechargeApi(respond: (URL) -> HttpFixture) = RechargeApi(fixtureHttp(respond))
-internal fun fixtureFeeApi(respond: (URL) -> HttpFixture) = FeeApi(fixtureHttp(respond))
+internal fun fixtureYktApi(respond: (URL) -> HttpFixture) = yktApiFixture(fixtureHttp(respond))
+internal fun fixtureCardServiceApi(respond: (URL) -> HttpFixture) = cardServiceApiFixture(fixtureHttp(respond))
+internal fun fixtureRechargeApi(respond: (URL) -> HttpFixture) = rechargeApiFixture(fixtureHttp(respond))
+internal fun fixtureFeeApi(respond: (URL) -> HttpFixture) = feeApiFixture(fixtureHttp(respond))
 internal fun fixtureProfileApi(respond: (URL) -> HttpFixture): ProfileApi {
     val client = fixtureHttp(respond)
-    return ProfileApi(client, client)
+    return profileApiFixture(client, client)
 }
 internal fun fixtureUpdateHttp(metadataTimeoutMillis: Long = UpdateHttp.DEFAULT_METADATA_TIMEOUT_MILLIS, respond: (URL) -> HttpFixture) =
-    UpdateHttp(metadataTimeoutMillis, fixtureHttp(respond))
+    updateHttpFixture(metadataTimeoutMillis, fixtureHttp(respond))
 internal fun fixtureLifeDeviceApi(secret: String, respond: (URL) -> HttpFixture, clock: () -> Long = System::currentTimeMillis) =
-    LifeDeviceApi(secret, fixtureHttp(respond), clock)
+    lifeDeviceApiFixture(secret, fixtureHttp(respond), clock)
 internal fun fixtureHui798Api(gateway: String, salt: String, respond: (URL) -> HttpFixture) =
-    Hui798Api(gateway, salt, fixtureHttp(respond))
+    hui798ApiFixture(gateway, salt, fixtureHttp(respond))

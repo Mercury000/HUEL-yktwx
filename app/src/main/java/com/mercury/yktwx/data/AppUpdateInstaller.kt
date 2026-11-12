@@ -25,7 +25,7 @@ internal data class UpdateDownloadState(val phase: UpdateDownloadPhase = UpdateD
 /** Matching bytes cannot become compatible by downloading them from another mirror. */
 internal class UpdateApkIdentityFailure(message: String) : IllegalArgumentException(message)
 
-internal class AppUpdateInstaller(private val context: Context, private val http: UpdateHttp = UpdateHttp(),
+internal class AppUpdateInstaller(private val context: Context, private val http: UpdateHttp,
     private val sourceSelectionMillis: Long = 3_000,
     private val contentUri: (File) -> Uri = {
         FileProvider.getUriForFile(context, "${context.packageName}.updates", it)

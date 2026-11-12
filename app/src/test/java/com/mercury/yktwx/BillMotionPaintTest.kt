@@ -29,7 +29,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillMotionPaintTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun leavingDuringMovementReleasesOutgoingPaintAndKeepsIncomingContent() {
         var state by mutableStateOf(PreviewData.billState())

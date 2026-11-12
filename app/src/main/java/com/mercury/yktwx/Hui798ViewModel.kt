@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
-import android.app.Application
 import android.graphics.BitmapFactory
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.life.*
@@ -32,11 +33,13 @@ data class Hui798UiState(
 }
 
 /** Uses our water command, persistence and foreground polling pattern, with a separate 798 account. */
+@HiltViewModel
 class Hui798ViewModel internal constructor(
-    app: Application, private val api: Hui798Service, private val store: Hui798Store,
+    private val api: Hui798Service, private val store: Hui798Store,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, Hui798Api(), Hui798AccountStore(app))
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(api: Hui798Service, store: Hui798Store, analytics: AppAnalytics) : this(api, store, io = Dispatchers.IO, analytics = analytics)
     private val mutable = MutableStateFlow(Hui798UiState())
     val state = mutable.asStateFlow()
     private var account: Hui798Account? = null
@@ -200,7 +203,6 @@ class Hui798ViewModel internal constructor(
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.code.isBlank()) {
             mutable.update { it.copy(loginError = "请输入手机号和短信验证码") }; return
         }
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         authTask = viewModelScope.launch {
             mutable.update { it.copy(loggingIn = true, loginError = null) }
@@ -320,7 +322,6 @@ class Hui798ViewModel internal constructor(
     fun startWater() {
         val value = mutable.value; val device = value.device ?: return; val owner = account ?: return
         if (value.busy || value.loadingDevice || !value.deviceReady || value.session != null) return
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         runCommand(owner) {
             val reading = api.status(device.id, owner.token)

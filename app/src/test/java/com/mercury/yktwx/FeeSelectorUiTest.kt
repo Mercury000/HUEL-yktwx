@@ -40,7 +40,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FeeSelectorUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private var contentView: View? = null
     private var observedImeBottom = 0
     private val levels = listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("floor", 2, "楼层"), FeeLevel("room", 3, "房间"))

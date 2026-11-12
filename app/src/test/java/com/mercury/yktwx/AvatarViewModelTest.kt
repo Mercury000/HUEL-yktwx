@@ -32,7 +32,7 @@ class AvatarViewModelTest {
     private var entered = CountDownLatch(1)
     private val uri = Uri.parse("content://fake/photos/avatar")
     private fun image() = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
-    private fun model() = AvatarViewModel(app, store) {
+    private fun model() = avatarViewModelFixture(app, store) {
         entered.countDown(); gate?.await(5, TimeUnit.SECONDS)
         if (it == uri) image() else error("invalid image")
     }.also { viewModels.put("model-${System.nanoTime()}", it) }
@@ -114,7 +114,7 @@ class AvatarViewModelTest {
 
     @Test fun storageFailureKeepsTheDraftForRetryAndDoesNotReplaceTheAvatar() {
         val blocked = java.io.File(directory, "not-a-directory").apply { writeText("test") }
-        val model = AvatarViewModel(app, LocalAvatarStore(blocked)) { image() }
+        val model = avatarViewModelFixture(app, LocalAvatarStore(blocked)) { image() }
         viewModels.put("blocked", model)
         model.accountChanged("fake-owner"); await { !model.state.value.restoring }
         model.open(); model.imagePicked(uri, model.beginPick()!!)

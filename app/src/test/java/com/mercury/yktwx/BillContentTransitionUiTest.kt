@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
@@ -35,7 +36,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillContentTransitionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private var state by mutableStateOf(PreviewData.billState())
     private var active by mutableStateOf(true)
     private var onStats: () -> Unit = { state = state.copy(statsVisible = true) }
@@ -50,7 +51,7 @@ class BillContentTransitionUiTest {
     private fun click(text: String) = compose.onNode(hasText(text) and hasClickAction()).performClick()
 
     private fun content(dark: Boolean = false, narrow: Boolean = false) {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalInspectionMode provides true,
@@ -426,7 +427,7 @@ class BillContentTransitionUiTest {
 
     @Test fun pullRefreshBelongsToTheModeThatRequestedIt() {
         var requested = false
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {

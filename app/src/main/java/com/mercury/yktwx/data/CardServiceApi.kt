@@ -4,7 +4,7 @@ import kotlinx.serialization.json.*
 import java.util.Base64
 import okhttp3.Call
 
-class CardServiceApi(private val client: Call.Factory = AppHttp.service) : CardService {
+class CardServiceApi(private val client: Call.Factory) : CardService {
     private val http = PaymentHttp(client)
     private suspend fun get(path: String, token: String, params: Map<String, String> = emptyMap(), preserveAuthMessage: Boolean = false) =
         http.json(http.request(path, token, params), preserveAuthenticationMessage = preserveAuthMessage)

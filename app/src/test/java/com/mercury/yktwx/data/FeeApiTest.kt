@@ -114,7 +114,7 @@ class FeeApiTest {
             assertEquals("bearer fake-token", it.request.header("synjones-auth"))
             assertTrue(it.request.header("Authorization")!!.startsWith("Basic "))
             assertNull(it.request.header("Cookie"))
-            assertFalse(AppHttp.service.followRedirects)
+            assertFalse(testHttpClients.service.followRedirects)
             assertEquals(449, parseObject(it.sent.toString("UTF-8")).intValue("feeitemid"))
         }
         assertEquals(room.sceneInfo(), parseObject(calls.first().sent.toString("UTF-8")).stringValue("sceneinfo"))
@@ -145,7 +145,7 @@ class FeeApiTest {
             assertEquals(FeeRejectionReason.Other, error.reason)
             assertEquals(listOf("/blade-pay/pay"), calls.map { it.url.path })
             assertEquals("0", fields(calls.single())["paystep"])
-            assertFalse(AppHttp.service.followRedirects)
+            assertFalse(testHttpClients.service.followRedirects)
             assertNull(rules.maximumCents)
         }
     }

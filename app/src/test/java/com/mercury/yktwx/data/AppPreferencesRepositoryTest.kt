@@ -27,7 +27,7 @@ class AppPreferencesRepositoryTest {
                 return persisted
             }
         }
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         emissions.send(persisted); runCurrent()
         val first = repository.update { it.copy(updateChannel = "beta") }
         val second = repository.update { it.copy(ui = it.ui.copy(preventScreenshots = false)) }
@@ -43,7 +43,7 @@ class AppPreferencesRepositoryTest {
             override val data = flow { if (fail) throw java.io.IOException("read failed") else emit(good); awaitCancellation() }
             override suspend fun updateData(transform: suspend (AppPreferences) -> AppPreferences) = transform(good)
         }
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         assertEquals(PreferencesLoadState.Loading, repository.state.value)
         runCurrent()
         assertEquals(PreferencesLoadState.Failed, repository.state.value)
@@ -63,7 +63,7 @@ class AppPreferencesRepositoryTest {
         AppPreferencesSerializer.writeTo(data, output)
         val decoded = AppPreferencesSerializer.readFrom(ByteArrayInputStream(output.toByteArray()))
         assertEquals(data, decoded)
-        val restored = AppPreferencesRepository(MemoryPreferences(decoded), backgroundScope, fixture.verifier::manifest)
+        val restored = appPreferencesRepositoryFixture(MemoryPreferences(decoded), backgroundScope, fixture.verifier::manifest)
         runCurrent()
         assertEquals(data, restored.awaitReady())
         for (body in listOf("invalid", "[]", "{}", "{} trailing", "{\"schemaVersion\":2}", "{\"writeRevision\":-1}")) {
@@ -76,7 +76,7 @@ class AppPreferencesRepositoryTest {
     @Test fun concurrentPolicyAcceptanceIsAtomicAndRejectsRollbackAndDigestConflicts() = runTest {
         val fixture = SignedUpdateFixture()
         val store = MemoryPreferences()
-        val repository = AppPreferencesRepository(store, backgroundScope, fixture.verifier::manifest)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope, fixture.verifier::manifest)
         runCurrent()
         val updates = UpdateCheckStore(repository, fixture.request.packageName, 9,
             verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
@@ -101,7 +101,7 @@ class AppPreferencesRepositoryTest {
     @Test fun withdrawnCacheStateRoundTripsWithoutLosingPolicyOrRevivingOnPartialAcceptance() = runTest {
         val fixture = SignedUpdateFixture()
         val memory = MemoryPreferences()
-        val repository = AppPreferencesRepository(memory, backgroundScope, fixture.verifier::manifest)
+        val repository = appPreferencesRepositoryFixture(memory, backgroundScope, fixture.verifier::manifest)
         runCurrent()
         val updates = UpdateCheckStore(repository, fixture.request.packageName, 9,
             verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
@@ -114,7 +114,7 @@ class AppPreferencesRepositoryTest {
         val output = ByteArrayOutputStream()
         AppPreferencesSerializer.writeTo(repository.snapshot(), output)
         val decoded = AppPreferencesSerializer.readFrom(ByteArrayInputStream(output.toByteArray()))
-        val restored = AppPreferencesRepository(MemoryPreferences(decoded), backgroundScope, fixture.verifier::manifest)
+        val restored = appPreferencesRepositoryFixture(MemoryPreferences(decoded), backgroundScope, fixture.verifier::manifest)
         runCurrent()
         val after = UpdateCheckStore(restored, fixture.request.packageName, 9,
             verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
@@ -131,7 +131,7 @@ class AppPreferencesRepositoryTest {
 
     @Test fun betaWithdrawalKeepsAvailableStableCacheAndForcedPoliciesSurviveNoRelease() = runTest {
         val fixture = SignedUpdateFixture()
-        val repository = AppPreferencesRepository(MemoryPreferences(AppPreferences(updateChannel = "beta")),
+        val repository = appPreferencesRepositoryFixture(MemoryPreferences(AppPreferences(updateChannel = "beta")),
             backgroundScope, fixture.verifier::manifest)
         runCurrent()
         val updates = UpdateCheckStore(repository, fixture.request.packageName, 9,
@@ -154,7 +154,7 @@ class AppPreferencesRepositoryTest {
     @Test fun partialChannelSuccessPreservesPreviouslyKnownAvailability() = runTest {
         val fixture = SignedUpdateFixture()
         for (unavailable in listOf("stable", "beta")) {
-            val repository = AppPreferencesRepository(MemoryPreferences(AppPreferences(updateChannel = "beta")),
+            val repository = appPreferencesRepositoryFixture(MemoryPreferences(AppPreferences(updateChannel = "beta")),
                 backgroundScope, fixture.verifier::manifest)
             runCurrent()
             val updates = UpdateCheckStore(repository, fixture.request.packageName, 9,
@@ -182,7 +182,7 @@ class AppPreferencesRepositoryTest {
         val policy = AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, release.signedManifest.replace("\"signature\":\"", "\"signature\":\"A"))
         val data = AppPreferences(legacyMigrated = true, policies = mapOf("${fixture.request.packageName}:stable" to policy))
         val store = MemoryPreferences(data)
-        val repository = AppPreferencesRepository(store, backgroundScope, fixture.verifier::manifest)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope, fixture.verifier::manifest)
         runCurrent()
         assertEquals(PreferencesLoadState.Failed, repository.state.value)
         assertEquals(data, store.values.value)
