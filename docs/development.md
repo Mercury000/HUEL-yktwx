@@ -12,6 +12,8 @@
 | `UMENG_APP_KEY` | `umeng.appKey` | 使用统计应用 |
 | `UMENG_CHANNEL` | `umeng.channel` | 安装分发渠道 |
 
+依赖与插件版本由 `gradle/libs.versions.toml` 管理。
+
 ## 构建与预览
 
 在根目录执行 `./gradlew :app:assembleDebug` 或 `:app:assembleRelease`，Windows 使用 `.\gradlew.bat`。APK 输出至 `app/build/outputs/apk/`；正式签名由 Actions 完成。

@@ -2,7 +2,7 @@
 
 ## 构建配置
 
-正式包使用友盟 U-App，版本由 Gradle 依赖配置固定。debug / preview 不初始化统计，本地 release 也关闭。业务共用 `AppAnalytics`，关闭时使用停用实现。
+正式包使用友盟 U-App，版本由 Version Catalog 固定。debug / preview 不初始化统计，本地 release 也关闭。业务共用 `AppAnalytics`，关闭时使用停用实现。
 
 `UMENG_APP_KEY` 为 Actions Secret，`UMENG_CHANNEL` 为 Variable，本机属性分别为 `umeng.appKey`、`umeng.channel`。AppKey 为 24 位十六进制，渠道为 1–64 位字母、数字、下划线或连字符。分发渠道与 stable / beta 更新选择独立。
 
