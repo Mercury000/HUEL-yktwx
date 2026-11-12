@@ -6,11 +6,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.URL
 import java.net.URLDecoder
-import java.security.Principal
-import java.security.cert.Certificate
 import java.time.LocalDate
 import java.time.YearMonth
-import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,26 +16,22 @@ import org.junit.Test
 
 /** Exercises bill request construction and parsing without contacting the real server. */
 class BillApiTest {
-    private class FakeHttps(url: URL, private val status: Int, body: JSONObject) : HttpsURLConnection(url) {
+    private class FakeResponse(url: URL, private val status: Int, body: JSONObject) : HttpFixture(url) {
         private val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val sent = ByteArrayOutputStream()
         var disconnected = false
-        override fun connect() {}
-        override fun disconnect() { disconnected = true }
-        override fun usingProxy() = false
-        override fun getResponseCode() = status
-        override fun getInputStream(): InputStream = ByteArrayInputStream(bytes)
-        override fun getErrorStream(): InputStream = ByteArrayInputStream(bytes)
-        override fun getOutputStream(): OutputStream = sent
-        override fun getCipherSuite() = "TLS_FAKE_FOR_TEST"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
+
+        override fun close() { disconnected = true }
+
+        override fun statusCode() = status
+        override fun bodyStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun errorBodyStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun requestBodyStream(): OutputStream = sent
+
     }
 
     private class ScriptedBillsApi(private val status: Int = 200) {
-        val calls = mutableListOf<FakeHttps>()
+        val calls = mutableListOf<FakeResponse>()
         private val record = JSONObject()
             .put("orderId", "BILL-01")
             .put("resume", "第一餐厅-扫码支付")
@@ -78,7 +71,7 @@ class BillApiTest {
             .put("2026-01", 1000.4)
             .put("not-a-month", 99.0)
 
-        val api = YktApi { url ->
+        val api = fixtureYktApi { url ->
             check(url.protocol == "https" && url.host == "yktwx2.huel.edu.cn")
             val data = when (url.path) {
                 "/berserker-search/search/personal/turnover" -> page
@@ -90,7 +83,7 @@ class BillApiTest {
                 else -> error("Unexpected request path: ${url.path}")
             }
             val body = JSONObject().put("code", 200).put("data", data)
-            FakeHttps(url, status, body).also { calls.add(it) }
+            FakeResponse(url, status, body).also { calls.add(it) }
         }
     }
 
@@ -110,8 +103,8 @@ class BillApiTest {
 
         val list = fake.calls[0]
         assertEquals("/berserker-search/search/personal/turnover", list.url.path)
-        assertEquals("bearer fake-token", list.getRequestProperty("synjones-auth"))
-        assertNull(list.getRequestProperty("Cookie"))
+        assertEquals("bearer fake-token", list.request.header("synjones-auth"))
+        assertNull(list.request.header("Cookie"))
         assertEquals(
             mapOf(
                 "current" to "2", "size" to "8", "timeFrom" to "2026-10-01", "timeTo" to "2026-10-31",
@@ -168,7 +161,7 @@ class BillApiTest {
             ),
             query(fake.calls[4].url),
         )
-        assertTrue(fake.calls.all { it.getRequestProperty("synjones-auth") == "bearer fake-token" })
+        assertTrue(fake.calls.all { it.request.header("synjones-auth") == "bearer fake-token" })
         assertTrue(fake.calls.all { it.disconnected })
     }
 

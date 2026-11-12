@@ -1,15 +1,13 @@
 package com.mercury.yktwx.data.life
 
 import com.mercury.yktwx.BuildConfig
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
+import com.mercury.yktwx.data.AppHttp
+import com.mercury.yktwx.data.readBytesAtMost
+import com.mercury.yktwx.data.readResponse
+import java.security.MessageDigest
+import okhttp3.Call
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URL
-import java.net.URLEncoder
-import java.security.MessageDigest
-import javax.net.ssl.HttpsURLConnection
 
 internal object LifeDeviceProtocol {
     const val Version = "1.109.1"
@@ -26,41 +24,32 @@ internal object LifeDeviceProtocol {
 /** Shared account and device transport for drinking water, showers and laundry. */
 class LifeDeviceApi(
     private val secret: String = BuildConfig.PANGGUI_API_SECRET,
-    private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
+    private val client: Call.Factory = AppHttp.service,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : LifeDeviceService, LifeLaundryService, LifeAccountService {
-    private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? = withContext(Dispatchers.IO) {
+    private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? {
         if (token.isNotBlank() && secret.isBlank()) throw LifeDeviceException("胖乖生活连接配置缺失")
-        val connection = openConnection(URL("https://userapi.qiekj.com$path"))
-        try {
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
-            connection.setRequestProperty("Version", LifeDeviceProtocol.Version)
-            connection.setRequestProperty("channel", LifeDeviceProtocol.Channel)
-            connection.setRequestProperty("phoneBrand", android.os.Build.BRAND)
-            connection.setRequestProperty("User-Agent", "okhttp/3.14.9")
-            val timestamp = clock().toString()
-            connection.setRequestProperty("timestamp", timestamp)
-            if (token.isNotBlank()) {
-                connection.setRequestProperty("token", token)
-                connection.setRequestProperty("Authorization", token)
-                connection.setRequestProperty("sign", LifeDeviceProtocol.sign(secret, timestamp, path, token))
-            }
-            val form = (fields + if (token.isNotBlank()) mapOf("token" to token) else emptyMap()).entries.joinToString("&") {
-                URLEncoder.encode(it.key, "UTF-8") + "=" + URLEncoder.encode(it.value, "UTF-8")
-            }.toByteArray(Charsets.UTF_8)
-            connection.setFixedLengthStreamingMode(form.size)
-            connection.outputStream.use { it.write(form) }
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            ensureActive()
+        val timestamp = clock().toString()
+        val request = AppHttp.request("https://userapi.qiekj.com$path")
+            .header("Version", LifeDeviceProtocol.Version)
+            .header("channel", LifeDeviceProtocol.Channel)
+            // Preserve the official wire identity required by this service.
+            .header("User-Agent", "okhttp/3.14.9")
+            .header("timestamp", timestamp)
+        android.os.Build.BRAND?.let { request.header("phoneBrand", it) }
+        if (token.isNotBlank()) {
+            request.header("token", token).header("Authorization", token)
+                .header("sign", LifeDeviceProtocol.sign(secret, timestamp, path, token))
+        }
+        request.post(AppHttp.form(fields + if (token.isNotBlank()) mapOf("token" to token) else emptyMap(),
+            "application/x-www-form-urlencoded;charset=UTF-8"))
+        return client.readResponse(request.build()) { result ->
+            val status = result.code
             if (status in setOf(401, 403)) throw LifeDeviceException("胖乖登录已失效，请重新登录", true, businessRejected = true)
             if (status !in 200..299) throw LifeDeviceException("连接失败，请稍后重试")
+            val bytes = result.readBytesAtMost(1_048_576)
+            if (bytes.size > 1_048_576) throw LifeDeviceException("服务器返回内容过大")
+            val text = bytes.toString(Charsets.UTF_8)
             val response = runCatching { JSONObject(text) }.getOrElse { throw LifeDeviceException("服务器返回内容异常") }
             val code = response.text("code")
             if (code !in setOf("0", "200")) {
@@ -71,7 +60,7 @@ class LifeDeviceApi(
                     businessRejected = code.toIntOrNull() != null)
             }
             response.opt("data").takeUnless { it == JSONObject.NULL }
-        } finally { connection.disconnect() }
+        }
     }
 
     override suspend fun sendCode(phone: String) {

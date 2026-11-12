@@ -3,13 +3,12 @@ package com.mercury.yktwx.data
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import org.json.JSONObject
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 
 /** Common fee protocol; only observed payment branches are accepted. */
-class FeeApi(openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : FeeService {
-    private val http = PaymentHttp(openConnection)
+class FeeApi(client: Call.Factory = AppHttp.service) : FeeService {
+    private val http = PaymentHttp(client)
     private suspend fun get(path: String, token: String, params: Map<String, String>) =
         http.json(http.request(path, token, params, chargeClient = true), feePayment = true)
     private suspend fun post(path: String, token: String, fields: Map<String, String>, sign: Boolean = false) =

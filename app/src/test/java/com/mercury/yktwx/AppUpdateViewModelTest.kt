@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.fixtureUpdateHttp
+
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelStore
@@ -413,19 +416,15 @@ class AppUpdateViewModelTest {
     @Test fun manualRecheckKeepsAnActiveDownloadDialogOpenForTheSameApk() = runTest(dispatcher) {
         val started = CompletableDeferred<Unit>()
         val finish = java.util.concurrent.CountDownLatch(1)
-        val installer = AppUpdateInstaller(app, UpdateHttp { url ->
-            object : javax.net.ssl.HttpsURLConnection(url) {
-                override fun getResponseCode(): Int {
+        val installer = AppUpdateInstaller(app, fixtureUpdateHttp { url ->
+            object : HttpFixture(url) {
+                override fun statusCode(): Int {
                     started.complete(Unit)
                     finish.await(5, java.util.concurrent.TimeUnit.SECONDS)
                     throw java.io.IOException("offline fixture")
                 }
-                override fun disconnect() { finish.countDown() }
-                override fun connect() {}
-                override fun usingProxy() = false
-                override fun getCipherSuite() = "test"
-                override fun getLocalCertificates(): Array<java.security.cert.Certificate>? = null
-                override fun getServerCertificates(): Array<java.security.cert.Certificate> = emptyArray()
+                override fun close() { finish.countDown() }
+
             }
         })
         val result = update.copy(release = update.release!!.copy(versionCode = 10, sha256 = "a".repeat(64), size = 100,

@@ -15,6 +15,83 @@ import org.junit.Test
 class ReadControllerTest {
     private fun online(epoch: Long = 0) = ReadEnvironment(ReadPage.My, true, true, epoch)
 
+    @Test fun foregroundReturnRestoresExhaustedNetworkBudgetWithoutAReconnect() = runTest {
+        var calls = 0
+        lateinit var reads: ReadController
+        fun request(trigger: ReadTrigger = ReadTrigger.Visible) {
+            reads.launch("query", trigger, { request(ReadTrigger.Retry) }) {
+                assertTrue(startNetwork()); calls++; complete(ReadFailureKind.Network)
+            }
+        }
+        reads = ReadController(this, setOf(ReadPage.My), online(), {})
+        request(); advanceUntilIdle()
+        assertEquals(2, calls)
+        repeat(3) { reads.update(online()); request() }
+        advanceUntilIdle(); assertEquals(2, calls)
+        reads.update(online().copy(foreground = false, page = null))
+        reads.update(online().copy(resumeEpoch = 1))
+        request(); advanceUntilIdle()
+        assertEquals(4, calls)
+        assertEquals(0L, reads.currentEpoch)
+        repeat(3) { reads.update(online().copy(resumeEpoch = 1)); request() }
+        advanceUntilIdle(); assertEquals(4, calls)
+    }
+
+    @Test fun pageReturnRecoversExhaustedNetworkFailuresButRepeatedVisibleEmissionsStayBounded() = runTest {
+        var calls = 0
+        lateinit var reads: ReadController
+        fun request(trigger: ReadTrigger = ReadTrigger.Visible) {
+            reads.launch("query", trigger, { request(ReadTrigger.Retry) }) {
+                assertTrue(startNetwork()); calls++; complete(ReadFailureKind.Network)
+            }
+        }
+        reads = ReadController(this, setOf(ReadPage.My, ReadPage.Profile), online(), {})
+        request(); advanceUntilIdle(); assertEquals(2, calls)
+        reads.update(online().copy(page = ReadPage.Hall))
+        request(); runCurrent(); assertEquals(2, calls)
+        reads.update(online()); request(); advanceUntilIdle(); assertEquals(4, calls)
+        repeat(3) { reads.update(online()); request() }
+        advanceUntilIdle(); assertEquals(4, calls)
+        // Details can share a ViewModel with the parent and still constitute a new page entry.
+        reads.update(online().copy(page = ReadPage.Profile)); request()
+        advanceUntilIdle(); assertEquals(6, calls)
+        repeat(3) { reads.update(online().copy(page = ReadPage.Profile)); request() }
+        advanceUntilIdle(); assertEquals(6, calls)
+        assertEquals(0L, reads.currentEpoch)
+    }
+
+    @Test fun failedRequestSpanningForegroundReturnReevaluatesOnceWithoutOldBackoff() = runTest {
+        val network = CompletableDeferred<Unit>()
+        var reevaluations = 0
+        var retries = 0
+        val reads = ReadController(this, setOf(ReadPage.My), online(), { reevaluations++ })
+        reads.launch("query", ReadTrigger.Visible, { retries++ }) {
+            assertTrue(startNetwork()); network.await(); complete(ReadFailureKind.Network)
+        }
+        runCurrent()
+        // Compose can coalesce stop/start; the resume sequence still carries the transition.
+        reads.update(online().copy(resumeEpoch = 1))
+        network.complete(Unit); runCurrent()
+        assertEquals(1, reevaluations)
+        advanceUntilIdle(); assertEquals(0, retries)
+        assertTrue(reads.canStart("query", ReadTrigger.Visible))
+    }
+
+    @Test fun localPreparationSpanningForegroundUsesTheNewBudgetAndNormalBackoff() = runTest {
+        val local = CompletableDeferred<Unit>()
+        var reevaluations = 0
+        var retries = 0
+        val reads = ReadController(this, setOf(ReadPage.My), online(), { reevaluations++ })
+        reads.launch("query", ReadTrigger.Visible, { retries++ }) {
+            local.await(); assertTrue(startNetwork()); complete(ReadFailureKind.Network)
+        }
+        runCurrent(); reads.update(online().copy(resumeEpoch = 1))
+        local.complete(Unit); runCurrent()
+        assertEquals(0, reevaluations)
+        advanceTimeBy(599); runCurrent(); assertEquals(0, retries)
+        advanceTimeBy(1); runCurrent(); assertEquals(1, retries)
+    }
+
     @Test fun productionWaitsForEnvironmentAndUnknownNetworkCanRead() = runTest {
         var calls = 0
         val reads = ReadController(this, setOf(ReadPage.My), ReadEnvironment.Inactive, {})

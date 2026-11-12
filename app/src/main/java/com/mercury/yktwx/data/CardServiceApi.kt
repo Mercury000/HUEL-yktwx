@@ -1,12 +1,11 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONObject
-import java.net.URL
 import java.util.Base64
-import javax.net.ssl.HttpsURLConnection
+import okhttp3.Call
+import org.json.JSONObject
 
-class CardServiceApi(private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : CardService {
-    private val http = PaymentHttp(openConnection)
+class CardServiceApi(private val client: Call.Factory = AppHttp.service) : CardService {
+    private val http = PaymentHttp(client)
     private suspend fun get(path: String, token: String, params: Map<String, String> = emptyMap(), preserveAuthMessage: Boolean = false) =
         http.json(http.request(path, token, params), preserveAuthenticationMessage = preserveAuthMessage)
     private fun config(data: JSONObject, key: String): JSONObject = when (val raw = data.opt(key)) {

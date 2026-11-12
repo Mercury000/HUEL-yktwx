@@ -12,6 +12,7 @@ fun Throwable.readFailureKind(): ReadFailureKind {
     if (this is CancellationException) throw this
     return when {
         this is NetworkFailure -> ReadFailureKind.Network
+        this is PaymentCodeUnavailable -> failureKind
         isAuthenticationFailure() -> ReadFailureKind.Authentication
         else -> ReadFailureKind.Other
     }

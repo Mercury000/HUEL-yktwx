@@ -32,6 +32,7 @@ internal class ReadController(
     private var pendingReevaluation = false
     private var idleCallback: Job? = null
     private var revision = 0L
+    private var recoveryRevision = 0L
     var environment: ReadEnvironment = initialEnvironment
         private set
 
@@ -49,13 +50,17 @@ internal class ReadController(
         environment = next
         val visible = next.foreground && next.page in pages
         val epochChanged = gate.update(visible, next.foreground, next.online, next.epoch)
+        val resumed = next.foreground && (!previous.foreground || next.resumeEpoch > previous.resumeEpoch)
+        val activated = visible && (!wasVisible || next.page != previous.page) || resumed
+        if (activated) gate.recoverNetworkFailures()
+        if (epochChanged || activated) recoveryRevision++
         if (!canRead) {
             retries.values.forEach { it.cancel() }
             retries.clear()
             pendingReevaluation = false
             pendingActions.clear()
             idleCallback?.cancel(); idleCallback = null
-        } else if (epochChanged || visible && !wasVisible || next.resumeEpoch != previous.resumeEpoch) {
+        } else if (epochChanged || activated) {
             retries.values.forEach { it.cancel() }
             retries.clear()
             pendingReevaluation = requests.isNotEmpty()
@@ -139,7 +144,8 @@ internal class ReadController(
         val lease = request.lease
         if (lease != null) gate.finished(request.query, lease, request.failure, cancelled = !request.completed)
         val networkFailed = request.completed && request.failure == ReadFailureKind.Network
-        if (networkFailed && lease?.epoch == currentEpoch && request.trigger.automatic && canRead && gate.canAutoRetry(request.query)) {
+        val currentRecovery = request.networkRecoveryRevision == recoveryRevision
+        if (networkFailed && currentRecovery && request.trigger.automatic && canRead && gate.canAutoRetry(request.query)) {
             val retryRevision = revision
             retries[request.query] = scope.launch {
                 delay(gate.retryDelayMillis(request.query))
@@ -159,8 +165,8 @@ internal class ReadController(
         } else if (requests.isEmpty() && pendingReevaluation) {
             pendingReevaluation = false
             // Keep completed failures visible. Network failures in this epoch follow backoff;
-            // only an older connection's network failure is eligible for immediate recovery.
-            if (canRead && (request.failure == null || networkFailed && lease?.epoch != currentEpoch)) {
+            // A failed request spanning a reconnect/foreground return gets a fresh evaluation.
+            if (canRead && (request.failure == null || networkFailed && !currentRecovery)) {
                 whenIdle(reevaluate)
             }
         }
@@ -184,6 +190,7 @@ internal class ReadController(
     ) {
         internal lateinit var job: Job
         internal var lease: ReadDecision.Start? = null
+        internal var networkRecoveryRevision = -1L
         internal var completed = false
         internal var failure: ReadFailureKind? = null
         val epoch get() = lease?.epoch ?: currentEpoch
@@ -196,6 +203,7 @@ internal class ReadController(
             val decision = gate.decide(query, trigger)
             if (decision !is ReadDecision.Start) return false
             lease = decision
+            networkRecoveryRevision = recoveryRevision
             gate.started(query, decision)
             return true
         }
