@@ -3,6 +3,7 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
@@ -468,6 +469,7 @@ class FeeViewModel internal constructor(
         val generation = attempt
         val marker = PendingRecharge(owner, query.thirdParty ?: return, config.project.id,
             retry.amountCents)
+        beginAnalytics(config.project)
         mutable.value = copy(s, loading = true, error = null, order = FeeOrder(marker, emptyList()),
             method = null, preparation = null, paymentRetry = null, resultPhase = RechargePhase.Creating)
         launchTask {
@@ -475,11 +477,11 @@ class FeeViewModel internal constructor(
                 repository.createFee(marker.username, config, query, retry.amountCents)
             } catch (e: CancellationException) { throw e }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) result(RechargePhase.Failed, e.message)
+                if (generation == attempt) { analyticsFailure(AnalyticsError.from(e)); result(RechargePhase.Failed, e.message) }
                 return@launchTask
             }
             catch (e: Exception) {
-                if (generation == attempt) requestError(message(e))
+                if (generation == attempt) requestError(message(e), AnalyticsError.from(e))
                 return@launchTask
             }
             if (generation != attempt) return@launchTask
@@ -514,6 +516,7 @@ class FeeViewModel internal constructor(
         val generation=attempt
         accountPaymentSubmitted = false
         val marker = PendingRecharge(owner, q.thirdParty ?: return, config.project.id, amount)
+        beginAnalytics(config.project)
         mutable.value=copy(s,loading=true,error=null,order=FeeOrder(marker, emptyList()),paymentRetry=null,
             resultPhase=RechargePhase.Creating)
         launchTask {
@@ -529,9 +532,9 @@ class FeeViewModel internal constructor(
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: FeePaymentRejected) {
-                if (generation == attempt) result(RechargePhase.Failed, e.message)
+                if (generation == attempt) { analyticsFailure(AnalyticsError.from(e)); result(RechargePhase.Failed, e.message) }
             }
-            catch (e: Exception) { if(generation==attempt) requestError(message(e)) }
+            catch (e: Exception) { if(generation==attempt) requestError(message(e), AnalyticsError.from(e)) }
         }
     }
     fun chooseMethod(method: FeeMethod) {
@@ -563,11 +566,11 @@ class FeeViewModel internal constructor(
         catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.TimedOut, e.message) }
         catch (e: FeeOrderAlreadyPaid) { if (generation == attempt) { accountPaymentSubmitted = true; startCheck() } }
         catch (e: FeePaymentRejected) {
-            if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
+            if (generation == attempt) { analyticsFailure(AnalyticsError.from(e)); result(RechargePhase.Failed, e.message, retryable = true) }
         }
         catch (e: Exception) {
             if (generation == attempt) {
-                requestError(message(e))
+                requestError(message(e), AnalyticsError.from(e))
             }
         }
     }
@@ -591,10 +594,11 @@ class FeeViewModel internal constructor(
                 if (generation == attempt) { accountPaymentSubmitted = true; startCheck() }
             }
             catch (e: FeePaymentNotStarted) {
-                if (generation == attempt) result(RechargePhase.Failed, e.message, retryable = true)
+                if (generation == attempt) { analyticsFailure(AnalyticsError.from(e)); result(RechargePhase.Failed, e.message, retryable = true) }
             }
             catch (e: FeePaymentRejected) {
                 if (generation == attempt) {
+                    analyticsFailure(AnalyticsError.from(e))
                     if (e.reason == FeeRejectionReason.Password) {
                         // Correct the password within this attempt. The dialog already cleared it;
                         // the next explicit submit still checks the order and server expiry.
@@ -603,7 +607,7 @@ class FeeViewModel internal constructor(
                 }
             }
             catch (e: Exception) {
-                if (generation == attempt) requestError(message(e))
+                if (generation == attempt) requestError(message(e), AnalyticsError.from(e))
             }
         }
     }
@@ -642,7 +646,7 @@ class FeeViewModel internal constructor(
     }
     fun canLaunchWechat()=paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.resultPhase==RechargePhase.AwaitingPayment
     fun wechatLaunched()=paymentReturn.launched()
-    fun launchFailed(){paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
+    fun launchFailed(){analyticsFailure(AnalyticsError.External);paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
     fun accountChanged(username:String){if(owner.isNotEmpty() && username!=owner)dismiss()}
     fun dismiss() {
         attempt++
@@ -673,7 +677,16 @@ class FeeViewModel internal constructor(
         if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
             repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
     }
-    private fun requestError(message: String) {
+    private val analytics get() = AppAnalytics.from(getApplication())
+    private var analyticsAttempt: AnalyticsAttempt? = null
+    private var analyticsFeature = AnalyticsFeature.Electricity
+    private fun beginAnalytics(project: FeeProject) {
+        analyticsFeature = project.analyticsFeature()
+        analyticsAttempt = analytics.submit(analyticsFeature)
+    }
+    private fun analyticsFailure(error: AnalyticsError) = analytics.operationFailed(analyticsAttempt, analyticsFeature, error)
+    private fun requestError(message: String, error: AnalyticsError = AnalyticsError.External) {
+        analyticsFailure(error)
         resultPoller.stop()
         paymentReturn.reset()
         mutable.value = copy(mutable.value, loading = false, error = message,

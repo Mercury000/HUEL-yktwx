@@ -13,6 +13,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.Lifecycle
+import com.mercury.yktwx.analytics.AppAnalytics
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
@@ -26,6 +27,7 @@ class MainActivity : ComponentActivity() {
     private val latestConfig = mutableStateOf<Configuration?>(null)
     private lateinit var consent: UsageConsent
     private var businessStarted = false
+    private val analytics by lazy { AppAnalytics.from(application) }
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
     }
@@ -44,6 +46,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val agreed = preview || consent.accepted
             LaunchedEffect(agreed) {
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                    analytics.resume(this@MainActivity, consent.accepted, preview)
                 if (agreed) {
                     initializePayment(preview)
                     billViewModel.initialize(preview)
@@ -91,12 +95,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() { super.onStart(); if (businessAllowed()) startBusiness() }
     override fun onResume() {
         super.onResume()
+        analytics.resume(this, consent.accepted, UiPreview.enabled && UiPreview.requested(intent))
         if (businessAllowed()) {
             rechargeViewModel.onResumed(window.decorView.hasWindowFocus())
             feeViewModel.onResumed(window.decorView.hasWindowFocus())
         }
     }
     override fun onPause() {
+        analytics.pause(this)
         rechargeViewModel.onPaused()
         feeViewModel.onPaused()
         super.onPause()
@@ -108,5 +114,8 @@ class MainActivity : ComponentActivity() {
             feeViewModel.onWindowFocusChanged(hasFocus)
         }
     }
-    override fun onStop() { stopBusiness(); super.onStop() }
+    override fun onStop() {
+        if (!isChangingConfigurations) analytics.background()
+        stopBusiness(); super.onStop()
+    }
 }

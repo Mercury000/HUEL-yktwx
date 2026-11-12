@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.analytics.AppAnalytics
+import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -36,7 +38,17 @@ class AppUpdateViewModelTest {
                 listeners.launch(start = CoroutineStart.UNDISPATCHED) { model.messages.collect { events += it } }
             }
     @Before fun setup() { prefs.edit().clear().commit(); Dispatchers.setMain(dispatcher) }
-    @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain() }
+    @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain(); AppAnalytics.instance = null }
+
+    @Test fun analyticsDeduplicatesAValidatedVersionAcrossRepeatedChecks() = runTest(dispatcher) {
+        val statistics = RecordingAnalyticsBackend()
+        statistics.start(app)
+        val model = model()
+        model.configure(false, true, true)
+        repeat(3) { model.checkManually(); runCurrent() }
+        assertEquals(listOf("update_available"), statistics.events.map { it.first })
+        assertEquals(mapOf("target_version" to "1.2.0", "update_channel" to "stable"), statistics.events.single().second)
+    }
 
     @Test fun disablingRemindersKeepsSilentAndManualChecksEnabled() = runTest(dispatcher) {
         val model = model()
