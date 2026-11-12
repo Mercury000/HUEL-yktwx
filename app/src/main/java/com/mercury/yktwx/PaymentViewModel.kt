@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
@@ -485,6 +486,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
         val old = mutable.value
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = if (!preview) analytics.begin() else null
         val version = ++requestVersion
         val transactionRead = balanceRefresh.started()
         loginInProgress = true
@@ -494,6 +497,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             try {
                 val batch = withContext(Dispatchers.IO) { repository.login(username, password) }
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
                 notifications.send("登录成功")
                 show(batch, username.trim(), version, transactionRead)
@@ -502,6 +506,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             } catch (e: CancellationException) { throw e
             } catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
@@ -511,11 +516,15 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
+                    AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = username,
                     errorKind = e.readFailureKind(), error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
+                    AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = old.username,
                     errorKind = ReadFailureKind.Other, error = "登录失败，请稍后重试")
@@ -538,6 +547,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val query = paymentReadKey()
         val readTrigger = if (trigger.automatic && balancePending()) ReadTrigger.Transaction else trigger
         if (!reads.canStart(query, readTrigger, replace = !trigger.automatic) { refresh(manual, trigger) }) return
+        if (manual) AppAnalytics.from(getApplication()).retryPaymentCode()
         // A newer payment refresh owns the account result, superseding any older balance read.
         cancelAccountRead()
         cancelPaymentCardRead()

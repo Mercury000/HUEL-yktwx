@@ -6,8 +6,14 @@ import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
+import com.mercury.yktwx.analytics.AppAnalytics
+import com.mercury.yktwx.analytics.AnalyticsFeature
+import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
+import com.mercury.yktwx.analytics.UmengAnalyticsBackend
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.preview.UiPreview
+import com.mercury.yktwx.ui.UsageConsent
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -50,6 +56,53 @@ class UiPreviewIsolationTest {
         assertEquals(allowed, UiPreview.lostRequested(intent))
         assertFalse(UiPreview.requested(Intent()))
         assertFalse(UiPreview.lostRequested(Intent()))
+    }
+
+    @Test fun analyticsSdkIsOnlyAvailableInReleaseBuilds() {
+        val release = BuildConfig.BUILD_TYPE == "release"
+        for (className in listOf("com.umeng.commonsdk.UMConfigure", "com.umeng.analytics.MobclickAgent")) {
+            val available = runCatching { Class.forName(className, false, javaClass.classLoader) }.isSuccess
+            assertEquals(className, release, available)
+        }
+        if (!release) {
+            assertEquals("", BuildConfig.UMENG_APP_KEY)
+            assertEquals("", BuildConfig.UMENG_CHANNEL)
+            val analytics = AppAnalytics(UmengAnalyticsBackend(app))
+            analytics.resume(app, agreed = true)
+            assertFalse(analytics.active.value)
+            assertNull(analytics.submit(AnalyticsFeature.RechargeSelf))
+        }
+    }
+
+    @Test fun releaseApplicationInitializesFromCurrentPersistedConsentBeforeForeground() = runBlocking {
+        val release = BuildConfig.BUILD_TYPE == "release"
+        assertEquals(release, app.javaClass.name == "com.mercury.yktwx.analytics.UmengApplication")
+        if (!release) return@runBlocking
+
+        val prefs = app.getSharedPreferences("usage_consent", Application.MODE_PRIVATE)
+        val backend = RecordingAnalyticsBackend()
+        val analytics = AppAnalytics(backend)
+        AppAnalytics.instance = analytics
+        try {
+            prefs.edit().clear().putString("accepted_hash", "outdated-notice").commit()
+            app.onCreate()
+            assertEquals(0, backend.initializations)
+
+            UsageConsent(app).accept()
+            app.onCreate()
+            assertEquals(1, backend.initializations)
+            assertEquals(0, backend.resumes)
+            assertFalse(analytics.active.value)
+            assertNull(analytics.begin())
+            assertTrue(backend.events.isEmpty())
+
+            analytics.resume(app, agreed = UsageConsent(app).accepted)
+            assertEquals(1, backend.initializations)
+            assertEquals(1, backend.resumes)
+        } finally {
+            AppAnalytics.instance = null
+            prefs.edit().clear().commit()
+        }
     }
 
     @Test fun previewStartupCannotBypassLoginOrInjectProfileAndBillsInProduction() {

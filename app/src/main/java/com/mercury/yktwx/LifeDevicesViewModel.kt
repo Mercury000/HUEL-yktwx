@@ -3,6 +3,7 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.RechargeResult
 import com.mercury.yktwx.data.life.*
 import kotlinx.coroutines.*
@@ -269,6 +270,8 @@ class LifeDevicesViewModel internal constructor(
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.code.isBlank()) {
             mutable.update { it.copy(loginError = "请输入手机号和验证码") }; return
         }
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
         authTask = viewModelScope.launch {
             mutable.update { it.copy(loggingIn = true, loginError = null) }
             try {
@@ -278,6 +281,7 @@ class LifeDevicesViewModel internal constructor(
                     throw LifeDeviceException("正在处理请求，请稍后更换账户")
                 accountVerifier.reset()
                 persistence.withLock { withContext(io) { store.saveAccount(next) }; ensureActive(); account = next }
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Panggui)
                 if (ownerPhone.isNotBlank() && ownerPhone != next.phone) {
                     waterPollTask?.cancel(); laundryPollTask?.cancel(); waterTask?.cancel(); laundryTask?.cancel(); quoteTask?.cancel()
                     sessionErrors.clear()
@@ -300,7 +304,10 @@ class LifeDevicesViewModel internal constructor(
                 requestedFeature?.let { continueEntry(it) }
                 resumeSessions(waitBeforeWaterRead = true)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
+            catch (e: Exception) {
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Panggui, AnalyticsError.from(e))
+                mutable.update { it.copy(loggingIn = false, loginError = failure(e)) }
+            }
         }
     }
     fun pageVisible(active: Boolean) {
@@ -387,6 +394,9 @@ class LifeDevicesViewModel internal constructor(
         val device = value.device ?: return
         if (value.feature != LifeFeature.Water || value.water?.active == true || value.loadingDevice || value.accountBusy || waterTask?.isActive == true) return
         val token = account?.token ?: return requireLogin()
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
+        val analyticsFeature = if (device.isShower) AnalyticsFeature.PangguiShower else AnalyticsFeature.PangguiWater
         waterPollTask?.cancel(); waterPollTask = null
         waterTask = viewModelScope.launch {
             serviceError(LifeFeature.Water, null)
@@ -399,11 +409,18 @@ class LifeDevicesViewModel internal constructor(
                 fresh.startError?.let { throw LifeDeviceException(it) }
                 if (fresh.skus.none { it.id == value.selectedSkuId && it.available != false })
                     throw LifeDeviceException("接水选项已变更，请刷新设备")
-                api.selectAfterPay(token)
-                val sent = WaterSession(fresh, value.selectedSkuId, WaterPhase.Starting, startSent = true)
-                saveSession(sent, select = true) // Persist before sending the command, including a lost-response attempt.
-                val unlock = if (device.isShower) api.unlockShower(value.selectedSkuId, token) else api.unlock(value.selectedSkuId, token)
-                saveSession(sent.copy(messageId = unlock.messageId, orderNo = unlock.orderNo))
+                analytics.submitted(analyticsAttempt, analyticsFeature)
+                try {
+                    api.selectAfterPay(token)
+                    val sent = WaterSession(fresh, value.selectedSkuId, WaterPhase.Starting, startSent = true)
+                    saveSession(sent, select = true)
+                    val unlock = if (device.isShower) api.unlockShower(value.selectedSkuId, token) else api.unlock(value.selectedSkuId, token)
+                    saveSession(sent.copy(messageId = unlock.messageId, orderNo = unlock.orderNo))
+                } catch (e: CancellationException) { throw e }
+                  catch (e: Exception) {
+                    analytics.operationFailed(analyticsAttempt, analyticsFeature, AnalyticsError.from(e))
+                    throw e
+                }
                 waitForWater(token)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -736,6 +753,8 @@ class LifeDevicesViewModel internal constructor(
         if (value.feature != LifeFeature.Laundry || !value.paymentVisible || value.laundryBusy || value.quoteLoading || value.paymentLaunch != null ||
             quote.deviceId != device.id || (value.laundry == null && quote.skuId != value.selectedSkuId) ||
             quote.channels.none { it.method == method && it.laundryUnavailableReason() == null }) return
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
         laundryWork { token, service ->
             var session = mutable.value.laundry
             if (session?.phase == LaundryPhase.Closed) return@laundryWork
@@ -776,16 +795,29 @@ class LifeDevicesViewModel internal constructor(
                 return@laundryWork
             }
             saveLaundrySession(session.copy(phase = LaundryPhase.Paying, paymentSent = true))
+            laundryAnalyticsAttempt = analyticsAttempt
+            analytics.submitted(analyticsAttempt, AnalyticsFeature.PangguiLaundry)
             if (method == "2") {
                 paymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)
                 try { service.payLaundryBalance(session.orderNo, token) }
                 catch (e: LifeDeviceException) {
+                    analytics.operationFailed(analyticsAttempt, AnalyticsFeature.PangguiLaundry, AnalyticsError.from(e))
                     if (e.businessRejected) paymentFeedback(session.sessionId, RechargePhase.Failed, detail = failure(e))
+                    throw e
+                }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    analytics.operationFailed(analyticsAttempt, AnalyticsFeature.PangguiLaundry, AnalyticsError.from(e))
                     throw e
                 }
                 waitLaundryPaid(token, service)
             } else {
-                val payload = service.prepareLaundryPayment(session.orderNo, method, token)
+                val payload = try { service.prepareLaundryPayment(session.orderNo, method, token) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) {
+                        analytics.operationFailed(analyticsAttempt, AnalyticsFeature.PangguiLaundry, AnalyticsError.from(e))
+                        throw e
+                    }
                 paymentFeedback(session.sessionId, RechargePhase.AwaitingPayment)
                 mutable.update { it.copy(paymentLaunch = LifePaymentLaunch(++paymentSequence, session.orderNo, payload, method)) }
             }
@@ -794,6 +826,9 @@ class LifeDevicesViewModel internal constructor(
     fun laundryPaymentReturned(requestId: Long, resultStatus: String?) {
         val launch = mutable.value.paymentLaunch?.takeIf { it.id == requestId } ?: return
         val session = mutable.value.laundry?.takeIf { it.orderNo == launch.orderNo } ?: return
+        if (resultStatus == "launch_failed" || resultStatus == "6002")
+            AppAnalytics.from(getApplication()).operationFailed(laundryAnalyticsAttempt,
+                AnalyticsFeature.PangguiLaundry, AnalyticsError.External)
         mutable.update { it.copy(paymentLaunch = null) }
         paymentInFlight = null
         paymentFeedback(session.sessionId, RechargePhase.Checking, loading = true)
@@ -910,6 +945,7 @@ class LifeDevicesViewModel internal constructor(
             finally { laundryTask = null; mutable.update { it.copy(laundryBusy = false) }; resumeSessions() }
         }
     }
+    private var laundryAnalyticsAttempt: AnalyticsAttempt? = null
     private suspend fun checkLaundryReady(session: LaundrySession, token: String, service: LifeLaundryService) {
         val message = service.checkLaundryDevice(session.device.id, token)
         currentCoroutineContext().ensureActive()

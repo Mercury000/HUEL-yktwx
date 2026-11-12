@@ -29,6 +29,7 @@ import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.Hui798ViewModel
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.AppUpdateViewModel
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.FeeRoomBinding
@@ -403,6 +404,30 @@ private fun MainContent(
     val network by rememberNetworkState(state.preview)
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
+    val analytics = remember(context) { AppAnalytics.from(context) }
+    val analyticsActive by analytics.active.collectAsStateWithLifecycle()
+    val analyticsPage = when {
+        !isActive || state.preview || state.needsLogin || layers.isNotEmpty() -> null
+        pagerState.settledPage == 0 -> AnalyticsPage.Payment
+        pagerState.settledPage == 2 -> if (billState.statsVisible) AnalyticsPage.BillStats else AnalyticsPage.BillList
+        else -> null
+    }
+    val validPaymentCode = state.code != null && state.problem == null && !state.busy && state.error == null
+    LaunchedEffect(analyticsActive, foreground, foregroundState.epoch, analyticsPage, validPaymentCode, state.busy,
+        state.errorKind, state.error, paymentPageCovered) {
+        if (analyticsActive && foreground && !state.preview) {
+            analytics.pageVisible(analyticsPage)
+            if (analyticsPage == AnalyticsPage.Payment && !paymentPageCovered) {
+                val failure = if (!validPaymentCode && !state.busy && !state.restoringLogin && state.error != null)
+                    when (state.errorKind) {
+                        com.mercury.yktwx.data.ReadFailureKind.Network -> if (network.online == false) AnalyticsError.Offline else AnalyticsError.Network
+                        com.mercury.yktwx.data.ReadFailureKind.Authentication -> AnalyticsError.Auth
+                        else -> AnalyticsError.Business
+                    } else null
+                analytics.paymentCodeVisible(validPaymentCode, failure)
+            }
+        }
+    }
     LaunchedEffect(foreground, isActive, state.preview) {
         lifeModel.environment(foreground && isActive && !state.preview)
         hui798Model.environment(foreground && isActive && !state.preview)
@@ -688,9 +713,13 @@ private fun MainContent(
                                                     onBack = { tabs.animateToPage(0) },
                                                     onRefresh = billViewModel::refresh,
                                                     onLoadMore = billViewModel::loadMore,
-                                                    onDateSelected = billViewModel::selectDate,
+                                                    onDateSelected = { filter ->
+                                                        if (filter != billState.dateFilter) analytics.filterApplied(AnalyticsFilter.Date)
+                                                        billViewModel.selectDate(filter)
+                                                    },
                                                     onFiltersApplied = billViewModel::applyFilters,
                                                     onSearch = billViewModel::search,
+                                                    onSearchConfirmed = { cleared -> analytics.filterApplied(if (cleared) AnalyticsFilter.Clear else AnalyticsFilter.Search) },
                                                     onOpenStats = ::openBillStats,
                                                     onShowDetails = billViewModel::showDetails,
                                                     onStatsTypeChange = billViewModel::selectStatsType,
