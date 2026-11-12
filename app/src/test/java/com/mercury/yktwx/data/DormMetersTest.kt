@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -228,7 +229,7 @@ class DormMetersTest {
                     })
             override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
                 val binding = if (project == FeeProject.FamilyWater) waterBinding else electricBinding
-                if (detail) return FeeQuery(thirdParty = org.json.JSONObject(binding.selections).toString(),
+                if (detail) return FeeQuery(thirdParty = jsonObjectOf(*binding.selections.entries.map { it.key to it.value }.toTypedArray()).toString(),
                     display = listOf(if (project == FeeProject.FamilyWater) "剩余水量(吨)" to "45.86" else "剩余电量(度)" to "1806.75"))
                 val options = when (level) {
                     0 -> binding.names["campus"] to binding.selections["campus"]

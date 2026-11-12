@@ -1,7 +1,7 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -26,10 +26,8 @@ class PersonalProfileTest {
     }
 
     @Test fun profileUsesAuthenticatedUserEndpointAndPreservesDepartmentAndProfession() = runBlocking {
-        val data = JSONObject().put("name", "示例姓名").put("sno", "fake-id")
-            .put("departmentName", "示例部门").put("professionName", "示例专业").put("avatar", "/minio/demo.png")
-            .put("mobile", "13000000000")
-        val body = JSONObject().put("code", 200).put("success", true).put("data", data).toString()
+        val data = jsonObjectOf("name" to ("示例姓名"), "sno" to ("fake-id"), "departmentName" to ("示例部门"), "professionName" to ("示例专业"), "avatar" to ("/minio/demo.png"), "mobile" to ("13000000000"))
+        val body = jsonObjectOf("code" to (200), "success" to (true), "data" to (data)).toString()
         lateinit var request: FakeResponse
         val api = fixtureProfileApi { url -> FakeResponse(url, body.toByteArray()).also { request = it } }
         val profile = api.profile("fake-token")
@@ -46,23 +44,23 @@ class PersonalProfileTest {
         assertTrue(request.closed)
     }
     @Test fun missingProfessionStaysEmptyAndNeverFallsBackToDepartment() {
-        val profile = ProfileApi.parse(JSONObject().put("departmentName", "示例部门").put("professionName", JSONObject.NULL).put("sno", 123))
+        val profile = ProfileApi.parse(jsonObjectOf("departmentName" to ("示例部门"), "professionName" to (JsonNull), "sno" to (123)))
         assertEquals("示例部门", profile.departmentName)
         assertEquals("", profile.professionName)
         assertEquals("", profile.sno)
     }
     private fun homeModel(sno: String = "fake-id", college: String = "示例书院", profession: String = "示例专业"): String {
-        val model = org.json.JSONArray()
-        listOf("name" to "示例姓名", "sno" to sno, "thirdLevelDepartment" to college, "fourthLevelDepartment" to profession).forEach { (code, value) ->
-            model.put(JSONObject().put("type", "text").put("name", "textInfoCom")
-                .put("prop", JSONObject().put("code", code).put("value", value)))
+        val model = buildJsonArray {
+            listOf("name" to "示例姓名", "sno" to sno, "thirdLevelDepartment" to college, "fourthLevelDepartment" to profession).forEach { (code, value) ->
+                add(jsonObjectOf("type" to "text", "name" to "textInfoCom", "prop" to jsonObjectOf("code" to code, "value" to value)))
+            }
+            add(jsonObjectOf("type" to "img", "prop" to jsonObjectOf("imageUrl" to "https://example.com/unused.png")))
         }
-        model.put(JSONObject().put("type", "img").put("prop", JSONObject().put("imageUrl", "https://example.com/unused.png")))
         return model.toString()
     }
     @Test fun homeIdentityReadsResolvedInformationWithoutFetchingOrRenderingCardImages() = runBlocking {
-        val data = JSONObject().put("fake-account", JSONObject().put("model", homeModel()))
-        val body = JSONObject().put("code", 200).put("success", true).put("data", data).toString()
+        val data = jsonObjectOf("fake-account" to (jsonObjectOf("model" to (homeModel()))))
+        val body = jsonObjectOf("code" to (200), "success" to (true), "data" to (data)).toString()
         lateinit var request: FakeResponse
         val api = fixtureProfileApi { url -> FakeResponse(url, body.toByteArray()).also { request = it } }
         val identity = api.homeIdentity("fake-token", "fake-id")!!
@@ -75,12 +73,12 @@ class PersonalProfileTest {
         assertFalse(identity.toString().contains("fake-id"))
     }
     @Test fun homeIdentityRejectsOtherOwnersAndConflictingCards() {
-        val other = JSONObject().put("other", JSONObject().put("model", homeModel(sno = "other-id")))
+        var other = jsonObjectOf("other" to (jsonObjectOf("model" to (homeModel(sno = "other-id")))))
         assertNull(ProfileApi.parseHomeIdentity(other, "fake-id"))
-        other.put("a", JSONObject().put("model", homeModel()))
-        other.put("b", JSONObject().put("model", homeModel(college = "另一书院")))
+        other = other.withField("a", jsonObjectOf("model" to (homeModel())))
+            .withField("b", jsonObjectOf("model" to (homeModel(college = "另一书院"))))
         assertNull(ProfileApi.parseHomeIdentity(other, "fake-id"))
-        other.put("b", JSONObject().put("model", homeModel()))
+        other = other.withField("b", jsonObjectOf("model" to (homeModel())))
         assertEquals("示例书院", ProfileApi.parseHomeIdentity(other, "fake-id")!!.thirdLevelDepartment)
     }
     @Test fun avatarOnlyAcceptsSchoolMinioPaths() {

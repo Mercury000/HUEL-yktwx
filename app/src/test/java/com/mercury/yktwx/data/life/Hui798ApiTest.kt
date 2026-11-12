@@ -1,11 +1,11 @@
 package com.mercury.yktwx.data.life
 
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.AppHttp
 import com.mercury.yktwx.data.fixtureHui798Api
-
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -34,13 +34,13 @@ class Hui798ApiTest {
         api.sendCode("13800000000", "aB12", "image-key")
         assertEquals(Hui798Account("13800000000", "fixture-token", "fixture-user"), api.login("13800000000", "123456"))
         assertEquals("/api/v1/acc/login/code", calls[0].url.path)
-        assertEquals("image-key", JSONObject(calls[0].sent.toString("UTF-8")).getString("s"))
-        assertEquals("aB12", JSONObject(calls[0].sent.toString("UTF-8")).getString("authCode"))
+        assertEquals("image-key", parseObject(calls[0].sent.toString("UTF-8")).stringValue("s"))
+        assertEquals("aB12", parseObject(calls[0].sent.toString("UTF-8")).stringValue("authCode"))
         assertNull(calls[0].url.query)
         val login = calls[1]
         assertEquals("sign=c811cc18f9d81e8ed95ccbe427709a4c", login.url.query)
-        val body = JSONObject(login.sent.toString("UTF-8"))
-        assertEquals(2, body.length()); assertEquals("123456", body.getString("authCode")); assertEquals("13800000000", body.getString("un"))
+        val body = parseObject(login.sent.toString("UTF-8"))
+        assertEquals(2, body.size); assertEquals("123456", body.stringValue("authCode")); assertEquals("13800000000", body.stringValue("un"))
         calls.forEach {
             assertEquals("POST", it.request.method); assertEquals("1,1", it.request.header("ApplicationType"))
             assertEquals("3.1.9", it.request.header("VersionCode"))
@@ -122,9 +122,9 @@ class Hui798ApiTest {
         for ((status, time) in listOf(99 to null, 1 to "1700000010000")) {
             val api = fixtureHui798Api("https://fixture.test/api/v1", "", { url ->
                 val response = if (url.path.endsWith("/status")) {
-                    val gene = JSONObject().put("status", status)
-                    time?.let { gene.put("time", it) }
-                    JSONObject().put("code", 0).put("data", JSONObject().put("device", JSONObject().put("gene", gene))).toString()
+                    val gene = jsonObjectOf("status" to (status))
+                    val timedGene = if (time != null) gene.withField("time", time) else gene
+                    jsonObjectOf("code" to (0), "data" to (jsonObjectOf("device" to (jsonObjectOf("gene" to (timedGene)))))).toString()
                 } else """{"code":0,"data":{"device":{"id":"fixture-device","gene":{"status":10,"time":"1700000000000"}},"user":{"id":"fixture-user"}}}"""
                 Response(url, response)
             })

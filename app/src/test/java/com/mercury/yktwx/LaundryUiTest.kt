@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureLifeDeviceApi
-
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -15,7 +16,6 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -53,16 +53,16 @@ class LaundryUiTest {
     private fun fixture(): Fixture {
         val file = File("../tools/laundry-ui-capture.json")
         assumeTrue("Optional local capture fixture", file.isFile)
-        val payload = JSONObject(file.readText())
+        val payload = parseObject(file.readText())
         fun service(orderKey: String) = fixtureLifeDeviceApi("test-secret", { url ->
-            OfflineResponse(url, payload.getJSONObject(if (url.path == "/order/detail") orderKey else url.path).toString())
+            OfflineResponse(url, payload.objectValue(if (url.path == "/order/detail") orderKey else url.path).toString())
         })
         return runBlocking {
             val api = service("/order/running")
-            val device = api.laundryDevice(payload.getString("__code"), "test-token")
+            val device = api.laundryDevice(payload.stringValue("__code"), "test-token")
             val sku = device.skus.first { it.name == "桶自洁" }
             val quote = api.laundryQuote(device, sku.id, "test-token")
-            val number = payload.getJSONObject("/order/running").getJSONObject("data").getString("orderNo")
+            val number = payload.objectValue("/order/running").objectValue("data").stringValue("orderNo")
             Fixture(device, quote, api.laundryOrder(number, "test-token"), service("/order/finished").laundryOrder(number, "test-token"))
         }
     }

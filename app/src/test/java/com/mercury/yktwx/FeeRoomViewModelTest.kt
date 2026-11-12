@@ -1,10 +1,11 @@
 package com.mercury.yktwx
 
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
-import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -82,7 +83,7 @@ class FeeRoomViewModelTest {
         assertSame(official, model.state.value.roomBinding)
         model.createWithMethod(100, "ACCOUNTTSM")
         await { model.state.value.stage == FeeStage.Methods }
-        assertEquals(fees.rooms[1].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+        assertEquals(fees.rooms[1].id, parseObject(fees.createdTarget!!).stringValue("room"))
         assertEquals(0, fees.writes)
         assertSame(official, fees.saved)
     }
@@ -240,7 +241,7 @@ class FeeRoomViewModelTest {
         model.createWithMethod(100, "ACCOUNTTSM")
         await { model.state.value.stage == FeeStage.Methods }
         assertEquals(FeeProject.FamilyElectric, fees.createdProject)
-        assertEquals(fees.rooms[0].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+        assertEquals(fees.rooms[0].id, parseObject(fees.createdTarget!!).stringValue("room"))
 
         model.open(FeeProject.FamilyWater, vault.username, false)
         await { !model.state.value.loading && model.state.value.config != null }
@@ -248,7 +249,7 @@ class FeeRoomViewModelTest {
         model.createWithMethod(100, "ACCOUNTTSM")
         await { model.state.value.stage == FeeStage.Methods }
         assertEquals(FeeProject.FamilyWater, fees.createdProject)
-        assertEquals(fees.rooms[1].id, org.json.JSONObject(fees.createdTarget!!).getString("room"))
+        assertEquals(fees.rooms[1].id, parseObject(fees.createdTarget!!).stringValue("room"))
         assertEquals(0, fees.writes)
     }
 
@@ -294,8 +295,8 @@ class FeeRoomViewModelTest {
         assertTrue(target.sameTarget(ready.currentRoom))
         assertEquals(setOf("campus"), ready.hiddenLevels)
         assertEquals(fees.rooms, ready.options[2])
-        assertEquals(target.selections, org.json.JSONObject(ready.query!!.thirdParty!!)
-            .let { value -> value.keys().asSequence().associateWith { value.getString(it) } })
+        assertEquals(target.selections, parseObject(ready.query!!.thirdParty!!)
+            .let { value -> value.keys.iterator().asSequence().associateWith { value.stringValue(it) } })
         assertEquals(0, fees.writes)
     }
 
@@ -337,8 +338,8 @@ class FeeRoomViewModelTest {
         model.createWithMethod(100, "ACCOUNTTSM")
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Methods }
         assertEquals(1, fees.creations)
-        val target = org.json.JSONObject(fees.createdTarget!!)
-        assertEquals(fees.room(1).selections.getValue("room"), target.getString("room"))
+        val target = parseObject(fees.createdTarget!!)
+        assertEquals(fees.room(1).selections.getValue("room"), target.stringValue("room"))
         assertTrue(model.state.value.roomBinding!!.sameTarget(fees.room(0)))
         assertEquals(0, fees.writes)
         assertEquals(listOf("demo-method"), model.state.value.order!!.methods.map { it.id })
@@ -496,7 +497,7 @@ class FeeRoomViewModelTest {
                         FeeOption(if (air) "air-room-202" else "light-room-202", if (air) "55-202空调" else "5-202照明"),
                     )
                 }
-                return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString(),
+                return if (detail) FeeQuery(thirdParty = jsonObjectOf(*selections.entries.map { it.key to it.value }.toTypedArray()).toString(),
                     display = listOf("剩余电量" to "100 度")) else FeeQuery(levels = branchLevels, options = options)
             }
             if (familyOptions && project in setOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
@@ -507,9 +508,9 @@ class FeeRoomViewModelTest {
                         listOf(FeeOption("family-${project.id}-room", "示例A栋-房间A$suffix")) +
                             if (project == FeeProject.FamilyWater && familyWaterDuplicate)
                                 listOf(FeeOption("family-449-duplicate", "示例A栋-房间A水表")) else emptyList()
-                return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString()) else FeeQuery(levels = levels, options = options)
+                return if (detail) FeeQuery(thirdParty = jsonObjectOf(*selections.entries.map { it.key to it.value }.toTypedArray()).toString()) else FeeQuery(levels = levels, options = options)
             }
-            return if (detail) FeeQuery(thirdParty = org.json.JSONObject(selections).toString(), display = listOf("剩余电量" to "100 度"), canPay = canPay)
+            return if (detail) FeeQuery(thirdParty = jsonObjectOf(*selections.entries.map { it.key to it.value }.toTypedArray()).toString(), display = listOf("剩余电量" to "100 度"), canPay = canPay)
                 else FeeQuery(levels = levels, options = if (level == 0) listOf(FeeOption("demo-campus", "示例校区")) else rooms)
         }
         override suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?) {

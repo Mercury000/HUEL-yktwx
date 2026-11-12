@@ -1,9 +1,9 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import org.json.JSONObject
 
 /** Read the official binding first; discovering an additional meter must not delay its display. */
 internal class DormRoomLoader(private val service: FeeService) {
@@ -117,7 +117,7 @@ internal class DormRoomLoader(private val service: FeeService) {
     }
 
     private fun resolvedBinding(binding: FeeRoomBinding, query: FeeQuery): FeeRoomBinding {
-        val data = query.thirdParty?.let { JSONObject(it) } ?: return binding
+        val data = query.thirdParty?.let { parseObject(it) } ?: return binding
         val nameFields = mapOf("campus" to "areaName", "building" to "buildingName", "floor" to "floorName", "room" to "roomName")
         val names = binding.names.toMutableMap()
         for ((key, value) in binding.selections) {

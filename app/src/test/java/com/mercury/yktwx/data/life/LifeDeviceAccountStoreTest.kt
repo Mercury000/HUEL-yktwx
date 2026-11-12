@@ -1,6 +1,7 @@
 package com.mercury.yktwx.data.life
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -8,13 +9,33 @@ class LifeDeviceAccountStoreTest {
     private class Records : LifeDeviceRecords {
         val values = mutableMapOf<String, String>()
         var failWrite = false
-        override fun read(key: String) = values[key]?.let(::JSONObject)
+        override fun read(key: String) = values[key]?.let(::parseObject)
         override fun write(values: Map<String, String>) { if (failWrite) throw IllegalStateException("storage unavailable"); this.values.putAll(values) }
         override fun remove(key: String) { values.remove(key) }
     }
     private val device = LifeDevice("77", "serial", "77", "00", "22", "22", "shop", "imei",
         "学校", "", "before", false, false, null, listOf(LifeSku("clean", "桶自洁", true, "0.00", minutes = 5)), emptyList())
     private val account = LifeAccount("13800000000", "test-token")
+    @Test fun unversionedUnknownOrderSurvivesUpgradeAndSavesOnlyCurrentFormat() {
+        val records = Records()
+        records.values["account"] = """{"phone":"13800000000","token":"test-token"}"""
+        // Historical persisted shape: absent nullable values, no session ID, no schema marker.
+        records.values["laundry"] = """{"owner":"13800000000","device":{"id":"77","serial":"serial","name":"77","category":"00","routeShopId":"22","orgId":"22","shopId":"shop","imei":"imei","shopName":"学校","address":"","payment":"before","skus":[{"id":"clean","name":"桶自洁","price":"0.00","minutes":5}],"channels":[]},"skuId":"clean","price":"0.00","payMethod":"13","phase":"Creating","createSent":true,"creationUncertain":true}"""
+        val store = LifeDeviceAccountStore(records)
+        val restored = store.laundrySessions().single()
+        assertEquals("legacy-laundry--clean", restored.sessionId)
+        assertTrue(restored.createSent)
+        assertTrue(restored.creationUncertain)
+        assertTrue(restored.canDismissUnknownCreation)
+        assertNull(restored.device.bluetooth)
+        assertNull(restored.device.skus.single().available)
+        store.saveLaundrySessions(listOf(restored))
+        assertFalse(records.values.containsKey("laundry"))
+        assertEquals(2L, records.read("laundry_sessions")!!.strictLongValue("schemaVersion"))
+        assertEquals(listOf(restored), LifeDeviceAccountStore(records).laundrySessions())
+        store.removeLaundrySession(restored.sessionId)
+        assertTrue(LifeDeviceAccountStore(records).laundrySessions().isEmpty())
+    }
     @Test fun unknownWaterDeletionErasesOwnedRecordAfterExpiryAndPreservesOtherProgressAndUnknownFields() {
         val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
         val unknownDevice = device.copy(category = "04", bluetooth = null, supportsFinish = null,
@@ -68,7 +89,7 @@ class LifeDeviceAccountStoreTest {
         store.saveSession(WaterSession(device.copy(category = "04"), "water", WaterPhase.Running, orderNo = "old-water"))
         // Old app versions did not store sessionId.
         listOf("water", "laundry").forEach { key ->
-            val record = records.read(key)!!.apply { remove("sessionId") }
+            val record = records.read(key)!!.withField("sessionId", null).withField("schemaVersion", null)
             records.values[key] = record.toString()
         }
         val waters = store.waterSessions(); val laundries = store.laundrySessions()
@@ -100,9 +121,8 @@ class LifeDeviceAccountStoreTest {
         assertEquals(paying, store.laundrySession())
         store.saveLaundrySessions(listOf(paying.copy(phase = LaundryPhase.Closed)))
         assertEquals(LaundryPhase.Closed, LifeDeviceAccountStore(records).laundrySessions().single().phase)
-        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
-            getJSONArray("sessions").getJSONObject(0).remove("createdAt")
-        }.toString()
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.let { it.withField("sessions",
+            jsonArrayOf(listOf(it.arrayValue("sessions").objectValue(0).withField("createdAt", null)))) }.toString()
         assertNull(LifeDeviceAccountStore(records).laundrySessions().single().createdAtMillis)
         assertEquals(300L, paying.paymentRemainingSeconds(100_000L))
         assertEquals(1L, paying.paymentRemainingSeconds(399_999L))
@@ -118,9 +138,8 @@ class LifeDeviceAccountStoreTest {
         assertEquals(completed, LifeDeviceAccountStore(records).laundrySession())
         store.saveLaundrySessions(listOf(completed))
         assertEquals(listOf(completed), LifeDeviceAccountStore(records).laundrySessions())
-        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
-            getJSONArray("sessions").getJSONObject(0).remove("completionObservedAt")
-        }.toString()
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.let { it.withField("sessions",
+            jsonArrayOf(listOf(it.arrayValue("sessions").objectValue(0).withField("completionObservedAt", null)))) }.toString()
         assertEquals(listOf(completed.copy(completionObservedAtMillis = null)), LifeDeviceAccountStore(records).laundrySessions())
     }
     @Test fun legacyHiddenUnknownCreationRemainsReadableForCleanup() {
@@ -131,9 +150,9 @@ class LifeDeviceAccountStoreTest {
         assertEquals(hidden, LifeDeviceAccountStore(records).laundrySession())
         store.saveLaundrySessions(listOf(hidden))
         assertEquals(listOf(hidden), LifeDeviceAccountStore(records).laundrySessions())
-        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.apply {
-            getJSONArray("sessions").getJSONObject(0).apply { remove("creationUncertain"); remove("islandDismissed") }
-        }.toString()
+        records.values["laundry_sessions"] = records.read("laundry_sessions")!!.let { it.withField("sessions",
+            jsonArrayOf(listOf(it.arrayValue("sessions").objectValue(0).withField("creationUncertain", null)
+                .withField("islandDismissed", null)))) }.toString()
         val legacy = LifeDeviceAccountStore(records).laundrySessions().single()
         assertFalse(legacy.islandDismissed); assertFalse(legacy.creationUncertain); assertTrue(legacy.createSent)
     }
@@ -144,8 +163,8 @@ class LifeDeviceAccountStoreTest {
         val running = unknown.copy(phase = LaundryPhase.Running, orderNo = "other-order", orderId = "other-id", sessionId = "other")
         store.saveLaundrySessions(listOf(unknown, running)); store.clearAccount()
         store.removeLaundrySession(unknown.sessionId)
-        val remaining = records.read("laundry_sessions")!!.getJSONArray("sessions")
-        assertEquals(1, remaining.length()); assertEquals("other", remaining.getJSONObject(0).getString("sessionId"))
+        val remaining = records.read("laundry_sessions")!!.arrayValue("sessions")
+        assertEquals(1, remaining.size); assertEquals("other", remaining.objectValue(0).stringValue("sessionId"))
         store.saveAccount(account)
         assertEquals(listOf(running), LifeDeviceAccountStore(records).laundrySessions())
     }

@@ -1,7 +1,9 @@
 package com.mercury.yktwx.analytics
 
-import android.content.Context
+import kotlinx.serialization.json.*
+import kotlinx.serialization.SerializationException
 import com.mercury.yktwx.data.*
+import android.content.Context
 import com.mercury.yktwx.data.life.Hui798Exception
 import com.mercury.yktwx.data.life.LifeDeviceException
 import java.io.IOException
@@ -9,7 +11,6 @@ import java.net.SocketTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONException
 
 internal enum class AnalyticsFeature(val id: String, val event: String?) {
     PaymentCode("payment_code", null),
@@ -42,7 +43,7 @@ internal enum class AnalyticsError(val id: String) {
                 causes.any { it is SocketTimeoutException } -> Timeout
                 causes.any { it.isAuthenticationFailure() || it is LifeDeviceException && it.loginExpired || it is Hui798Exception && it.loginExpired } -> Auth
                 causes.any { it is SecurityException } -> Permission
-                causes.any { it is JSONException } -> Parse
+                causes.any { it is SerializationException } -> Parse
                 causes.any { it is NetworkFailure || it is IOException } -> Network
                 causes.any { it is YktException || it is LifeDeviceException && it.businessRejected || it is Hui798Exception && it.rejected } -> Business
                 else -> Unknown
