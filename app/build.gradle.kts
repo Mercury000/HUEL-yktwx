@@ -15,6 +15,18 @@ val hui798Gateway = providers.environmentVariable("HUI798_API_GATEWAY")
     .orElse(machineProperties.getProperty("hui798.apiGateway", "https://i.ilife798.com/api/v1")).get()
 val hui798Salt = providers.environmentVariable("HUI798_SIGN_SALT")
     .orElse(machineProperties.getProperty("hui798.signSalt", "")).get()
+// Only Actions can enable analytics; local release builds stay disabled even with credentials.
+val umengEnabled = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true" &&
+    providers.environmentVariable("UMENG_ENABLED").orNull == "true"
+val umengAppKey = providers.environmentVariable("UMENG_APP_KEY")
+    .orElse(machineProperties.getProperty("umeng.appKey", "")).get().trim()
+val umengChannel = providers.environmentVariable("UMENG_CHANNEL")
+    .orElse(machineProperties.getProperty("umeng.channel", "")).get().trim()
+require(umengAppKey.isEmpty() || umengAppKey.matches(Regex("[a-fA-F0-9]{24}")))
+require(umengChannel.isEmpty() || umengChannel.matches(Regex("[a-zA-Z0-9_-]{1,64}")))
+require(!umengEnabled || (umengAppKey.isNotEmpty() && umengChannel.isNotEmpty())) {
+    "Enabled Umeng analytics requires UMENG_APP_KEY and UMENG_CHANNEL."
+}
 fun buildString(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 val versionProperties = Properties().apply {
     rootProject.file("ci-version.properties").inputStream().use { load(it) }
@@ -48,14 +60,23 @@ android {
         buildConfigField("String", "UPDATE_CHANNEL", buildString(updateChannel))
         manifestPlaceholders["updateChannel"] = updateChannel
         buildConfigField("String", "BUILD_COMMIT", buildString(generatedVersion.getProperty("commit", "local")))
+        buildConfigField("boolean", "UMENG_ENABLED", "false")
+        buildConfigField("String", "UMENG_APP_KEY", buildString(""))
+        buildConfigField("String", "UMENG_CHANNEL", buildString(""))
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {
-        debug { isMinifyEnabled = false }
+        debug {
+            isMinifyEnabled = false
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            buildConfigField("boolean", "UMENG_ENABLED", umengEnabled.toString())
+            buildConfigField("String", "UMENG_APP_KEY", buildString(umengAppKey))
+            buildConfigField("String", "UMENG_CHANNEL", buildString(umengChannel))
+            manifestPlaceholders["umengScheme"] = "um.$umengAppKey"
         }
     }
     packaging {
@@ -76,7 +97,7 @@ android {
         }
     }
     sourceSets {
-        // Only these builds compile UI fixtures, preview notes and intent extras.
+        // These builds share UI fixtures and a disabled analytics backend.
         listOf("debug", "preview").forEach { getByName(it).kotlin.directories.add("src/uiPreview/kotlin") }
         getByName("release").kotlin.directories.add("src/production/kotlin")
     }
@@ -110,6 +131,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    "releaseImplementation"("com.umeng.umsdk:common:10.0.1")
+    "releaseImplementation"("com.umeng.umsdk:asms:1.8.7")
     // Payment QR and barcode generation; camera decoding uses wechat-qrcode-lite.
     implementation("com.google.zxing:core:3.5.4")
     implementation(files("libs/wechat-qrcode-lite-0.1.0-arm64-v8a.aar"))

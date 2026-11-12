@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.analytics.AppAnalytics
+import com.mercury.yktwx.analytics.AnalyticsPage
+import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -42,6 +45,9 @@ class PaymentViewModelTest {
     private var accountResponses = 0
     private var accountPublishGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var paymentFailure: Exception? = null
+    private var fixedCodes: List<String>? = null
+    private val analyticsBackend = RecordingAnalyticsBackend()
+    private val analytics = AppAnalytics(analyticsBackend)
     @Volatile private var cardQueries = 0
     @Volatile private var cardResponses = 0
     private var cardFailure: Exception? = null
@@ -80,14 +86,128 @@ class PaymentViewModelTest {
             responses++
             paymentFailure?.let { throw it }
             if (!allowed) throw PaymentCodeUnavailable(currentAccount, "持卡人已挂失！", currentProblem)
-            return PaymentBatch(listOf(payments.toString().padStart(20, '0')), 60, account)
+            return PaymentBatch(fixedCodes ?: listOf(payments.toString().padStart(20, '0')), 60, account)
         }
     }
     private val repository = AccountRepository(service, vault)
-    private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
+    private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), repository, analytics = analytics)
     private val store = ViewModelStore().apply { put("payment", model) }
 
     @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
+
+    private fun startCodeAnalytics() {
+        analytics.resume(ApplicationProvider.getApplicationContext<Application>(), agreed = true)
+        analytics.pageVisible(AnalyticsPage.Payment)
+    }
+    private fun codeFetchCount() = analyticsBackend.events.count { it.first == "payment_code_fetched" }
+
+    @Test fun codeFetchCountsEachSuccessfulRequestIncludingManualAndExpiryRefreshes() {
+        startCodeAnalytics()
+        codeAvailable = true
+        fixedCodes = listOf("1".repeat(20), "2".repeat(20))
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { model.state.value.code != null }
+        assertEquals(1, codeFetchCount())
+
+        model.refresh(manual = true)
+        await { payments == 2 && !model.state.value.busy }
+        assertEquals(2, codeFetchCount())
+        assertEquals(fixedCodes!!.first(), model.state.value.code)
+
+        shadowOf(Looper.getMainLooper()).idleFor(61, TimeUnit.SECONDS)
+        await { payments == 3 && !model.state.value.busy }
+        assertEquals(3, codeFetchCount())
+        assertTrue(analyticsBackend.events.all { it.first == "payment_code_fetched" && it.second.isEmpty() })
+    }
+
+    @Test fun codeFetchIsNotManufacturedByRedisplayOrAccountOnlyReads() {
+        startCodeAnalytics()
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { model.state.value.code != null }
+        val code = model.state.value.code
+
+        model.setPageVisible(false, preserveDisplay = true)
+        model.setAccountPageVisible(true)
+        await { !model.state.value.accountLoading && model.state.value.accountCard != null }
+        analytics.pageVisible(null)
+        model.setAccountPageVisible(false)
+        model.setPageVisible(true)
+        analytics.pageVisible(AnalyticsPage.Payment)
+        repeat(3) { analytics.paymentCodeStatus(true) }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(code, model.state.value.code)
+        assertEquals(1, payments)
+        assertEquals(1, codeFetchCount())
+    }
+
+    @Test fun codeFetchOnScannerReturnRequiresANewSuccessfulRequest() {
+        startCodeAnalytics()
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { model.state.value.code != null }
+        model.setPageVisible(false)
+        analytics.pageVisible(null)
+        assertNull(model.state.value.code)
+        assertEquals(1, codeFetchCount())
+
+        model.setPageVisible(true)
+        analytics.pageVisible(AnalyticsPage.Payment)
+        await { payments == 2 && model.state.value.code != null }
+        assertEquals(2, codeFetchCount())
+    }
+
+    @Test fun codeFetchFailuresAndCancelledLateResponsesDoNotCount() {
+        startCodeAnalytics()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { payments == 1 && !model.state.value.busy }
+        assertEquals(0, codeFetchCount())
+
+        codeAvailable = true
+        paymentGate = CompletableDeferred()
+        model.refresh(manual = true); await { payments == 2 }
+        model.setPageVisible(false)
+        paymentGate.complete(Unit)
+        await { responses == 2 }
+        assertNull(model.state.value.code)
+        assertEquals(0, codeFetchCount())
+
+        model.setPageVisible(true)
+        await { payments == 3 && model.state.value.code != null }
+        assertEquals(1, codeFetchCount())
+    }
+
+    @Test fun codeFetchStartedBeforeConsentRevocationCannotReportItsSuccess() {
+        startCodeAnalytics()
+        codeAvailable = true
+        paymentGate = CompletableDeferred()
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground(); await { payments == 1 }
+        analytics.revoke()
+        paymentGate.complete(Unit)
+        await { !model.state.value.busy }
+        assertEquals(0, codeFetchCount())
+    }
+
+    @Test fun codeFetchDuringLoginIsCountedSeparatelyFromTheLoginResult() {
+        startCodeAnalytics()
+        codeAvailable = true
+        model.setPageVisible(false)
+        model.initialize(); await { !model.state.value.restoringLogin }
+        model.onForeground()
+        model.login("456", "fake-password")
+        await { payments == 1 && !model.state.value.busy }
+        assertEquals(1, codeFetchCount())
+        assertNull(model.state.value.code)
+        assertEquals(1, analyticsBackend.events.count { it.first == "login_result" })
+
+        codeAvailable = false
+        model.login("789", "fake-password")
+        await { payments == 2 && !model.state.value.busy }
+        assertEquals(1, codeFetchCount())
+        assertEquals(2, analyticsBackend.events.count { it.first == "login_result" })
+    }
 
     @Test fun localInitializationPreservesCredentialsWithoutBusinessRequests() {
         codeAvailable = true

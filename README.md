@@ -83,6 +83,8 @@ CI 在仓库 **Settings → Secrets and variables → Actions → Secrets** 配�
 
 胖乖生活通过 `PANGGUI_API_SECRET`，或本机 `local.properties` 的 `panggui.apiSecret` 注入接口配置；缺少配置时相应平台无法登录。CI 从同名仓库 Secret 注入，PR 构建不注入接口 Secrets。
 
+友盟 U-App 统计仅在正式包中接入，同意当前须知后启用，业务采用 19 个精简事件。正式 AppKey 和分发渠道通过环境变量或 `local.properties` 注入，缺配置保持停用；debug 和 preview 不包含友盟 SDK。正式包支持官方扫码集成测试，详见[友盟统计接入](docs/umeng-analytics-integration.md)。须知已披露友盟设备识别与接收的数据范围。
+
 在仓库根目录执行：
 
 ```powershell

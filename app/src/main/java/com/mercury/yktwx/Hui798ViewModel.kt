@@ -4,6 +4,7 @@ import android.app.Application
 import android.graphics.BitmapFactory
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.life.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -199,6 +200,8 @@ class Hui798ViewModel internal constructor(
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.code.isBlank()) {
             mutable.update { it.copy(loginError = "请输入手机号和短信验证码") }; return
         }
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
         authTask = viewModelScope.launch {
             mutable.update { it.copy(loggingIn = true, loginError = null) }
             try {
@@ -216,6 +219,7 @@ class Hui798ViewModel internal constructor(
                     ensureActive()
                     account = next; ownerPhone = next.phone
                 }
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Hui798)
                 val candidates = withContext(io) { store.sessions().filter { it.active } }
                 val sessions = if (sameOwner) mutable.value.sessions else emptyList()
                 mutable.update { it.copy(loggingIn = false, loginVisible = false, connectedPhone = next.maskedPhone,
@@ -233,7 +237,10 @@ class Hui798ViewModel internal constructor(
                 pendingDeviceId?.takeIf { visible }?.let(::openDevice)
                 resumeSessions(waitBeforeFirstRead = true)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.update { it.copy(loggingIn = false, loginError = failure(e)) } }
+            catch (e: Exception) {
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Hui798, AnalyticsError.from(e))
+                mutable.update { it.copy(loggingIn = false, loginError = failure(e)) }
+            }
         }
     }
 
@@ -313,6 +320,8 @@ class Hui798ViewModel internal constructor(
     fun startWater() {
         val value = mutable.value; val device = value.device ?: return; val owner = account ?: return
         if (value.busy || value.loadingDevice || !value.deviceReady || value.session != null) return
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
         runCommand(owner) {
             val reading = api.status(device.id, owner.token)
             if (account?.token != owner.token) return@runCommand
@@ -323,12 +332,19 @@ class Hui798ViewModel internal constructor(
             if (reading.status != 99) throw Hui798Exception("暂时无法确认设备状态，请刷新")
             val sent = Hui798Session(device, attemptedAtMillis = now())
             saveSession(sent, select = true)
+            analytics.submitted(analyticsAttempt, AnalyticsFeature.Hui798Water)
             try { api.start(device.id, owner.token) }
             catch (e: Hui798Exception) {
+                analytics.operationFailed(analyticsAttempt, AnalyticsFeature.Hui798Water, AnalyticsError.from(e))
                 if (e.rejected && !e.loginExpired) {
                     mutable.update { it.copy(sessions = it.sessions.filterNot { item -> item.sessionId == sent.sessionId }, selectedSessionId = null) }
                     persist()
                 }
+                throw e
+            }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                analytics.operationFailed(analyticsAttempt, AnalyticsFeature.Hui798Water, AnalyticsError.from(e))
                 throw e
             }
             if (account?.token != owner.token) return@runCommand

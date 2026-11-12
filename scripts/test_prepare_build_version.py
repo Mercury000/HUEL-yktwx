@@ -63,6 +63,40 @@ class BuildVersionTest(unittest.TestCase):
                 finally:
                     os.chdir(previous)
 
+    def test_umeng_is_enabled_only_for_publication_or_opted_in_manual_release(self):
+        cases = [("workflow_dispatch", "main", "release", "", "", "false"),
+                 ("workflow_dispatch", "main", "release", "false", "", "false"),
+                 ("workflow_dispatch", "main", "release", "true", "", "true"),
+                 ("workflow_dispatch", "beta", "release", "true", "", "true"),
+                 ("workflow_dispatch", "main", "debug", "true", "", "false"),
+                 ("workflow_dispatch", "main", "release", "1", "", "false"),
+                 ("push", "main", "debug", "false", "v1.5.0", "true"),
+                 ("push", "beta", "debug", "false", "v1.5.0-beta.1", "true"),
+                 ("push", "main", "release", "true", "", "false"),
+                 ("pull_request", "main", "release", "true", "", "false")]
+        for event, branch, build_type, requested, tag, enabled in cases:
+            with self.subTest(event=event, branch=branch, build_type=build_type, requested=requested), \
+                    tempfile.TemporaryDirectory(prefix="umeng-plan-test-") as temporary:
+                root = Path(temporary).resolve()
+                (root / "version.txt").write_text("1.5.0-beta.1" if branch == "beta" else "1.5.0")
+                (root / "ci-version.properties").write_text("localVersionCode=9\nversionCodeOffset=100000\n")
+                environment = dict(GITHUB_EVENT_NAME=event, GITHUB_REF_NAME=branch,
+                                   GITHUB_RUN_NUMBER="42", GITHUB_OUTPUT=str(root / "output"),
+                                   REQUESTED_BUILD_TYPE=build_type, REQUESTED_UMENG_ENABLED=requested)
+                previous = Path.cwd()
+                try:
+                    os.chdir(root)
+                    with patch.dict(os.environ, environment, clear=True), patch("sys.argv", ["prepare", "--release-tag", tag]), \
+                            patch("prepare_build_version.subprocess.check_output", return_value="a" * 40 + "\n"), \
+                            patch("prepare_build_version.subprocess.run", return_value=subprocess.CompletedProcess([], 1, "")):
+                        main()
+                    output = (root / "output").read_text()
+                    self.assertIn(f"umeng_enabled={enabled}\n", output)
+                    self.assertIn(f"publish={str(bool(tag)).lower()}\n", output)
+                    self.assertIn(f"build_type={'release' if tag else build_type}\n", output)
+                finally:
+                    os.chdir(previous)
+
     def test_retries_only_recover_a_release_at_the_exact_commit_and_channel(self):
         cases = [("beta", "1.5.0-beta.1", "a" * 40, "true"),
                  ("beta", "1.5.0-beta.1", "b" * 40, "false"),
@@ -84,6 +118,7 @@ class BuildVersionTest(unittest.TestCase):
                             patch("prepare_build_version.subprocess.run", return_value=subprocess.CompletedProcess([], 0, tag_commit + "\n")):
                         main()
                     self.assertIn(f"publish={publish}\n", (root / "output").read_text())
+                    self.assertIn(f"umeng_enabled={publish}\n", (root / "output").read_text())
                 finally:
                     os.chdir(previous)
 

@@ -4,3 +4,9 @@
 -keep class com.unionpay.** { *; }
 -dontwarn com.huawei.**
 -keep class com.huawei.** { *; }
+-keep class com.umeng.** { *; }
+-keep class org.repackage.** { *; }
+-keep class com.uyumao.** { *; }
+-keepclassmembers class * {
+    public <init>(org.json.JSONObject);
+}
