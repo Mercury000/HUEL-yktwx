@@ -30,13 +30,11 @@ class HallViewModelTest {
         override fun clearSession() = Unit
         override fun clear() = Unit
     }
+    private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+    private val preferences = AppPreferencesRepository(MemoryPreferences(), preferenceScope)
     private val model = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-        AccountRepository(YktApi(), vault, feeService = fees))
+        AccountRepository(YktApi(), vault, feeService = fees), preferences = preferences)
     private val store = ViewModelStore().apply { put("hall", model) }
-    @Before fun clearDisplayPreference() {
-        ApplicationProvider.getApplicationContext<Application>().getSharedPreferences("hall_display", Application.MODE_PRIVATE)
-            .edit().clear().commit()
-    }
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
@@ -56,7 +54,7 @@ class HallViewModelTest {
         fees.projectGate?.complete(Unit)
         fees.detailGate?.complete(Unit)
         fees.pickerGate?.complete(Unit)
-        store.clear()
+        store.clear(); preferenceScope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -300,10 +298,8 @@ class HallViewModelTest {
         open()
         model.selectRoom(1)
         assertEquals(FeeProject.Wenbei, model.state.value.selectedRoom!!.project)
-        val preferences = ApplicationProvider.getApplicationContext<Application>()
-            .getSharedPreferences("hall_display", Application.MODE_PRIVATE)
-        assertTrue(preferences.all.keys.single().matches(Regex("[a-f0-9]{64}\\.selection")))
-        assertTrue((preferences.all.values.single() as Set<*>).all { it.toString().matches(Regex("[a-f0-9]{64}")) })
+        assertTrue(preferences.snapshot().roomSelections.keys.single().matches(Regex("[a-f0-9]{64}\\.selection")))
+        assertTrue(preferences.snapshot().roomSelections.values.single().all { it.matches(Regex("[a-f0-9]{64}")) })
         model.accountChanged(""); model.accountChanged("fake-owner")
         fees.detailGate = CompletableDeferred()
         fees.detailGateProject = FeeProject.Wenbei
@@ -350,7 +346,7 @@ class HallViewModelTest {
         open()
         model.selectRoom(1)
         val restored = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-            AccountRepository(YktApi(), vault, feeService = fees))
+            AccountRepository(YktApi(), vault, feeService = fees), preferences = preferences)
         val restoredStore = ViewModelStore().apply { put("hall", restored) }
         try {
             restored.accountChanged("fake-owner")
@@ -373,7 +369,7 @@ class HallViewModelTest {
             override fun credentials() = Credentials("another-owner", "fake-password")
         }
         val other = HallViewModel(ApplicationProvider.getApplicationContext<Application>(),
-            AccountRepository(YktApi(), otherVault, feeService = fees))
+            AccountRepository(YktApi(), otherVault, feeService = fees), preferences = preferences)
         val otherStore = ViewModelStore().apply { put("hall", other) }
         try {
             other.accountChanged("another-owner"); other.refresh()

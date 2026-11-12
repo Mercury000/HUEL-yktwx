@@ -1,106 +1,66 @@
 package com.mercury.yktwx
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
+import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.ThemeSettings
+import com.mercury.yktwx.data.life.LifeProvider
+import kotlinx.coroutines.test.*
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ThemeSettingsTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val prefs = context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE)
-
-    @Before fun reset() {
-        prefs.edit().clear().commit()
-        context.getSharedPreferences("app_updates", Context.MODE_PRIVATE).edit().clear().commit()
-    }
-
-    @Test fun updateChannelPersistsIndependentlyOfTheInstalledBuildChannel() {
-        val settings = ThemeSettings(context)
-        assertEquals(BuildConfig.UPDATE_CHANNEL, settings.updateChannel.value)
+    @Test fun everySettingIsReadFromThePersistedSharedSnapshot() = runTest {
+        val store = MemoryPreferences()
+        val repository = AppPreferencesRepository(store, backgroundScope)
+        runCurrent()
+        val settings = ThemeSettings(repository)
+        val other = ThemeSettings(repository)
+        assertTrue(settings.preventScreenshots.value)
+        assertTrue(settings.automaticUpdates.value)
+        assertTrue(settings.paymentBrightness.value)
+        assertFalse(settings.swipeBack.value)
+        settings.setTheme(2); settings.setAccent(1); settings.setFloating(true)
+        settings.setFloatingStyle(1); settings.setBlurBottom(true); settings.setBlurTop(true)
+        settings.setSwipeBack(true); settings.setNavTransitionStyle(1)
+        settings.setPaymentMotionDetection(true); settings.setPaymentBrightness(false)
+        settings.setPreventScreenshots(false); settings.setAutomaticUpdates(false)
+        settings.setNavigationRailExpanded(true)
+        settings.dismissLifeLoginNotice(LifeProvider.Hui798)
         settings.setUpdateChannel("beta")
-        assertEquals("beta", ThemeSettings(context).updateChannel.value)
-        settings.setUpdateChannel("stable")
-        assertEquals("stable", ThemeSettings(context).updateChannel.value)
+        // No speculative UI state is published before persistence.
+        assertEquals(0, settings.themeMode.value)
+        runCurrent()
+        assertEquals(2, other.themeMode.value)
+        assertEquals(1, other.accentMode.value)
+        assertTrue(other.floatingBottomBar.value)
+        assertEquals(1, other.floatingBottomBarStyle.value)
+        assertTrue(other.blurBottomBar.value); assertTrue(other.blurTopBar.value)
+        assertTrue(other.swipeBack.value); assertEquals(1, other.navTransitionStyle.value)
+        assertTrue(other.paymentMotionDetection.value); assertFalse(other.paymentBrightness.value)
+        assertFalse(other.preventScreenshots.value); assertFalse(other.automaticUpdates.value)
+        assertTrue(other.getNavigationRailExpanded(false)); assertTrue(other.hui798LoginNoticeDismissed.value)
+        assertFalse(other.pangguiLoginNoticeDismissed.value); assertEquals("beta", other.updateChannel.value)
+        assertEquals(repository.snapshot(), store.values.value)
         assertThrows(IllegalArgumentException::class.java) { settings.setUpdateChannel("unknown") }
     }
 
-    @Test fun transitionStyleDefaultsToMiuixAndPersistsTheSelection() {
-        val settings = ThemeSettings(context)
-        assertEquals(0, settings.navTransitionStyle.value)
-        settings.setNavTransitionStyle(1)
-        assertEquals(1, settings.navTransitionStyle.value)
-        assertEquals(1, ThemeSettings(context).navTransitionStyle.value)
-        settings.setNavTransitionStyle(0)
-        assertEquals(0, ThemeSettings(context).navTransitionStyle.value)
-    }
-
-    @Test fun swipeBackUsesTheDemoDefaultAndIgnoresRemovedPredictiveSettings() {
-        prefs.edit().putBoolean("predictive_back", true).putInt("predictive_back_distance", 25).commit()
-        val settings = ThemeSettings(context)
-        assertFalse(settings.swipeBack.value)
-        settings.setSwipeBack(true)
-        assertTrue(settings.swipeBack.value)
-        assertTrue(ThemeSettings(context).swipeBack.value)
-        settings.setSwipeBack(false)
-        assertFalse(ThemeSettings(context).swipeBack.value)
-    }
-
-    @Test fun automaticUpdatesDefaultOnAndCanBePersistentlyDisabled() {
-        val settings = ThemeSettings(context)
-        assertTrue(settings.automaticUpdates.value)
-        settings.setAutomaticUpdates(false)
-        assertFalse(settings.automaticUpdates.value)
-        assertFalse(ThemeSettings(context).automaticUpdates.value)
-        settings.setAutomaticUpdates(true)
-        assertTrue(ThemeSettings(context).automaticUpdates.value)
-    }
-
-    @Test fun paymentBrightnessDefaultsOnForNewAndExistingUsersAndPersists() {
-        assertTrue(ThemeSettings(context).paymentBrightness.value)
-        prefs.edit().putInt("theme_mode", 2).commit()
-        val settings = ThemeSettings(context)
-        assertTrue(settings.paymentBrightness.value)
-        settings.setPaymentBrightness(false)
-        assertFalse(settings.paymentBrightness.value)
-        val restored = ThemeSettings(context)
-        assertFalse(restored.paymentBrightness.value)
-        assertEquals(2, restored.themeMode.value)
-        assertTrue(restored.preventScreenshots.value)
-        settings.setPaymentBrightness(true)
-        assertTrue(settings.paymentBrightness.value)
-        assertTrue(ThemeSettings(context).paymentBrightness.value)
-    }
-
-    @Test fun paymentMotionDetectionIsOffForNewAndExistingUsersWithoutThePreference() {
-        assertFalse(ThemeSettings(context).paymentMotionDetection.value)
-        prefs.edit().putInt("theme_mode", 2).putBoolean("prevent_screenshots", false).commit()
-        val settings = ThemeSettings(context)
-        assertFalse(settings.paymentMotionDetection.value)
-        assertEquals(2, settings.themeMode.value)
+    @Test fun failedWritesKeepThePersistedValueAndReportFailure() = runTest {
+        val store = MemoryPreferences()
+        val repository = AppPreferencesRepository(store, backgroundScope)
+        runCurrent()
+        val settings = ThemeSettings(repository)
+        var failures = 0
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            repository.failures.collect { failures++ }
+        }
+        store.failure = java.io.IOException("disk full")
+        settings.setPreventScreenshots(false)
+        runCurrent()
+        assertTrue(settings.preventScreenshots.value)
+        assertEquals(1, failures)
+        store.failure = null
+        settings.setPreventScreenshots(false); runCurrent()
         assertFalse(settings.preventScreenshots.value)
-    }
-    @Test fun enablingPersistsAndUpdatesObservableState() {
-        val settings = ThemeSettings(context)
-        settings.setPaymentMotionDetection(true)
-        assertTrue(settings.paymentMotionDetection.value)
-        assertTrue(ThemeSettings(context).paymentMotionDetection.value)
-    }
-    @Test fun disablingPersistsWithoutChangingOtherPreferences() {
-        val settings = ThemeSettings(context)
-        settings.setTheme(2)
-        settings.setPaymentMotionDetection(true)
-        settings.setPaymentMotionDetection(false)
-        assertFalse(settings.paymentMotionDetection.value)
-        val restored = ThemeSettings(context)
-        assertFalse(restored.paymentMotionDetection.value)
-        assertEquals(2, restored.themeMode.value)
-        assertTrue(restored.preventScreenshots.value)
     }
 }

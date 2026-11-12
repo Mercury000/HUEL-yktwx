@@ -1,56 +1,57 @@
 package com.mercury.yktwx.ui
 
 import android.content.Context
-import androidx.compose.runtime.mutableStateOf
-import com.mercury.yktwx.BuildConfig
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.life.LifeProvider
 
-/** Persistent UI preferences, including SonyPods theme controls with their original defaults. */
-class ThemeSettings(context: Context) {
-    private val prefs = context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE)
-    val themeMode = mutableStateOf(prefs.getInt("theme_mode", 0).coerceIn(0, 2))
-    val accentMode = mutableStateOf(prefs.getInt("accent_mode", 0).coerceIn(0, 1))
-    val floatingBottomBar = mutableStateOf(prefs.getBoolean("floating_bottom_bar", false))
-    val floatingBottomBarStyle = mutableStateOf(prefs.getInt("floating_bottom_bar_style", 0).coerceIn(0, 1))
-    val blurBottomBar = mutableStateOf(prefs.getBoolean("blur_bottom_bar", false))
-    val blurTopBar = mutableStateOf(prefs.getBoolean("blur_top_bar", false))
-    val swipeBack = mutableStateOf(prefs.getBoolean("swipe_back", false))
-    val navTransitionStyle = mutableStateOf(prefs.getInt("nav_transition_style", 0).coerceIn(0, 1))
-    val paymentMotionDetection = mutableStateOf(prefs.getBoolean("payment_motion_detection", false))
-    val paymentBrightness = mutableStateOf(prefs.getBoolean("payment_brightness", true))
-    val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
-    val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
-    private val updatePrefs = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
-    val updateChannel = mutableStateOf(updatePrefs.getString("${BuildConfig.APPLICATION_ID}:channel", BuildConfig.UPDATE_CHANNEL)
-        ?.takeIf { it in listOf("stable", "beta") } ?: "stable")
-    init {
-        if (!updatePrefs.contains("${BuildConfig.APPLICATION_ID}:channel"))
-            updatePrefs.edit().putString("${BuildConfig.APPLICATION_ID}:channel", updateChannel.value).apply()
+/** Read-only Compose projections of the single persisted settings snapshot. */
+class ThemeSettings internal constructor(internal val repository: AppPreferencesRepository) {
+    constructor(context: Context) : this(AppPreferencesRepository.from(context))
+    private fun <T> ui(select: (UiPreferences) -> T): State<T> = derivedStateOf {
+        select((repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.ui ?: UiPreferences())
     }
-    val pangguiLoginNoticeDismissed = mutableStateOf(prefs.getBoolean("panggui_login_notice_dismissed", false))
-    val hui798LoginNoticeDismissed = mutableStateOf(prefs.getBoolean("hui798_login_notice_dismissed", false))
-    fun dismissLifeLoginNotice(provider: LifeProvider) {
-        val hui = provider == LifeProvider.Hui798
-        (if (hui) hui798LoginNoticeDismissed else pangguiLoginNoticeDismissed).value = true
-        prefs.edit().putBoolean(if (hui) "hui798_login_notice_dismissed" else "panggui_login_notice_dismissed", true).apply()
+    val themeMode = ui { it.themeMode }
+    val accentMode = ui { it.accentMode }
+    val floatingBottomBar = ui { it.floatingBottomBar }
+    val floatingBottomBarStyle = ui { it.floatingBottomBarStyle }
+    val blurBottomBar = ui { it.blurBottomBar }
+    val blurTopBar = ui { it.blurTopBar }
+    val swipeBack = ui { it.swipeBack }
+    val navTransitionStyle = ui { it.navTransitionStyle }
+    val paymentMotionDetection = ui { it.paymentMotionDetection }
+    val paymentBrightness = ui { it.paymentBrightness }
+    val preventScreenshots = ui { it.preventScreenshots }
+    val automaticUpdates = ui { it.automaticUpdates }
+    val pangguiLoginNoticeDismissed = ui { it.pangguiLoginNoticeDismissed }
+    val hui798LoginNoticeDismissed = ui { it.hui798LoginNoticeDismissed }
+    val updateChannel = derivedStateOf {
+        (repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.updateChannel
+            ?: com.mercury.yktwx.BuildConfig.UPDATE_CHANNEL
     }
-    fun getNavigationRailExpanded(default: Boolean): Boolean = prefs.getBoolean("navigation_rail_expanded", default)
-    fun setNavigationRailExpanded(v: Boolean) { prefs.edit().putBoolean("navigation_rail_expanded", v).apply() }
-    fun setTheme(v: Int) { themeMode.value = v; prefs.edit().putInt("theme_mode", v).apply() }
-    fun setAccent(v: Int) { accentMode.value = v; prefs.edit().putInt("accent_mode", v).apply() }
-    fun setFloating(v: Boolean) { floatingBottomBar.value = v; prefs.edit().putBoolean("floating_bottom_bar", v).apply() }
-    fun setFloatingStyle(v: Int) { floatingBottomBarStyle.value = v; prefs.edit().putInt("floating_bottom_bar_style", v).apply() }
-    fun setBlurBottom(v: Boolean) { blurBottomBar.value = v; prefs.edit().putBoolean("blur_bottom_bar", v).apply() }
-    fun setBlurTop(v: Boolean) { blurTopBar.value = v; prefs.edit().putBoolean("blur_top_bar", v).apply() }
-    fun setSwipeBack(v: Boolean) { swipeBack.value = v; prefs.edit().putBoolean("swipe_back", v).apply() }
-    fun setNavTransitionStyle(v: Int) { navTransitionStyle.value = v.coerceIn(0, 1); prefs.edit().putInt("nav_transition_style", navTransitionStyle.value).apply() }
-    fun setPaymentMotionDetection(v: Boolean) { paymentMotionDetection.value = v; prefs.edit().putBoolean("payment_motion_detection", v).apply() }
-    fun setPaymentBrightness(v: Boolean) { paymentBrightness.value = v; prefs.edit().putBoolean("payment_brightness", v).apply() }
-    fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
-    fun setAutomaticUpdates(v: Boolean) { automaticUpdates.value = v; prefs.edit().putBoolean("automatic_updates", v).apply() }
+    private fun change(transform: (UiPreferences) -> UiPreferences) = repository.enqueueUpdate { it.copy(ui = transform(it.ui)) }
+    fun dismissLifeLoginNotice(provider: LifeProvider) = change {
+        if (provider == LifeProvider.Hui798) it.copy(hui798LoginNoticeDismissed = true)
+        else it.copy(pangguiLoginNoticeDismissed = true)
+    }
+    fun getNavigationRailExpanded(default: Boolean): Boolean =
+        (repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.ui?.navigationRailExpanded ?: default
+    fun setNavigationRailExpanded(v: Boolean) = change { it.copy(navigationRailExpanded = v) }
+    fun setTheme(v: Int) = change { it.copy(themeMode = v.coerceIn(0, 2)) }
+    fun setAccent(v: Int) = change { it.copy(accentMode = v.coerceIn(0, 1)) }
+    fun setFloating(v: Boolean) = change { it.copy(floatingBottomBar = v) }
+    fun setFloatingStyle(v: Int) = change { it.copy(floatingBottomBarStyle = v.coerceIn(0, 1)) }
+    fun setBlurBottom(v: Boolean) = change { it.copy(blurBottomBar = v) }
+    fun setBlurTop(v: Boolean) = change { it.copy(blurTopBar = v) }
+    fun setSwipeBack(v: Boolean) = change { it.copy(swipeBack = v) }
+    fun setNavTransitionStyle(v: Int) = change { it.copy(navTransitionStyle = v.coerceIn(0, 1)) }
+    fun setPaymentMotionDetection(v: Boolean) = change { it.copy(paymentMotionDetection = v) }
+    fun setPaymentBrightness(v: Boolean) = change { it.copy(paymentBrightness = v) }
+    fun setPreventScreenshots(v: Boolean) = change { it.copy(preventScreenshots = v) }
+    fun setAutomaticUpdates(v: Boolean) = change { it.copy(automaticUpdates = v) }
     fun setUpdateChannel(value: String) {
-        require(value in listOf("stable", "beta"))
-        updateChannel.value = value
-        updatePrefs.edit().putString("${BuildConfig.APPLICATION_ID}:channel", value).apply()
+        require(value in setOf("stable", "beta"))
+        repository.enqueueUpdate { it.copy(updateChannel = value) }
     }
 }

@@ -53,10 +53,9 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, reminders: Boolean, allo
     }
     val currentReminders by rememberUpdatedState(reminders)
     val currentAllowed by rememberUpdatedState(allowed)
-    val currentChannel by rememberUpdatedState(channel)
     DisposableEffect(model, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
-            model.configure(currentReminders, currentAllowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), currentChannel)
+            model.configure(currentReminders, currentAllowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         }
         lifecycle.addObserver(observer)
         onDispose {
@@ -65,6 +64,6 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, reminders: Boolean, allo
         }
     }
     LaunchedEffect(model, reminders, allowed, channel) {
-        model.configure(reminders, allowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), channel)
+        model.configure(reminders, allowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
 }
