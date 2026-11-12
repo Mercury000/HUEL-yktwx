@@ -120,17 +120,17 @@ fun BillPage(
     val networkError = key(networkFeedbackIdentity) {
         if (state.statsVisible) rememberPageNetworkError(state.stats.loading, statsHasContent, initialError,
             *listOfNotNull(
-                ReadRegion("每日趋势", readError(state.stats.dailyError, state.stats.dailyErrorKind), state.stats.dailyLoaded).takeIf { state.stats.period.trendSupported },
-                ReadRegion("分类统计", readError(state.stats.categoriesError, state.stats.categoriesErrorKind), state.stats.categoriesLoaded),
-                ReadRegion("账单排行", readError(state.stats.rankingError, state.stats.rankingErrorKind), state.stats.rankingLoaded)).toTypedArray(),
+                ReadRegion("每日趋势", readError(state.stats.dailyError, state.stats.dailyErrorKind), state.stats.dailyLoaded, state.stats.loading).takeIf { state.stats.period.trendSupported },
+                ReadRegion("分类统计", readError(state.stats.categoriesError, state.stats.categoriesErrorKind), state.stats.categoriesLoaded, state.stats.loading),
+                ReadRegion("账单排行", readError(state.stats.rankingError, state.stats.rankingErrorKind), state.stats.rankingLoaded, state.stats.loading)).toTypedArray(),
             restoringDisplay = state.stats.restoringDisplay)
             // Keep retry memory during disk restoration without claiming an uncached page has old data.
             .takeIf { statsHasContent || state.stats.restoringDisplay || !state.stats.loading }
         else rememberPageNetworkError(state.loading || state.refreshing || state.loadingMore, listHasContent, initialError,
             ReadRegion("账单明细", FeedbackText.networkError(readError(state.error, state.errorKind), readError(state.loadMoreError, state.loadMoreErrorKind)),
-                state.listAvailable || state.items.isNotEmpty()),
+                state.listAvailable || state.items.isNotEmpty(), state.loading || state.refreshing || state.loadingMore),
             ReadRegion("账单概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
-                state.summary != null || state.counts != null), restoringDisplay = state.restoringDisplay)
+                state.summary != null || state.counts != null, state.loading || state.refreshing), restoringDisplay = state.restoringDisplay)
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val keyboard = LocalSoftwareKeyboardController.current

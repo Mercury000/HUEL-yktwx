@@ -1,5 +1,9 @@
 package com.mercury.yktwx.data.life
 
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.AppHttp
+import com.mercury.yktwx.data.fixtureLifeDeviceApi
+
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -9,9 +13,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.URL
 import java.net.URLDecoder
-import java.security.Principal
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 class LifeDeviceApiTest {
     @Test fun accountProfileUsesAuthenticatedReadWithoutScanningDevices() = runBlocking {
@@ -21,8 +22,8 @@ class LifeDeviceApiTest {
         val call = calls.single()
         assertEquals("/user/info", call.url.path)
         assertEquals(mapOf("token" to "fixture-token"), call.form())
-        assertEquals("fixture-token", call.getRequestProperty("Authorization"))
-        assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", "/user/info", "fixture-token"), call.getRequestProperty("sign"))
+        assertEquals("fixture-token", call.request.header("Authorization"))
+        assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", "/user/info", "fixture-token"), call.request.header("sign"))
         assertTrue(call.closed)
     }
 
@@ -36,28 +37,24 @@ class LifeDeviceApiTest {
         try { service.profile("fixture-token"); fail("Expired token must be rejected") }
         catch (e: LifeDeviceException) { assertTrue(e.loginExpired) }
     }
-    private class Response(url: URL, val body: String, val status: Int = 200) : HttpsURLConnection(url) {
+    private class Response(url: URL, val body: String, val status: Int = 200) : HttpFixture(url) {
         val sent = ByteArrayOutputStream()
         var closed = false
-        override fun connect() {}
-        override fun disconnect() { closed = true }
-        override fun usingProxy() = false
-        override fun getResponseCode() = status
-        override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
-        override fun getErrorStream(): InputStream = ByteArrayInputStream(body.toByteArray())
-        override fun getOutputStream(): OutputStream = sent
-        override fun getCipherSuite() = "TLS_TEST"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
+
+        override fun close() { closed = true }
+
+        override fun statusCode() = status
+        override fun bodyStream(): InputStream = ByteArrayInputStream(body.toByteArray())
+        override fun errorBodyStream(): InputStream = ByteArrayInputStream(body.toByteArray())
+        override fun requestBodyStream(): OutputStream = sent
+
         fun form() = sent.toString("UTF-8").split('&').associate {
             val pair = it.split('=', limit = 2)
             URLDecoder.decode(pair[0], "UTF-8") to URLDecoder.decode(pair[1], "UTF-8")
         }
     }
     private fun api(responses: Map<String, String>, calls: MutableList<Response>): LifeDeviceApi =
-        LifeDeviceApi("test-secret", { url ->
+        fixtureLifeDeviceApi("test-secret", { url ->
             assertEquals("https", url.protocol)
             assertEquals("userapi.qiekj.com", url.host)
             Response(url, responses[url.path] ?: error("Unexpected request: ${url.path}")).also(calls::add)
@@ -85,7 +82,7 @@ class LifeDeviceApiTest {
     }
     @Test fun authorizationRejectionCannotLeaveAnUnknownCreationButServerTransportFailureCan() = runBlocking {
         for (status in listOf(401, 403, 500)) {
-            val service = LifeDeviceApi("test-secret", { url -> Response(url, "unavailable", status) })
+            val service = fixtureLifeDeviceApi("test-secret", { url -> Response(url, "unavailable", status) })
             try { service.createLaundryOrder("77", "clean", "test-token"); fail("HTTP error must fail") }
             catch (e: LifeDeviceException) {
                 assertEquals(status != 500, e.businessRejected)
@@ -123,10 +120,10 @@ class LifeDeviceApiTest {
         assertEquals(mapOf("imei" to "867369079842630", "useTicket" to "0", "shopId" to "22", "goodsCategory" to "04", "token" to "test-token"), channel.form())
         calls.forEach { call ->
             assertTrue(call.closed)
-            assertEquals("POST", call.requestMethod)
-            assertEquals("1.109.1", call.getRequestProperty("Version"))
-            assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", call.url.path, "test-token"), call.getRequestProperty("sign"))
-            assertFalse(call.instanceFollowRedirects)
+            assertEquals("POST", call.request.method)
+            assertEquals("1.109.1", call.request.header("Version"))
+            assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", call.url.path, "test-token"), call.request.header("sign"))
+            assertFalse(AppHttp.service.followRedirects)
         }
     }
 
@@ -140,7 +137,7 @@ class LifeDeviceApiTest {
         assertEquals(LifeAccount("13800000000", "test-token"), service.login("13800000000", "123456"))
         assertEquals(mapOf("phone" to "13800000000", "template" to "reg"), calls.first().form())
         assertEquals(mapOf("channel" to "android_app", "phone" to "13800000000", "verify" to "123456"), calls.last().form())
-        assertTrue(calls.all { it.getRequestProperty("sign") == null })
+        assertTrue(calls.all { it.request.header("sign") == null })
     }
 
     @Test fun finishingProcessesAfterPayWithoutReadingBillsOrInferringAmount() = runBlocking {
@@ -245,7 +242,7 @@ class LifeDeviceApiTest {
             calls.single { it.url.path.endsWith("unlock") }.form())
         assertEquals(mapOf("goodsId" to "shower-device", "orderNo" to unlock.orderNo, "token" to "test-token"),
             calls.single { it.url.path.endsWith("remoteEnd") }.form())
-        calls.forEach { assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", it.url.path, "test-token"), it.getRequestProperty("sign")) }
+        calls.forEach { assertEquals(LifeDeviceProtocol.sign("test-secret", "123456789", it.url.path, "test-token"), it.request.header("sign")) }
     }
 
     @Test fun showerEndDoesNotAcceptNullOrRejectedSuccess() = runBlocking {
@@ -265,10 +262,10 @@ class LifeDeviceApiTest {
         service.cancelLaundryOrder("test-order-id", "test-token")
         val call = calls.single()
         assertEquals("/order/cancel", call.url.path)
-        assertEquals("POST", call.requestMethod)
+        assertEquals("POST", call.request.method)
         assertEquals(mapOf("orderId" to "test-order-id", "token" to "test-token"), call.form())
         assertTrue(call.closed)
-        assertNotNull(call.getRequestProperty("sign"))
+        assertNotNull(call.request.header("sign"))
     }
     @Test fun laundryCancellationPropagatesBackendRejection() = runBlocking {
         val calls = mutableListOf<Response>()

@@ -59,6 +59,7 @@ class NetworkReadRecoveryTest {
 
         compose.runOnIdle {
             connect(manager)
+            callbacks.single().onAvailable(manager.activeNetwork!!)
             callbacks.single().onCapabilitiesChanged(manager.activeNetwork!!, manager.getNetworkCapabilities(manager.activeNetwork)!!)
             shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
         }
@@ -101,6 +102,8 @@ class NetworkReadRecoveryTest {
         compose.runOnIdle {
             connect(manager)
             shadowOf(manager).networkCallbacks.single().onAvailable(manager.activeNetwork!!)
+            shadowOf(manager).networkCallbacks.single().onCapabilitiesChanged(manager.activeNetwork!!,
+                manager.getNetworkCapabilities(manager.activeNetwork)!!)
             shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
         }
         compose.runOnIdle { assertEquals(NetworkState(true, 1), network); show = false }

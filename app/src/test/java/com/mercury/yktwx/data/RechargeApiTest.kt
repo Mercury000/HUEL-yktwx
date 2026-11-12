@@ -10,27 +10,20 @@ import java.io.ByteArrayOutputStream
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.security.Principal
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 class RechargeApiTest {
-    private class FakeHttps(url: URL, private val status: Int, private val body: String, private val location: String? = null) : HttpsURLConnection(url) {
+    private class FakeResponse(url: URL, private val status: Int, private val body: String, private val location: String? = null) : HttpFixture(url) {
         val sent = ByteArrayOutputStream()
         var disconnected = false
-        override fun connect() {}
-        override fun disconnect() { disconnected = true }
-        override fun usingProxy() = false
-        override fun getResponseCode() = status
-        override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
-        override fun getErrorStream() = ByteArrayInputStream(body.toByteArray())
-        override fun getOutputStream() = sent
-        override fun getHeaderField(name: String?) = if (name.equals("Location", true)) location else null
-        override fun getCipherSuite() = "TLS_FAKE"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
-        override fun getPeerPrincipal(): Principal? = null
-        override fun getLocalPrincipal(): Principal? = null
+
+        override fun close() { disconnected = true }
+
+        override fun statusCode() = status
+        override fun bodyStream() = ByteArrayInputStream(body.toByteArray())
+        override fun errorBodyStream() = ByteArrayInputStream(body.toByteArray())
+        override fun requestBodyStream() = sent
+        override fun header(name: String?) = if (name.equals("Location", true)) location else null
+
     }
     private fun pending() = PendingRecharge("123456", "fake-account", "401", 1000, "FAKE-ORDER", "81")
     private fun config() = RechargeConfiguration("401", "fake-account", listOf(1000, 5000, 10000), 1, 50000, true, false)
@@ -45,14 +38,14 @@ class RechargeApiTest {
         .put("orderid", "FAKE-ORDER").put("payid", 81).put("third_party", "fake-account").put("tranamt", amount).put("actulamt", amount)
         .put("status", status).put("feeitemid", 0).put("feeitemlist", JSONArray().put(JSONObject().put("feeitemid", 401)))))
     @Test fun configurationReadsTopLevelFeeAndMapsElectronicAccount() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = RechargeApi { url ->
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureRechargeApi { url ->
             val payload = when (url.path) {
                 "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", JSONObject().put("getFrontConfig", "{\"recharge\":\"401\"}").put("getEcardConfig", "{\"type\":\"1\"}"))
                 "/charge/feeitem/singleFeeitem" -> JSONObject().put("code", 200).put("feeitem", JSONObject().put("layout", "10,50,100").put("flag", "1100000000"))
                 else -> cards()
             }
-            FakeHttps(url, 200, payload.toString()).also(calls::add)
+            FakeResponse(url, 200, payload.toString()).also(calls::add)
         }
         val c = api.rechargeConfiguration("fake-token", "fake-account")
         assertEquals(listOf(1000L, 5000L, 10000L), c.amountsCents)
@@ -62,7 +55,7 @@ class RechargeApiTest {
         assertNull(c.maximumCents)
         assertNull(c.amountError(80_000)) // No invented 500 yuan ceiling when the config is silent.
         assertEquals("recharge", params(calls.last().url.query)["scene"])
-        assertTrue(calls.all { it.disconnected && it.getRequestProperty("Cookie") == null && it.getRequestProperty("synjones-auth") == "bearer fake-token" })
+        assertTrue(calls.all { it.disconnected && it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" })
         val front = JSONObject().put("rechargeMaxAmount", "600")
         val fee = JSONObject().put("retain_money", "1").put("maxmoney", "800").put("flag", "1100000200")
         val limited = RechargeApi.amountConfiguration("401", "fake-account", front, fee)
@@ -74,14 +67,14 @@ class RechargeApiTest {
         assertEquals(60_000L, RechargeApi.amountConfiguration("401", "fake-account", front, fee).maximumCents)
     }
     @Test fun createUsesSignedPostAndDoesNotFollowTokenRedirect() = runBlocking {
-        lateinit var call: FakeHttps
-        val api = RechargeApi { url ->
-            FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it }
+        lateinit var call: FakeResponse
+        val api = fixtureRechargeApi { url ->
+            FakeResponse(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD&token=fake-token").also { call = it }
         }
         val o = api.createRecharge("fake-token", config(), 1000)
         assertEquals("FAKE-ORDER", o.orderId)
-        assertEquals("POST", call.requestMethod)
-        assertFalse(call.instanceFollowRedirects)
+        assertEquals("POST", call.request.method)
+        assertFalse(AppHttp.service.followRedirects)
         assertNull(call.url.query)
         val p = params(call.sent.toString("UTF-8"))
         assertEquals("10.00", p["tranamt"])
@@ -95,15 +88,15 @@ class RechargeApiTest {
         val message = "金额大于每笔交易允许的最大金额800元"
         val encoded = URLEncoder.encode(URLEncoder.encode(message, "UTF-8"), "UTF-8")
         val location = RechargeProtocol.SCHOOL + "/plat/notfound?msg=" + encoded
-        val calls = mutableListOf<FakeHttps>()
-        val api = RechargeApi { url -> FakeHttps(url, 302, "", location).also(calls::add) }
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureRechargeApi { url -> FakeResponse(url, 302, "", location).also(calls::add) }
         val config = RechargeConfiguration("401", "fake-account", emptyList(), null, null, true, false)
         val error = assertThrows(RechargePaymentRejected::class.java) {
             runBlocking { api.createRecharge("fake-token", config, 80_001) }
         }
         assertEquals(message, error.message)
         assertEquals(1, calls.size)
-        assertFalse(calls.single().instanceFollowRedirects)
+        assertFalse(AppHttp.service.followRedirects)
         // Untrusted/malformed locations remain ambiguous, never a classified business rejection.
         for (invalid in listOf(location.replace("yktwx2.huel.edu.cn", "example.invalid"),
             location.replace("/plat/notfound", "/payment/"), location + "&orderid=OTHER")) {
@@ -111,17 +104,17 @@ class RechargeApiTest {
         }
     }
     @Test fun h5FormBridgeNeverForwardsSchoolCredentialsOrExecutesJs() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
+        val calls = mutableListOf<FakeResponse>()
         val back = URLEncoder.encode("https://yktwx2.huel.edu.cn/payment/?name=result&orderid=FAKE-ORDER&payid=81", "UTF-8")
         val action = "https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb?prepay_id=fake-prepay&ct=1&sign=fake-sign&package=fake&redirect_url=" + back
         val form = "<form method='POST' action='" + action + "'><input name='' value='' type='hidden'></form><script>doNotExecute()</script>"
-        val api = RechargeApi { url ->
+        val api = fixtureRechargeApi { url ->
             val text = when (url.path) {
                 "/charge/pay/getpayinfo" -> JSONObject().put("code", 200).put("order", JSONObject().put("orderid", "FAKE-ORDER").put("tranamt", 10)).put("payList", JSONArray().put(JSONObject().put("payid", 81).put("code", "CAMPUSCARD").put("remark", "weixin"))).toString()
                 "/blade-pay/pay" -> JSONObject().put("code", 200).put("data", JSONObject().put("orderid", "FAKE-ORDER").put("paysubmit", form)).toString()
                 else -> "<script>var url='weixin://wap/pay?prepayid%3Dfake-prepay&package=fake&noncestr=fake-nonce&sign=fake-sign';</script>"
             }
-            FakeHttps(url, 200, text).also(calls::add)
+            FakeResponse(url, 200, text).also(calls::add)
         }
         val launch = api.launchRecharge("fake-token", pending())
         assertTrue(launch.uri.startsWith("weixin://wap/pay?"))
@@ -131,23 +124,23 @@ class RechargeApiTest {
         assertEquals(p["SIGN"], RechargeProtocol.signed(unsigned, p.getValue("TIMESTAMP"), p.getValue("NONCE"))["SIGN"])
         val bridge = calls.last()
         assertEquals("wx.tenpay.com", bridge.url.host)
-        assertEquals("POST", bridge.requestMethod)
+        assertEquals("POST", bridge.request.method)
         assertEquals(0, bridge.sent.size())
-        assertNull(bridge.getRequestProperty("synjones-auth"))
-        assertNull(bridge.getRequestProperty("synAccessSource"))
-        assertNull(bridge.getRequestProperty("Cookie"))
-        assertEquals("https://yktwx2.huel.edu.cn/", bridge.getRequestProperty("Referer"))
-        assertTrue(calls.all { it.disconnected && !it.instanceFollowRedirects })
+        assertNull(bridge.request.header("synjones-auth"))
+        assertNull(bridge.request.header("synAccessSource"))
+        assertNull(bridge.request.header("Cookie"))
+        assertEquals("https://yktwx2.huel.edu.cn/", bridge.request.header("Referer"))
+        assertTrue(calls.all { it.disconnected && !AppHttp.service.followRedirects })
     }
     @Test fun resultRequiresMatchingOrderAmountAndNestedFeeitem() = runBlocking {
-        val api = RechargeApi { url -> FakeHttps(url, 200, if (url.path.endsWith("queryCard")) cards().toString() else result(1).toString()) }
+        val api = fixtureRechargeApi { url -> FakeResponse(url, 200, if (url.path.endsWith("queryCard")) cards().toString() else result(1).toString()) }
         val paid = api.rechargeResult("fake-token", pending())
         assertTrue(paid.paid)
-        val unpaid = RechargeApi { url -> FakeHttps(url, 200, result(0).toString()) }.rechargeResult("fake-token", pending())
+        val unpaid = fixtureRechargeApi { url -> FakeResponse(url, 200, result(0).toString()) }.rechargeResult("fake-token", pending())
         assertFalse(unpaid.paid)
         for (status in listOf(0, 2, 9)) {
             val response = result(status).apply { getJSONArray("orderList").getJSONObject(0).put("msg", "后端订单提示") }
-            val checked = RechargeApi { url -> FakeHttps(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
+            val checked = fixtureRechargeApi { url -> FakeResponse(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
             assertEquals("后端订单提示", checked.message)
             assertEquals(status, checked.serverStatus)
             assertFalse(checked.paid)
@@ -164,24 +157,24 @@ class RechargeApiTest {
             val response = result(1)
             response.getJSONArray("orderList").getJSONObject(0).put(field, value)
             try {
-                RechargeApi { url -> FakeHttps(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
+                fixtureRechargeApi { url -> FakeResponse(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
                 fail("Successful response must match the submitted $field")
             } catch (_: YktException) { }
         }
     }
     @Test fun ambiguousCreationIsNotRetried() = runBlocking {
         var calls = 0
-        val api = RechargeApi { url ->
-            calls++; FakeHttps(url, 200, "{}")
+        val api = fixtureRechargeApi { url ->
+            calls++; FakeResponse(url, 200, "{}")
         }
         try { api.createRecharge("fake-token", config(), 1000); fail("Expected unknown outcome") } catch (_: YktException) { }
         assertEquals(1, calls)
     }
     @Test fun othersRechargeSignsRecipientTargetAndRetainsMetadataInPendingOrder() = runBlocking {
-        lateinit var call: FakeHttps
+        lateinit var call: FakeResponse
         val recipient = RechargeRecipient("other-card", "other-target", "示例同学", "202600000002", "统一账户")
         val config = RechargeConfiguration("401", "other-target", listOf(1000), 1, 50000, true, false, recipient)
-        val api = RechargeApi { url -> FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also { call = it } }
+        val api = fixtureRechargeApi { url -> FakeResponse(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also { call = it } }
         api.createRecharge("fake-token", config, 1000)
         val p = params(call.sent.toString("UTF-8"))
         assertEquals("other-target", p["yktcard"])
@@ -196,8 +189,8 @@ class RechargeApiTest {
         for (other in listOf(false, true)) {
             val recipient = RechargeRecipient("fake-card", "fake-account", "示例", "123456", "统一账户")
             val pending = PendingRecharge("123456", "fake-account", "401", 1000, "FAKE-ORDER", "81", if (other) recipient else null)
-            val calls = mutableListOf<FakeHttps>()
-            val api = RechargeApi { url ->
+            val calls = mutableListOf<FakeResponse>()
+            val api = fixtureRechargeApi { url ->
                 val text = when (url.path) {
                     "/charge/pay/getpayinfo" -> JSONObject().put("code", 200).put("order", JSONObject()
                         .put("orderid", "FAKE-ORDER").put("third_party", "fake-account").put("tranamt", 10))
@@ -205,11 +198,11 @@ class RechargeApiTest {
                     "/blade-pay/pay" -> "{\"code\":60007,\"success\":false,\"data\":null,\"msg\":\"账户已挂失\"}"
                     else -> error("No external payment bridge is allowed")
                 }
-                FakeHttps(url, 200, text).also(calls::add)
+                FakeResponse(url, 200, text).also(calls::add)
             }
             assertThrows(RechargePaymentRejected::class.java) { runBlocking { api.launchRecharge("fake-token", pending) } }
             assertEquals(2, calls.size)
-            assertEquals(1, calls.count { it.requestMethod == "POST" })
+            assertEquals(1, calls.count { it.request.method == "POST" })
             assertTrue(calls.all { it.url.host == "yktwx2.huel.edu.cn" && it.disconnected })
         }
     }
@@ -238,14 +231,14 @@ class RechargeApiTest {
     }
 
     @Test fun creationDoesNotAddAnUnofficialAccountPrecheck() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = RechargeApi { url ->
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureRechargeApi { url ->
             assertEquals("/charge/order/thirdOrder", url.path)
-            FakeHttps(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also(calls::add)
+            FakeResponse(url, 302, "", "https://yktwx2.huel.edu.cn/payment/?orderid=FAKE-ORDER&paytypeid=81&paytype=CAMPUSCARD").also(calls::add)
         }
         api.createRecharge("fake-token", config(), 1000)
         assertEquals(1, calls.size)
-        assertEquals("POST", calls.single().requestMethod)
+        assertEquals("POST", calls.single().request.method)
     }
 
     @Test fun lostPaymentKeepsOriginalMessageAndOfficialEmptyFallback() {
@@ -282,14 +275,14 @@ class RechargeApiTest {
                 val response = cards().apply { getJSONObject("data").getJSONArray("card").getJSONObject(0)
                     .put(if (key == "showLost") "lostflag" else "freezeflag", 1) }
                 val settings = JSONObject().put("type", "1").put(key, if (allow) "1" else "0")
-                val api = RechargeApi { url ->
+                val api = fixtureRechargeApi { url ->
                     val payload = when (url.path) {
                         "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", JSONObject()
                             .put("getFrontConfig", "{\"recharge\":\"401\"}").put("getEcardConfig", settings.toString()))
                         "/charge/feeitem/singleFeeitem" -> JSONObject().put("code", 200).put("feeitem", JSONObject().put("layout", "10").put("flag", "1100000000"))
                         else -> response
                     }
-                    FakeHttps(url, 200, payload.toString())
+                    FakeResponse(url, 200, payload.toString())
                 }
                 if (allow) assertEquals("fake-account", api.rechargeConfiguration("fake-token", "fake-card").targetId)
                 else {

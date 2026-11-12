@@ -9,23 +9,19 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.URL
 import java.net.URLDecoder
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 class CardServiceApiTest {
-    private class FakeHttps(url: URL, private val body: String, private val status: Int = 200) : HttpsURLConnection(url) {
+    private class FakeResponse(url: URL, private val body: String, private val status: Int = 200) : HttpFixture(url) {
         val sent = ByteArrayOutputStream()
         var closed = false
-        override fun connect() = Unit
-        override fun disconnect() { closed = true }
-        override fun usingProxy() = false
-        override fun getResponseCode() = status
-        override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
-        override fun getErrorStream() = ByteArrayInputStream(body.toByteArray())
-        override fun getOutputStream() = sent
-        override fun getCipherSuite() = "TLS_FAKE"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
+
+        override fun close() { closed = true }
+
+        override fun statusCode() = status
+        override fun bodyStream() = ByteArrayInputStream(body.toByteArray())
+        override fun errorBodyStream() = ByteArrayInputStream(body.toByteArray())
+        override fun requestBodyStream() = sent
+
     }
     private fun configuration(lock: String? = null, unlock: String? = null, type: String = "1", showLost: String? = null): String {
         val front = JSONObject().put("recharge", "401")
@@ -47,17 +43,17 @@ class CardServiceApiTest {
         "202600000002", RecipientCaptcha("fake-key", byteArrayOf(1)), "abcde") }
 
     @Test fun missingFlagsFollowWebsiteLostWithoutPasswordAndUnlostWithPassword() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse()).also(calls::add) }
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse()).also(calls::add) }
         val result = api.cardConfiguration("fake-token")
         assertFalse(result.lostNeedsPassword); assertTrue(result.unlostNeedsPassword)
         assertFalse(result.cards.single().lost)
-        assertTrue(calls.all { it.getRequestProperty("Cookie") == null && it.getRequestProperty("synjones-auth") == "bearer fake-token" && it.closed && !it.instanceFollowRedirects })
+        assertTrue(calls.all { it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" && it.closed && !AppHttp.service.followRedirects })
     }
     @Test fun unlostUsesFreshNumberKeyboardSingleJsonWriteAndRefreshesState() = runBlocking {
         var lost = true
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url ->
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url ->
             val body = when {
                 url.path.endsWith("frontInfo") -> configuration()
                 url.path.endsWith("getCampusCards") -> cardResponse(if (lost) 1 else 0)
@@ -65,31 +61,31 @@ class CardServiceApiTest {
                 url.path.endsWith("unlostCard") -> { lost = false; "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"recipient-card\"}}" }
                 else -> error("Unexpected local request")
             }
-            FakeHttps(url, body).also(calls::add)
+            FakeResponse(url, body).also(calls::add)
         }
         assertFalse(api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "012345").single().lost)
-        val post = calls.single { it.requestMethod == "POST" }
+        val post = calls.single { it.request.method == "POST" }
         val body = JSONObject(post.sent.toString("UTF-8"))
         assertEquals("recipient-card", body.getString("account"))
         assertEquals("1\$1\$abcdef\$1\$fake-uuid", body.getString("pwd"))
         assertEquals(1, body.getInt("pwdType")); assertEquals("h5", body.getString("synAccessSource"))
         assertFalse(post.sent.toString("UTF-8").contains("012345"))
-        assertEquals("application/json;charset=UTF-8", post.getRequestProperty("Content-Type"))
+        assertEquals("application/json;charset=UTF-8", post.request.header("Content-Type"))
         val keyboard = calls.single { it.url.path.endsWith("keyboard") }
         assertEquals("Number", params(keyboard.url.query)["type"]); assertEquals("0", params(keyboard.url.query)["order"])
         assertEquals(2, calls.count { it.url.path.endsWith("getCampusCards") })
     }
     @Test fun alreadyReachedStateDoesNotPost() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse(1)).also(calls::add) }
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse(1)).also(calls::add) }
         assertTrue(api.changeCardState("fake-token", selected(), CampusCardAction.Lost, "").single().lost)
-        assertTrue(calls.none { it.requestMethod == "POST" })
+        assertTrue(calls.none { it.request.method == "POST" })
     }
     @Test fun explicitNoPasswordOmitsEmptyKeyboardFields() = runBlocking {
         var lost = false
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url ->
-            FakeHttps(url, when {
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url ->
+            FakeResponse(url, when {
                 url.path.endsWith("frontInfo") -> configuration("0", "0")
                 url.path.endsWith("getCampusCards") -> cardResponse(if (lost) 1 else 0)
                 url.path.endsWith("lostCard") -> { lost = true; "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"recipient-card\"}}" }
@@ -97,13 +93,13 @@ class CardServiceApiTest {
             }).also(calls::add)
         }
         api.changeCardState("fake-token", selected(), CampusCardAction.Lost, "")
-        val body = JSONObject(calls.single { it.requestMethod == "POST" }.sent.toString("UTF-8"))
+        val body = JSONObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
         assertFalse(body.has("pwd")); assertFalse(body.has("pwdType")); assertEquals(0, calls.count { it.url.path.endsWith("keyboard") })
     }
     @Test fun rejectedWritePreservesInnerServerErrorWithoutRetryOrStateRead() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
+        val calls = mutableListOf<FakeResponse>()
         val message = "  查询密码有误，请重新输入！\n"
-        val api = CardServiceApi { url -> FakeHttps(url, when {
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
             url.path.endsWith("frontInfo") -> configuration("0", "0")
             url.path.endsWith("getCampusCards") -> cardResponse()
             else -> JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "60005")
@@ -113,34 +109,34 @@ class CardServiceApiTest {
             runBlocking { api.changeCardState("fake-token", selected(), CampusCardAction.Lost, "") }
         }
         assertEquals(message, error.message)
-        assertEquals(1, calls.count { it.requestMethod == "POST" })
+        assertEquals(1, calls.count { it.request.method == "POST" })
         assertEquals(1, calls.count { it.url.path.endsWith("getCampusCards") })
     }
     @Test fun recipientQueryUsesQueryParametersAndElectronicTargetNotInputOrPayer() {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse()).also(calls::add) }
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration() else cardResponse()).also(calls::add) }
         val recipient = lookup(api).single()
         assertEquals("recipient-electronic", recipient.targetId); assertEquals("recipient-card", recipient.cardAccount)
         val p = params(calls.first().url.query)
         assertEquals("sno", p["idtype"]); assertEquals("202600000002", p["id"]); assertEquals("recharge", p["scene"])
         assertEquals("fake-key", p["captcha_header_key"]); assertEquals("abcde", p["captcha_header_code"])
-        assertNull(calls.first().getRequestProperty("captcha_header_key"))
-        assertTrue(calls.none { it.url.path.endsWith("queryCard") || it.requestMethod == "POST" })
+        assertNull(calls.first().request.header("captcha_header_key"))
+        assertTrue(calls.none { it.url.path.endsWith("queryCard") || it.request.method == "POST" })
     }
     @Test fun nestedAccountMissingIsNotOuterSuccessAndCaptchaErrorIsDistinct() {
-        val missing = CardServiceApi { url -> FakeHttps(url, "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"60003\",\"card\":null},\"msg\":\"操作成功\"}") }
+        val missing = fixtureCardServiceApi { url -> FakeResponse(url, "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"60003\",\"card\":null},\"msg\":\"操作成功\"}") }
         try { lookup(missing); fail("Expected missing account") } catch (e: RecipientLookupRejected) { assertTrue(e.message!!.contains("不存在")) }
-        val captcha = CardServiceApi { url -> FakeHttps(url, "{\"code\":8002,\"success\":false,\"data\":null}") }
+        val captcha = fixtureCardServiceApi { url -> FakeResponse(url, "{\"code\":8002,\"success\":false,\"data\":null}") }
         try { lookup(captcha); fail("Expected captcha failure") } catch (e: RecipientLookupRejected) { assertTrue(e.message!!.contains("验证码")) }
     }
     @Test fun captchaReadsTopLevelKeyAndBoundedInlineImage() = runBlocking {
-        val api = CardServiceApi { url -> FakeHttps(url, "{\"key\":\"fake-key\",\"image\":\"data:image/png;base64,AQID\"}") }
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, "{\"key\":\"fake-key\",\"image\":\"data:image/png;base64,AQID\"}") }
         val c = api.recipientCaptcha("fake-token")
         assertEquals("fake-key", c.key); assertArrayEquals(byteArrayOf(1, 2, 3), c.image)
     }
     @Test fun recipientAmountConfigurationNeverRequeriesPayerAccount() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration()
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration()
             else "{\"code\":200,\"feeitem\":{\"layout\":\"10,50,100\",\"flag\":\"1100000000\"}}").also(calls::add) }
         val recipient = RechargeRecipient("recipient-card", "recipient-electronic", "示例同学", "202600000002", "统一账户")
         val config = api.recipientRechargeConfiguration("fake-token", recipient)
@@ -150,8 +146,8 @@ class CardServiceApiTest {
     }
     @Test fun unlostAcceptsLegitimateDollarMappingWithoutFetchingAnotherKeyboard() = runBlocking {
         var lost = true
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url ->
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url ->
             val body = when {
                 url.path.endsWith("frontInfo") -> configuration()
                 url.path.endsWith("getCampusCards") -> cardResponse(if (lost) 1 else 0)
@@ -160,13 +156,13 @@ class CardServiceApiTest {
                 url.path.endsWith("unlostCard") -> { lost = false; "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"recipient-card\"}}" }
                 else -> error("Unexpected local path")
             }
-            FakeHttps(url, body).also(calls::add)
+            FakeResponse(url, body).also(calls::add)
         }
         assertFalse(api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "000000").single().lost)
-        val body = JSONObject(calls.single { it.requestMethod == "POST" }.sent.toString("UTF-8"))
+        val body = JSONObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
         assertEquals("1\$1\$" + "\$".repeat(6) + "\$1\$fake-uuid", body.getString("pwd"))
         assertEquals(1, calls.count { it.url.path.endsWith("keyboard") })
-        assertEquals(1, calls.count { it.requestMethod == "POST" })
+        assertEquals(1, calls.count { it.request.method == "POST" })
     }
     @Test fun numberEncoderRejectsBadInputsAndSensitiveModelsAreRedacted() {
         for ((password, mapping, uuid) in listOf(Triple("12345", "abcdefghij", "fake"), Triple("123456", "aaaaaaaaaa", "fake"), Triple("123456", "abcdefghij", "bad\$id"))) {
@@ -180,7 +176,7 @@ class CardServiceApiTest {
         val payload = JSONObject(configuration()).getJSONObject("data")
         payload.put("getBusinessConfig", JSONObject().put("businessHandleConfig", "{\"lockFlag\":\"1\",\"unlockFlag\":\"0\"}"))
         val wrapper = JSONObject().put("code", 200).put("data", payload)
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) wrapper.toString() else cardResponse()) }
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) wrapper.toString() else cardResponse()) }
         val c = api.cardConfiguration("fake-token")
         assertTrue(c.lostNeedsPassword); assertFalse(c.unlostNeedsPassword)
     }
@@ -192,17 +188,17 @@ class CardServiceApiTest {
     }
 
     @Test fun lostRecipientShowsSpecificReasonWithoutCreatingOrPaying() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url,
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url,
             if (url.path.endsWith("frontInfo")) configuration() else cardResponse(1)).also(calls::add) }
         val error = assertThrows(RecipientLookupRejected::class.java) { lookup(api) }
         assertEquals("已挂失，禁止充值，请先解挂", error.message)
-        assertTrue(calls.all { it.requestMethod == "GET" })
+        assertTrue(calls.all { it.request.method == "GET" })
         assertTrue(calls.none { it.url.path.endsWith("queryCard") })
     }
 
     @Test fun officialShowLostAllowsRecipientSelectionAndLeavesPaymentDecisionToServer() = runBlocking {
-        val api = CardServiceApi { url -> FakeHttps(url,
+        val api = fixtureCardServiceApi { url -> FakeResponse(url,
             if (url.path.endsWith("frontInfo")) configuration(showLost = "1") else cardResponse(1)) }
         assertEquals("recipient-electronic", lookup(api).single().targetId)
     }
@@ -210,7 +206,7 @@ class CardServiceApiTest {
     @Test fun failuresBeforeSubmissionAreNotAmbiguousWrites() = runBlocking {
         for (failedStage in listOf("frontInfo", "getCampusCards", "keyboard")) {
             val calls = mutableListOf<String>()
-            val api = CardServiceApi { url ->
+            val api = fixtureCardServiceApi { url ->
                 calls += url.path
                 if (url.path.endsWith(failedStage)) throw java.io.IOException("fake outage")
                 val body = when {
@@ -218,7 +214,7 @@ class CardServiceApiTest {
                     url.path.endsWith("getCampusCards") -> cardResponse(1)
                     else -> error("No write may be sent")
                 }
-                FakeHttps(url, body)
+                FakeResponse(url, body)
             }
             val error = assertThrows(CardOperationNotStarted::class.java) {
                 runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "012345") }
@@ -229,8 +225,8 @@ class CardServiceApiTest {
     }
 
     @Test fun invalidKeyboardMappingIsReportedBeforeAnyWrite() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, when {
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
             url.path.endsWith("frontInfo") -> configuration()
             url.path.endsWith("getCampusCards") -> cardResponse(1)
             url.path.endsWith("keyboard") -> "{\"code\":200,\"data\":{\"numberKeyboard\":\"aaaaaaaaaa\",\"uuid\":\"fake-uuid\"}}"
@@ -240,7 +236,7 @@ class CardServiceApiTest {
             runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "012345") }
         }
         assertTrue(error.message!!.contains("映射"))
-        assertTrue(calls.none { it.requestMethod == "POST" })
+        assertTrue(calls.none { it.request.method == "POST" })
     }
 
     @Test fun outerRejectionsPreserveBackendMessageAndDoNotPerformConfirmationReads() = runBlocking {
@@ -251,8 +247,8 @@ class CardServiceApiTest {
             200 to "{\"code\":200,\"success\":false,\"data\":null,\"msg\":\"操作被拒绝\"}",
             200 to "{\"code\":200,\"data\":{\"retcode\":\"60005\"},\"msg\":\"外层业务提示\"}",
             200 to "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"60005\"},\"msg\":\"内层业务拒绝\"}")) {
-            val calls = mutableListOf<FakeHttps>()
-            val api = CardServiceApi { url -> FakeHttps(url, when {
+            val calls = mutableListOf<FakeResponse>()
+            val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
                 url.path.endsWith("frontInfo") -> configuration("0", "0")
                 url.path.endsWith("getCampusCards") -> cardResponse(1)
                 else -> response
@@ -262,7 +258,7 @@ class CardServiceApiTest {
             }
             val body = JSONObject(response)
             assertEquals(body.opt("msg") as? String ?: body.optString("message"), error.message)
-            assertEquals(1, calls.count { it.requestMethod == "POST" })
+            assertEquals(1, calls.count { it.request.method == "POST" })
             assertEquals(1, calls.count { it.url.path.endsWith("getCampusCards") })
         }
     }
@@ -274,8 +270,8 @@ class CardServiceApiTest {
             200 to "not-json", 200 to "{}",
             200 to "{\"code\":200,\"success\":false,\"data\":{\"retcode\":\"0\"}}",
             200 to "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"different-card\"}}")) {
-            val calls = mutableListOf<FakeHttps>()
-            val api = CardServiceApi { url -> FakeHttps(url, when {
+            val calls = mutableListOf<FakeResponse>()
+            val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
                 url.path.endsWith("frontInfo") -> configuration("0", "0")
                 url.path.endsWith("getCampusCards") -> cardResponse(1)
                 else -> response
@@ -283,12 +279,12 @@ class CardServiceApiTest {
             assertThrows(CardOperationUnconfirmed::class.java) {
                 runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "") }
             }
-            assertEquals(1, calls.count { it.requestMethod == "POST" })
+            assertEquals(1, calls.count { it.request.method == "POST" })
         }
         var writes = 0
-        val api = CardServiceApi { url ->
+        val api = fixtureCardServiceApi { url ->
             if (url.path.endsWith("unlostCard")) { writes++; throw java.io.IOException("timeout") }
-            FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration("0", "0") else cardResponse(1))
+            FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration("0", "0") else cardResponse(1))
         }
         assertThrows(CardOperationUnconfirmed::class.java) {
             runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "") }
@@ -299,9 +295,9 @@ class CardServiceApiTest {
     @Test fun acceptedWriteWithNoAccountEchoStillRequiresConfirmedTargetState() = runBlocking {
         for (postReadFails in listOf(false, true)) {
             var writes = 0
-            val api = CardServiceApi { url ->
+            val api = fixtureCardServiceApi { url ->
                 if (url.path.endsWith("getCampusCards") && writes > 0 && postReadFails) throw java.io.IOException("read failed")
-                FakeHttps(url, when {
+                FakeResponse(url, when {
                     url.path.endsWith("frontInfo") -> configuration("0", "0")
                     url.path.endsWith("getCampusCards") -> cardResponse(if (writes > 0) 0 else 1)
                     else -> { writes++; "{\"code\":200,\"success\":true,\"data\":{\"retcode\":\"0\"}}" }
@@ -316,7 +312,7 @@ class CardServiceApiTest {
     }
 
     @Test fun acceptedButUnchangedStateRemainsUnconfirmedAndAuthenticationIsDistinct() = runBlocking {
-        val api = CardServiceApi { url -> FakeHttps(url, when {
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
             url.path.endsWith("frontInfo") -> configuration("0", "0")
             url.path.endsWith("getCampusCards") -> cardResponse(1)
             else -> "{\"code\":200,\"data\":{\"retcode\":\"0\"}}"
@@ -324,7 +320,7 @@ class CardServiceApiTest {
         assertThrows(CardOperationUnconfirmed::class.java) {
             runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "") }
         }
-        val auth = CardServiceApi { url -> FakeHttps(url, when {
+        val auth = fixtureCardServiceApi { url -> FakeResponse(url, when {
             url.path.endsWith("frontInfo") -> configuration("0", "0")
             url.path.endsWith("getCampusCards") -> cardResponse(1)
             else -> "not-json"
@@ -336,14 +332,14 @@ class CardServiceApiTest {
     }
 
     @Test fun cardStateReadPreservesBackendFailureBeforeSubmitting() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
-        val api = CardServiceApi { url -> FakeHttps(url, if (url.path.endsWith("frontInfo")) configuration()
+        val calls = mutableListOf<FakeResponse>()
+        val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) configuration()
             else "{\"code\":200,\"data\":{\"retcode\":\"60003\",\"errmsg\":\"校园卡查询失败的原始提示\"}}").also(calls::add) }
         val error = assertThrows(CardOperationNotStarted::class.java) {
             runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "012345") }
         }
         assertEquals("校园卡查询失败的原始提示", error.message)
-        assertTrue(calls.none { it.requestMethod == "POST" })
+        assertTrue(calls.none { it.request.method == "POST" })
     }
 
 }

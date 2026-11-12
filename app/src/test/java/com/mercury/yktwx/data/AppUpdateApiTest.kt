@@ -14,10 +14,8 @@ import java.io.ByteArrayInputStream
 import java.net.URL
 import java.security.KeyPairGenerator
 import java.security.Signature
-import java.security.cert.Certificate
 import java.time.Instant
 import java.util.Base64
-import javax.net.ssl.HttpsURLConnection
 
 internal class SignedUpdateFixture {
     val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
@@ -59,19 +57,15 @@ class AppUpdateApiTest {
         return UpdateCheckStore(prefs, "package:stable:9", "package", 9,
             verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
     }
-    private open class FakeHttps(url: URL, private val body: String, private val status: Int = 200) : HttpsURLConnection(url) {
+    private open class FakeResponse(url: URL, private val body: String, private val status: Int = 200) : HttpFixture(url) {
         var disconnected = false
-        override fun getResponseCode() = status
-        override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
-        override fun disconnect() { disconnected = true }
-        override fun connect() {}
-        override fun usingProxy() = false
-        override fun getCipherSuite() = "fake"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
+        override fun statusCode() = status
+        override fun bodyStream() = ByteArrayInputStream(body.toByteArray())
+        override fun close() { disconnected = true }
+
     }
-    private fun api(responses: (URL) -> Pair<String, Int>): AppUpdateApi = AppUpdateApi(UpdateHttp { url ->
-        val (body, status) = responses(url); FakeHttps(url, body, status)
+    private fun api(responses: (URL) -> Pair<String, Int>): AppUpdateApi = AppUpdateApi(fixtureUpdateHttp { url ->
+        val (body, status) = responses(url); FakeResponse(url, body, status)
     }, fixture.verifier, now = { Instant.parse("2026-11-10T00:00:00Z") })
 
     private suspend fun withDelayedThirdSource(first: Pair<String, String>, third: Pair<String, String>,
@@ -79,13 +73,13 @@ class AppUpdateApiTest {
         sourceTimeoutMillis: Long = 2_500, verify: suspend (AppUpdateApi) -> Unit) {
         val fastManifestsRead = java.util.concurrent.CountDownLatch(2)
         val releaseOtherSources = java.util.concurrent.CountDownLatch(1)
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             val fast = url.host in listOf("cdn.jsdelivr.net", "fastly.jsdelivr.net")
             val delayed = url.host == thirdHost
             val pointer = url.path.endsWith("latest.json")
             val pair = if (delayed) third else first
-            object : FakeHttps(url, if (pointer) pair.first else pair.second) {
-                override fun getResponseCode(): Int {
+            object : FakeResponse(url, if (pointer) pair.first else pair.second) {
+                override fun statusCode(): Int {
                     if (delayed && pointer) {
                         check(fastManifestsRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
                         Thread.sleep(thirdPointerDelayMillis)
@@ -95,9 +89,9 @@ class AppUpdateApiTest {
                         releaseOtherSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
                         return 503
                     }
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
-                override fun getInputStream() = super.getInputStream().also {
+                override fun bodyStream() = super.bodyStream().also {
                     if (fast && !pointer) fastManifestsRead.countDown()
                 }
             }
@@ -129,11 +123,11 @@ class AppUpdateApiTest {
         prefs.edit().clear().commit()
         fun restored() = UpdateCheckStore(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
             now = { instant }, verifyCached = { body, channel -> verifier.manifest(body, channel).first })
-        val api = AppUpdateApi(UpdateHttp { url ->
+        val api = AppUpdateApi(fixtureUpdateHttp { url ->
             when {
-                url.path.contains("/stable/") -> FakeHttps(url, "", 404)
-                url.path.endsWith("latest.json") -> FakeHttps(url, pointer)
-                else -> FakeHttps(url, manifest)
+                url.path.contains("/stable/") -> FakeResponse(url, "", 404)
+                url.path.endsWith("latest.json") -> FakeResponse(url, pointer)
+                else -> FakeResponse(url, manifest)
             }
         }, verifier) { instant }
         val result = api.check(UpdateRequest(expected.packageName, 9, 35, "beta"), restored())
@@ -168,12 +162,12 @@ class AppUpdateApiTest {
     }
     @Test fun unpublishedAuthorityDoesNotWaitForBlockedMirrors() = runBlocking {
         val releaseMirrors = java.util.concurrent.CountDownLatch(1)
-        val http = UpdateHttp { url ->
-            if (url.host == "api.github.com") FakeHttps(url, "", 404)
-            else object : FakeHttps(url, "", 404) {
-                override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url ->
+            if (url.host == "api.github.com") FakeResponse(url, "", 404)
+            else object : FakeResponse(url, "", 404) {
+                override fun statusCode(): Int {
                     releaseMirrors.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
         }
@@ -189,15 +183,15 @@ class AppUpdateApiTest {
     @Test fun api403AndOfficialRaw404ReturnUnpublishedBeforeBlockedMirrorsFinish() = runBlocking {
         val releaseMirrors = java.util.concurrent.CountDownLatch(1)
         val cancelled = java.util.concurrent.atomic.AtomicInteger()
-        val http = UpdateHttp { url -> when (url.host) {
-            "api.github.com" -> FakeHttps(url, "", 403)
-            "raw.githubusercontent.com" -> FakeHttps(url, "", 404)
-            else -> object : FakeHttps(url, "", 404) {
-                override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url -> when (url.host) {
+            "api.github.com" -> FakeResponse(url, "", 403)
+            "raw.githubusercontent.com" -> FakeResponse(url, "", 404)
+            else -> object : FakeResponse(url, "", 404) {
+                override fun statusCode(): Int {
                     releaseMirrors.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
-                override fun disconnect() { cancelled.incrementAndGet(); super.disconnect() }
+                override fun close() { cancelled.incrementAndGet(); super.close() }
             }
         } }
         try {
@@ -216,15 +210,15 @@ class AppUpdateApiTest {
 
     @Test fun officialRaw404DoesNotOverrideValidAuthorityInsideConvergenceWindow() = runBlocking {
         val (pointer, manifest) = fixture.pair(fixture.json())
-        val http = UpdateHttp { url -> when (url.host) {
-            "raw.githubusercontent.com" -> FakeHttps(url, "", 404)
-            "api.github.com" -> object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
-                override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url -> when (url.host) {
+            "raw.githubusercontent.com" -> FakeResponse(url, "", 404)
+            "api.github.com" -> object : FakeResponse(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                override fun statusCode(): Int {
                     if (url.path.endsWith("latest.json")) Thread.sleep(100)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
-            else -> FakeHttps(url, "", 503)
+            else -> FakeResponse(url, "", 503)
         } }
         val result = AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
         assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
@@ -236,25 +230,25 @@ class AppUpdateApiTest {
         val stableStarted = java.util.concurrent.CountDownLatch(1)
         val cancelled = java.util.concurrent.atomic.AtomicInteger()
         val (pointer, manifest) = fixture.pair(fixture.json(version = 12, channel = "beta"))
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             if (url.path.contains("/beta/"))
-                object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
-                    override fun getResponseCode(): Int {
+                object : FakeResponse(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                    override fun statusCode(): Int {
                         check(stableStarted.await(2, java.util.concurrent.TimeUnit.SECONDS))
-                        return super.getResponseCode()
+                        return super.statusCode()
                     }
                 }
             else when (url.host) {
-                "api.github.com" -> FakeHttps(url, "", 403)
-                "raw.githubusercontent.com", "cdn.jsdelivr.net" -> object : FakeHttps(url, "", 404) {
-                    override fun getResponseCode(): Int {
+                "api.github.com" -> FakeResponse(url, "", 403)
+                "raw.githubusercontent.com", "cdn.jsdelivr.net" -> object : FakeResponse(url, "", 404) {
+                    override fun statusCode(): Int {
                         stableStarted.countDown()
                         releaseStable.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                        return super.getResponseCode()
+                        return super.statusCode()
                     }
-                    override fun disconnect() { cancelled.incrementAndGet(); super.disconnect() }
+                    override fun close() { cancelled.incrementAndGet(); super.close() }
                 }
-                else -> FakeHttps(url, "", 404)
+                else -> FakeResponse(url, "", 404)
             }
         }
         try {
@@ -281,18 +275,18 @@ class AppUpdateApiTest {
         val beta = fixture.pair(fixture.json(version = 11, channel = "beta"))
         val stable = fixture.pair(fixture.json(version = 12))
         val betaRead = java.util.concurrent.CountDownLatch(1)
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             val isBeta = url.path.contains("/beta/")
             val pair = if (isBeta) beta else stable
-            object : FakeHttps(url, if (url.path.endsWith("latest.json")) pair.first else pair.second) {
-                override fun getResponseCode(): Int {
+            object : FakeResponse(url, if (url.path.endsWith("latest.json")) pair.first else pair.second) {
+                override fun statusCode(): Int {
                     if (!isBeta && url.path.endsWith("latest.json")) {
                         check(betaRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
                         Thread.sleep(100)
                     }
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
-                override fun getInputStream() = super.getInputStream().also {
+                override fun bodyStream() = super.bodyStream().also {
                     if (isBeta && !url.path.endsWith("latest.json")) betaRead.countDown()
                 }
             }
@@ -308,12 +302,12 @@ class AppUpdateApiTest {
     @Test fun currentBetaAndBlockedStableReturnPartialBeforeTheNetworkDeadline() = runBlocking {
         val releaseStable = java.util.concurrent.CountDownLatch(1)
         val (pointer, manifest) = fixture.pair(fixture.json(version = 9, channel = "beta"))
-        val http = UpdateHttp { url ->
-            if (url.path.contains("/beta/")) FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest)
-            else object : FakeHttps(url, "", 503) {
-                override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url ->
+            if (url.path.contains("/beta/")) FakeResponse(url, if (url.path.endsWith("latest.json")) pointer else manifest)
+            else object : FakeResponse(url, "", 503) {
+                override fun statusCode(): Int {
                     releaseStable.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
         }
@@ -335,12 +329,12 @@ class AppUpdateApiTest {
         }
     }
     @Test fun slowAuthoritative404StillReportsNoPublishedRelease() = runBlocking {
-        val http = UpdateHttp { url ->
-            if (url.host != "api.github.com") FakeHttps(url, "", 503)
-            else object : FakeHttps(url, "", 404) {
-                override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url ->
+            if (url.host != "api.github.com") FakeResponse(url, "", 503)
+            else object : FakeResponse(url, "", 404) {
+                override fun statusCode(): Int {
                     java.util.concurrent.CountDownLatch(1).await(1_800, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
         }
@@ -353,15 +347,15 @@ class AppUpdateApiTest {
     @Test fun slowPointerAndManifestBothFinishBeforeTheCheckDeadline() = runBlocking {
         val (pointer, manifest) = fixture.pair(fixture.json(version = 12, channel = "beta"))
         val reads = java.util.concurrent.atomic.AtomicInteger()
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             when {
-                url.path.contains("/stable/") -> FakeHttps(url, "", 404)
-                url.host != "api.github.com" -> FakeHttps(url, "", 503)
-                else -> object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
-                    override fun getResponseCode(): Int {
+                url.path.contains("/stable/") -> FakeResponse(url, "", 404)
+                url.host != "api.github.com" -> FakeResponse(url, "", 503)
+                else -> object : FakeResponse(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                    override fun statusCode(): Int {
                         java.util.concurrent.CountDownLatch(1).await(1_800, java.util.concurrent.TimeUnit.MILLISECONDS)
                         reads.incrementAndGet()
-                        return super.getResponseCode()
+                        return super.statusCode()
                     }
                 }
             }
@@ -426,13 +420,13 @@ class AppUpdateApiTest {
     @Test fun verifiedMirrorsReturnWithoutWaitingForBlockedAuthority() = runBlocking {
         val releaseAuthority = java.util.concurrent.CountDownLatch(1)
         val (pointer, manifest) = fixture.pair(fixture.json())
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             val body = if (url.path.endsWith("latest.json")) pointer else manifest
-            if (url.host != "api.github.com") FakeHttps(url, body)
-            else object : FakeHttps(url, body) {
-                override fun getResponseCode(): Int {
+            if (url.host != "api.github.com") FakeResponse(url, body)
+            else object : FakeResponse(url, body) {
+                override fun statusCode(): Int {
                     releaseAuthority.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
         }
@@ -449,13 +443,13 @@ class AppUpdateApiTest {
     @Test fun oneVerifiedMirrorIsEnoughWhenEveryOtherSourceIsBlocked() = runBlocking {
         val releaseSources = java.util.concurrent.CountDownLatch(1)
         val (pointer, manifest) = fixture.pair(fixture.json())
-        val http = UpdateHttp { url ->
+        val http = fixtureUpdateHttp { url ->
             val body = if (url.path.endsWith("latest.json")) pointer else manifest
-            if (url.host == "cdn.jsdelivr.net") FakeHttps(url, body)
-            else object : FakeHttps(url, body) {
-                override fun getResponseCode(): Int {
+            if (url.host == "cdn.jsdelivr.net") FakeResponse(url, body)
+            else object : FakeResponse(url, body) {
+                override fun statusCode(): Int {
                     releaseSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    return super.getResponseCode()
+                    return super.statusCode()
                 }
             }
         }
@@ -508,10 +502,10 @@ class AppUpdateApiTest {
     }
     @Test fun stalledSourcesRespectTheDeadlineWithoutClaimingNoPublishedRelease() = runBlocking {
         val releaseSources = java.util.concurrent.CountDownLatch(1)
-        val http = UpdateHttp { url -> object : FakeHttps(url, "", 503) {
-            override fun getResponseCode(): Int {
+        val http = fixtureUpdateHttp { url -> object : FakeResponse(url, "", 503) {
+            override fun statusCode(): Int {
                 releaseSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                return super.getResponseCode()
+                return super.statusCode()
             }
         } }
         try {
@@ -711,23 +705,23 @@ class AppUpdateApiTest {
         assertTrue(restored().cachedRelease()!!.required(9))
     }
     @Test fun transportClosesConnectionsLimitsSizeAndAddsCacheControl() = runBlocking {
-        val connection = FakeHttps(URL("https://example.com/update"), "{}")
-        assertEquals("{}", UpdateHttp { connection }.json("https://example.com/update"))
+        val connection = FakeResponse(URL("https://example.com/update"), "{}")
+        assertEquals("{}", fixtureUpdateHttp { connection }.json("https://example.com/update"))
         assertTrue(connection.disconnected)
-        assertFalse(connection.instanceFollowRedirects)
-        assertEquals("no-cache, no-store", connection.getRequestProperty("Cache-Control"))
-        assertNull(connection.getRequestProperty("Authorization"))
-        assertNull(connection.getRequestProperty("Cookie"))
-        val oversized = FakeHttps(URL("https://example.com/update"), "x".repeat(1_048_577))
-        assertThrows(Exception::class.java) { runBlocking { UpdateHttp { oversized }.json("https://example.com/update") } }
+        assertFalse(AppHttp.service.followRedirects)
+        assertEquals("no-cache, no-store", connection.request.header("Cache-Control"))
+        assertNull(connection.request.header("Authorization"))
+        assertNull(connection.request.header("Cookie"))
+        val oversized = FakeResponse(URL("https://example.com/update"), "x".repeat(1_048_577))
+        assertThrows(Exception::class.java) { runBlocking { fixtureUpdateHttp { oversized }.json("https://example.com/update") } }
         assertTrue(oversized.disconnected)
     }
     @Test fun cancellingARequestDisconnectsItsBlockedInputStream() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val stopped = java.util.concurrent.CountDownLatch(1)
-        val connection = object : HttpsURLConnection(URL("https://example.com/update")) {
-            override fun getResponseCode() = 200
-            override fun getInputStream(): java.io.InputStream {
+        val connection = object : HttpFixture(URL("https://example.com/update")) {
+            override fun statusCode() = 200
+            override fun bodyStream(): java.io.InputStream {
                 started.complete(Unit)
                 return object : java.io.InputStream() {
                     override fun read(): Int {
@@ -736,30 +730,26 @@ class AppUpdateApiTest {
                     }
                 }
             }
-            override fun disconnect() { stopped.countDown() }
-            override fun connect() {}
-            override fun usingProxy() = false
-            override fun getCipherSuite() = "test"
-            override fun getLocalCertificates(): Array<Certificate>? = null
-            override fun getServerCertificates(): Array<Certificate> = emptyArray()
+            override fun close() { stopped.countDown() }
+
         }
-        val task = launch { UpdateHttp { connection }.json("https://example.com/update") }
+        val task = launch { fixtureUpdateHttp { connection }.json("https://example.com/update") }
         withTimeout(2_000) { started.await(); task.cancelAndJoin() }
         assertTrue(withContext(Dispatchers.IO) { stopped.await(1, java.util.concurrent.TimeUnit.SECONDS) })
     }
     @Test fun metadataTimeoutReturnsEvenWhenThePlatformConnectionCannotBeInterrupted() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val releaseConnection = java.util.concurrent.CountDownLatch(1)
-        val connection = object : FakeHttps(URL("https://example.com/update"), "{}") {
-            override fun getResponseCode(): Int {
+        val connection = object : FakeResponse(URL("https://example.com/update"), "{}") {
+            override fun statusCode(): Int {
                 started.complete(Unit)
                 releaseConnection.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                return super.getResponseCode()
+                return super.statusCode()
             }
         }
         try {
             val task = async {
-                runCatching { UpdateHttp(metadataTimeoutMillis = 500) { connection }.json("https://example.com/update") }
+                runCatching { fixtureUpdateHttp(metadataTimeoutMillis = 500) { connection }.json("https://example.com/update") }
             }
             withTimeout(2_000) { started.await() }
             val failure = withTimeout(2_000) { task.await() }.exceptionOrNull()

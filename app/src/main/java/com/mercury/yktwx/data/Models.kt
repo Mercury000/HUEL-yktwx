@@ -14,18 +14,21 @@ class PaymentBatch(val codes: List<String>, private val expiresSeconds: Long, va
     val displayIntervalSeconds get() = minOf(60L, expiresSeconds).coerceAtLeast(1)
     override fun toString() = "PaymentBatch([redacted])"
 }
-open class YktException(message: String) : Exception(message)
+open class YktException(message: String, cause: Throwable? = null) : Exception(message, cause)
 class AuthenticationRequired(message: String = "登录已失效，请重新登录") : YktException(message)
 class InvalidCredentials : YktException("学号或密码无效，请重新输入")
 class CaptchaRequired : YktException("官网要求验证码，请在官方页面完成验证后重新登录")
-class NetworkFailure(message: String = "网络连接失败，请检查网络后刷新") : YktException(message)
+class NetworkFailure(message: String = "网络连接失败，请检查网络后刷新", cause: Throwable? = null) :
+    YktException(message, cause)
 /** Account presentation remains usable even when the code endpoint declines or fails. */
 enum class PaymentCodeProblem { Unavailable, Lost, Frozen, StatusUnverified }
 internal class PaymentCodeUnavailable(
     val account: PaymentAccount,
     message: String,
     val problem: PaymentCodeProblem = PaymentCodeProblem.Unavailable,
-) : YktException(message)
+    val failureKind: ReadFailureKind = ReadFailureKind.Other,
+    cause: Throwable? = null,
+) : YktException(message, cause)
 
 object KeyboardEncoder {
     val layouts = linkedMapOf(

@@ -1,11 +1,8 @@
 package com.mercury.yktwx.data
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.net.URI
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
+import okhttp3.Call
+import org.json.JSONObject
 
 /** Keep only display fields. The full user response contains identity and contact data. */
 class PersonalProfile(
@@ -26,8 +23,9 @@ class HomeCardIdentity(val name: String, val sno: String, val thirdLevelDepartme
     override fun toString() = "HomeCardIdentity([redacted])"
 }
 
-class ProfileApi(private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : ProfileService {
-    private val http = PaymentHttp(openConnection)
+class ProfileApi(private val client: Call.Factory = AppHttp.service,
+    private val imageClient: Call.Factory = AppHttp.publicRead) : ProfileService {
+    private val http = PaymentHttp(client)
     override suspend fun profile(token: String): PersonalProfile {
         val data = http.json(http.request("/berserker-base/user", token)).getJSONObject("data")
         return parse(data)
@@ -36,23 +34,17 @@ class ProfileApi(private val openConnection: (URL) -> HttpsURLConnection = { it.
         val data = http.json(http.request("/berserker-app/cardStyle", token)).getJSONObject("data")
         return parseHomeIdentity(data, sno)
     }
-    override suspend fun avatar(path: String): ByteArray? = withContext(Dispatchers.IO) {
-        val safe = avatarPath(path) ?: return@withContext null
+    override suspend fun avatar(path: String): ByteArray? {
+        val safe = avatarPath(path) ?: return null
         try {
-            val connection = openConnection(URI(RechargeProtocol.SCHOOL + safe).toURL())
-            try {
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 15_000
-                connection.instanceFollowRedirects = false
-                connection.useCaches = false
-                connection.setRequestProperty("Accept", "image/*")
-                connection.setRequestProperty("Cache-Control", "no-store")
+            val request = AppHttp.request(RechargeProtocol.SCHOOL + safe).header("Accept", "image/*").build()
+            return imageClient.readResponse(request) { response ->
                 // The observed avatar is public on the school origin; never send credentials to an image URL.
-                if (connection.responseCode != 200 || connection.contentType?.substringBefore(';') !in setOf("image/png", "image/jpeg", "image/webp")) return@withContext null
-                val bytes = connection.inputStream.use { it.readNBytes(2_097_153) }
+                if (response.code != 200 || response.header("Content-Type")?.substringBefore(';') !in setOf("image/png", "image/jpeg", "image/webp")) return@readResponse null
+                val bytes = response.readBytesAtMost(2_097_152)
                 bytes.takeIf { it.size in 1..2_097_152 }
-            } finally { connection.disconnect() }
-        } catch (_: java.io.IOException) { throw NetworkFailure() }
+            }
+        } catch (e: java.io.IOException) { throw NetworkFailure(cause = e) }
     }
     companion object {
         internal fun parseHomeIdentity(data: JSONObject, sno: String): HomeCardIdentity? {

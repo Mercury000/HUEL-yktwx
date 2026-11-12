@@ -63,9 +63,9 @@ internal class AppUpdateInstaller(private val context: Context, private val http
                 val downloadContext = currentCoroutineContext()
                 http.read(url) { response ->
                     try {
-                        val declared = response.contentLengthLong
+                        val declared = response.body.contentLength()
                         require(declared < 0 || declared == release.size) { "安装包大小不符" }
-                        response.inputStream.use { input -> FileOutputStream(temporary).use { output ->
+                        response.body.byteStream().use { input -> FileOutputStream(temporary).use { output ->
                             val buffer = ByteArray(64 * 1024)
                             var total = 0L; var lastProgress = 0L
                             while (true) {
@@ -122,9 +122,9 @@ internal class AppUpdateInstaller(private val context: Context, private val http
         val jobs = release.urls.map { url -> launch {
             val available = try {
                 http.read(url) { response ->
-                    val declared = response.contentLengthLong
+                    val declared = response.body.contentLength()
                     require(declared < 0 || declared == release.size) { "安装包大小不符" }
-                    val prefix = response.inputStream.readNBytes(minOf(release.size, 16_384L).toInt())
+                    val prefix = response.body.byteStream().readNBytes(minOf(release.size, 16_384L).toInt())
                     require(prefix.size >= 4 && prefix[0] == 0x50.toByte() && prefix[1] == 0x4b.toByte() &&
                         prefix[2] == 0x03.toByte() && prefix[3] == 0x04.toByte()) { "下载来源未返回安装包" }
                 }

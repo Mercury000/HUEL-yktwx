@@ -34,7 +34,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Message and category travel together, including retained animation and retry snapshots. */
 internal data class ReadError(val message: String, val kind: ReadFailureKind = ReadFailureKind.Other)
-internal data class ReadRegion(val name: String, val error: ReadError?, val hasContent: Boolean)
+internal data class ReadRegion(val name: String, val error: ReadError?, val hasContent: Boolean,
+    val loading: Boolean = false)
 
 internal fun readError(message: String?, kind: ReadFailureKind?) = message?.let { ReadError(it, kind ?: ReadFailureKind.Other) }
 
@@ -80,21 +81,37 @@ private val LocalReadStartedAt = staticCompositionLocalOf<Long?> { null }
 internal val LocalPageNetworkError = staticCompositionLocalOf<String?> { null }
 private val LocalInitialReadFailure = staticCompositionLocalOf { false }
 
-/** Every main page has one network hint, retained until its refresh settles. */
+/** Retain a failed region only until its own retry settles, independently of other reads. */
 @Composable
 internal fun rememberPageNetworkError(refreshing: Boolean, hasContent: Boolean, initialError: ReadError?,
     vararg regions: ReadRegion, restoringDisplay: Boolean = false): String? {
     var previous by remember { mutableStateOf<String?>(null) }
+    var previousFailures by remember { mutableStateOf<Map<String, ReadError>>(emptyMap()) }
+    var previousInitialFailure by remember { mutableStateOf<ReadError?>(null) }
+    val offline = LocalReadOffline.current
+    val readRegions = regions.map { region ->
+        region.copy(error = region.error ?: previousFailures[region.name].takeIf { region.loading })
+    }
+    val readInitialError = initialError ?: previousInitialFailure.takeIf { refreshing && !hasContent }
     val displayed = when {
         // Do not replace a known page notice with feedback derived from an unread local snapshot.
         restoringDisplay -> previous
-        LocalReadOffline.current -> if (hasContent) "网络连接失败，显示上次数据，请下拉刷新" else FeedbackText.PageOffline
-        refreshing && previous != null -> previous
-        !hasContent && initialError?.kind == ReadFailureKind.Network -> FeedbackText.PageOffline
-        else -> FeedbackText.pageNetworkError(*regions)
-            ?: FeedbackText.PageOffline.takeIf { initialError?.kind == ReadFailureKind.Network }
+        offline -> if (hasContent) "网络连接失败，显示上次数据，请下拉刷新" else FeedbackText.PageOffline
+        !hasContent && readInitialError?.kind == ReadFailureKind.Network -> FeedbackText.PageOffline
+        else -> FeedbackText.pageNetworkError(*readRegions.toTypedArray())
+            ?: FeedbackText.PageOffline.takeIf { readInitialError?.kind == ReadFailureKind.Network }
     }
-    SideEffect { previous = displayed }
+    SideEffect {
+        previous = displayed
+        // An offline display can synthesize region errors. They are not failed requests and
+        // must not become retry memory after the current network snapshot is online again.
+        if (!restoringDisplay && !offline) {
+            previousFailures = readRegions.mapNotNull { region ->
+                region.error?.takeIf { it.kind == ReadFailureKind.Network }?.let { region.name to it }
+            }.toMap()
+            previousInitialFailure = readInitialError?.takeIf { it.kind == ReadFailureKind.Network }
+        }
+    }
     return displayed
 }
 

@@ -121,6 +121,32 @@ class PaymentInitialLoadingUiTest {
     @Test fun emptyAccountStartsWithCodeLoadingAndDisplaysTheSuccessfulCode() =
         restoredPayment(cached = false, fail = false)
 
+    @Test fun recoveredPaymentClearsBalanceFailureWhileCardIsStillLoading() {
+        val ready = PaymentUiState(needsLogin = false, username = "fake-user", account = account,
+            code = "00000000000000000000", secondsLeft = 60)
+        var state by mutableStateOf(ready.copy(code = null, secondsLeft = 0,
+            problem = PaymentCodeProblem.StatusUnverified,
+            error = "网络连接失败", errorKind = ReadFailureKind.Network,
+            accountError = "网络连接失败", accountErrorKind = ReadFailureKind.Network))
+        val settings = ThemeSettings(compose.activity)
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides false) {
+                AppTheme { PaymentPage(state, settings, 0.dp, onRefresh = {}) }
+            }
+        }
+        compose.onNodeWithText("付款码暂不可用").assertIsDisplayed()
+        compose.runOnIdle {
+            state = ready.copy(code = null, busy = true, balanceLoading = true, cardStatusLoading = true)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { state = ready.copy(cardStatusLoading = true) }
+        // Finish the status-to-code transition while the independent card read stays pending.
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
+        compose.onAllNodesWithText("余额更新失败，显示上次数据，请下拉刷新").assertCountEquals(0)
+    }
+
     @Test fun offlineCachedAccountShowsConnectionFeedbackInsteadOfWaitingForANetworkRead() {
         val settings = ThemeSettings(compose.activity)
         compose.setContent {
