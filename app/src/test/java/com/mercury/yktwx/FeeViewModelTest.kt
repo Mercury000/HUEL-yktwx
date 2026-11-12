@@ -5,6 +5,8 @@ import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.analytics.AppAnalytics
+import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.NonCancellable
@@ -32,6 +34,7 @@ class FeeViewModelTest {
     private val store = ViewModelStore().apply { put("fees", model) }
 
     @After fun cleanup() {
+        AppAnalytics.instance = null
         fees.createGate.complete(Unit)
         fees.prepareGate.complete(Unit)
         fees.gate.complete(Unit)
@@ -67,6 +70,16 @@ class FeeViewModelTest {
         assertEquals(1, fees.preparedOrders.size)
         assertEquals(listOf("FAKE-ORDER", "FAKE-ORDER"), fees.paidOrders)
         assertEquals(0, fees.launches)
+    }
+
+    @Test fun analyticsCountsTheFeeSubmissionWithoutCountingPreparationOrPasswordValidation() {
+        val statistics = RecordingAnalyticsBackend()
+        statistics.start(ApplicationProvider.getApplicationContext<Application>())
+        openPassword()
+        assertEquals(listOf("fee_network_submitted"), statistics.events.map { it.first })
+        model.payAccount("demo-type", "invalid")
+        model.chooseMethod(fees.accountMethod)
+        assertEquals(1, statistics.events.size)
     }
 
     @Test fun passwordClassificationUsesReasonInsteadOfMatchingMessageAndAlsoWorksWithSingleMethod() {

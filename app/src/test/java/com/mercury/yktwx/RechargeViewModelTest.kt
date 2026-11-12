@@ -5,6 +5,8 @@ import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.analytics.AppAnalytics
+import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -33,6 +35,7 @@ class RechargeViewModelTest {
     private val store = ViewModelStore().apply { put("recharge", model) }
 
     @After fun cleanup() {
+        AppAnalytics.instance = null
         store.clear()
         service.configurationGate.complete(Unit)
         service.creationGate.complete(Unit)
@@ -54,6 +57,22 @@ class RechargeViewModelTest {
         model.submit(1000)
         assertEquals(0, service.creations)
         assertNull(model.state.value.pending)
+    }
+
+    @Test fun analyticsCountsAValidSubmissionOnceAndIgnoresValidationAndRepeatedClicks() {
+        val statistics = RecordingAnalyticsBackend()
+        statistics.start(ApplicationProvider.getApplicationContext<Application>())
+        open()
+        model.submit(0)
+        assertTrue(statistics.events.isEmpty())
+        model.submit(1000)
+        model.submit(1000)
+        await { model.state.value.phase == RechargePhase.AwaitingPayment }
+        assertEquals(listOf("recharge_self_submitted"), statistics.events.map { it.first })
+        model.launchFailed()
+        model.launchFailed()
+        assertEquals(1, statistics.events.count { it.first == "operation_failed" })
+        assertEquals(mapOf("feature" to "recharge_self", "error_kind" to "external"), statistics.events.last().second)
     }
 
     @Test fun confirmedRechargeEmitsOneUpdateEvenWhenResultIsDismissedImmediately() {

@@ -89,6 +89,7 @@ fun BillPage(
     onStatsTypeChange: (Int) -> Unit = {},
     onRefreshStats: () -> Unit = {},
     updateNotice: @Composable () -> Unit = {},
+    onSearchConfirmed: (Boolean) -> Unit = {},
 ) {
     val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val motion = rememberBillContentMotion(state, isActive)
@@ -393,6 +394,7 @@ fun BillPage(
                                                                 keyboardActions = KeyboardActions(onSearch = {
                                                                     dismissSearch()
                                                                     submitSearch(query.text)
+                                                                    if (query.text.isNotBlank()) onSearchConfirmed(false)
                                                                 }),
                                                             )
                                                             // Keep this tap outside BasicTextField's focus/selection gesture path.
@@ -401,6 +403,7 @@ fun BillPage(
                                                                 IconButton(onClick = {
                                                                     query = TextFieldValue()
                                                                     submitSearch("")
+                                                                    onSearchConfirmed(true)
                                                                 }, modifier = Modifier.align(Alignment.CenterEnd)) {
                                                                     Icon(MiuixIcons.Clear, contentDescription = "清除搜索",
                                                                         modifier = Modifier.size(17.dp),

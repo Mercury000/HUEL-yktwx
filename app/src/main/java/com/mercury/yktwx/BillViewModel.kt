@@ -3,6 +3,7 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
@@ -354,6 +355,17 @@ class BillViewModel internal constructor(
     fun applyFilters(typeId: String?, amountFromCents: Long?, amountToCents: Long?) {
         val current = mutable.value
         if (current.typeId == typeId && current.amountFromCents == amountFromCents && current.amountToCents == amountToCents) return
+        if (!preview && !current.needsLogin) {
+            val typeChanged = current.typeId != typeId
+            val amountChanged = current.amountFromCents != amountFromCents || current.amountToCents != amountToCents
+            val kind = when {
+                typeId == null && amountFromCents == null && amountToCents == null -> AnalyticsFilter.Clear
+                typeChanged && amountChanged -> AnalyticsFilter.Combined
+                typeChanged -> AnalyticsFilter.Type
+                else -> AnalyticsFilter.Amount
+            }
+            AppAnalytics.from(getApplication()).filterApplied(kind)
+        }
         cancelListJobs()
         mutable.value = current.copy(
             typeId = typeId, amountFromCents = amountFromCents, amountToCents = amountToCents,
@@ -381,6 +393,7 @@ class BillViewModel internal constructor(
     fun clearQuery() {
         val current = mutable.value
         if (current.activeFilterCount == 0 && current.info.isBlank()) return
+        if (!preview && !current.needsLogin) AppAnalytics.from(getApplication()).filterApplied(AnalyticsFilter.Clear)
         cancelListJobs()
         mutable.value = current.copy(typeId = null, amountFromCents = null, amountToCents = null, info = "",
             items = emptyList(), currentPage = 0, pages = 0, loaded = false, errorKind = null, error = null, loadMoreErrorKind = null, loadMoreError = null,

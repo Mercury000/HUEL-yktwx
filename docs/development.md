@@ -9,6 +9,8 @@
 | `PANGGUI_API_SECRET` | `panggui.apiSecret` | 胖乖接口密钥 |
 | `HUI798_API_GATEWAY` | `hui798.apiGateway` | 798 网关 |
 | `HUI798_SIGN_SALT` | `hui798.signSalt` | 798 登录签名配置 |
+| `UMENG_APP_KEY` | `umeng.appKey` | 使用统计应用 |
+| `UMENG_CHANNEL` | `umeng.channel` | 安装分发渠道 |
 
 ## 构建与预览
 
