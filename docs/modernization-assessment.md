@@ -51,13 +51,13 @@
 
 [HallViewModel.kt](/D:/mercu/Desktop/yktwx/app/src/main/java/com/mercury/yktwx/HallViewModel.kt:52) 直接维护 hall_display。[UpdateCheckStore.kt](/D:/mercu/Desktop/yktwx/app/src/main/java/com/mercury/yktwx/data/UpdateCheckStore.kt:8) 与 ThemeSettings 都读写 app_updates 中的渠道键，但各自持有渠道相关内存状态。
 
-更新存储还包含最高策略 revision、摘要、强制边界、已接受版本和原始签名清单。它承担防回滚职责，不能当作随时可重置的普通偏好。[AppUpdateViewModel.kt](/D:/mercu/Desktop/yktwx/app/src/main/java/com/mercury/yktwx/AppUpdateViewModel.kt:42) 在创建初始状态时读取缓存强制目标，因此迁移必须同时解决启动加载时序。
+更新存储还包含最高策略 revision、摘要、强制边界、已接受版本和原始签名清单。它承担防回滚职责，不能当作随时可重置的普通偏好。这些字段尚未正式发布，无需从旧 SharedPreferences 格式迁移，但新格式的正常校验与持久保存必须保留。[AppUpdateViewModel.kt](/D:/mercu/Desktop/yktwx/app/src/main/java/com/mercury/yktwx/AppUpdateViewModel.kt:42) 在创建初始状态时读取缓存强制目标，因此迁移必须同时解决启动加载时序。
 
 ### 选定方案与完整边界
 
 采用 **DataStore<AppPreferences> + kotlinx.serialization JSON Serializer**。AppPreferences 使用不可变类型，包含 UI 设置、按账号哈希保存的房间选择、更新渠道、按包/渠道/安装版本保存的检查及提示状态，以及按渠道保存的更新策略。这个范围使用一个文件、一个应用级 DataStore 实例和一个设置仓库，确保渠道与策略可以一起原子更新。
 
-完整迁移 ui_settings、hall_display、app_updates 的有效数据。废弃设置不重新启用，现有默认值和取值范围继续生效。页面通过仓库的 Flow 获取持久状态，写入统一调用 updateData；页面局部编辑草稿仍可以使用 Compose 状态。
+完整迁移正式版 1.4.1（`1bb98ea5bc87e9a217ce6b8af10c47046aa92c73`）在 ui_settings、hall_display、app_updates 中的有效设置数据。该提交之后的未发布格式不增加专门兼容；旧更新展示缓存直接淘汰，之后新增的渠道、跳过和签名账本从当前 DataStore 格式开始保存。废弃设置不重新启用，现有默认值和取值范围继续生效。页面通过仓库的 Flow 获取持久状态，写入统一调用 updateData；页面局部编辑草稿仍可以使用 Compose 状态。
 
 无需增加 Protobuf 编译链：官方支持使用 JSON Serializer 的类型化 DataStore，项目也已使用 Kotlin 序列化插件。新的模型仍须明确 schemaVersion 与迁移规则。
 

@@ -160,9 +160,17 @@ internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
         val notPublished: Boolean = false, val serviceUnavailable: Boolean = false) {
         val unavailable get() = release == null && !notPublished
     }
-    suspend fun check(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult = withTimeoutOrNull(3_000) {
-        checkChannels(request, store)
-    } ?: throw java.net.SocketTimeoutException("更新检查超时")
+    suspend fun check(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult {
+        val started = System.nanoTime()
+        Log.d("AppUpdate", "check channel=${request.channel} started")
+        val result = withTimeoutOrNull(sourceTimeoutMillis + 1_000) {
+            store.repository.awaitReady()
+            checkChannels(request, store)
+        } ?: throw java.net.SocketTimeoutException("更新检查超时")
+        Log.d("AppUpdate", "check channel=${request.channel} elapsedMs=${(System.nanoTime() - started) / 1_000_000} " +
+            "result=${result.reason} resolved=${result.resolvedChannels.orEmpty().sorted().joinToString(",")}")
+        return result
+    }
 
     private suspend fun checkChannels(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult = coroutineScope {
         val channels = if (request.channel == "beta") listOf("beta", "stable") else listOf("stable")
