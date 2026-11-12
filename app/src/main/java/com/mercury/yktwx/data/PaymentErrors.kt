@@ -1,6 +1,6 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
 import java.net.URI
 import java.net.URLDecoder
 
@@ -8,13 +8,13 @@ import java.net.URLDecoder
 internal object PaymentErrors {
     // The two official cashiers have different success predicates. Neither uses
     // success/data or a list of known failure codes to decide its error callback.
-    fun rechargeSucceeded(body: JSONObject) = body.opt("code") == 200
-    fun feeSucceeded(body: JSONObject): Boolean = body.opt("code") == 200 ||
-        body.opt("code") == 302 || body.opt("state") == 200 ||
-        (!truthy(body.opt("code")) && !truthy(body.opt("state")))
+    fun rechargeSucceeded(body: JsonObject) = body.scalarOrElement("code") == 200
+    fun feeSucceeded(body: JsonObject): Boolean = body.scalarOrElement("code") == 200 ||
+        body.scalarOrElement("code") == 302 || body.scalarOrElement("state") == 200 ||
+        (!truthy(body.scalarOrElement("code")) && !truthy(body.scalarOrElement("state")))
 
     private fun truthy(value: Any?): Boolean = when (value) {
-        null, JSONObject.NULL, false, "" -> false
+        null, JsonNull, false, "" -> false
         is Number -> value.toDouble() != 0.0
         else -> true
     }

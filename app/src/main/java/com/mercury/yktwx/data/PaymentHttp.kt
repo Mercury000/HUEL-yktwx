@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -7,13 +8,12 @@ import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 /** Shared first-party transport; no Cookie jar, redirects or retries of POSTs. */
 internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
     internal class Response(val status: Int, val body: String, val location: String?)
     suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null,
-        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response {
+        chargeClient: Boolean = false, jsonBody: JsonObject? = null): Response {
         require(form == null || jsonBody == null)
         val url = (RechargeProtocol.SCHOOL + path).toHttpUrl().newBuilder().apply {
             if (form == null && jsonBody == null) (params + ("synAccessSource" to "h5")).forEach { (key, value) -> addQueryParameter(key, value) }
@@ -21,7 +21,7 @@ internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
         return exchange(url.toUri(), token, form, chargeClient = chargeClient, jsonBody = jsonBody)
     }
     private suspend fun exchange(uri: URI, token: String?, form: Map<String, String>?, bridge: Boolean = false,
-        chargeClient: Boolean = false, jsonBody: JSONObject? = null): Response {
+        chargeClient: Boolean = false, jsonBody: JsonObject? = null): Response {
         try {
             val request = AppHttp.request(uri.toString())
             if (bridge) {
@@ -46,13 +46,13 @@ internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
         catch (e: java.io.IOException) { throw NetworkFailure(cause = e) }
     }
     suspend fun json(response: Response, feePayment: Boolean = false, preserveAuthenticationMessage: Boolean = false,
-        rechargePayment: Boolean = false): JSONObject = withContext(Dispatchers.Default) {
+        rechargePayment: Boolean = false): JsonObject = withContext(Dispatchers.Default) {
         if (feePayment) PaymentErrors.redirectMessage(response)?.let {
             throw FeePaymentRejected(FeeRejectionReason.Other, it)
         }
-        val body = runCatching { JSONObject(response.body) }.getOrNull()
-        if (response.status in listOf(401, 403) || body?.optInt("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) {
-            val msg = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+        val body = runCatching { parseObject(response.body) }.getOrNull()
+        if (response.status in listOf(401, 403) || body?.intOrDefault("code") in listOf(401, 403, 4011, 4030, 4037, 4038)) {
+            val msg = (body?.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() }
             throw AuthenticationRequired(if (preserveAuthenticationMessage || feePayment || rechargePayment)
                 msg ?: "登录已失效，请重新登录" else "登录已失效，请重新登录")
         }
@@ -62,11 +62,11 @@ internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
         val accepted = body != null && when {
             feePayment -> response.status == 200 && PaymentErrors.feeSucceeded(body)
             rechargePayment -> response.status == 200 && PaymentErrors.rechargeSucceeded(body)
-            else -> response.status in 200..299 && body.optInt("code") == 200 && body.opt("success") != false
+            else -> response.status in 200..299 && body.intOrDefault("code") == 200 && body.scalarOrElement("success") != false
         }
         if (!accepted) {
             // Show the official business message without deciding payment outcome from its text.
-            val hint = (body?.opt("msg") as? String)?.takeIf { it.isNotEmpty() }
+            val hint = (body?.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() }
             throw YktException(hint ?: if (body == null) "服务器响应异常" else "Error")
         }
         body

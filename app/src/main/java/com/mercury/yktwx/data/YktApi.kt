@@ -1,11 +1,11 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import org.json.JSONObject
 
 interface YktService {
     suspend fun login(credentials: Credentials): Session
@@ -35,7 +35,7 @@ interface YktService {
 class YktApi(
     private val client: Call.Factory = AppHttp.service,
 ) : YktService {
-    private suspend fun request(path: String, params: Map<String, String> = emptyMap(), token: String? = null, login: Boolean = false): JSONObject {
+    private suspend fun request(path: String, params: Map<String, String> = emptyMap(), token: String? = null, login: Boolean = false): JsonObject {
         val fields = params + ("synAccessSource" to "h5")
         val url = (BASE + path).toHttpUrl().newBuilder().apply {
             if (!login) fields.forEach { (key, value) -> addQueryParameter(key, value) }
@@ -52,18 +52,18 @@ class YktApi(
                 val status = response.code
                 val bytes = response.readBytesAtMost(1_048_576)
                 if (bytes.size > 1_048_576) throw YktException("服务器响应异常")
-                val payload = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
-                val code = payload?.optInt("code", -1) ?: -1
+                val payload = runCatching { parseObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
+                val code = payload?.intOrDefault("code", -1) ?: -1
                 if (status >= 500) throw YktException("服务器暂不可用，请稍后重试")
                 if (status in 300..399) throw YktException("服务发生跳转，请在官网检查登录状态")
                 if (status == 429) throw YktException("请求过于频繁，请稍后重试")
                 if (login) {
                     if (code in listOf(8002, 8003)) throw CaptchaRequired()
-                    if (status !in 200..299 || payload?.has("access_token") != true) throw InvalidCredentials()
+                    if (status !in 200..299 || payload?.containsKey("access_token") != true) throw InvalidCredentials()
                 } else {
                     if (status in listOf(401, 403) || code in listOf(401, 403, 4011, 4030, 4037, 4038)) throw AuthenticationRequired()
-                    if (status !in 200..299 || code != 200 || payload?.opt("success") == false) throw YktException(
-                        (payload?.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "服务暂不可用，请在官网检查账户状态",
+                    if (status !in 200..299 || code != 200 || payload?.scalarOrElement("success") == false) throw YktException(
+                        (payload?.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "服务暂不可用，请在官网检查账户状态",
                     )
                 }
                 payload ?: throw YktException("服务器响应异常")
@@ -74,33 +74,33 @@ class YktApi(
     override suspend fun login(credentials: Credentials): Session {
         if (credentials.username.isEmpty() || credentials.username.any { it !in '0'..'9' }) throw YktException("请输入正确的学号或工号")
         KeyboardEncoder.validate(credentials.password)
-        val config = request("/berserker-app/frontInfo").getJSONObject("data")
+        val config = request("/berserker-app/frontInfo").objectValue("data")
         val loginType = LoginConfiguration.selectLoginType(config)
-        val keyboard = request("/berserker-secure/keyboard", mapOf("type" to "Standard", "order" to "0")).getJSONObject("data")
-        val encoded = KeyboardEncoder.encode(credentials.password, KeyboardEncoder.layouts.keys.associateWith { keyboard.optString(it) }, keyboard.optString("uuid"))
+        val keyboard = request("/berserker-secure/keyboard", mapOf("type" to "Standard", "order" to "0")).objectValue("data")
+        val encoded = KeyboardEncoder.encode(credentials.password, KeyboardEncoder.layouts.keys.associateWith { keyboard.stringOrDefault(it) }, keyboard.stringOrDefault("uuid"))
         val response = request("/berserker-auth/oauth/token", mapOf(
             "username" to credentials.username, "password" to encoded, "grant_type" to "password", "scope" to "all",
             "loginFrom" to "h5", "logintype" to loginType, "device_token" to "h5",
         ), login = true)
-        if (response.optBoolean("is_password_expired") || response.optBoolean("is_first_login")) throw YktException("请先在官网完成首次登录或密码更新")
-        if (response.optString("token_type", "bearer").lowercase() != "bearer") throw YktException("登录凭证类型异常")
-        val token = response.optString("access_token")
+        if (response.booleanOrDefault("is_password_expired") || response.booleanOrDefault("is_first_login")) throw YktException("请先在官网完成首次登录或密码更新")
+        if (response.stringOrDefault("token_type", "bearer").lowercase() != "bearer") throw YktException("登录凭证类型异常")
+        val token = response.stringOrDefault("access_token")
         if (token.isBlank() || token.any { it <= ' ' || it >= '\u007f' }) throw YktException("登录凭证异常")
-        val lifetime = response.optLong("expires_in").coerceIn(1, 31_536_000)
+        val lifetime = response.longOrDefault("expires_in").coerceIn(1, 31_536_000)
         return Session(token, System.currentTimeMillis() + lifetime * 1000)
     }
-    private suspend fun paymentAccountInfo(token: String): Pair<PaymentAccount, JSONObject> {
-        val list = request("/berserker-app/ykt/tsm/codebarPayinfo", token = token).getJSONArray("data")
-        val selected = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull {
-            it.optString("code") == "ACCOUNT"
+    private suspend fun paymentAccountInfo(token: String): Pair<PaymentAccount, JsonObject> {
+        val list = request("/berserker-app/ykt/tsm/codebarPayinfo", token = token).arrayValue("data")
+        val selected = (0 until list.size).map { list.objectValue(it) }.firstOrNull {
+            it.stringOrDefault("code") == "ACCOUNT"
         } ?: throw YktException("没有统一账户，请在官网检查账户状态")
         // Never coerce missing, fractional, negative or overflowing balances to zero.
-        val balance = selected.opt("accinfo_balance")?.toString()?.toLongOrNull()
+        val balance = selected.scalarOrElement("accinfo_balance")?.toString()?.toLongOrNull()
             ?.takeIf { it >= 0 } ?: throw YktException("账户余额数据异常")
-        fun identifier(key: String) = (selected.opt(key) as? String)?.takeIf { it.isNotBlank() }
+        fun identifier(key: String) = (selected.scalarOrElement(key) as? String)?.takeIf { it.isNotBlank() }
             ?: throw YktException("付款账户数据异常")
         return PaymentAccount(identifier("account"), identifier("payacc"), identifier("paytype"),
-            selected.optString("name", "统一账户"), balance) to selected
+            selected.stringOrDefault("name", "统一账户"), balance) to selected
     }
     override suspend fun paymentAccount(token: String): PaymentAccount = paymentAccountInfo(token).first
 
@@ -112,20 +112,20 @@ class YktApi(
         onAccount(account)
         // The payment page reads card status independently; it must not delay issuing a code.
         // Activation is a separate restriction from the card's loss/freeze state.
-        if (selected.optInt("status", -1) == 0) throw PaymentCodeUnavailable(account,
-            (selected.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
-                ?: (selected.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "付款码暂不可用")
+        if (selected.intOrDefault("status", -1) == 0) throw PaymentCodeUnavailable(account,
+            (selected.scalarOrElement("errmsg") as? String)?.takeIf { it.isNotEmpty() }
+                ?: (selected.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "付款码暂不可用")
         try {
             val response = request("/berserker-app/ykt/tsm/batchGetBarCodeGet", mapOf("account" to account.account, "payacc" to account.payacc, "paytype" to account.paytype), token)
-            val data = response.optJSONObject("data")
-            val array = data?.optJSONArray("barcode")
-            if (array == null || array.length() == 0) throw YktException(
-                (data?.opt("errmsg") as? String)?.takeIf { it.isNotEmpty() }
-                    ?: (response.opt("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "未取得付款码，请刷新或在官网检查账户",
+            val data = response.objectOrNull("data")
+            val array = data?.arrayOrNull("barcode")
+            if (array == null || array.size == 0) throw YktException(
+                (data?.scalarOrElement("errmsg") as? String)?.takeIf { it.isNotEmpty() }
+                    ?: (response.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() } ?: "未取得付款码，请刷新或在官网检查账户",
             )
-            val codes = (0 until array.length()).map { array.getString(it) }
+            val codes = (0 until array.size).map { array.stringValue(it) }
             if (codes.any { code -> code.length != 20 || code.any { it !in '0'..'9' } }) throw YktException("付款码数据异常")
-            val expiry = data.optLong("expires")
+            val expiry = data.longOrDefault("expires")
             if (expiry <= 0) throw YktException("付款码有效期异常")
             return PaymentBatch(codes, expiry, account)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -154,13 +154,13 @@ class YktApi(
             amountToCents?.let { put("amountTo", it.toString()) }
             info?.trim()?.takeIf { it.isNotEmpty() }?.let { put("info", it) }
         }
-        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data"))
+        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).objectValue("data"))
     }
     override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
         val data = request(
             "/berserker-search/statistics/turnover/count",
             mapOf("timeFrom" to timeFrom, "timeTo" to timeTo), token,
-        ).getJSONObject("data")
+        ).objectValue("data")
         return BillParser.summary(data)
     }
     override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int): Int {
@@ -169,15 +169,15 @@ class YktApi(
             "type" to type.toString(),
         )
         return request("/berserker-search/search/personal/turnover", params, token)
-            .getJSONObject("data").optInt("total")
+            .objectValue("data").intOrDefault("total")
     }
     override suspend fun billTypes(token: String): List<BillType> =
-        BillParser.types(request("/berserker-search/search/turnoverType", token = token).getJSONArray("data"))
+        BillParser.types(request("/berserker-search/search/turnoverType", token = token).arrayValue("data"))
     override suspend fun billCategories(token: String, type: Int, timeFrom: String, timeTo: String): List<BillCategory> {
         val data = request(
             "/berserker-search/statistics/turnover",
             mapOf("type" to type.toString(), "timeFrom" to timeFrom, "timeTo" to timeTo), token,
-        ).getJSONArray("data")
+        ).arrayValue("data")
         return BillParser.categories(data)
     }
     override suspend fun billTrend(token: String, type: Int, filter: BillDateFilter): List<BillDailyPoint> {
@@ -193,7 +193,7 @@ class YktApi(
                 "type" to type.toString(),
             ),
             token,
-        ).getJSONObject("data")
+        ).objectValue("data")
         return BillParser.daily(data)
     }
     override suspend fun billRanking(token: String, type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> {
@@ -201,7 +201,7 @@ class YktApi(
             "current" to "1", "size" to limit.toString(), "timeFrom" to timeFrom, "timeTo" to timeTo,
             "type" to type.toString(), "sortFields" to "tranamt", "sortType" to "desc",
         )
-        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).getJSONObject("data")).items
+        return BillParser.page(request("/berserker-search/search/personal/turnover", params, token).objectValue("data")).items
     }
     private companion object { const val BASE = "https://yktwx2.huel.edu.cn" }
 }

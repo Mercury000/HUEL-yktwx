@@ -1,19 +1,18 @@
 package com.mercury.yktwx.data
 
 import android.util.Log
+import kotlinx.serialization.json.*
 import com.mercury.yktwx.BuildConfig
+import com.google.crypto.tink.subtle.Ed25519Verify
 import java.net.URI
-import java.security.KeyFactory
+import java.security.GeneralSecurityException
 import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
 import java.util.Base64
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import okhttp3.Call
 import okhttp3.Response
-import org.json.JSONObject
 
 internal data class UpdateRequest(val packageName: String, val versionCode: Int, val sdkInt: Int,
     val channel: String = BuildConfig.UPDATE_CHANNEL)
@@ -80,9 +79,9 @@ internal class UpdateHttp(private val metadataTimeoutMillis: Long = DEFAULT_META
             val bytes = response.readBytesAtMost(1_048_576)
             require(bytes.size <= 1_048_576) { "更新信息过大" }
             val body = bytes.toString(Charsets.UTF_8)
-            val json = JSONObject(body)
-            if (json.optString("encoding") == "base64") {
-                Base64.getMimeDecoder().decode(json.getString("content")).toString(Charsets.UTF_8)
+            val json = parseObject(body)
+            if (json.stringOrDefault("encoding") == "base64") {
+                Base64.getMimeDecoder().decode(json.stringValue("content")).toString(Charsets.UTF_8)
             } else body
         }
     } ?: throw java.net.SocketTimeoutException("更新来源响应超时")
@@ -94,18 +93,24 @@ internal class UpdateHttp(private val metadataTimeoutMillis: Long = DEFAULT_META
 
 /** Sign exact payload bytes; JSON key ordering cannot change the signed meaning. */
 internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUBLIC_KEY) {
-    private val key = KeyFactory.getInstance("Ed25519").generatePublic(
-        X509EncodedKeySpec(Base64.getDecoder().decode(publicKey)))
-    fun payload(envelope: String): Pair<JSONObject, String> {
-        val wrapper = JSONObject(envelope)
-        require(wrapper.getString("algorithm") == "Ed25519")
-        val bytes = Base64.getDecoder().decode(wrapper.getString("payload"))
+    // Android's Ed25519 KeyFactory may only handle Keystore keys. This constructor uses
+    // Tink's portable verifier without changing the process-wide security providers.
+    private val verifier = Base64.getDecoder().decode(publicKey).let { encoded ->
+        val header = byteArrayOf(0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00)
+        require(encoded.size == header.size + Ed25519Verify.PUBLIC_KEY_LEN &&
+            encoded.copyOfRange(0, header.size).contentEquals(header)) { "更新验签公钥格式无效" }
+        Ed25519Verify(encoded.copyOfRange(header.size, encoded.size))
+    }
+    fun payload(envelope: String): Pair<JsonObject, String> {
+        val wrapper = parseObject(envelope)
+        require(wrapper.stringValue("algorithm") == "Ed25519")
+        val bytes = Base64.getDecoder().decode(wrapper.stringValue("payload"))
         require(bytes.size <= 524_288)
-        val signature = Signature.getInstance("Ed25519")
-        signature.initVerify(key); signature.update(bytes)
-        if (!signature.verify(Base64.getDecoder().decode(wrapper.getString("signature"))))
-            throw UpdateMetadataRejected(UpdateMetadataRejection.Invalid, "更新清单签名无效")
-        return JSONObject(bytes.toString(Charsets.UTF_8)) to sha256(bytes)
+        try { verifier.verify(Base64.getDecoder().decode(wrapper.stringValue("signature")), bytes) }
+        catch (error: GeneralSecurityException) {
+            throw UpdateMetadataRejected(UpdateMetadataRejection.Invalid, "更新清单签名无效", error)
+        }
+        return parseObject(bytes.toString(Charsets.UTF_8)) to sha256(bytes)
     }
     fun manifest(envelope: String, channel: String): Pair<UpdateRelease, String> {
         val (json, digest) = payload(envelope)
@@ -114,34 +119,31 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
         return release.copy(signedManifest = envelope) to digest
     }
     companion object {
-        private fun integer(json: JSONObject, name: String): Long {
-            val value = json.get(name)
-            require(value is Int || value is Long) { "更新字段类型无效" }
-            return (value as Number).toLong()
-        }
-        fun parse(json: JSONObject): UpdateRelease {
+        private fun integer(json: JsonObject, name: String): Long = json.strictLongValue(name)
+        fun parse(json: JsonObject): UpdateRelease {
             require(integer(json, "schemaVersion") == 1L)
-            val channel = json.getString("channel"); require(channel in listOf("stable", "beta"))
+            val channel = json.stringValue("channel"); require(channel in listOf("stable", "beta"))
             val version = integer(json, "versionCode"); require(version in 1..Int.MAX_VALUE)
             val forced = integer(json, "maxForcedVersionCode"); require(forced in 0 until version)
             val revision = integer(json, "policyRevision"); require(revision > 0)
-            val hash = json.getString("sha256"); require(hash.matches(Regex("[a-f0-9]{64}")))
-            val signer = if (json.has("signerSha256")) json.getString("signerSha256").also {
-                require(it.matches(Regex("[a-f0-9]{64}"))) } else null
-            val array = json.getJSONArray("urls"); require(array.length() in 6..20)
-            val urls = (0 until array.length()).map { array.getString(it).also(::httpsUri) }
+            val hash = json.stringValue("sha256"); require(hash.matches(Regex("[a-f0-9]{64}")))
+            val signer = json["signerSha256"]?.let {
+                json.stringValue("signerSha256").also { require(it.matches(Regex("[a-f0-9]{64}"))) }
+            }
+            val array = json.arrayValue("urls"); require(array.size in 6..20)
+            val urls = (0 until array.size).map { array.stringValue(it).also(::httpsUri) }
             require(urls.distinct().size == urls.size)
             require(urls.map(::httpsUri).map { it.host.lowercase() }.filter { it != "github.com" }.distinct().size >= 5)
             val size = integer(json, "size"); require(size in 1..536_870_912L)
             val minSdk = integer(json, "minSdk"); require(minSdk in 1..Int.MAX_VALUE)
-            val name = json.getString("versionName"); require(name.isNotBlank() && name.length <= 100)
-            val releaseUrl = json.getString("releaseUrl").also(::httpsUri)
-            val published = json.optString("publishedAt").takeIf { it.isNotBlank() }
+            val name = json.stringValue("versionName"); require(name.isNotBlank() && name.length <= 100)
+            val releaseUrl = json.stringValue("releaseUrl").also(::httpsUri)
+            val published = json.stringOrDefault("publishedAt").takeIf { it.isNotBlank() }
                 ?.let { runCatching { Instant.parse(it) }.getOrNull() }
-            val expires = Instant.parse(json.getString("expiresAt"))
-            return UpdateRelease(version.toInt(), name, json.getString("changelog"), releaseUrl,
+            val expires = Instant.parse(json.stringValue("expiresAt"))
+            return UpdateRelease(version.toInt(), name, json.stringValue("changelog"), releaseUrl,
                 channel, published, forced.toInt(), revision, urls, hash, size,
-                json.getString("packageName"), minSdk.toInt(), expires, signerSha256 = signer)
+                json.stringValue("packageName"), minSdk.toInt(), expires, signerSha256 = signer)
         }
     }
 }
@@ -243,19 +245,17 @@ internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
                 sourceSuccess(channel, source, stage, stageStarted)
                 pointerReceived = true
                 val (pointer, _) = verifier.payload(pointerBody)
-                require(pointer.get("schemaVersion") is Int &&
-                    pointer.get("policyRevision").let { it is Int || it is Long })
-                require(pointer.getInt("schemaVersion") == 1 && pointer.getString("channel") == channel)
-                val pointerRevision = pointer.getLong("policyRevision")
-                if (Instant.parse(pointer.getString("expiresAt")) <= now())
+                require(pointer.strictLongValue("schemaVersion") == 1L && pointer.stringValue("channel") == channel)
+                val pointerRevision = pointer.strictLongValue("policyRevision")
+                if (Instant.parse(pointer.stringValue("expiresAt")) <= now())
                     throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "更新指针已过期")
-                val path = pointer.getString("manifestPath")
+                val path = pointer.stringValue("manifestPath")
                 require(path.matches(Regex("manifests/[1-9][0-9]*-[a-f0-9]{64}\\.json")))
                 stage = "manifest"
                 stageStarted = System.nanoTime()
                 val body = http.json(sources(channel, path)[index])
                 sourceSuccess(channel, source, stage, stageStarted)
-                require(sha256(body.toByteArray()) == pointer.getString("manifestSha256"))
+                require(sha256(body.toByteArray()) == pointer.stringValue("manifestSha256"))
                 val (release, digest) = verifier.manifest(body, channel)
                 require(release.packageName == request.packageName) { "更新包名不匹配" }
                 require(release.policyRevision == pointerRevision)
