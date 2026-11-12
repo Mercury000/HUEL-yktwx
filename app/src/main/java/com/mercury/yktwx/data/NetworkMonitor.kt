@@ -39,7 +39,9 @@ internal interface NetworkMonitor {
 
 /**
  * Owns the one default-network callback used by the app. It never performs a request; it only
- * publishes connectivity transitions, debouncing short Wi-Fi/cellular handovers.
+ * publishes callback payloads, debouncing loss during short Wi-Fi/cellular handovers.
+ * Synchronous getters are only a bootstrap snapshot: Android explicitly warns that querying
+ * them from a callback races with the callback's state (including per-UID blocking).
  */
 internal class AndroidNetworkMonitor(context: Context) : NetworkMonitor {
     private val app = context.applicationContext
@@ -48,53 +50,96 @@ internal class AndroidNetworkMonitor(context: Context) : NetworkMonitor {
     private val mutable = MutableStateFlow(NetworkState(networkState(app)))
     override val state: StateFlow<NetworkState> = mutable.asStateFlow()
     private var network: Network? = connectivity?.activeNetwork
-    private var started = false
-    private var pendingOnline: Runnable? = null
-    private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = schedule(immediate = false)
-        override fun onLost(network: Network) = schedule(immediate = true)
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) =
-            schedule(immediate = false)
-
-        private fun schedule(immediate: Boolean) {
-            if (!started) return
-            pendingOnline?.let(handler::removeCallbacks)
-            val run = Runnable { if (started) publish() }
-            pendingOnline = run
-            handler.postDelayed(run, if (immediate) 0 else 350L)
-        }
-    }
+    private var lastNetwork = network
+    private var internet: Boolean? = mutable.value.online
+    private var blocked = false
+    private var reconnectPending = false
+    private var callbackReceived = false
+    private var pendingLoss: Runnable? = null
+    private var callback: ConnectivityManager.NetworkCallback? = null
 
     fun start() {
-        if (started) return
-        started = true
-        connectivity?.registerDefaultNetworkCallback(callback, handler)
+        if (callback != null) return
+        callbackReceived = false
+        val registration = object : ConnectivityManager.NetworkCallback() {
+            private fun current() = callback === this
+
+            override fun onAvailable(network: Network) {
+                if (!current()) return
+                callbackReceived = true
+                cancelPendingLoss()
+                this@AndroidNetworkMonitor.network = network
+                internet = null // Wait for onCapabilitiesChanged; never query the system here.
+                blocked = false
+                publish(null)
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                if (!current() || network != this@AndroidNetworkMonitor.network) return
+                callbackReceived = true
+                internet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                publish(if (blocked) false else internet)
+            }
+
+            override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
+                if (!current() || network != this@AndroidNetworkMonitor.network) return
+                callbackReceived = true
+                this@AndroidNetworkMonitor.blocked = blocked
+                publish(if (blocked) false else internet)
+            }
+
+            override fun onLost(network: Network) {
+                if (!current() || network != this@AndroidNetworkMonitor.network) return
+                callbackReceived = true
+                this@AndroidNetworkMonitor.network = null
+                internet = null
+                blocked = false
+                reconnectPending = true
+                cancelPendingLoss()
+                pendingLoss = Runnable {
+                    pendingLoss = null
+                    if (current() && this@AndroidNetworkMonitor.network == null) publish(false)
+                }.also { handler.postDelayed(it, 350L) }
+            }
+        }
+        callback = registration
         refresh()
+        connectivity?.registerDefaultNetworkCallback(registration, handler)
     }
 
     fun stop() {
-        if (!started) return
-        started = false
-        pendingOnline?.let(handler::removeCallbacks)
-        pendingOnline = null
-        connectivity?.unregisterNetworkCallback(callback)
+        val registration = callback ?: return
+        callback = null
+        cancelPendingLoss()
+        connectivity?.unregisterNetworkCallback(registration)
     }
 
     override fun refresh(): NetworkState {
-        pendingOnline?.let(handler::removeCallbacks)
-        publish()
+        // A foreground snapshot must never overwrite an authoritative callback with stale data.
+        if (!callbackReceived) {
+            network = connectivity?.activeNetwork
+            internet = network?.let { connectivity?.getNetworkCapabilities(it) }
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            blocked = false
+            publish(if (network == null && connectivity != null) false else internet)
+        }
         return mutable.value
     }
 
-    private fun publish() {
-        pendingOnline = null
+    private fun cancelPendingLoss() {
+        pendingLoss?.let(handler::removeCallbacks)
+        pendingLoss = null
+    }
+
+    private fun publish(online: Boolean?) {
         val previous = mutable.value
-        val nextNetwork = connectivity?.activeNetwork
-        val changedNetwork = network != null && nextNetwork != null && network != nextNetwork
-        network = nextNetwork ?: network
-        val online = networkState(app)
+        val changedNetwork = lastNetwork != null && network != null && lastNetwork != network
         val restored = previous.online == false && online != false
-        val epoch = previous.epoch + if (restored || changedNetwork && online != false) 1 else 0
+        val epoch = previous.epoch + if (online != false && (restored || changedNetwork || reconnectPending)) 1 else 0
+        if (online != false) {
+            lastNetwork = network ?: lastNetwork
+            reconnectPending = false
+        }
         if (online != previous.online || epoch != previous.epoch) {
             mutable.value = NetworkState(online = online, epoch = epoch)
         }

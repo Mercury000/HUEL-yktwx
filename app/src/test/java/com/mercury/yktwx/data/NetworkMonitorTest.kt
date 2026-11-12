@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkInfo
+import android.net.Network
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.*
@@ -14,6 +15,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowNetworkCapabilities
 import org.robolectric.shadows.ShadowNetworkInfo
+import org.robolectric.shadows.ShadowNetwork
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
@@ -32,6 +34,71 @@ class NetworkMonitorTest {
 
     private fun offline() {
         shadowOf(connectivity).setActiveNetworkInfo(null)
+    }
+
+    private fun available(callback: ConnectivityManager.NetworkCallback, network: Network) {
+        callback.onAvailable(network)
+        callback.onCapabilitiesChanged(network, ShadowNetworkCapabilities.newInstance().also {
+            shadowOf(it).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        })
+        callback.onBlockedStatusChanged(network, false)
+    }
+
+    @Test fun callbackPayloadRestoresConnectivityWhileSystemGettersStillReportOffline() {
+        offline()
+        val monitor = AndroidNetworkMonitor(app)
+        try {
+            monitor.start()
+            val callback = shadowOf(connectivity).networkCallbacks.single()
+            available(callback, ShadowNetwork.newInstance(42))
+            shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+            assertNull(connectivity.activeNetwork)
+            assertEquals(NetworkState(true, 1), monitor.state.value)
+            assertEquals(NetworkState(true, 1), monitor.refresh())
+        } finally { monitor.stop() }
+    }
+
+    @Test fun blockedPayloadOverridesUnchangedCapabilitiesAndUnblockNeedsNoSnapshotChange() {
+        online()
+        val monitor = AndroidNetworkMonitor(app)
+        try {
+            monitor.start()
+            val callback = shadowOf(connectivity).networkCallbacks.single()
+            val network = connectivity.activeNetwork!!
+            available(callback, network)
+            callback.onBlockedStatusChanged(network, true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(NetworkState(false, 0), monitor.state.value)
+            offline()
+            callback.onBlockedStatusChanged(network, false)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(NetworkState(true, 1), monitor.state.value)
+        } finally { monitor.stop() }
+    }
+
+    @Test fun handoverIgnoresOldNetworkEventsAndLateCallbacksFromPreviousRegistration() {
+        online()
+        val monitor = AndroidNetworkMonitor(app)
+        try {
+            monitor.start()
+            val oldCallback = shadowOf(connectivity).networkCallbacks.single()
+            val oldNetwork = connectivity.activeNetwork!!
+            available(oldCallback, oldNetwork)
+            oldCallback.onLost(oldNetwork)
+            available(oldCallback, ShadowNetwork.newInstance(42))
+            oldCallback.onLost(oldNetwork)
+            oldCallback.onBlockedStatusChanged(oldNetwork, true)
+            shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+            assertEquals(NetworkState(true, 1), monitor.state.value)
+            monitor.stop()
+            online()
+            monitor.start()
+            val state = monitor.state.value
+            oldCallback.onLost(connectivity.activeNetwork!!)
+            oldCallback.onAvailable(ShadowNetwork.newInstance(99))
+            shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+            assertEquals(state, monitor.state.value)
+        } finally { monitor.stop() }
     }
 
     @Test fun missingDefaultNetworkMeansOffline() {
@@ -86,17 +153,43 @@ class NetworkMonitorTest {
         }
     }
 
+    @Test fun networkUnblockRefreshesAnOfflineForegroundSnapshot() {
+        online()
+        val monitor = AndroidNetworkMonitor(app)
+        try {
+            monitor.start()
+            val callback = shadowOf(connectivity).networkCallbacks.single()
+            val network = connectivity.activeNetwork!!
+            available(callback, network)
+            callback.onBlockedStatusChanged(network, true)
+            // ON_START can run before Android has finished unblocking the app's UID.
+            offline()
+            monitor.refresh()
+            assertEquals(NetworkState(false, 0), monitor.state.value)
+
+            // No network or capability change is needed when the restriction is lifted.
+            online()
+            callback.onBlockedStatusChanged(network, false)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(NetworkState(true, 1), monitor.state.value)
+        } finally {
+            monitor.stop()
+        }
+    }
+
     @Test fun stoppedMonitorIgnoresDebouncedAndLateCallbacks() {
         online()
         val monitor = AndroidNetworkMonitor(app)
         monitor.start()
         val callback = shadowOf(connectivity).networkCallbacks.single()
         val network = connectivity.activeNetwork!!
-        callback.onAvailable(network)
+        available(callback, network)
+        callback.onLost(network)
         monitor.refresh()
         monitor.stop()
         offline()
         callback.onLost(network)
+        callback.onBlockedStatusChanged(network, false)
         shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
         assertEquals(NetworkState(true, 0), monitor.state.value)
         assertTrue(shadowOf(connectivity).networkCallbacks.isEmpty())

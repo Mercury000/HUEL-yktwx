@@ -68,11 +68,12 @@ internal fun MyPage(
         hasContent, initialError,
         ReadRegion("资料", FeedbackText.networkError(readError(state.profileError, state.profileErrorKind),
             readError(state.homeIdentityError, state.homeIdentityErrorKind), readError(state.avatarError, state.avatarErrorKind)),
-            state.profile != null || state.homeIdentity != null),
-        ReadRegion("余额", FeedbackText.networkError(balanceError, readError(payment.accountError, payment.accountErrorKind)), payment.account != null),
-        ReadRegion("卡状态", readError(payment.cardStatusError, payment.cardStatusErrorKind), payment.accountCard != null),
+            state.profile != null || state.homeIdentity != null, state.loading),
+        ReadRegion("余额", FeedbackText.networkError(balanceError, readError(payment.accountError, payment.accountErrorKind)), payment.account != null,
+            balancePending),
+        ReadRegion("卡状态", readError(payment.cardStatusError, payment.cardStatusErrorKind), payment.accountCard != null, cardPending),
         ReadRegion("本月概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
-            state.summary != null || state.counts != null), restoringDisplay = state.restoringDisplay) }
+            state.summary != null || state.counts != null, state.loading), restoringDisplay = state.restoringDisplay) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {

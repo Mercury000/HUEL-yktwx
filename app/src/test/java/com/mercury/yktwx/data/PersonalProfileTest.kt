@@ -7,26 +7,22 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.URL
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 class PersonalProfileTest {
-    private class FakeHttps(url: URL, val bytes: ByteArray, private val type: String = "application/json", private val status: Int = 200) : HttpsURLConnection(url) {
+    private class FakeResponse(url: URL, val bytes: ByteArray, private val type: String = "application/json", private val status: Int = 200) : HttpFixture(url) {
         var closed = false
         var responseFailure: IOException? = null
-        override fun connect() = Unit
-        override fun disconnect() { closed = true }
-        override fun usingProxy() = false
-        override fun getResponseCode(): Int {
+
+        override fun close() { closed = true }
+
+        override fun statusCode(): Int {
             responseFailure?.let { throw it }
             return status
         }
-        override fun getContentType() = type
-        override fun getInputStream() = ByteArrayInputStream(bytes)
-        override fun getErrorStream() = ByteArrayInputStream(bytes)
-        override fun getCipherSuite() = "TLS_FAKE"
-        override fun getLocalCertificates(): Array<Certificate>? = null
-        override fun getServerCertificates(): Array<Certificate> = emptyArray()
+        override fun contentType() = type
+        override fun bodyStream() = ByteArrayInputStream(bytes)
+        override fun errorBodyStream() = ByteArrayInputStream(bytes)
+
     }
 
     @Test fun profileUsesAuthenticatedUserEndpointAndPreservesDepartmentAndProfession() = runBlocking {
@@ -34,13 +30,13 @@ class PersonalProfileTest {
             .put("departmentName", "示例部门").put("professionName", "示例专业").put("avatar", "/minio/demo.png")
             .put("mobile", "13000000000")
         val body = JSONObject().put("code", 200).put("success", true).put("data", data).toString()
-        lateinit var request: FakeHttps
-        val api = ProfileApi { url -> FakeHttps(url, body.toByteArray()).also { request = it } }
+        lateinit var request: FakeResponse
+        val api = fixtureProfileApi { url -> FakeResponse(url, body.toByteArray()).also { request = it } }
         val profile = api.profile("fake-token")
         assertEquals("/berserker-base/user", request.url.path)
         assertEquals("synAccessSource=h5", request.url.query)
-        assertEquals("bearer fake-token", request.getRequestProperty("synjones-auth"))
-        assertNull(request.getRequestProperty("Cookie"))
+        assertEquals("bearer fake-token", request.request.header("synjones-auth"))
+        assertNull(request.request.header("Cookie"))
         assertEquals("示例部门", profile.departmentName)
         assertEquals("示例专业", profile.professionName)
         assertEquals("/minio/demo.png", profile.avatarPath)
@@ -67,12 +63,12 @@ class PersonalProfileTest {
     @Test fun homeIdentityReadsResolvedInformationWithoutFetchingOrRenderingCardImages() = runBlocking {
         val data = JSONObject().put("fake-account", JSONObject().put("model", homeModel()))
         val body = JSONObject().put("code", 200).put("success", true).put("data", data).toString()
-        lateinit var request: FakeHttps
-        val api = ProfileApi { url -> FakeHttps(url, body.toByteArray()).also { request = it } }
+        lateinit var request: FakeResponse
+        val api = fixtureProfileApi { url -> FakeResponse(url, body.toByteArray()).also { request = it } }
         val identity = api.homeIdentity("fake-token", "fake-id")!!
         assertEquals("/berserker-app/cardStyle", request.url.path)
-        assertEquals("bearer fake-token", request.getRequestProperty("synjones-auth"))
-        assertNull(request.getRequestProperty("Cookie"))
+        assertEquals("bearer fake-token", request.request.header("synjones-auth"))
+        assertNull(request.request.header("Cookie"))
         assertEquals("示例书院", identity.thirdLevelDepartment)
         assertEquals("示例专业", identity.fourthLevelDepartment)
         assertEquals("fake-id", identity.sno)
@@ -96,9 +92,9 @@ class PersonalProfileTest {
         }
     }
     @Test fun avatarTransportFailureKeepsItsNetworkCategoryAndClosesTheConnection() = runBlocking {
-        val connection = FakeHttps(URL("https://yktwx2.huel.edu.cn/minio/demo.png"), byteArrayOf(), "image/png")
+        val connection = FakeResponse(URL("https://yktwx2.huel.edu.cn/minio/demo.png"), byteArrayOf(), "image/png")
         connection.responseFailure = IOException("服务暂时无法访问")
-        val api = ProfileApi { connection }
+        val api = fixtureProfileApi { connection }
         val failure = runCatching { api.avatar("/minio/demo.png") }.exceptionOrNull()
         assertTrue(failure is NetworkFailure)
         assertEquals(ReadFailureKind.Network, failure!!.readFailureKind())
@@ -106,25 +102,25 @@ class PersonalProfileTest {
     }
 
     @Test fun avatarConnectionFailureKeepsItsNetworkCategory() = runBlocking {
-        val api = ProfileApi { throw IOException("无法建立连接") }
+        val api = fixtureProfileApi { throw IOException("无法建立连接") }
         val failure = runCatching { api.avatar("/minio/demo.png") }.exceptionOrNull()
         assertTrue(failure is NetworkFailure)
         assertEquals(ReadFailureKind.Network, failure!!.readFailureKind())
     }
 
     @Test fun avatarIsPublicInMemoryAndRejectsRedirectsOrOversizedResponses() = runBlocking {
-        val calls = mutableListOf<FakeHttps>()
+        val calls = mutableListOf<FakeResponse>()
         var bytes = byteArrayOf(1, 2, 3)
         var status = 200
-        val api = ProfileApi { url -> FakeHttps(url, bytes, "image/png", status).also(calls::add) }
+        val api = fixtureProfileApi { url -> FakeResponse(url, bytes, "image/png", status).also(calls::add) }
         assertArrayEquals(bytes, api.avatar("/minio/demo.png"))
         val image = calls.single()
-        assertNull(image.getRequestProperty("synjones-auth"))
-        assertNull(image.getRequestProperty("Authorization"))
-        assertNull(image.getRequestProperty("Cookie"))
-        assertFalse(image.instanceFollowRedirects)
-        assertFalse(image.useCaches)
-        assertEquals("no-store", image.getRequestProperty("Cache-Control"))
+        assertNull(image.request.header("synjones-auth"))
+        assertNull(image.request.header("Authorization"))
+        assertNull(image.request.header("Cookie"))
+        assertFalse(AppHttp.service.followRedirects)
+        assertFalse((AppHttp.service.cache != null))
+        assertEquals("no-store", image.request.header("Cache-Control"))
         bytes = ByteArray(2_097_153)
         assertNull(api.avatar("/minio/demo.png"))
         status = 302

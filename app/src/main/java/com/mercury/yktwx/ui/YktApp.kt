@@ -17,6 +17,9 @@ import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.RechargeViewModel
 import com.mercury.yktwx.FeeViewModel
 import com.mercury.yktwx.CardPasswordViewModel
@@ -401,7 +404,8 @@ private fun MainContent(
         (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible || hui798State.loginVisible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
-    val network by rememberNetworkState(state.preview)
+    val networkState = rememberNetworkState(state.preview)
+    val network by networkState
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
     val analytics = remember(context) { AppAnalytics.from(context) }
@@ -460,20 +464,32 @@ private fun MainContent(
         resumeEpoch = foregroundState.epoch,
     )
 
-    // One shell-owned snapshot drives every ViewModel read decision.
-    LaunchedEffect(readEnvironment, state.username, billState.readIdentity) {
-        viewModel.onReadEnvironment(readEnvironment)
-        myModel.onReadEnvironment(readEnvironment)
-        dormModel.onReadEnvironment(readEnvironment)
-        billViewModel.onReadEnvironment(readEnvironment)
+    val readLifecycle = LocalLifecycleOwner.current.lifecycle
+    val latestReadEnvironment by rememberUpdatedState(readEnvironment)
+    val publishReadEnvironment = remember(viewModel, myModel, dormModel, billViewModel) {
+        { environment: ReadEnvironment ->
+            viewModel.onReadEnvironment(environment)
+            myModel.onReadEnvironment(environment)
+            dormModel.onReadEnvironment(environment)
+            billViewModel.onReadEnvironment(environment)
+        }
     }
-    DisposableEffect(viewModel, billViewModel, myModel, dormModel) {
+    // Publish normal page/query changes from composition, but revoke reads synchronously at
+    // ON_STOP: a stopped Activity may not render another frame to run this LaunchedEffect.
+    LaunchedEffect(readEnvironment, state.username, billState.readIdentity, readLifecycle) {
+        publishReadEnvironment(if (readLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) readEnvironment
+            else readEnvironment.copy(page = null, foreground = false))
+    }
+    DisposableEffect(publishReadEnvironment, readLifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                publishReadEnvironment(latestReadEnvironment.copy(page = null, foreground = false))
+            }
+        }
+        readLifecycle.addObserver(observer)
         onDispose {
-            val inactive = ReadEnvironment.Inactive
-            viewModel.onReadEnvironment(inactive)
-            billViewModel.onReadEnvironment(inactive)
-            myModel.onReadEnvironment(inactive)
-            dormModel.onReadEnvironment(inactive)
+            readLifecycle.removeObserver(observer)
+            publishReadEnvironment(ReadEnvironment.Inactive)
         }
     }
     val feeActive = isActive && dormPaymentVisible
@@ -506,41 +522,41 @@ private fun MainContent(
     fun openLifeScanner() {
         if (!isActive ||
             lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeProvider = LifeProvider.Panggui
         lifeModel.openUnifiedScan()
     }
     fun connectLifeAccount() {
         if (!isActive || layers.isNotEmpty()) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hui798Model.dismissLogin()
         lifeModel.connectAccount()
     }
     fun connectHui798Account() {
         if (!isActive || layers.isNotEmpty()) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeModel.dismissLogin()
         hui798Model.connectAccount()
     }
     fun manageLifeLogin(provider: LifeProvider, change: Boolean) {
-        if (!isActive || !allowOnlineEntry(context, state.preview)) return
+        if (!isActive || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
         val opened = if (provider == LifeProvider.Hui798) { lifeModel.dismissLogin(); hui798Model.manageLogin(change) }
             else { hui798Model.dismissLogin(); lifeModel.manageLogin(change) }
         if (!opened) Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
     }
     fun checkLifeAccount(provider: LifeProvider) {
-        if (!isActive || !allowOnlineEntry(context, state.preview)) return
+        if (!isActive || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
         if (provider == LifeProvider.Hui798) hui798Model.checkAccount(force = true) else lifeModel.checkAccount(force = true)
     }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeProvider = LifeProvider.Panggui
         lifeModel.openSession(feature, sessionId)
     }
     fun openHui798Session(id: String) {
         if (!isActive || hui798State.busy) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeProvider = LifeProvider.Hui798
         hui798Model.openSession(id)
         if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
@@ -559,7 +575,7 @@ private fun MainContent(
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
         if (!isActive) return
-        if (!allowOnlineEntry(context, state.preview)) return
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         feeOpening = project
         feeProject = project
         feeSaveOnly = saveOnly
@@ -594,14 +610,14 @@ private fun MainContent(
     }
     fun recharge() {
         if (isActive && feeOpening == null && !passwordState.loading && !cardState.loading && !rechargeState.loading) {
-            if (!allowOnlineEntry(context, state.preview)) return
+            if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
             cardModel.dismiss(); passwordModel.dismiss()
             rechargeModel.open(state.username, state.account?.account, state.preview)
         }
     }
     fun cardAction(action: CampusCardAction) {
         if (isActive) {
-            if (!allowOnlineEntry(context, state.preview)) return
+            if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
             dormPaymentVisible = false
             feeOpening = null
             feeModel.dismiss()
@@ -682,7 +698,7 @@ private fun MainContent(
                                                         val account = state.account?.account
                                                         if (isActive && account != null && state.accountCard?.let { it.account == account && it.lost && !it.frozen } == true &&
                                                             feeOpening == null && !rechargeState.loading && !cardState.loading && !passwordState.loading) {
-                                                            if (!allowOnlineEntry(context, state.preview)) return@PaymentPage
+                                                            if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return@PaymentPage
                                                             rechargeModel.dismiss()
                                                             passwordModel.dismiss()
                                                             cardModel.openUnlost(state.username, account, state.preview)

@@ -304,8 +304,16 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
      * Every read decision is derived from it; the ViewModel never probes the network itself.
      */
     fun onReadEnvironment(environment: ReadEnvironment) {
+        val wasForeground = foreground
+        val resumed = environment.foreground && environment.resumeEpoch > this.environment.resumeEpoch
         reads.update(environment)
         foreground = environment.foreground
+        // The shell uses this entry, not onBackground(). Also handle stop/start coalesced by
+        // Compose: a code from the previous foreground session must not survive the return.
+        if (wasForeground && (!foreground || resumed)) {
+            cancelAccountRead()
+            pausePaymentDisplay()
+        }
         readPageVisible = reads.isVisible
         setPageVisible(environment.paymentVisible, preserveDisplay = environment.paymentCovered)
         setAccountPageVisible(environment.accountVisible)
@@ -443,16 +451,21 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
     private fun pausePaymentDisplay() {
         setPaymentMotionActive(false)
         mutableSuccess.value = null
-        requestVersion++
+        // Login owns the account transition, including its first payment response.
+        // A newly composed shell or a page pause must not cancel that transition.
+        if (!loginInProgress) {
+            requestVersion++
+            request?.cancel()
+        }
         cancelPaymentCardRead()
-        ticker?.cancel(); request?.cancel()
+        ticker?.cancel()
         // The request is cancelled here rather than failed. Forget its single-flight slot so a
         // return to the page can start a fresh read instead of seeing a stale in-flight marker.
         reads.cancel(paymentReadKey())
         val old = mutable.value
         codeExpiresAt = 0L
         mutable.value = PaymentUiState(
-            old.needsLogin, logoutJob?.isActive == true, old.error, old.username,
+            old.needsLogin, logoutJob?.isActive == true || loginInProgress && old.busy, old.error, old.username,
             errorKind = old.errorKind,
             preview = preview, restoringLogin = old.restoringLogin,
             account = old.account.takeUnless { old.needsLogin },
@@ -500,6 +513,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
+                loginInProgress = false
                 notifications.send("登录成功")
                 show(batch, username.trim(), version, transactionRead, codeAttempt)
                 readPaymentCard(username.trim(), batch.account.account, version)
@@ -509,6 +523,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 if (version != requestVersion) return@launch
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
+                loginInProgress = false
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
                 mutable.value = PaymentUiState(needsLogin = false, username = username.trim(), account = e.account, errorKind = e.readFailureKind(), error = e.message, problem = e.problem)
@@ -520,6 +535,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
                     AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
+                loginInProgress = false
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = username,
                     errorKind = e.readFailureKind(), error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
             } catch (e: Exception) {
@@ -527,6 +543,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
                     AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
+                loginInProgress = false
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = old.username,
                     errorKind = ReadFailureKind.Other, error = "登录失败，请稍后重试")
             } finally {
