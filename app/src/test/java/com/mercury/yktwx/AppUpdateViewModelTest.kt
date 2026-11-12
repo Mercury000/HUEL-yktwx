@@ -38,15 +38,35 @@ class AppUpdateViewModelTest {
     @Before fun setup() { prefs.edit().clear().commit(); Dispatchers.setMain(dispatcher) }
     @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain() }
 
-    @Test fun automaticSwitchDoesNotDisableManualChecks() = runTest(dispatcher) {
+    @Test fun disablingRemindersKeepsSilentAndManualChecksEnabled() = runTest(dispatcher) {
         val model = model()
-        model.configure(automatic = false, allowed = true, inForeground = true)
+        model.configure(reminders = false, allowed = true, inForeground = true)
         runCurrent()
-        assertEquals(0, count)
-        model.checkManually(); runCurrent()
         assertEquals(1, count)
+        assertEquals(update.release, model.state.value.release)
+        assertFalse(model.state.value.noticeVisible)
+        assertFalse(model.state.value.visible)
+        assertTrue(events.isEmpty())
+        model.checkManually(); runCurrent()
+        assertEquals(2, count)
         model.presentIfAllowed(true)
         assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.noticeVisible)
+    }
+
+    @Test fun changingChannelCancelsTheOldCheckAndChecksImmediatelyWithRemindersDisabled() = runTest(dispatcher) {
+        val pending = CompletableDeferred<UpdateCheckResult>()
+        val model = model { count++; if (count == 1) pending.await() else update }
+        model.configure(true, true, true)
+        runCurrent()
+        assertEquals(1, count)
+        model.configure(false, true, true, "beta")
+        runCurrent()
+        assertEquals(2, count)
+        assertFalse(model.state.value.checking)
+        pending.complete(UpdateCheckResult(UpdateCheckReason.CurrentOrNewer))
+        runCurrent()
+        assertEquals(update.release, model.state.value.release)
     }
 
     @Test fun automaticChecksAreThrottledAcrossForegroundsAndRestartsButNewInstallVersionChecksAgain() = runTest(dispatcher) {
@@ -66,6 +86,21 @@ class AppUpdateViewModelTest {
         time++
         restarted.configure(true, true, true); runCurrent()
         assertEquals(3, count)
+    }
+
+    @Test fun disabledRemindersPreserveTheCheckCooldownAcrossForegroundsAndRestarts() = runTest(dispatcher) {
+        val first = model()
+        first.configure(false, true, true); runCurrent()
+        first.configure(false, true, false)
+        first.configure(false, true, true); runCurrent()
+        val restarted = model()
+        restarted.configure(false, true, true); runCurrent()
+        assertEquals(1, count)
+        time += UpdateCheckStore.DAY
+        restarted.configure(false, true, true); runCurrent()
+        assertEquals(2, count)
+        assertFalse(restarted.state.value.noticeVisible)
+        assertFalse(restarted.state.value.visible)
     }
 
     @Test fun automaticFailureRetriesAfterOneHourAcrossRestartsAndSuccessRestoresDailyInterval() = runTest(dispatcher) {
@@ -140,12 +175,31 @@ class AppUpdateViewModelTest {
         assertEquals(listOf(UpdateFeedback.Failed), events)
     }
 
-    @Test fun disablingAutomaticChecksCancelsTheRequestAndRejectsItsLateResponse() = runTest(dispatcher) {
+    @Test fun disablingRemindersKeepsThePendingCheckAndManualResult() = runTest(dispatcher) {
+        val gate = CompletableDeferred<UpdateCheckResult>()
+        val model = model { count++; gate.await() }
+        model.configure(true, true, true); runCurrent()
+        assertFalse("Automatic checks have no visible loading", model.state.value.checking)
+        model.configure(false, true, true)
+        model.checkManually(); runCurrent()
+        assertEquals(1, count)
+        assertTrue(model.state.value.checking)
+        gate.complete(update); runCurrent()
+        assertEquals(update.release, model.state.value.release)
+        assertFalse(model.state.value.noticeVisible)
+        model.presentIfAllowed(true)
+        assertTrue(model.state.value.visible)
+        model.configure(true, true, true)
+        model.configure(false, true, true)
+        assertTrue("Turning off reminders does not close manually opened details", model.state.value.visible)
+    }
+
+    @Test fun revokingNetworkConsentCancelsTheRequestAndRejectsItsLateResponse() = runTest(dispatcher) {
         val gate = CompletableDeferred<UpdateCheckResult>()
         val model = model { withContext(NonCancellable) { gate.await() } }
         model.configure(true, true, true); runCurrent()
         assertFalse("Automatic checks have no visible loading", model.state.value.checking)
-        model.configure(false, true, true)
+        model.configure(false, false, true)
         gate.complete(update); runCurrent()
         assertFalse(model.state.value.checking)
         assertNull(model.state.value.release)
@@ -236,7 +290,7 @@ class AppUpdateViewModelTest {
         assertNull(model("v4").state.value.release)
     }
 
-    @Test fun invalidCachedDataIsIgnoredAndNoticesRespectTheAutomaticSwitchAndPreview() = runTest(dispatcher) {
+    @Test fun invalidCachedDataIsIgnoredAndNoticesRespectTheReminderSwitchAndPreview() = runTest(dispatcher) {
         prefs.edit().putString("v3:release", "invalid json").commit()
         val model = model()
         assertNull(model.state.value.release)
@@ -248,6 +302,21 @@ class AppUpdateViewModelTest {
         assertTrue(model.state.value.noticeVisible)
         model.configure(true, false, true)
         assertFalse(model.state.value.noticeVisible)
+    }
+
+    @Test fun ordinaryReleaseExpiringInTheRunningProcessIsClearedAfterAFailedManualCheck() = runTest(dispatcher) {
+        var fail = false
+        val expiring = update.copy(release = update.release!!.copy(expiresAt = java.time.Instant.ofEpochMilli(time + 1000)))
+        val model = model { if (fail) throw java.io.IOException("offline") else expiring }
+        model.configure(true, true, true); runCurrent()
+        assertTrue(model.state.value.noticeVisible)
+        time += 1000
+        fail = true
+        model.checkManually(); runCurrent()
+        assertNull(model.state.value.release)
+        assertFalse(model.state.value.noticeVisible)
+        assertFalse(model.state.value.visible)
+        assertEquals(listOf(UpdateFeedback.Network), events)
     }
 
     @Test fun manualDialogsWaitForAPageWithAnUpdateEntry() = runTest(dispatcher) {
@@ -281,5 +350,99 @@ class AppUpdateViewModelTest {
             assertEquals(feedback, events.last())
             assertNull(model.state.value.release)
         }
+    }
+
+    @Test fun skipSuppressesAutomaticBannerButManualChecksStillShowDetails() = runTest(dispatcher) {
+        val model = model()
+        model.configure(true, true, true); runCurrent()
+        model.openDetails(); model.skip()
+        assertFalse(model.state.value.noticeVisible)
+        assertFalse(model.state.value.visible)
+        model.checkManually(); runCurrent(); model.presentIfAllowed(true)
+        assertTrue(model.state.value.visible)
+        assertEquals(2, count)
+    }
+
+    @Test fun forcedUpdatesBlockEveryDismissalAndSurviveCheckFailureAndSwitchChanges() = runTest(dispatcher) {
+        var fail = false
+        val forced = update.copy(release = update.release!!.copy(versionCode = 10, maxForcedVersionCode = 9))
+        val model = model { if (fail) throw java.io.IOException("offline") else forced }
+        model.configure(true, true, true); runCurrent()
+        assertTrue(model.state.value.required)
+        assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.noticeVisible)
+        model.dismiss(); model.ignore(); model.skip(); model.dismissNotice(); model.presentIfAllowed(false)
+        assertTrue(model.state.value.visible)
+        model.configure(false, true, true)
+        assertTrue(model.state.value.visible)
+        fail = true
+        model.checkManually(); runCurrent()
+        assertTrue(model.state.value.required)
+        assertTrue(model.state.value.visible)
+        model.configure(false, true, false)
+        assertFalse(model.state.value.visible)
+        model.configure(false, true, true)
+        assertTrue(model.state.value.visible)
+    }
+
+    @Test fun disabledRemindersStillDiscoverAndEnforceANewForcedUpdate() = runTest(dispatcher) {
+        val forced = update.copy(release = update.release!!.copy(versionCode = 10, maxForcedVersionCode = 9))
+        val model = model { count++; forced }
+        assertNull(model.state.value.release)
+        model.configure(false, true, true); runCurrent()
+        assertEquals(1, count)
+        assertTrue(model.state.value.required)
+        assertTrue(model.state.value.visible)
+        assertFalse(model.state.value.noticeVisible)
+        model.dismiss(); model.ignore(); model.skip(); model.dismissNotice()
+        assertTrue(model.state.value.visible)
+    }
+
+    @Test fun manualRecheckKeepsAnActiveDownloadDialogOpenForTheSameApk() = runTest(dispatcher) {
+        val started = CompletableDeferred<Unit>()
+        val finish = java.util.concurrent.CountDownLatch(1)
+        val installer = AppUpdateInstaller(app, UpdateHttp { url ->
+            object : javax.net.ssl.HttpsURLConnection(url) {
+                override fun getResponseCode(): Int {
+                    started.complete(Unit)
+                    finish.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    throw java.io.IOException("offline fixture")
+                }
+                override fun disconnect() { finish.countDown() }
+                override fun connect() {}
+                override fun usingProxy() = false
+                override fun getCipherSuite() = "test"
+                override fun getLocalCertificates(): Array<java.security.cert.Certificate>? = null
+                override fun getServerCertificates(): Array<java.security.cert.Certificate> = emptyArray()
+            }
+        })
+        val result = update.copy(release = update.release!!.copy(versionCode = 10, sha256 = "a".repeat(64), size = 100,
+            urls = (1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk"))
+        val checked = CompletableDeferred<UpdateCheckResult>()
+        val model = AppUpdateViewModel(app, UpdateCheckStore(prefs, "download-review"), {
+            count++
+            if (count == 1) result else checked.await()
+        }, installer) { time }
+        models.put("download-review", model)
+        try {
+            model.configure(true, true, true); runCurrent()
+            model.openDetails()
+            model.downloadAndInstall { fail("A blocked fake download cannot open the installer") }
+            runCurrent()
+            withContext(Dispatchers.IO) { withTimeout(2_000) { started.await() } }
+            assertTrue(model.state.value.download.busy)
+            model.checkManually(); runCurrent()
+            assertTrue(model.state.value.visible)
+            checked.complete(result); runCurrent()
+            assertTrue(model.state.value.download.busy)
+            assertTrue(model.state.value.visible)
+            assertEquals(2, count)
+            model.configure(false, true, true)
+            assertTrue("Disabling update reminders must keep the active download visible", model.state.value.visible)
+            model.configure(false, false, true)
+            runCurrent()
+            assertFalse("Cancelled downloads must leave a usable retry action", model.state.value.download.busy)
+            assertEquals(UpdateDownloadPhase.Failed, model.state.value.download.phase)
+        } finally { models.clear(); finish.countDown() }
     }
 }

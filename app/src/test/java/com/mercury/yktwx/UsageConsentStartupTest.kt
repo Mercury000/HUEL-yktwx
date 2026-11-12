@@ -153,6 +153,7 @@ class UsageConsentStartupTest {
         assertEquals(0, clears)
         accept()
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); payments.state.value.code != null }
+        compose.waitForIdle()
         compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
         assertFalse(payments.state.value.needsLogin)
         assertEquals("202600000001", credentials?.username)
@@ -182,6 +183,7 @@ class UsageConsentStartupTest {
             shadowOf(Looper.getMainLooper()).idle()
             !payments.state.value.restoringLogin && payments.state.value.code != null
         }
+        compose.waitForIdle()
         compose.onNodeWithContentDescription("付款二维码").assertIsDisplayed()
         assertFalse(payments.state.value.needsLogin)
         assertEquals("202600000001", payments.state.value.username)

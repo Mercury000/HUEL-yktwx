@@ -19,9 +19,10 @@ class UsageConsentTest {
 
     @Test fun displayedNoticeCoversIndependentLifeAccountsAndPreservesTheTextAndLiabilityClause() {
         assertEquals(UsageNotice.text, UsageNotice.paragraphs.joinToString("") { noticeParagraph(it).text })
-        listOf("胖乖生活", "慧生活798", "账号、手机号、密码、验证码、登录令牌及业务数据", "不上传相机画面",
-            "各平台账户与业务分别管理", "使用第三方支付",
-            "不代表终止平台服务或撤销已提交的业务")
+        listOf("胖乖生活", "慧生活798", "账号、手机号、密码、验证码、登录令牌及业务数据",
+            "扫码相机画面和自定义头像仅在本机处理，不上传", "各平台账户与业务分别管理",
+            "将必要的支付信息发送至相关支付服务", "使用本应用不改变你与相关服务提供方之间的权利义务",
+            "GitHub 及 CDN", "在本机判断版本及兼容性", "安装由 Android 系统授权并确认")
             .forEach { assertTrue("Missing notice coverage: $it", UsageNotice.text.contains(it)) }
         assertEquals(64, UsageNotice.hash.length)
         val liability = "相关风险由使用者自行承担，开发者不因此承担任何责任。"
