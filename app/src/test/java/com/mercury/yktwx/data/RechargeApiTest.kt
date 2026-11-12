@@ -67,7 +67,7 @@ class RechargeApiTest {
         val o = api.createRecharge("fake-token", config(), 1000)
         assertEquals("FAKE-ORDER", o.orderId)
         assertEquals("POST", call.request.method)
-        assertFalse(AppHttp.service.followRedirects)
+        assertFalse(testHttpClients.service.followRedirects)
         assertNull(call.url.query)
         val p = params(call.sent.toString("UTF-8"))
         assertEquals("10.00", p["tranamt"])
@@ -89,7 +89,7 @@ class RechargeApiTest {
         }
         assertEquals(message, error.message)
         assertEquals(1, calls.size)
-        assertFalse(AppHttp.service.followRedirects)
+        assertFalse(testHttpClients.service.followRedirects)
         // Untrusted/malformed locations remain ambiguous, never a classified business rejection.
         for (invalid in listOf(location.replace("yktwx2.huel.edu.cn", "example.invalid"),
             location.replace("/plat/notfound", "/payment/"), location + "&orderid=OTHER")) {
@@ -123,7 +123,7 @@ class RechargeApiTest {
         assertNull(bridge.request.header("synAccessSource"))
         assertNull(bridge.request.header("Cookie"))
         assertEquals("https://yktwx2.huel.edu.cn/", bridge.request.header("Referer"))
-        assertTrue(calls.all { it.disconnected && !AppHttp.service.followRedirects })
+        assertTrue(calls.all { it.disconnected && !testHttpClients.service.followRedirects })
     }
     @Test fun resultRequiresMatchingOrderAmountAndNestedFeeitem() = runBlocking {
         val api = fixtureRechargeApi { url -> FakeResponse(url, 200, if (url.path.endsWith("queryCard")) cards().toString() else result(1).toString()) }

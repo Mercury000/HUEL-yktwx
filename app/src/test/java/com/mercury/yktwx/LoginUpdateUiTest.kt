@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Looper
@@ -32,7 +35,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LoginUpdateUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val update = UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
         UpdateRelease(5, "1.3.0", "优化付款码展示体验\n改进页面加载与更新提示", "https://cxt.303889.xyz/download/"))
 
@@ -45,12 +48,12 @@ class LoginUpdateUiTest {
 
     private fun consent(): UsageConsent {
         compose.activity.getSharedPreferences("usage_consent", Context.MODE_PRIVATE).edit().clear().commit()
-        return UsageConsent(compose.activity)
+        return usageConsentFixture(compose.activity)
     }
 
     private fun settings(): ThemeSettings {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        return ThemeSettings(compose.activity).apply { setTheme(1) }
+        return themeSettingsFixture(compose.activity).apply { setTheme(1) }
     }
 
     private fun content(model: AppUpdateViewModel, consent: UsageConsent, settings: ThemeSettings,
@@ -66,12 +69,12 @@ class LoginUpdateUiTest {
             override fun clearSession() { session = null }
             override fun clear() { credentials = null; session = null }
         }
-        val repository = AccountRepository(service, vault)
-        val payments = PaymentViewModel(app, repository).apply { initialize() }
-        val bills = BillViewModel(app, repository)
+        val repository = accountRepositoryFixture(service, vault)
+        val payments = paymentViewModelFixture(app, repository).apply { initialize() }
+        val bills = billViewModelFixture(app, repository)
         inject(AppUpdateViewModel::class.java, model)
-        inject(MyViewModel::class.java, MyViewModel(app, repository))
-        inject(HallViewModel::class.java, HallViewModel(app, repository))
+        inject(MyViewModel::class.java, myViewModelFixture(app, repository))
+        inject(HallViewModel::class.java, hallViewModelFixture(app, repository))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides inspection.value) {
                 YktApp(settings, payments, bills, consent)
@@ -94,7 +97,7 @@ class LoginUpdateUiTest {
         val consent = consent()
         val settings = settings()
         var checks = 0
-        val model = AppUpdateViewModel(compose.activity.application, store, { checks++; update })
+        val model = appUpdateViewModelFixture(compose.activity.application, store, { checks++; update })
         val payments = content(model, consent, settings)
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
@@ -142,7 +145,7 @@ class LoginUpdateUiTest {
         val consent = consent().apply { runBlocking { accept() } }
         val gate = CompletableDeferred<UpdateCheckResult>()
         var checks = 0
-        val model = AppUpdateViewModel(compose.activity.application, store(), { checks++; gate.await() })
+        val model = appUpdateViewModelFixture(compose.activity.application, store(), { checks++; gate.await() })
         val service = object : YktService by FakeAccountService() {
             override suspend fun login(credentials: Credentials): Session = throw NetworkFailure("登录服务暂时不可用")
         }
@@ -176,7 +179,7 @@ class LoginUpdateUiTest {
         val consent = consent().apply { runBlocking { accept() } }
         val gate = CompletableDeferred<UpdateCheckResult>()
         var checks = 0
-        val model = AppUpdateViewModel(compose.activity.application, store, {
+        val model = appUpdateViewModelFixture(compose.activity.application, store, {
             checks++; withContext(NonCancellable) { gate.await() }
         })
         content(model, consent, settings())
@@ -196,10 +199,10 @@ class LoginUpdateUiTest {
         val store = store().apply { cacheRelease(update.release) }
         val consent = consent().apply { runBlocking { accept() } }
         settings().setAutomaticUpdates(false)
-        val restoredSettings = ThemeSettings(compose.activity)
+        val restoredSettings = themeSettingsFixture(compose.activity)
         val inspection = mutableStateOf(false)
         var checks = 0
-        val model = AppUpdateViewModel(compose.activity.application, store, { checks++; update })
+        val model = appUpdateViewModelFixture(compose.activity.application, store, { checks++; update })
         content(model, consent, restoredSettings, inspection = inspection)
         assertFalse(restoredSettings.automaticUpdates.value)
         assertEquals(1, checks)
@@ -222,7 +225,7 @@ class LoginUpdateUiTest {
         val consent = consent().apply { runBlocking { accept() } }
         val gate = CompletableDeferred<UpdateCheckResult>()
         var checks = 0
-        val model = AppUpdateViewModel(compose.activity.application, store, {
+        val model = appUpdateViewModelFixture(compose.activity.application, store, {
             checks++; if (checks == 1) gate.await() else update
         })
         val payments = content(model, consent, settings())
@@ -251,7 +254,7 @@ class LoginUpdateUiTest {
         val consent = consent().apply { runBlocking { accept() } }
         val settings = settings()
         val gate = CompletableDeferred<UpdateCheckResult>()
-        val model = AppUpdateViewModel(compose.activity.application, store(), { gate.await() })
+        val model = appUpdateViewModelFixture(compose.activity.application, store(), { gate.await() })
         val payments = content(model, consent, settings)
         compose.onNodeWithText("学号 / 工号").assertIsDisplayed()
         compose.runOnIdle { gate.complete(update.copy(release = update.release!!.copy(versionCode = 10, maxForcedVersionCode = 9))) }

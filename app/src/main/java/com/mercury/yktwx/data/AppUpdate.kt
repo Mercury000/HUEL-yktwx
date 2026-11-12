@@ -39,7 +39,7 @@ internal class UpdateHttpFailure(val status: Int) : java.io.IOException("更新�
 
 /** Dedicated, cancellable public transport. No campus headers, cookies or account data. */
 internal class UpdateHttp(private val metadataTimeoutMillis: Long = 1_500,
-    private val client: Call.Factory = AppHttp.update) {
+    private val client: Call.Factory) {
     suspend fun <T> read(url: String, consume: (Response) -> T): T {
         var target = httpsUri(url)
         repeat(6) { redirect ->
@@ -135,8 +135,8 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
 
 internal class UpdateSourceUnavailable(val notPublished: Boolean = false) : java.io.IOException("暂时无法获取更新清单")
 
-internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
-    private val verifier: UpdateManifestVerifier = UpdateManifestVerifier(),
+internal class AppUpdateApi(private val http: UpdateHttp,
+    private val verifier: UpdateManifestVerifier,
     private val sourceTimeoutMillis: Long = 2_500,
     private val now: () -> Instant = Instant::now) {
     private data class Candidate(val release: UpdateRelease, val digest: String, val authority: Boolean)

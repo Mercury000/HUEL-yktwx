@@ -2,6 +2,8 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.aboutlibraries)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
@@ -90,7 +92,12 @@ android {
     }
     sourceSets {
         // These builds share UI fixtures and a disabled analytics backend.
-        listOf("debug", "preview").forEach { getByName(it).kotlin.directories.add("src/uiPreview/kotlin") }
+        listOf("debug", "preview").forEach {
+            getByName(it).kotlin.directories.add("src/uiPreview/kotlin")
+            getByName(it).kotlin.directories.add("src/uiTestHost/kotlin")
+        }
+        // Shared unit sources reference this host; release keeps it in tests only.
+        maybeCreate("testRelease").kotlin.directories.add("src/uiTestHost/kotlin")
         getByName("release").kotlin.directories.add("src/production/kotlin")
         getByName("androidTest").assets.directories.add("src/test/resources/app-updates")
     }
@@ -114,6 +121,12 @@ tasks.withType<Test>().configureEach {
 }
 java { toolchain { languageVersion = JavaLanguageVersion.of(22) } }
 kotlin { jvmToolchain(22) }
+tasks.withType<JavaCompile>().configureEach {
+    // Hilt-generated Java must use the same compiler as application sources.
+    javaCompiler.set(javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(22)
+    })
+}
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -127,6 +140,10 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.tink.android)
     implementation(libs.androidx.datastore)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    testImplementation(libs.hilt.testing)
+    kspTest(libs.hilt.compiler)
     implementation(libs.okhttp)
     "releaseImplementation"(libs.umeng.common)
     "releaseImplementation"(libs.umeng.asms)
@@ -161,3 +178,5 @@ aboutLibraries {
     }
     export { prettyPrint = true }
 }
+
+hilt { enableAggregatingTask = true }

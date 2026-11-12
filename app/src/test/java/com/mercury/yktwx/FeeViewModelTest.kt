@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import android.app.Application
@@ -30,12 +32,12 @@ import java.util.concurrent.TimeUnit
 class FeeViewModelTest {
     private val fees = FakeFees()
     private val vault = MemoryVault()
-    private val repository = AccountRepository(FakeAccountService(), vault, feeService = fees)
-    private val model = FeeViewModel(ApplicationProvider.getApplicationContext<Application>(), repository, 0L)
-    private val store = ViewModelStore().apply { put("fees", model) }
+    private val repository = accountRepositoryFixture(FakeAccountService(), vault, feeService = fees)
+    private val model by lazy { feeViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), repository, 0L) }
+    private val store by lazy { ViewModelStore().apply { put("fees", model) } }
 
     @After fun cleanup() {
-        AppAnalytics.instance = null
+        AnalyticsFixtures.instance = null
         fees.createGate.complete(Unit)
         fees.prepareGate.complete(Unit)
         fees.gate.complete(Unit)
@@ -332,7 +334,7 @@ class FeeViewModelTest {
     }
 
     @Test fun suspendedQueryEndsAtIndependentDeadlineWithoutReplayingPayment() {
-        val shortModel = FeeViewModel(ApplicationProvider.getApplicationContext<Application>(), repository,
+        val shortModel = feeViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), repository,
             checkDelayMillis = 0, checkTimeoutMillis = 100)
         store.put("short-fees", shortModel)
         shortModel.open(FeeProject.Network, "test-user", false)

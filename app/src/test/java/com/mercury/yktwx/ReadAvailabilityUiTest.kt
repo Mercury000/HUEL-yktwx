@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -36,10 +37,10 @@ import top.yukonga.miuix.kmp.basic.Text
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadAvailabilityUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun cachedReadPagesShowOneOfflineNoticeOnEntryAndClearItAfterReconnect() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val hall = PreviewData.hallState()
         val bill = PreviewData.billState()
         val mine = PreviewData.myState()
@@ -96,7 +97,7 @@ class ReadAvailabilityUiTest {
     }
 
     @Test fun offlineMyAndDetailsWithoutCacheShowFailureInsteadOfNormalValues() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var page by mutableIntStateOf(0)
         compose.setContent {
             AppTheme {
@@ -123,7 +124,7 @@ class ReadAvailabilityUiTest {
     }
 
     @Test fun offlineCachedDetailsPreserveAuthenticationAndBusinessFailures() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val mine = PreviewData.myState().copy(profileError = "凭证过期", profileErrorKind = ReadFailureKind.Authentication)
         val payment = PreviewData.paymentState(false).copy(cardStatusError = "无法确认卡状态", cardStatusErrorKind = ReadFailureKind.Other)
         var profile by mutableStateOf(true)
@@ -164,7 +165,7 @@ class ReadAvailabilityUiTest {
     }
 
     @Test fun partialOfflineHallPreservesCachedPackageAndShowsUnreadRoomsAsUnavailable() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val state = DormUiState(network = FeeQuery(display = listOf("用户套餐" to "缓存套餐")),
             networkLoaded = true, displayRestored = true)
         compose.setContent {
@@ -184,7 +185,7 @@ class ReadAvailabilityUiTest {
     }
 
     @Test fun interruptedMeterDiscoveryShowsOfflineFeedbackAndRecoversWithoutLosingReadings() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val project = FeeProject.Zhengdong
         val binding = FeeRoomBinding.from(listOf(FeeLevel("room", 1, "房间")),
             mapOf("room" to "fake-room"), mapOf("room" to "示例照明"))!!

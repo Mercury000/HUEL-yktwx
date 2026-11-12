@@ -418,7 +418,7 @@ private fun MainContent(
     val network by networkState
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
-    val analytics = remember(context) { AppAnalytics.from(context) }
+    val analytics = viewModel<AnalyticsViewModel>().analytics
     val analyticsActive by analytics.active.collectAsStateWithLifecycle()
     val analyticsPage = when {
         !isActive || state.preview || state.needsLogin || layers.isNotEmpty() -> null

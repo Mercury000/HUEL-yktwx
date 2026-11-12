@@ -10,7 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 /** Shared first-party transport; no Cookie jar, redirects or retries of POSTs. */
-internal class PaymentHttp(private val client: Call.Factory = AppHttp.service) {
+internal class PaymentHttp(private val client: Call.Factory) {
     internal class Response(val status: Int, val body: String, val location: String?)
     suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null,
         chargeClient: Boolean = false, jsonBody: JsonObject? = null): Response {

@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
-import android.app.Application
 import android.os.SystemClock
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
@@ -49,10 +50,13 @@ data class PaymentUiState(
     override fun toString() = "PaymentUiState([redacted])"
 }
 
-class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository,
+@HiltViewModel
+class PaymentViewModel internal constructor(private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
-    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment)) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
+    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment),
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics)
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
     val sessionState = repository.sessionState
@@ -494,7 +498,6 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
         val old = mutable.value
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = if (!preview) analytics.begin() else null
         val version = ++requestVersion
         val transactionRead = balanceRefresh.started()
@@ -555,7 +558,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val query = paymentReadKey()
         val readTrigger = if (trigger.automatic && balancePending()) ReadTrigger.Transaction else trigger
         if (!reads.canStart(query, readTrigger, replace = !trigger.automatic) { refresh(manual, trigger) }) return
-        if (manual) AppAnalytics.from(getApplication()).retryPaymentCode()
+        if (manual) analytics.retryPaymentCode()
         // A newer payment refresh owns the account result, superseding any older balance read.
         cancelAccountRead()
         cancelPaymentCardRead()

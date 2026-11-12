@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import com.mercury.yktwx.data.accountRepositoryFixture
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -19,7 +20,7 @@ class CampusCardStoreTest {
     private var unconfirmed = false
     private var readGate: CompletableDeferred<Unit>? = null
     private val entered = CompletableDeferred<Unit>()
-    private val service = object : YktService by YktApi({ error("Unexpected live request") }) {
+    private val service = object : YktService by yktApiFixture({ error("Unexpected live request") }) {
         override suspend fun paymentCard(token: String, account: String): CampusCard {
             cardQueries++
             val result = card
@@ -28,7 +29,7 @@ class CampusCardStoreTest {
             return result
         }
     }
-    private val cards = object : CardService by CardServiceApi({ error("Unexpected live request") }) {
+    private val cards = object : CardService by cardServiceApiFixture({ error("Unexpected live request") }) {
         override suspend fun cardConfiguration(token: String) = CardServiceConfiguration(listOf(card), false, false)
         override suspend fun passwordConfiguration(token: String) = CardPasswordConfiguration(listOf(card))
         override suspend fun changeCardState(token: String, card: CampusCard, action: CampusCardAction, password: String): List<CampusCard> {
@@ -45,7 +46,7 @@ class CampusCardStoreTest {
         override fun clearSession() = Unit
         override fun clear() = Unit
     }
-    private val repository = AccountRepository(service, vault, cardService = cards, readNow = { 10_000L })
+    private val repository = accountRepositoryFixture(service, vault, cardService = cards, readNow = { 10_000L })
 
     @Test fun bothCardConfigurationReadersPopulateTheSameAccountStatus() = runTest {
         repository.cardConfiguration("user")

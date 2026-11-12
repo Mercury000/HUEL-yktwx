@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.graphics.Bitmap
 import android.os.Looper
 import androidx.activity.ComponentActivity
@@ -37,14 +40,14 @@ import org.robolectric.Shadows.shadowOf
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ContentMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private fun frames(count: Int = 20) { repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() } }
 
     @Test fun statisticsReuseShowsNoProgressUntilExpiredAndKeepsTheModeTabsStill() {
         var now = 10_000L
         var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
         var expenseCents = 800L
-        val service = object : YktService by YktApi({ error("Unexpected live request") }) {
+        val service = object : YktService by yktApiFixture({ error("Unexpected live request") }) {
             override suspend fun bills(token: String, current: Int, size: Int, timeFrom: String, timeTo: String,
                 typeId: String?, amountFromCents: Long?, amountToCents: Long?, info: String?) =
                 BillPageData(emptyList(), 1, 0)
@@ -69,9 +72,9 @@ class ContentMotionUiTest {
             override fun clearSession() = Unit
             override fun clear() = Unit
         }
-        val model = BillViewModel(compose.activity.application, AccountRepository(service, vault), { now })
+        val model = billViewModelFixture(compose.activity.application, accountRepositoryFixture(service, vault), { now })
         val store = ViewModelStore().apply { put("bill", model) }
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         fun selectTab(label: String) { compose.onNode(hasText(label) and hasClickAction()).performClick() }
         fun waitForRead(stats: Boolean) {
             compose.waitUntil(5_000) {
@@ -142,7 +145,7 @@ class ContentMotionUiTest {
 
     @Test fun cachedStatisticsTypeSwitchKeepsModeTabsUnchangedInEveryFrame() {
         var state by mutableStateOf(PreviewData.billState().copy(statsVisible = true))
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {},
@@ -179,7 +182,7 @@ class ContentMotionUiTest {
     @Test fun statisticsTabsSurviveRapidPendingEmptyAndLoadedTransitions() {
         var state by mutableStateOf(PreviewData.billState().copy(statsVisible = true))
         val period = state.dateFilter
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { BillPage(state = state, settings = settings, onBack = {},

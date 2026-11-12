@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import android.content.Context
@@ -49,7 +50,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AppUpdateUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     @Test fun releasePleaseNotesShowVersionOnceAndKeepMarkdownContent() {
         val release = UpdateRelease(10, "1.5.0", """
             ## [1.5.0](https://github.com/Mercury000/HUEL-yktwx/compare/v1.4.1...v1.5.0) (2026-11-12)
@@ -90,13 +91,13 @@ class AppUpdateUiTest {
         compose.onNodeWithTag("update-channel-switch").performClick()
         compose.runOnIdle {
             assertEquals("beta", settings.updateChannel.value)
-            assertEquals("beta", ThemeSettings(compose.activity).updateChannel.value)
+            assertEquals("beta", themeSettingsFixture(compose.activity).updateChannel.value)
         }
     }
     private fun settings(): ThemeSettings {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        return ThemeSettings(app)
+        return themeSettingsFixture(app)
     }
     private fun capture(name: String) {
         val file = File("../tools/app-updates/$name.png")
@@ -108,8 +109,8 @@ class AppUpdateUiTest {
 
     @Test fun settingsExplainReminderOnlyControlAndPersistItWithOneManualEntry() {
         val settings = settings()
-        val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
-        val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }
@@ -123,7 +124,7 @@ class AppUpdateUiTest {
         compose.onNodeWithText("关闭后仍会检查版本，强制更新和手动检查不受影响").assertExists()
         compose.onNode(isToggleable() and (hasTestTag("automatic-updates-switch") or
             hasAnyAncestor(hasTestTag("automatic-updates-switch")))).performSemanticsAction(SemanticsActions.OnClick)
-        compose.runOnIdle { assertFalse(ThemeSettings(compose.activity).automaticUpdates.value) }
+        compose.runOnIdle { assertFalse(themeSettingsFixture(compose.activity).automaticUpdates.value) }
         compose.onNodeWithTag("check-updates").performScrollTo()
         compose.onAllNodesWithTag("check-updates").assertCountEquals(1)
         val title = compose.onNodeWithText("检查更新", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -153,7 +154,7 @@ class AppUpdateUiTest {
     @Test fun manualCheckShowsLoadingAndCanRetryAfterFailure() {
         var checks = 0
         val gate = CompletableDeferred<UpdateCheckResult>()
-        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(
+        val model = appUpdateViewModelFixture(compose.activity.application, updateStoreFixture(
             compose.activity.getSharedPreferences("update-ui-test", Context.MODE_PRIVATE), "v3"), {
             checks++
             if (checks == 1) gate.await() else UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
@@ -235,14 +236,14 @@ class AppUpdateUiTest {
 
     @Test fun forcedRootBlocksBusinessPagesAndHasNoDismissActions() {
         val settings = settings()
-        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(
+        val model = appUpdateViewModelFixture(compose.activity.application, updateStoreFixture(
             compose.activity.getSharedPreferences("forced-root-test", Context.MODE_PRIVATE), "v9"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
                 UpdateRelease(10, "1.5.0", "## 必须更新\n\n- 修复问题", "https://github.com/release", maxForcedVersionCode = 9))
         })
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + AppUpdateViewModel::class.java.name, model)
-        val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
-        val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }
@@ -261,13 +262,13 @@ class AppUpdateUiTest {
         val settings = settings()
         val prefs = compose.activity.getSharedPreferences("inline-update-ui-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(prefs, "v4"), {
+        val model = appUpdateViewModelFixture(compose.activity.application, updateStoreFixture(prefs, "v4"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
                 UpdateRelease(5, "1.3.0", "优化付款码展示体验\n改进页面加载与更新提示", "https://cxt.303889.xyz/download/"))
         })
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + AppUpdateViewModel::class.java.name, model)
-        val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
-        val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }

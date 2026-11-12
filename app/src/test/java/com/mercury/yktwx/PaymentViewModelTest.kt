@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -49,7 +51,7 @@ class PaymentViewModelTest {
     private var cardLost = false
     private var cardFrozen = false
     private var cardAccount: String? = null
-    private val service = object : YktService by YktApi({ error("Unexpected network request") }) {
+    private val service = object : YktService by yktApiFixture({ error("Unexpected network request") }) {
         override suspend fun paymentCard(token: String, account: String): CampusCard {
             cardQueries++
             val result = CampusCard(cardAccount ?: account, "校园卡", "123", cardLost, cardFrozen, 0)
@@ -83,8 +85,8 @@ class PaymentViewModelTest {
             return PaymentBatch(listOf(payments.toString().padStart(20, '0')), 60, account)
         }
     }
-    private val repository = AccountRepository(service, vault)
-    private val model = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
+    private val repository = accountRepositoryFixture(service, vault)
+    private val model = paymentViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), repository)
     private val store = ViewModelStore().apply { put("payment", model) }
 
     @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
@@ -161,8 +163,8 @@ class PaymentViewModelTest {
                 vault.clear()
             }
         }
-        val restoring = PaymentViewModel(ApplicationProvider.getApplicationContext<Application>(),
-            AccountRepository(service, delayedVault), initialEnvironment = ReadEnvironment.Inactive)
+        val restoring = paymentViewModelFixture(ApplicationProvider.getApplicationContext<Application>(),
+            accountRepositoryFixture(service, delayedVault), initialEnvironment = ReadEnvironment.Inactive)
         store.put("restoring-payment", restoring)
         try {
             restoring.initialize()

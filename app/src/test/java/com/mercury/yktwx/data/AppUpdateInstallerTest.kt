@@ -37,7 +37,7 @@ class AppUpdateInstallerTest {
     }
     @Test fun firstBadHashFallsBackAndVerifiedFileIsRehashedBeforeInstall() = runBlocking {
         var requests = 0
-        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { url ->
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { url ->
             requests++
             object : HttpFixture(url) {
                 override fun statusCode() = 200
@@ -68,7 +68,7 @@ class AppUpdateInstallerTest {
         assertFalse(file.exists())
     }
     @Test fun wrongPackageVersionOrSignerCannotBeInstalledAndDeletesFile() {
-        val installer = AppUpdateInstaller(context)
+        val installer = appUpdateInstallerFixture(context)
         val file = installer.apk(release)
         for ((candidate, message) in listOf(info(packageName = "other.app") to "安装包包名不匹配",
             info(version = 11) to "安装包版本不匹配", info(signature = byteArrayOf(2)) to "安装包签名与当前应用不一致")) {
@@ -84,7 +84,7 @@ class AppUpdateInstallerTest {
         val stopped = java.util.concurrent.CountDownLatch(1)
         val releaseWorker = java.util.concurrent.CountDownLatch(1)
         var requests = 0
-        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { url ->
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { url ->
             requests++
             object : HttpFixture(url) {
                 override fun bodyStream() = object : java.io.InputStream() {
@@ -115,7 +115,7 @@ class AppUpdateInstallerTest {
     }
     @Test fun authorizationUsesCurrentPackageAndDoesNotDownloadAgainWhenFileMatches() = runBlocking {
         var network = 0
-        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { network++; error("Must reuse verified bytes") })
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { network++; error("Must reuse verified bytes") })
         val file = installer.apk(release)
         file.writeBytes(bytes)
         shadowOf(context.packageManager).setPackageArchiveInfo(file.absolutePath, info())

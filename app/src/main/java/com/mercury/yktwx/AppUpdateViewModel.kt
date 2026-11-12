@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
-import android.app.Application
 import android.os.Build
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.*
@@ -30,16 +31,15 @@ internal data class AppUpdateUiState(
     val download: UpdateDownloadState = UpdateDownloadState(),
 )
 
+@HiltViewModel
 internal class AppUpdateViewModel internal constructor(
-    app: Application, private val store: UpdateCheckStore,
+    private val store: UpdateCheckStore,
     private val checkUpdate: suspend () -> UpdateCheckResult,
-    private val installer: AppUpdateInstaller = AppUpdateInstaller(app),
+    private val installer: AppUpdateInstaller,
     private val now: () -> Long = System::currentTimeMillis,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, deviceRequest())
-    private constructor(app: Application, request: UpdateRequest) : this(app, UpdateCheckStore(app, request), request)
-    private constructor(app: Application, store: UpdateCheckStore, request: UpdateRequest) : this(app,
-        store, { AppUpdateApi().check(request.copy(channel = store.channel), store) })
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(store: UpdateCheckStore, api: AppUpdateApi, installer: AppUpdateInstaller, analytics: AppAnalytics) : this(store, { api.check(deviceRequest().copy(channel = store.channel), store) }, installer, analytics = analytics)
 
     private fun restoredState(): AppUpdateUiState {
         if (store.repository.readyOrNull() == null) return AppUpdateUiState()
@@ -171,7 +171,6 @@ internal class AppUpdateViewModel internal constructor(
         }
         manualRequest = manual
         val attempt = ++generation
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         val analyticsChannel = store.channel
         mutable.value = state.value.copy(checking = manual,
@@ -312,7 +311,6 @@ internal class AppUpdateViewModel internal constructor(
             return
         }
         val downloadAttempt = ++downloadGeneration
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         var downloadStarted = false
         val binding = release.versionCode to release.sha256

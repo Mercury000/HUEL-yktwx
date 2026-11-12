@@ -20,7 +20,7 @@ internal data class UpdateDownloadState(val phase: UpdateDownloadPhase = UpdateD
     val busy get() = phase in listOf(UpdateDownloadPhase.Downloading, UpdateDownloadPhase.Verifying)
 }
 
-internal class AppUpdateInstaller(private val context: Context, private val http: UpdateHttp = UpdateHttp(),
+internal class AppUpdateInstaller(private val context: Context, private val http: UpdateHttp,
     private val contentUri: (File) -> Uri = {
         FileProvider.getUriForFile(context, "${context.packageName}.updates", it)
     }) {

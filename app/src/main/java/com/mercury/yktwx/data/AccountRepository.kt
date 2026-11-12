@@ -1,6 +1,5 @@
 package com.mercury.yktwx.data
 
-import android.content.Context
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -14,10 +13,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Reads share authenticated snapshots; session changes and non-replayable operations stay exclusive. */
-class AccountRepository(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService = RechargeApi(), private val feeService: FeeService = FeeApi(), private val cardService: CardService = CardServiceApi(), private val profileService: ProfileService = ProfileApi(), private val displayCache: DisplayCache? = null, private val readNow: () -> Long = ReadCachePolicy::now) : SessionAuthority {
-    internal val dataChanges = AccountDataChanges()
-    internal val overviewReads = SharedReadStore()
-    internal val cardReads = SharedReadStore()
+class AccountRepository internal constructor(private val service: YktService, private val vault: Vault, private val rechargeService: RechargeService, private val feeService: FeeService, private val cardService: CardService, private val profileService: ProfileService, private val displayCache: DisplayCache? = null, private val readNow: () -> Long = ReadCachePolicy::now,
+    internal val overviewReads: SharedReadStore, internal val cardReads: SharedReadStore,
+    internal val dataChanges: AccountDataChanges) : SessionAuthority {
     internal fun identity(username: String): AccountIdentity? = sessionState.value.let {
         AccountIdentity(username, it.generation).takeIf { _ -> it.username == username }
     }
@@ -365,11 +363,4 @@ class AccountRepository(private val service: YktService, private val vault: Vaul
         clearCredentials(SessionEndReason.Logout)
     }
 
-    companion object {
-        @Volatile private var sharedInstance: AccountRepository? = null
-
-        fun shared(context: Context): AccountRepository = sharedInstance ?: synchronized(this) {
-            sharedInstance ?: AccountRepository(YktApi(), SecureVault(context.applicationContext), displayCache = DisplayCache(context.applicationContext)).also { sharedInstance = it }
-        }
-    }
 }

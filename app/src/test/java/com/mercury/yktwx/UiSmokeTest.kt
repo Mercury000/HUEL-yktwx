@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -35,16 +36,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UiSmokeTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     @Before fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(context)
+        settings = themeSettingsFixture(context)
     }
     private fun content(preview: Boolean = true): PaymentViewModel {
-        val model = PaymentViewModel(compose.activity.application)
-        val bills = BillViewModel(compose.activity.application)
+        val model = paymentViewModelFixture(compose.activity.application)
+        val bills = billViewModelFixture(compose.activity.application)
         model.initialize(preview)
         bills.initialize(preview)
         compose.setContent {
@@ -191,7 +192,7 @@ class UiSmokeTest {
         compose.runOnIdle { settings.setTheme(2); settings.setAccent(1); settings.setFloating(true); settings.setFloatingStyle(1) }
         compose.waitForIdle()
         compose.onNodeWithText("主题颜色").assertExists()
-        val restored = ThemeSettings(compose.activity)
+        val restored = themeSettingsFixture(compose.activity)
         assertEquals(2, restored.themeMode.value)
         assertEquals(1, restored.accentMode.value)
         assertTrue(restored.floatingBottomBar.value)
@@ -211,10 +212,10 @@ class UiSmokeTest {
                 hasAnyAncestor(hasTestTag("payment-brightness-switch"))))
         switch().assertIsOn().performClick().assertIsOff()
         assertFalse(settings.paymentBrightness.value)
-        assertFalse(ThemeSettings(compose.activity).paymentBrightness.value)
+        assertFalse(themeSettingsFixture(compose.activity).paymentBrightness.value)
         switch().performClick().assertIsOn()
         assertTrue(settings.paymentBrightness.value)
-        assertTrue(ThemeSettings(compose.activity).paymentBrightness.value)
+        assertTrue(themeSettingsFixture(compose.activity).paymentBrightness.value)
     }
 
     @Test fun paymentMotionDetectionSwitchIsInSettingsOffByDefaultAndPersists() {
@@ -230,7 +231,7 @@ class UiSmokeTest {
         switch().assertIsOff().performClick()
         switch().assertIsOn()
         assertTrue(settings.paymentMotionDetection.value)
-        assertTrue(ThemeSettings(compose.activity).paymentMotionDetection.value)
+        assertTrue(themeSettingsFixture(compose.activity).paymentMotionDetection.value)
         val output = File("../build/payment-motion-settings.png").absoluteFile
         output.parentFile?.mkdirs()
         output.outputStream().use {
@@ -238,7 +239,7 @@ class UiSmokeTest {
         }
         switch().performClick().assertIsOff()
         assertFalse(settings.paymentMotionDetection.value)
-        assertFalse(ThemeSettings(compose.activity).paymentMotionDetection.value)
+        assertFalse(themeSettingsFixture(compose.activity).paymentMotionDetection.value)
     }
 
     @Test fun campusCardEntriesOpenStateDialogAndReuseRechargeSheet() {

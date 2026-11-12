@@ -23,8 +23,8 @@ class HomeCardIdentity(val name: String, val sno: String, val thirdLevelDepartme
     override fun toString() = "HomeCardIdentity([redacted])"
 }
 
-class ProfileApi(private val client: Call.Factory = AppHttp.service,
-    private val imageClient: Call.Factory = AppHttp.publicRead) : ProfileService {
+class ProfileApi(private val client: Call.Factory,
+    private val imageClient: Call.Factory) : ProfileService {
     private val http = PaymentHttp(client)
     override suspend fun profile(token: String): PersonalProfile {
         val data = http.json(http.request("/berserker-base/user", token)).objectValue("data")

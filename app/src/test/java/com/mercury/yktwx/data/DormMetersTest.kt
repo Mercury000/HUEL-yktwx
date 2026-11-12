@@ -14,7 +14,7 @@ class DormMetersTest {
         mapOf("campus" to "campus-a", "building" to "building-a", "floor" to "floor-a", "room" to option.id),
         mapOf("campus" to "示例校区", "building" to "示例A栋", "floor" to "示例楼层", "room" to option.name))!!
     private fun config(room: FeeRoomBinding?) = FeeConfiguration(FeeProject.Zhengdong, RechargeConfiguration("410", "", listOf(100), 1, 10000, true, false), true, room)
-    private inner class FakeFees : FeeService by FeeApi({ error("Unexpected real request") }) {
+    private inner class FakeFees : FeeService by feeApiFixture({ error("Unexpected real request") }) {
         var options = listOf(ac, FeeOption("other-room", "示例A栋-房间B照明"), lighting)
         var failure: Exception? = null
         val details = mutableListOf<Map<String, String>>()
@@ -110,7 +110,7 @@ class DormMetersTest {
         var repeatedRoom = false
         var roomOnOtherFloor = false
         var otherFloorUnavailable = false
-        val service = object : FeeService by FeeApi({ error("Unexpected real request") }) {
+        val service = object : FeeService by feeApiFixture({ error("Unexpected real request") }) {
             override suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery {
                 assertEquals(FeeProject.Wenbei, project)
                 if (detail) {
@@ -219,7 +219,7 @@ class DormMetersTest {
         var boundProject = FeeProject.FamilyWater
         var staleNames = false
         var writes = 0
-        val service = object : FeeService by FeeApi({ error("Unexpected real request") }) {
+        val service = object : FeeService by feeApiFixture({ error("Unexpected real request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject) =
                 FeeConfiguration(project, config(null).amountRules, true,
                     if (project != boundProject) null else {

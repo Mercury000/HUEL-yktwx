@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.hui798ApiFixture
+import com.mercury.yktwx.data.lifeDeviceApiFixture
 import android.app.Application
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
@@ -41,7 +43,7 @@ class LifeAccountsViewModelTest {
         override fun saveLaundrySessions(sessions: List<LaundrySession>) { laundry = sessions }
         override fun removeAccount() { laundry = emptyList(); owner = null }
     }
-    private class PgApi : LifeDeviceService by LifeDeviceApi("fixture", { error("Unexpected device request") }), LifeAccountService {
+    private class PgApi : LifeDeviceService by lifeDeviceApiFixture("fixture", { error("Unexpected device request") }), LifeAccountService {
         var phone = "13800000000"
         var reads = 0
         var error: Exception? = null
@@ -56,7 +58,7 @@ class LifeAccountsViewModelTest {
         }
         override suspend fun login(phone: String, code: String) = LifeAccount(phone, "new-token")
     }
-    private fun pg(api: PgApi, store: PgStore) = LifeDevicesViewModel(app, api, store, dispatcher) { clock }
+    private fun pg(api: PgApi, store: PgStore) = lifeDevicesViewModelFixture(app, api, store, dispatcher) { clock }
         .also { models.put("pg", it) }
 
     @Test fun pangguiChecksAtRestoreAndCachesSuccessfulReads() = runTest(dispatcher) {
@@ -121,7 +123,7 @@ class LifeAccountsViewModelTest {
         override fun sessions() = records
         override fun saveSessions(sessions: List<Hui798Session>) { records = sessions }
     }
-    private class HuiApi : Hui798Service by Hui798Api("https://fixture.invalid/api", "fixture", { error("Unexpected device request") }) {
+    private class HuiApi : Hui798Service by hui798ApiFixture("https://fixture.invalid/api", "fixture", { error("Unexpected device request") }) {
         var failDevice = false
         var overviewError: Exception? = null
         val device = Hui798Device("fixture-device", "用水设备")
@@ -134,7 +136,7 @@ class LifeAccountsViewModelTest {
             return Hui798DeviceUse(device, Hui798Reading(1, 1_700_000_000_000L), "fixture-user")
         }
     }
-    private fun hui(api: HuiApi, store: HuiStore) = Hui798ViewModel(app, api, store, dispatcher) { clock }
+    private fun hui(api: HuiApi, store: HuiStore) = hui798ViewModelFixture(app, api, store, dispatcher) { clock }
         .also { models.put("hui", it) }
 
     @Test fun huiAccountVerificationSurvivesDeviceRecoveryFailure() = runTest(dispatcher) {

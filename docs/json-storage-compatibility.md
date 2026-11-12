@@ -6,7 +6,7 @@
 
 ## 展示缓存直接淘汰
 
-`DisplayCache` 使用 `cacheDir/display-v2` 和缓存版本 2，`DisplayCodecs` 只编码允许展示的具名字段。旧 `display-v1` 快照不迁移、不读取；重新查询即可恢复。缓存解码失败按既有可丢弃规则删除，恢复的缴费展示不携带付款权限。旧目录由系统缓存清理回收，不设置永久兼容分支。
+`DisplayCache` 使用 `cacheDir/display-v2` 和缓存版本 2，`DisplayCodecs` 只编码允许展示的具名字段。旧 `display-v1` 快照不迁移、不读取；重新查询即可恢复。缓存解码失败按既有可丢弃规则删除，恢复的缴费展示不携带付款权限。Application 在后台 IO 中通过 `RetiredStorageCleanup` 按清理版本删除旧目录及残留临时文件，不阻塞启动；全部删除成功后用 AtomicFile 在 noBackupFilesDir 记录完成版本，后续启动跳过。删除或标记保存失败时不视为完成，下次启动重试；新增废弃缓存时同步递增清理版本。
 
 ## 持久记录统一入口
 
@@ -22,7 +22,9 @@
 
 ## DataStore 一次性迁移边界
 
-三个旧设置文件只由 `LegacyPreferencesMigration` 读取，在 DataStore 成功保存后清理；清理失败可重试，已迁移的数据不会被旧文件再次覆盖。保留 1.4.1 的 UI 设置、账号哈希房间选择、按包名/渠道/安装版本保存的检查和提示时间。无签名更新展示缓存直接丢弃。
+三个旧设置文件 `ui_settings`、`hall_display`、`app_updates` 只由 `LegacyPreferencesMigration` 读取，在 DataStore 成功保存后清空内容，并通过 `deleteSharedPreferences` 删除 XML 及其备份文件。已有迁移标记但残留空文件时仍重试回收；失败不重新导入旧值，也不覆盖已保存的新设置。保留 1.4.1 的 UI 设置、账号哈希房间选择、按包名/渠道/安装版本保存的检查和提示时间。无签名更新展示缓存、未发布的旧渠道/跳过/签名账本字段随旧文件删除。
+
+本轮历史存储核对覆盖 JSON、DataStore、网络与注入改造：加密凭据和生活平台账户/订单继续使用原文件与密钥；胖乖 `water`、`laundry` 单条记录在对应列表成功保存后删除，保存失败仍保留恢复来源。`avatars-v1`、`wechat-qrcode-lite/0.1.0` 及当前更新安装包目录仍用于现行业务，不按名称中的版本号判断废弃。页面恢复使用系统 SavedState，没有本轮淘汰的应用自建磁盘目录。
 
 1.4.1 不存在持久渠道选择、跳过版本和签名策略账本，不迁移提交边界之后添加的对应 SharedPreferences 字段。新功能直接使用 DataStore 当前格式；当前签名账本仍须验签、原子写入及防回滚，损坏时进入可重试读取失败，不能清空策略。停止支持从 1.4.1 直接升级后，可整体移除 `LegacyPreferencesMigration` 及其样本测试。
 
@@ -36,6 +38,6 @@
 
 ## 定向验证样本
 
-`StoredRecordJsonTest` 覆盖版本入口、旧凭据、确定性订单标识及未知版本拒绝。`LifeDeviceAccountStoreTest`、`Hui798AccountStoreTest` 覆盖历史订单读取、保存到当前格式、账户隔离、未知下单状态以及删除后不恢复。`DisplayCacheTest` 覆盖旧缓存淘汰、当前格式恢复与付款权限剥离。更新验签和金额规则沿用对应 API 的真实协议样本验证。
+`StoredRecordJsonTest` 覆盖版本入口、旧凭据、确定性订单标识及未知版本拒绝。`LifeDeviceAccountStoreTest`、`Hui798AccountStoreTest` 覆盖历史订单读取、保存到当前格式、账户隔离、未知下单状态以及删除后不恢复。`DisplayCacheTest` 覆盖旧缓存淘汰、当前格式恢复与付款权限剥离；`RetiredStorageCleanupTest` 覆盖旧目录回收及当前缓存隔离，`LegacyPreferencesMigrationTest` 覆盖迁移持久化后的文件删除及失败重试。更新验签和金额规则沿用对应 API 的真实协议样本验证。
 
 清理兼容时同时更新本页、[迁移进度](modernization-progress.md)和相关测试，明确受影响的最低可直接升级版本；不以删除所有字段默认值代替删除专门的兼容规则。

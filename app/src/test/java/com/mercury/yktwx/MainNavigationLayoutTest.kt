@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
@@ -31,7 +32,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h720dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MainNavigationLayoutTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     private var density = 1f
     private val payment = PaymentUiState(needsLogin = false, username = "fake-user",
@@ -40,7 +41,7 @@ class MainNavigationLayoutTest {
 
     @Before fun setup() {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(compose.activity)
+        settings = themeSettingsFixture(compose.activity)
     }
 
     private fun content(page: @Composable (PaddingValues) -> Unit = {

@@ -1,5 +1,9 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.usageConsentFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import android.app.Application
 import android.content.Intent
 import android.os.Looper
@@ -39,9 +43,9 @@ class UiPreviewIsolationTest {
         override fun clear() {}
     }
     private fun unexpectedNetwork(): Nothing { networkRequests++; error("Unexpected network request") }
-    private val repository = AccountRepository(YktApi({ unexpectedNetwork() }), vault,
+    private val repository = accountRepositoryFixture(yktApiFixture({ unexpectedNetwork() }), vault,
         RechargeApi { unexpectedNetwork() }, FeeApi { unexpectedNetwork() },
-        CardServiceApi { unexpectedNetwork() }, ProfileApi { unexpectedNetwork() })
+        CardServiceApi { unexpectedNetwork() }, profileApiFixture(client = { unexpectedNetwork() }, imageClient = { unexpectedNetwork() }))
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val store = ViewModelStore()
     private fun <T : ViewModel> keep(model: T): T = model.also { store.put(model.javaClass.name + store.keys().size, it) }
@@ -76,19 +80,24 @@ class UiPreviewIsolationTest {
 
     @Test fun releaseApplicationInitializesFromCurrentPersistedConsentBeforeForeground() = runBlocking {
         val release = BuildConfig.BUILD_TYPE == "release"
-        assertEquals(release, app.javaClass.name == "com.mercury.yktwx.analytics.UmengApplication")
+        assertEquals("com.mercury.yktwx.YktApplication", app.javaClass.name)
         if (!release) return@runBlocking
 
         val prefs = app.getSharedPreferences("usage_consent", Application.MODE_PRIVATE)
         val backend = RecordingAnalyticsBackend()
         val analytics = AppAnalytics(backend)
-        AppAnalytics.instance = analytics
+        val application = app as YktApplication
+        val originalAnalytics = application.analytics
+        val originalConsent = application.consent
+        application.analytics = analytics
         try {
             prefs.edit().clear().putString("accepted_hash", "outdated-notice").commit()
+            application.consent = usageConsentFixture(app)
             app.onCreate()
             assertEquals(0, backend.initializations)
 
-            UsageConsent(app).accept()
+            usageConsentFixture(app).accept()
+            application.consent = usageConsentFixture(app)
             app.onCreate()
             assertEquals(1, backend.initializations)
             assertEquals(0, backend.resumes)
@@ -96,20 +105,21 @@ class UiPreviewIsolationTest {
             assertNull(analytics.begin())
             assertTrue(backend.events.isEmpty())
 
-            analytics.resume(app, agreed = UsageConsent(app).accepted)
+            analytics.resume(app, agreed = usageConsentFixture(app).accepted)
             assertEquals(1, backend.initializations)
             assertEquals(1, backend.resumes)
         } finally {
-            AppAnalytics.instance = null
+            application.analytics = originalAnalytics
+            application.consent = originalConsent
             prefs.edit().clear().commit()
         }
     }
 
     @Test fun previewStartupCannotBypassLoginOrInjectProfileAndBillsInProduction() {
-        val payment = keep(PaymentViewModel(app, repository))
-        val bills = keep(BillViewModel(app, repository))
-        val profile = keep(MyViewModel(app, repository))
-        val hall = keep(HallViewModel(app, repository))
+        val payment = keep(paymentViewModelFixture(app, repository))
+        val bills = keep(billViewModelFixture(app, repository))
+        val profile = keep(myViewModelFixture(app, repository))
+        val hall = keep(hallViewModelFixture(app, repository))
         payment.initialize(uiPreview = true)
         bills.initialize(uiPreview = true)
         profile.accountChanged("owner", uiPreview = true)
@@ -139,12 +149,12 @@ class UiPreviewIsolationTest {
     }
 
     @Test fun dialogPreviewFlagsAreIgnoredInProductionAndPreventWritesInPreview() {
-        val recharge = keep(RechargeViewModel(app, repository))
-        val fee = keep(FeeViewModel(app, repository))
-        val password = keep(CardPasswordViewModel(app, repository))
-        val card = keep(CardServiceViewModel(app, repository))
-        val recipient = keep(CardServiceViewModel(app, repository))
-        val unlost = keep(CardServiceViewModel(app, repository))
+        val recharge = keep(rechargeViewModelFixture(app, repository))
+        val fee = keep(feeViewModelFixture(app, repository))
+        val password = keep(cardPasswordViewModelFixture(app, repository))
+        val card = keep(cardServiceViewModelFixture(app, repository))
+        val recipient = keep(cardServiceViewModelFixture(app, repository))
+        val unlost = keep(cardServiceViewModelFixture(app, repository))
         recharge.open("owner", null, preview = true)
         fee.open(FeeProject.Network, "owner", preview = true)
         password.open("owner", preview = true)

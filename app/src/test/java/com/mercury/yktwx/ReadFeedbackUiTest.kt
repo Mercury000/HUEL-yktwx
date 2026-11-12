@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
@@ -43,7 +44,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadFeedbackUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val cachedOffline = "网络连接失败，显示上次数据，请下拉刷新"
     private val networkError = "服务暂时无法访问"
     private val verticalList = hasScrollToIndexAction() and
@@ -86,7 +87,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun partialCachedStatisticsNameFailedRegionsAndWrapAtLargeDarkText() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.billState()
         val stats = PreviewData.billStats(ready.dateFilter, 2).copy(
             dailyError = networkError, dailyErrorKind = ReadFailureKind.Network,
@@ -158,7 +159,7 @@ class ReadFeedbackUiTest {
     @Test fun profileFirstFailureStaysVisibleDuringRetryAndReallyPullsToRefresh() {
         var state by mutableStateOf(MyUiState(loaded = true, profileLoaded = true, profileError = networkError, profileErrorKind = ReadFailureKind.Network))
         var refreshes = 0
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
@@ -182,7 +183,7 @@ class ReadFeedbackUiTest {
             avatarError = message, avatarErrorKind = ReadFailureKind.Other,
             summaryError = message, summaryErrorKind = ReadFailureKind.Network)
         val payment = PreviewData.paymentState(false).copy(accountError = message, accountErrorKind = ReadFailureKind.Network)
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { MyPage(state, payment, settings, 0.dp, false, {}, {}, {}, {}, {},
@@ -198,7 +199,7 @@ class ReadFeedbackUiTest {
     @Test fun authenticationFirstFailureRetainsItsKindWhenRetryClearsBothFields() {
         var state by mutableStateOf(MyUiState(loaded = true, profileError = "凭证过期",
             profileErrorKind = ReadFailureKind.Authentication))
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { PersonalProfilePage(state, settings, {}, {}) }
@@ -266,7 +267,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun allFourFirstReadFailuresHaveOneFeedbackAndReallyPullToRefresh() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var page by mutableIntStateOf(0)
         var dark by mutableStateOf(false)
         var refreshes = 0
@@ -319,7 +320,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedMainPagesKeepNetworkNoticeAboveUpdatesAndContent() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var page by mutableIntStateOf(0)
         val updateHint: @Composable () -> Unit = {
             InlineUpdateNotice(AppUpdateUiState(noticeVisible = true,
@@ -355,7 +356,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun billPaginationNetworkFailureSharesTopNoticeAndKeepsLoadMoreGesture() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val state = PreviewData.billState().copy(currentPage = 1, pages = 2,
             loadMoreError = networkError, loadMoreErrorKind = ReadFailureKind.Network)
         compose.setContent {
@@ -371,7 +372,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun failedRetryKeepsTheErrorUntilActualContentArrives() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var state by mutableStateOf(DormUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
             networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = false))
         compose.setContent {
@@ -394,7 +395,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedHallHasOneNoticeForBothMetersAndKeepsActualNumbers() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
@@ -411,7 +412,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun hallSingleNetworkFailuresUseTopNoticeAndKeepHealthyRegions() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         var state by mutableStateOf(DormUiState(rooms = ready.rooms, loaded = true,
             networkError = networkError, networkErrorKind = ReadFailureKind.Network, roomsAvailable = true))
@@ -443,7 +444,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun myBalanceReadUsesSkeletonThenTopNoticeUntilBalanceReturns() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountLoading = true))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -472,7 +473,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun accountDetailFirstFailureReallyPullsToRefreshAndRetainsTheFailureWhileReading() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var payment by mutableStateOf(PaymentUiState(needsLogin = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network))
         var refreshes = 0
         compose.setContent {
@@ -499,7 +500,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun billFailedRetryDoesNotMistakeCompletedFailedListForAvailableContent() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var state by mutableStateOf(BillUiState(loaded = true, error = networkError, errorKind = ReadFailureKind.Network,
             summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network))
         compose.setContent {
@@ -518,7 +519,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedBillListSummaryAndCountsFailuresUseOnePageInlineError() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -533,7 +534,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun failedSummaryAndCountsUseOneTopNotice() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -549,7 +550,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun bothMeterErrorsUseTopNoticeWhenCampusNetworkIsHealthy() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
@@ -566,7 +567,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun multipleFailedUnreadRegionsUseOneTopNoticeAndKeepValuesUnknown() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val my = PreviewData.myState().copy(summary = null, counts = null,
             summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network)
         val payment = PaymentUiState(needsLogin = false, accountError = networkError, accountErrorKind = ReadFailureKind.Network)
@@ -592,7 +593,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedMyIdentityBalanceAndSummaryNetworkFailuresShareOneInlineError() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val my = PreviewData.myState().copy(profileError = networkError, profileErrorKind = ReadFailureKind.Network, avatarError = networkError, avatarErrorKind = ReadFailureKind.Network,
             homeIdentityError = networkError, homeIdentityErrorKind = ReadFailureKind.Network, summaryError = networkError, summaryErrorKind = ReadFailureKind.Network, countsError = networkError, countsErrorKind = ReadFailureKind.Network)
         val payment = PreviewData.paymentState(false).copy(accountError = networkError, accountErrorKind = ReadFailureKind.Network)
@@ -609,7 +610,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun paymentNetworkFailureKeepsBalanceAndUsesCenteredPaymentStatus() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var payment by mutableStateOf(PreviewData.paymentState(false).copy(error = networkError, errorKind = ReadFailureKind.Network))
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides true) {
@@ -639,7 +640,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun pageNetworkNoticeMovesCachedContentGraduallyAndLeavesNoGapAfterRecovery() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         var state by mutableStateOf(ready)
         val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
@@ -689,7 +690,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedHallNoticeStaysStillAcrossReactivationAndRepeatedOfflineFailures() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         val failed = DormUiState(rooms = ready.rooms, network = ready.network, loaded = true,
             error = networkError, errorKind = ReadFailureKind.Network, networkError = networkError, networkErrorKind = ReadFailureKind.Network)
@@ -738,7 +739,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun networkAggregationKeepsIndependentBusinessFailureVisible() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.hallState()
         val room = ready.rooms.single()
         val failed = DormUiState(rooms = listOf(DormRoom(room.project, room.binding,
@@ -757,7 +758,7 @@ class ReadFeedbackUiTest {
     }
 
     @Test fun cachedStatisticsNetworkFailuresShareOneInlineErrorInLargeDarkText() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         val ready = PreviewData.billState()
         val stats = PreviewData.billStats(ready.dateFilter, 2).copy(dailyError = networkError, dailyErrorKind = ReadFailureKind.Network,
             categoriesError = networkError, categoriesErrorKind = ReadFailureKind.Network, rankingError = networkError, rankingErrorKind = ReadFailureKind.Network)

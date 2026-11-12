@@ -32,7 +32,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-hdpi")
 class ThemeBehaviorTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun explicitAndSystemThemesKeepPaletteConfigurationAndPageStateConsistent() {
         val mode = mutableStateOf(ColorSchemeMode.System)
