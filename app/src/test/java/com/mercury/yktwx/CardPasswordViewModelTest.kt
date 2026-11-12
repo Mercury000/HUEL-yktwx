@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.cardServiceApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -49,7 +52,7 @@ class CardPasswordViewModelTest {
     private var failure: Exception? = null
     private var readGate = CompletableDeferred<Unit>().apply { complete(Unit) }
     private var writeGate = CompletableDeferred<Unit>().apply { complete(Unit) }
-    private val service = object : CardService by CardServiceApi({ error("Unexpected network") }) {
+    private val service = object : CardService by cardServiceApiFixture({ error("Unexpected network") }) {
         override suspend fun passwordConfiguration(token: String): CardPasswordConfiguration {
             reads++
             withContext(NonCancellable) { readGate.await() }
@@ -62,14 +65,14 @@ class CardPasswordViewModelTest {
             failure?.let { throw it }
         }
     }
-    private val ykt = object : YktService by YktApi({ error("Unexpected network") }) {
+    private val ykt = object : YktService by yktApiFixture({ error("Unexpected network") }) {
         override suspend fun login(credentials: Credentials): Session { logins++; return Session("new-fake-token", Long.MAX_VALUE) }
         override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit) = PaymentBatch(listOf("00000000000000000000"), 60, PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 100))
     }
-    private val repository = AccountRepository(ykt, vault, cardService = service)
+    private val repository = accountRepositoryFixture(ykt, vault, cardService = service)
     private val app = ApplicationProvider.getApplicationContext<Application>()
-    private val model = CardPasswordViewModel(app, repository)
-    private val payment = PaymentViewModel(app, repository)
+    private val model = cardPasswordViewModelFixture(app, repository)
+    private val payment = paymentViewModelFixture(app, repository)
     private val store = ViewModelStore().apply { put("password", model); put("payment", payment) }
     @After fun cleanup() { readGate.complete(Unit); writeGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
     private fun await(condition: () -> Boolean) {

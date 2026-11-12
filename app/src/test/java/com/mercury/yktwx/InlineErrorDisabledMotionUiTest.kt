@@ -24,7 +24,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class InlineErrorDisabledMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>(effectContext = object : MotionDurationScale {
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>(effectContext = object : MotionDurationScale {
         override val scaleFactor = 0f
     })
     @Test fun disabledAnimationsShowAndClearFeedbackWithoutLeavingAnEmptySlot() {

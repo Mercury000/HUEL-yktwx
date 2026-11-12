@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -72,7 +74,7 @@ class UnifiedNetworkReadTest {
             read("identity"); return HomeCardIdentity("示例", sno, "院系", "专业")
         }
     }
-    private val fees = object : FeeService by FeeApi({ error("No real request") }) {
+    private val fees = object : FeeService by feeApiFixture({ error("No real request") }) {
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             read("fee-${project.id}")
             return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false))
@@ -83,13 +85,13 @@ class UnifiedNetworkReadTest {
         }
     }
     private fun repository(cache: DisplayCache? = null) =
-        AccountRepository(service, vault, profileService = profiles, feeService = fees, displayCache = cache)
+        accountRepositoryFixture(service, vault, profileService = profiles, feeService = fees, displayCache = cache)
     private class Page(val update: (Boolean, Boolean, Long) -> Unit, val refresh: () -> Unit,
         val recover: (Long) -> Unit, val loading: () -> Boolean, val failure: () -> ReadFailureKind?,
         val key: String)
     private fun page(kind: String, repo: AccountRepository = repository()): Page = when (kind) {
         "my" -> {
-            val model = MyViewModel(app, repo)
+            val model = myViewModelFixture(app, repo)
             store.put(kind, model); model.accountChanged("fake-owner")
             Page(model::setPageVisible, model::refresh, model::recoverRead,
                 { model.state.value.loading },
@@ -99,7 +101,7 @@ class UnifiedNetworkReadTest {
                 "profile")
         }
         "hall" -> {
-            val model = HallViewModel(app, repo)
+            val model = hallViewModelFixture(app, repo)
             store.put(kind, model); model.accountChanged("fake-owner")
             Page(model::setPageVisible, model::refresh, model::recoverRead,
                 { model.state.value.loading || model.state.value.managing },
@@ -110,7 +112,7 @@ class UnifiedNetworkReadTest {
                 "fee-412")
         }
         else -> {
-            val model = PaymentViewModel(app, repo)
+            val model = paymentViewModelFixture(app, repo)
             store.put(kind, model)
             model.setReadContext(false, false, false, false, true, 0)
             model.initialize(); await { !model.state.value.restoringLogin }; model.onForeground()
@@ -207,7 +209,7 @@ class UnifiedNetworkReadTest {
     @Test fun codeExpiresOfflineAndUnderAnOverlayWithoutAnotherRequestAndRefreshesOnReturn() {
         for (offline in listOf(true, false)) {
             reads.clear()
-            val model = PaymentViewModel(app, repository())
+            val model = paymentViewModelFixture(app, repository())
             store.put("payment", model)
             model.initialize(); await { !model.state.value.restoringLogin }
             model.onForeground(); await { model.state.value.code != null }
@@ -223,7 +225,7 @@ class UnifiedNetworkReadTest {
     }
 
     @Test fun motionBalanceChecksRespectOfflineAndStopTheirQueuedRetries() {
-        val model = PaymentViewModel(app, repository())
+        val model = paymentViewModelFixture(app, repository())
         store.put("payment", model)
         model.initialize(); await { !model.state.value.restoringLogin }
         model.onForeground(); await { model.state.value.code != null }
@@ -245,7 +247,7 @@ class UnifiedNetworkReadTest {
     }
 
     @Test fun profileInvalidationWhileCoveredReadsOnReturnEvenWithinTheCacheWindow() {
-        val model = MyViewModel(app, repository())
+        val model = myViewModelFixture(app, repository())
         store.put("my", model); model.accountChanged("fake-owner")
         model.setPageVisible(true)
         await { count("profile") == 1 && !model.state.value.loading }

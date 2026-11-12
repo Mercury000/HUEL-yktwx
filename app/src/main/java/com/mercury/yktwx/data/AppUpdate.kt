@@ -45,7 +45,7 @@ internal class UpdateMetadataRejected(val reason: UpdateMetadataRejection, messa
 
 /** Dedicated, cancellable public transport. No campus headers, cookies or account data. */
 internal class UpdateHttp(private val metadataTimeoutMillis: Long = DEFAULT_METADATA_TIMEOUT_MILLIS,
-    private val client: Call.Factory = AppHttp.update) {
+    private val client: Call.Factory) {
     suspend fun <T> read(url: String, consume: (Response) -> T): T {
         var target = httpsUri(url)
         repeat(6) { redirect ->
@@ -151,8 +151,8 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
 internal open class UpdateSourceUnavailable(val notPublished: Boolean = false) : java.io.IOException("暂时无法获取更新清单")
 internal class UpdateServiceUnavailable : UpdateSourceUnavailable()
 
-internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
-    private val verifier: UpdateManifestVerifier = UpdateManifestVerifier(),
+internal class AppUpdateApi(private val http: UpdateHttp,
+    private val verifier: UpdateManifestVerifier,
     private val sourceTimeoutMillis: Long = DEFAULT_SOURCE_TIMEOUT_MILLIS,
     private val now: () -> Instant = Instant::now) {
     private data class Candidate(val release: UpdateRelease, val digest: String, val authority: Boolean)

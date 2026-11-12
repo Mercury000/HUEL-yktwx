@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -29,7 +30,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NetworkPackageMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val ready = PreviewData.hallState()
     private val twoLines = "示例套餐：校园网月套餐，教学区与宿舍区通用，包含基础上网服务"
     private val threeLines = "示例套餐：校园网学期套餐，支持教学区与宿舍区使用；套餐说明较长时完整展示，具体资费和适用范围以官方信息为准"
@@ -41,7 +42,7 @@ class NetworkPackageMotionUiTest {
     )
 
     private fun content(current: State<DormUiState>, settleMillis: Long = 800) {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.mainClock.autoAdvance = false
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {

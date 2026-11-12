@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -32,7 +33,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DashboardTopBarScrollTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun titleBounds(title: String): List<Rect> = compose.onAllNodesWithText(title, useUnmergedTree = true)
         .fetchSemanticsNodes().map { it.boundsInRoot }.filter { it.width > 0f && it.height > 0f }
@@ -48,7 +49,7 @@ class DashboardTopBarScrollTest {
     @Test fun dashboardTitlesCollapseToCenterAndStillAllowPullRefresh() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app)
+        val settings = themeSettingsFixture(app)
         val payment = PreviewData.paymentState(false)
         val bills = PreviewData.billState()
         var page by mutableIntStateOf(0)

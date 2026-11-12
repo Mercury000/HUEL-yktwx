@@ -40,7 +40,7 @@ internal fun updateStoreFixture(
     val verifier: (String, String) -> UpdateRelease = verifyCached ?: { body, _ -> checkNotNull(manifests[body]) }
     val owner = if (policyKey == "package") BuildConfig.APPLICATION_ID else policyKey
     val repository = updateFixtures.getOrPut(identity) {
-        AppPreferencesRepository(MemoryPreferences(AppPreferences(legacyMigrated = true,
+        appPreferencesRepositoryFixture(MemoryPreferences(AppPreferences(legacyMigrated = true,
             updateChannel = if (key.contains(":beta:")) "beta" else "stable")),
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { body, channel ->
                 verifier(body, channel) to if (body in manifests) sha256(body.toByteArray()) else
@@ -60,3 +60,7 @@ internal fun UpdateCheckStore.cacheRelease(release: UpdateRelease?) = runBlockin
     manifests[body] = normalized
     acceptPolicy(normalized.channel, normalized, sha256(body.toByteArray()))
 }
+
+internal fun appPreferencesRepositoryFixture(store: DataStore<AppPreferences>, scope: CoroutineScope,
+    verifyManifest: (String, String) -> Pair<UpdateRelease, String> = { body, channel -> UpdateManifestVerifier().manifest(body, channel) }): AppPreferencesRepository =
+    AppPreferencesRepository(store, scope, verifyManifest)

@@ -4,7 +4,7 @@ import kotlinx.serialization.json.*
 import okhttp3.Call
 
 /** No browser, Cookie, redirect following, JS execution, or side-effect retries. */
-class RechargeApi(private val client: Call.Factory = AppHttp.service) : RechargeService {
+class RechargeApi(private val client: Call.Factory) : RechargeService {
     private val http = PaymentHttp(client)
     private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null) =
         http.request(path, token, params, form)

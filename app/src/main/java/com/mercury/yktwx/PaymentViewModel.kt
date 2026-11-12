@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
-import android.app.Application
 import android.os.SystemClock
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
@@ -49,11 +50,13 @@ data class PaymentUiState(
     override fun toString() = "PaymentUiState([redacted])"
 }
 
-class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository,
+@HiltViewModel
+class PaymentViewModel internal constructor(private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment),
-    private val analytics: AppAnalytics = AppAnalytics.from(app)) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics)
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
     val sessionState = repository.sessionState

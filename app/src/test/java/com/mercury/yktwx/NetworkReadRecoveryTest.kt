@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class NetworkReadRecoveryTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun connect(manager: ConnectivityManager) {
         shadowOf(manager).setActiveNetworkInfo(ShadowNetworkInfo.newInstance(

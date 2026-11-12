@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,7 +28,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillQueryMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun frame(count: Int = 1) {
         repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
@@ -45,7 +46,7 @@ class BillQueryMotionUiTest {
         var state by mutableStateOf(PreviewData.billState())
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
-                BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {},
+                BillPage(state, themeSettingsFixture(compose.activity.application), {}, {}, {}, {},
                     { type, from, to -> state = state.copy(typeId = type, amountFromCents = from, amountToCents = to) },
                     {}, {}, {})
             } }
@@ -119,7 +120,7 @@ class BillQueryMotionUiTest {
         var state by mutableStateOf(base)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
-                BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, { _, _, _ -> },
+                BillPage(state, themeSettingsFixture(compose.activity.application), {}, {}, {}, {}, { _, _, _ -> },
                     { state = base.copy(info = it, items = emptyList(), listLoaded = false,
                         listAvailable = false, loaded = false, listLoading = true, loading = true, listOnlyRead = true) }, {}, {})
             } }

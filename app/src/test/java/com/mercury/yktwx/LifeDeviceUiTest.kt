@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
@@ -38,7 +39,7 @@ import java.net.URL
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeDeviceUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val viewModels = ViewModelStore()
     private fun model(): LifeDevicesViewModel {
         val store = object : LifeDeviceStore {
@@ -49,7 +50,7 @@ class LifeDeviceUiTest {
             override fun clearAccount() {}
             override fun clearSession() {}
         }
-        return LifeDevicesViewModel(compose.activity.application,
+        return lifeDevicesViewModelFixture(compose.activity.application,
             fixtureLifeDeviceApi("test-secret", { error("No live requests in UI tests") }), store).also { viewModels.put("life", it) }
     }
     @After fun cleanup() { viewModels.clear() }
@@ -79,7 +80,7 @@ class LifeDeviceUiTest {
         compose.onNodeWithText("淋浴已结束").assertIsDisplayed()
         compose.onNodeWithTag("water-primary-action").assertTextContains("再次扫码淋浴")
     }
-    private fun settings() = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+    private fun settings() = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
     @Test fun sharedScannerOpensWithoutAccountsAndShowsLoginOnlyAfterIdentifyingPanggui() {
         val model = model(); val theme = settings()
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {

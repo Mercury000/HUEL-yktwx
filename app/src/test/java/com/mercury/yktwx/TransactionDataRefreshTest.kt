@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -59,7 +62,7 @@ class TransactionDataRefreshTest {
     private fun account() = PaymentAccount(accountId, "fake-payacc", "1", "统一账户", balance)
     private val old = record("old", false, 100)
     private val recharge = record("recharge", true, 1000)
-    private val service = object : YktService by YktApi({ error("Unexpected live HTTP request") }) {
+    private val service = object : YktService by yktApiFixture({ error("Unexpected live HTTP request") }) {
         override suspend fun login(credentials: Credentials) = Session("fake-token", Long.MAX_VALUE)
         override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
             read("codes")
@@ -111,7 +114,7 @@ class TransactionDataRefreshTest {
         override suspend fun avatar(path: String): ByteArray? = null
         override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity? { read("identity"); return null }
     }
-    private val fees = object : FeeService by FeeApi({ error("Unexpected live fee request") }) {
+    private val fees = object : FeeService by feeApiFixture({ error("Unexpected live fee request") }) {
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             read("config:${project.id}")
             if (project in configurationFailures) throw NetworkFailure()
@@ -134,7 +137,7 @@ class TransactionDataRefreshTest {
         override fun clearSession() = Unit
         override fun clear() { credentials = null }
     }
-    private val repository = AccountRepository(service, vault, feeService = fees, profileService = profiles)
+    private val repository = accountRepositoryFixture(service, vault, feeService = fees, profileService = profiles)
 
     @After fun cleanup() {
         gates.forEach { it.complete(Unit) }
@@ -143,14 +146,14 @@ class TransactionDataRefreshTest {
     }
 
     private fun payment(): PaymentViewModel {
-        val model = PaymentViewModel(app, repository, delays)
+        val model = paymentViewModelFixture(app, repository, delays)
         store.put("payment", model)
         model.initialize(); await { !model.state.value.restoringLogin }
         model.onForeground(); await { model.state.value.account != null && !model.state.value.busy }
         return model
     }
     private fun bills(): BillViewModel {
-        val model = BillViewModel(app, repository, { 10_000L }, delays)
+        val model = billViewModelFixture(app, repository, { 10_000L }, delays)
         store.put("bills", model)
         model.initialize(); model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.refreshing && !model.state.value.loading }
@@ -202,7 +205,7 @@ class TransactionDataRefreshTest {
 
     @Test fun sharedInvalidationRefreshesExistingPagesAndRemainsPendingWhileHidden() {
         val bill = bills()
-        val mine = MyViewModel(app, repository, delays)
+        val mine = myViewModelFixture(app, repository, delays)
         store.put("mine", mine)
         mine.accountChanged("fake-user")
         mine.setPageVisible(true)
@@ -224,7 +227,7 @@ class TransactionDataRefreshTest {
     @Test fun billAndMyShareLiveOverviewAndManualRefreshPublishesToBothPages() {
         val bill = bills()
         bill.setPageVisible(false)
-        val mine = MyViewModel(app, repository, delays)
+        val mine = myViewModelFixture(app, repository, delays)
         store.put("mine", mine)
         mine.accountChanged("fake-user"); mine.setPageVisible(true)
         await { mine.state.value.loaded && !mine.state.value.loading }
@@ -271,7 +274,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun aFailedTransactionMonthlyActivationDoesNotAddAnOrdinaryRetry() {
-        val model = MyViewModel(app, repository, delays)
+        val model = myViewModelFixture(app, repository, delays)
         store.put("mine", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -282,7 +285,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun aFailedTransactionHallActivationDoesNotAddAnOrdinaryRetry() {
-        val model = HallViewModel(app, repository, delays)
+        val model = hallViewModelFixture(app, repository, delays)
         store.put("hall", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -436,7 +439,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun myPageRetriesOnlyDelayedMonthlyMetricsAndKeepsProfileAndIdentity() {
-        val model = MyViewModel(app, repository, delays)
+        val model = myViewModelFixture(app, repository, delays)
         store.put("mine", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -454,7 +457,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun feeRefreshQueriesOnlyTheAffectedProjectAndUsesTheSamePauseRules() {
-        val model = HallViewModel(app, repository, delays)
+        val model = hallViewModelFixture(app, repository, delays)
         store.put("hall", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -529,7 +532,7 @@ class TransactionDataRefreshTest {
 
     @Test fun selectiveHallRetryPreservesAnUnqueriedNetworkError() {
         networkFails = true
-        val model = HallViewModel(app, repository, delays)
+        val model = hallViewModelFixture(app, repository, delays)
         store.put("hall", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -550,7 +553,7 @@ class TransactionDataRefreshTest {
 
     @Test fun selectiveHallRetryPreservesOtherProjectErrorsAndTheirNeedForRecovery() {
         configurationFailures = setOf(FeeProject.Zhengdong)
-        val model = HallViewModel(app, repository, delays)
+        val model = hallViewModelFixture(app, repository, delays)
         store.put("hall", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -629,7 +632,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun myPageRetriesFailedMetricsAfterOtherMetricsConvergeAndKeepsTheBudget() {
-        val model = MyViewModel(app, repository, delays)
+        val model = myViewModelFixture(app, repository, delays)
         store.put("mine", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }
@@ -657,7 +660,7 @@ class TransactionDataRefreshTest {
     }
 
     @Test fun hallRetriesAFailedUpdatedProjectWhileOtherProjectsArePendingThenSkipsItAfterRecovery() {
-        val model = HallViewModel(app, repository, delays)
+        val model = hallViewModelFixture(app, repository, delays)
         store.put("hall", model)
         model.accountChanged("fake-user"); model.setPageVisible(true)
         await { model.state.value.loaded && !model.state.value.loading }

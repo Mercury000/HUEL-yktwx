@@ -1,5 +1,10 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.cardServiceApiFixture
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.rechargeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -56,7 +61,7 @@ class SessionLifecycleTest {
         override fun clearSession() { token = null }
         override fun clear() { credentials = null; token = null }
     }
-    private val service = object : YktService by YktApi({ error("Unexpected live request") }) {
+    private val service = object : YktService by yktApiFixture({ error("Unexpected live request") }) {
         override suspend fun login(credentials: Credentials): Session {
             logins++
             return Session("new-token-$logins", Long.MAX_VALUE)
@@ -66,7 +71,7 @@ class SessionLifecycleTest {
         override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(100, 200)
         override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
     }
-    private val fees = object : FeeService by FeeApi({ error("Unexpected live fee request") }) {
+    private val fees = object : FeeService by feeApiFixture({ error("Unexpected live fee request") }) {
         override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
             feeFailure?.let { throw it }
             return FeeConfiguration(project, config)
@@ -78,11 +83,11 @@ class SessionLifecycleTest {
             writeFailure?.let { throw it }
         }
     }
-    private val cards = object : CardService by CardServiceApi({ error("Unexpected live card request") }) {
+    private val cards = object : CardService by cardServiceApiFixture({ error("Unexpected live card request") }) {
         override suspend fun cardConfiguration(token: String) = CardServiceConfiguration(listOf(card), false, false)
         override suspend fun passwordConfiguration(token: String) = CardPasswordConfiguration(listOf(card))
     }
-    private val recharge = object : RechargeService by RechargeApi({ error("Unexpected live recharge request") }) {
+    private val recharge = object : RechargeService by rechargeApiFixture({ error("Unexpected live recharge request") }) {
         override suspend fun rechargeConfiguration(token: String, preferredTarget: String?) = config
     }
     private val profiles = object : ProfileService {
@@ -97,18 +102,18 @@ class SessionLifecycleTest {
         override suspend fun avatar(path: String): ByteArray? = null
     }
     private val repository by lazy {
-        AccountRepository(service, vault, rechargeService = recharge, feeService = fees,
+        accountRepositoryFixture(service, vault, rechargeService = recharge, feeService = fees,
             cardService = cards, profileService = profiles, displayCache = cache)
     }
     private fun <T : androidx.lifecycle.ViewModel> keep(key: String, model: T): T = model.also { store.put(key, it) }
-    private val payment by lazy { keep("payment", PaymentViewModel(app, repository)) }
-    private val bills by lazy { keep("bill", BillViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)) }
-    private val mine by lazy { keep("my", MyViewModel(app, repository)) }
-    private val hall by lazy { keep("hall", HallViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)) }
-    private val fee by lazy { keep("fee", FeeViewModel(app, repository)) }
-    private val topUp by lazy { keep("recharge", RechargeViewModel(app, repository)) }
-    private val cardModel by lazy { keep("card", CardServiceViewModel(app, repository)) }
-    private val password by lazy { keep("password", CardPasswordViewModel(app, repository)) }
+    private val payment by lazy { keep("payment", paymentViewModelFixture(app, repository)) }
+    private val bills by lazy { keep("bill", billViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)) }
+    private val mine by lazy { keep("my", myViewModelFixture(app, repository)) }
+    private val hall by lazy { keep("hall", hallViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)) }
+    private val fee by lazy { keep("fee", feeViewModelFixture(app, repository)) }
+    private val topUp by lazy { keep("recharge", rechargeViewModelFixture(app, repository)) }
+    private val cardModel by lazy { keep("card", cardServiceViewModelFixture(app, repository)) }
+    private val password by lazy { keep("password", cardPasswordViewModelFixture(app, repository)) }
 
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)

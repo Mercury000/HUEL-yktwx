@@ -1,12 +1,14 @@
 package com.mercury.yktwx
 
-import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.data.AvatarCrop
+import com.mercury.yktwx.data.AvatarDecoder
 import com.mercury.yktwx.data.AvatarImage
 import com.mercury.yktwx.data.LocalAvatarStore
 import kotlinx.coroutines.CancellationException
@@ -27,12 +29,12 @@ internal data class AvatarUiState(
     val image: Bitmap? = null,
 ) { override fun toString() = "AvatarUiState([redacted])" }
 
+@HiltViewModel
 internal class AvatarViewModel internal constructor(
-    app: Application, private val store: LocalAvatarStore,
+    private val store: LocalAvatarStore,
     private val decode: (Uri) -> Bitmap,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, LocalAvatarStore(app), { AvatarImage.decode(app.contentResolver, it) })
-    internal constructor(app: Application, store: LocalAvatarStore) : this(app, store, { AvatarImage.decode(app.contentResolver, it) })
+) : ViewModel() {
+    @Inject internal constructor(store: LocalAvatarStore, decoder: AvatarDecoder) : this(store, decoder::decode)
     private val mutable = MutableStateFlow(AvatarUiState())
     val state = mutable.asStateFlow()
     private var restoreJob: Job? = null

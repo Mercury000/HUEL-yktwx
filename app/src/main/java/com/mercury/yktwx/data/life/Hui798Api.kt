@@ -23,7 +23,7 @@ internal object Hui798Protocol {
 class Hui798Api(
     gateway: String = BuildConfig.HUI798_API_GATEWAY,
     private val salt: String = BuildConfig.HUI798_SIGN_SALT,
-    private val client: Call.Factory = AppHttp.service,
+    private val client: Call.Factory,
 ) : Hui798Service {
     private val base = gateway.trim().trimEnd('/')
     private val hasUserInfo = runCatching { URI(base).rawUserInfo != null }.getOrDefault(true)

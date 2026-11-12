@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data.life
 
+import com.mercury.yktwx.data.testHttpClients
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
@@ -45,7 +46,7 @@ class Hui798ApiTest {
             assertEquals("POST", it.request.method); assertEquals("1,1", it.request.header("ApplicationType"))
             assertEquals("3.1.9", it.request.header("VersionCode"))
             assertEquals("Android_ilife798_3.1.9", it.request.header("User-Agent")); assertNull(it.request.header("Authorization"))
-            assertFalse(AppHttp.service.followRedirects); assertTrue(it.closed)
+            assertFalse(testHttpClients.service.followRedirects); assertTrue(it.closed)
         }
     }
     @Test fun commandsUseFixedPaymentParametersAndAuthorizationWithoutEndSignature() = runBlocking {
@@ -56,7 +57,7 @@ class Hui798ApiTest {
         assertEquals("did=123456789012345&upgrade=true&ptype=91&rcp=false", calls[0].url.query)
         assertEquals("/api/v1/dev/end", calls[1].url.path); assertEquals("did=123456789012345&rcp=false", calls[1].url.query)
         calls.forEach { assertEquals("GET", it.request.method); assertEquals("fixture-token", it.request.header("Authorization"))
-            assertFalse(AppHttp.service.followRedirects); assertEquals(0, it.sent.size()); assertTrue(it.closed) }
+            assertFalse(testHttpClients.service.followRedirects); assertEquals(0, it.sent.size()); assertTrue(it.closed) }
     }
     @Test fun recoveryReadsAccountIdentityAndVerifiesUseThroughHomeRatherThanFavoOwner() = runBlocking {
         val calls = mutableListOf<Response>()

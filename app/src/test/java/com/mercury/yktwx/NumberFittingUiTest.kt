@@ -30,7 +30,7 @@ import top.yukonga.miuix.kmp.basic.Text
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NumberFittingUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun everyDecimalDigitFitsActualTextAndParentBoundsAcrossWidthsAndFontScales() {
         val number = mutableStateOf("-30138.02")

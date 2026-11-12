@@ -33,7 +33,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class HallNeutralTabsUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun frames(count: Int = 1) {
         repeat(count) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }

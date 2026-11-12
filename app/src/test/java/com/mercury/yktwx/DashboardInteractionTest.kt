@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -39,14 +40,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DashboardInteractionTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     private val verticalList = hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
 
     @Before fun setup() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(app)
+        settings = themeSettingsFixture(app)
     }
 
     private fun content(page: @Composable () -> Unit) {
@@ -289,7 +290,7 @@ class DashboardInteractionTest {
     }
 
     @Test fun billsScrollDuringBackgroundReadAndPullDetailsAndStats() {
-        val model = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val model = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         val state = mutableStateOf(model.state.value.copy(loading = true))
         var refreshes = 0
         content {
@@ -336,7 +337,7 @@ class DashboardInteractionTest {
     }
 
     @Test fun searchUsesMiuixGreyAndReleasesFocusOnOutsideTouchScrollAndSubmit() {
-        val model = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val model = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         val initial = model.state.value
         var submitted: String? = null
         var expectedBackground = 0

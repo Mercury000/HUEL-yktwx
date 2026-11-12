@@ -40,7 +40,7 @@ import java.time.Instant
 @Config(sdk = [35], qualifiers = "zh-rCN-w393dp-h851dp-port-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UpdateReviewUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val release = UpdateRelease(100104, "1.5.0", """
         ## 应用内更新
 

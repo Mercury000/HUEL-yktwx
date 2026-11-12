@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
@@ -49,7 +50,7 @@ import java.time.ZoneId
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeDeviceStatusUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private enum class NavigationPage : NavKey { Main, Detail }
     private data class Sessions(val water: WaterSession, val laundry: LaundrySession) {
         val clock: () -> Long = { laundry.startedAtMillis!! + 46_000 }
@@ -70,7 +71,7 @@ class LifeDeviceStatusUiTest {
         var waters by mutableStateOf(listOf(water))
         var showPayment by mutableStateOf(true)
         var creations = 0
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent {
             val holder = rememberSaveableStateHolder()
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -113,7 +114,7 @@ class LifeDeviceStatusUiTest {
         val device = sessions().water.device.copy(category = "08", name = "淋浴设备")
         var shower by mutableStateOf(WaterSession(device, "outlet", WaterPhase.Running, orderNo = "shower-order", sessionId = "shower-session"))
         val opened = mutableListOf<Pair<LifeFeature, String>>()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
             AppTheme { LifeDeviceStatusIslands(listOf(shower), emptyList(), { feature, id -> opened.add(feature to id) },
                 { _, _ -> error("Running shower cannot be dismissed") }, settings) }
@@ -138,7 +139,7 @@ class LifeDeviceStatusUiTest {
     }
     private fun payment(dark: Boolean = false, floating: Boolean = false) {
         val sessions = sessions()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(if (dark) 2 else 1); setFloating(floating) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(if (dark) 2 else 1); setFloating(floating) }
         var water by mutableStateOf<WaterSession?>(sessions.water)
         var laundry by mutableStateOf< LaundrySession?>(sessions.laundry)
         val opened = mutableListOf<Pair<LifeFeature, String>>()
@@ -187,7 +188,7 @@ class LifeDeviceStatusUiTest {
 
     @Test fun hallContainsNoLifeDeviceContentAndKeepsReadFeedbackAboveUtilities() {
         compose.mainClock.autoAdvance = false
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var dorm by mutableStateOf(DormUiState(roomsAvailable = true, loaded = true))
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 1, {}) { padding ->
@@ -220,7 +221,7 @@ class LifeDeviceStatusUiTest {
     }
     @Test fun paymentIslandsAnimateWithoutMovingTheCodeAndCenterTheLastSession() {
         val sessions = sessions()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var water by mutableStateOf<WaterSession?>(null)
         var laundry by mutableStateOf<LaundrySession?>(null)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -263,7 +264,7 @@ class LifeDeviceStatusUiTest {
             "学校", "", "after", false, true, null, emptyList(), emptyList())
         val running = WaterSession(device, "sku", WaterPhase.Running, sessionId = "water-with-incomplete-response")
         var waters by mutableStateOf(listOf(running))
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
@@ -288,7 +289,7 @@ class LifeDeviceStatusUiTest {
         var water by mutableStateOf(sessions.water)
         val opened = mutableListOf<Pair<LifeFeature, String>>()
         val dismissed = mutableListOf<String>()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             LifeDeviceStatusIslands(listOf(water), laundries,
                 { feature, id -> opened.add(feature to id) }, { _, id -> dismissed.add(id) }, settings)
@@ -319,7 +320,7 @@ class LifeDeviceStatusUiTest {
         val starting = paying.copy(sessionId = "starting-order", phase = LaundryPhase.Starting)
         val checking = base.copy(sessionId = "unestablished-check", phase = LaundryPhase.Checking)
         var laundries by mutableStateOf(listOf(unknown, paying, starting, checking))
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             LifeDeviceStatusIslands(emptyList(), laundries, { _, _ -> }, { _, id ->
                 laundries = laundries.filterNot { it.sessionId == id }
@@ -344,7 +345,7 @@ class LifeDeviceStatusUiTest {
         var clock = cutoff - 500
         val nowMillis = { clock }
         var dismissals = 0
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             LifeDeviceStatusIslands(emptyList(), laundries, { _, _ -> }, { _, _ -> dismissals++ }, settings,
                 nowMillis = nowMillis)
@@ -369,7 +370,7 @@ class LifeDeviceStatusUiTest {
         var clock = laundryTime("2026-11-08T02:50:00")
         val nowMillis = { clock }
         val opened = mutableListOf<String>()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.runOnIdle { owner.lifecycle.currentState = Lifecycle.State.RESUMED }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true, LocalLifecycleOwner provides owner) { AppTheme {
             LifeDeviceStatusIslands(listOf(sessions.water), listOf(finished, running), { _, id -> opened.add(id) },
@@ -399,7 +400,7 @@ class LifeDeviceStatusUiTest {
         var laundries by mutableStateOf(listOf(finished, running))
         val opened = mutableListOf<Pair<LifeFeature, String>>()
         var scans = 0
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
@@ -435,7 +436,7 @@ class LifeDeviceStatusUiTest {
     }
     @Test fun expiredEstimateDoesNotFillTheRingOrShowCompletionUntilTheServerEndsTheSession() {
         val sessions = sessions()
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var laundry by mutableStateOf(sessions.laundry)
         val clock: () -> Long = { sessions.laundry.expectedEndMillis!! + 1000 }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -466,7 +467,7 @@ class LifeDeviceStatusUiTest {
         var active by mutableStateOf(false)
         var opened = 0
         var dismissed = 0
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
@@ -499,7 +500,7 @@ class LifeDeviceStatusUiTest {
     private fun navigationReturn(floating: Boolean) {
         val sessions = sessions()
         val backStack = navBackStackOf(NavigationPage.Main)
-        val settings = ThemeSettings(compose.activity.application).apply {
+        val settings = themeSettingsFixture(compose.activity.application).apply {
             setTheme(1); setFloating(floating); setFloatingStyle(1)
         }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -556,7 +557,7 @@ class LifeDeviceStatusUiTest {
     fun twoIslandsUseTheAvailableWidthAndCloseSmoothlyIntoOneCenteredIsland() {
         val sessions = sessions()
         var waters by mutableStateOf(listOf(sessions.water))
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
         var density = 1f
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             density = LocalDensity.current.density
@@ -600,7 +601,7 @@ class LifeDeviceStatusUiTest {
         val sessions = sessions()
         val original = (0..2).map { sessions.laundry.copy(sessionId = "laundry-$it", phase = LaundryPhase.Ended) }
         var laundries by mutableStateOf(original)
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1); setFloating(true) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(true) }
         var density = 1f
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             density = LocalDensity.current.density
@@ -647,7 +648,7 @@ class LifeDeviceStatusUiTest {
 
     @Test fun islandMaterialFollowsBottomBlurAndIosGlassAndRestoresTheOpaqueSurface() {
         val sessions = sessions()
-        val settings = ThemeSettings(compose.activity.application).apply {
+        val settings = themeSettingsFixture(compose.activity.application).apply {
             setTheme(1); setFloating(false); setBlurBottom(false)
         }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
@@ -696,7 +697,7 @@ class LifeDeviceStatusUiTest {
     }
 
     @Test fun inlineLoginReminderSharesUpdateStyleAndDisappearsAfterConnection() {
-        val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
         var loginRequired by mutableStateOf(true)
         var clicks = 0
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {

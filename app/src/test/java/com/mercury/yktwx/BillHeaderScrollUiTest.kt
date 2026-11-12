@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -27,7 +28,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillHeaderScrollUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun capture(name: String): Bitmap {
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
@@ -40,7 +41,7 @@ class BillHeaderScrollUiTest {
     @Test fun settledModeAndTypeSwitchesAlwaysReleaseVerticalScrolling() {
         var state by mutableStateOf(PreviewData.billState())
         var generation by mutableIntStateOf(0)
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -88,7 +89,7 @@ class BillHeaderScrollUiTest {
     @Test fun loadingFailureRetryAndReactivationNeverLeaveScrollingLocked() {
         var state by mutableStateOf(PreviewData.billState())
         var active by mutableStateOf(true)
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -142,7 +143,7 @@ class BillHeaderScrollUiTest {
 
     @Test fun pullingAndReversingKeepBothControlLayersAndCardsOnOneSurface() {
         var statistics by mutableStateOf(false)
-        val settings = ThemeSettings(compose.activity.application).apply { setBlurTop(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setBlurTop(false) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -197,7 +198,7 @@ class BillHeaderScrollUiTest {
     }
 
     @Test fun flingFromTheChildSelectorContinuesThroughBothHeadersIntoTheBody() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -228,7 +229,7 @@ class BillHeaderScrollUiTest {
     @Test fun unifiedBodyScrollingStillDismissesSearchAndRequestsTheNextPage() {
         var loads = 0
         var state by mutableStateOf(PreviewData.billState().copy(currentPage = 1, pages = 2))
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -248,7 +249,7 @@ class BillHeaderScrollUiTest {
     @Test fun modeDateAndTypeControlsScrollAwayAndPullRestoresThem() {
         var statistics by mutableStateOf(false)
         var refreshes = 0
-        val settings = ThemeSettings(compose.activity.application).apply { setBlurTop(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setBlurTop(false) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
@@ -294,7 +295,7 @@ class BillHeaderScrollUiTest {
 
     @Test fun progressiveTopBlurSamplesScrollingBillsInBothThemes() {
         var dark by mutableStateOf(false)
-        val settings = ThemeSettings(compose.activity.application).apply { setBlurTop(false) }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setBlurTop(false) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
@@ -337,7 +338,7 @@ class BillHeaderScrollUiTest {
             period = empty.dateFilter, type = 2, error = "首次读取失败"))
         var state by mutableStateOf(empty)
         var refreshes = 0
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {
