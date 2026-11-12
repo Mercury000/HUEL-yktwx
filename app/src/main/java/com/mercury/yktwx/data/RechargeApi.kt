@@ -1,7 +1,7 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import okhttp3.Call
-import org.json.JSONObject
 
 /** No browser, Cookie, redirect following, JS execution, or side-effect retries. */
 class RechargeApi(private val client: Call.Factory = AppHttp.service) : RechargeService {
@@ -10,18 +10,18 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
         http.request(path, token, params, form)
     private suspend fun json(response: PaymentHttp.Response) = http.json(response, rechargePayment = true)
     override suspend fun rechargeConfiguration(token: String, preferredTarget: String?): RechargeConfiguration {
-        val data = json(request("/berserker-app/frontInfo", token)).getJSONObject("data")
-        val front = JSONObject(data.getString("getFrontConfig"))
-        val ecard = JSONObject(data.getString("getEcardConfig"))
+        val data = json(request("/berserker-app/frontInfo", token)).objectValue("data")
+        val front = parseObject(data.stringValue("getFrontConfig"))
+        val ecard = parseObject(data.stringValue("getEcardConfig"))
         val id = front.rechargeText("recharge")
         if (!id.matches(Regex("[0-9]{1,12}"))) throw YktException("充值项目配置异常")
-        val fee = json(request("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id))).getJSONObject("feeitem")
+        val fee = json(request("/charge/feeitem/singleFeeitem", token, mapOf("feeitemid" to id))).objectValue("feeitem")
         val account = selectedAccount(token, preferredTarget, ecard)
         return amountConfiguration(id, account, front, fee)
     }
     companion object {
-        internal fun amountConfiguration(id: String, target: String, front: JSONObject,
-            fee: JSONObject, recipient: RechargeRecipient? = null): RechargeConfiguration {
+        internal fun amountConfiguration(id: String, target: String, front: JsonObject,
+            fee: JsonObject, recipient: RechargeRecipient? = null): RechargeConfiguration {
             val minimum = fee.rechargeLimit("retain_money")
             // The official page applies the fee item's bound after the general front config.
             val maximum = fee.rechargeLimit("maxmoney") ?: front.rechargeLimit("rechargeMaxAmount")
@@ -37,20 +37,20 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
     private suspend fun selectedAccount(
         token: String,
         preferredTarget: String?,
-        ecard: JSONObject,
+        ecard: JsonObject,
     ): String {
         val cardType = ecard.rechargeText("type")
-        val data = json(request("/berserker-app/ykt/tsm/queryCard", token, mapOf("scene" to "recharge"))).getJSONObject("data")
+        val data = json(request("/berserker-app/ykt/tsm/queryCard", token, mapOf("scene" to "recharge"))).objectValue("data")
         if (data.rechargeText("retcode") != "0") throw YktException("没有可充值账户")
-        val cards = data.optJSONArray("card") ?: throw YktException("没有可充值账户")
+        val cards = data.arrayOrNull("card") ?: throw YktException("没有可充值账户")
         val candidates = mutableListOf<String>()
         val sameCardCandidates = mutableListOf<String>()
         var unavailable: RechargeTargetUnavailable? = null
-        for (i in 0 until cards.length()) {
-            val card = cards.getJSONObject(i)
+        for (i in 0 until cards.size) {
+            val card = cards.objectValue(i)
             val matches = preferredTarget != null && (card.rechargeText("account") == preferredTarget ||
-                card.optJSONArray("accinfo")?.let { a -> (0 until a.length()).any {
-                    a.optJSONObject(it)?.rechargeText("type") == preferredTarget
+                card.arrayOrNull("accinfo")?.let { a -> (0 until a.size).any {
+                    a.objectOrNull(it)?.rechargeText("type") == preferredTarget
                 } } == true)
             try { RechargeErrors.requireAvailable(card, ecard) }
             catch (e: RechargeTargetUnavailable) {
@@ -64,10 +64,10 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
                 cardCandidates += cardAccount
             }
             if (cardType != "2") {
-                val accounts = card.optJSONArray("accinfo")
+                val accounts = card.arrayOrNull("accinfo")
                 val electronic = mutableListOf<String>()
-                for (j in 0 until (accounts?.length() ?: 0)) {
-                    val a = accounts!!.getJSONObject(j)
+                for (j in 0 until (accounts?.size ?: 0)) {
+                    val a = accounts!!.objectValue(j)
                     val target = a.rechargeText("type")
                     if (target.isNotBlank()) electronic += target
                 }
@@ -91,7 +91,7 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
         val form = RechargeProtocol.signed(mapOf(
             "feeitemid" to config.feeItemId, "appid" to "56321", "tranamt" to RechargeMoney.yuan(amountCents),
             "source" to "app", "synjones-auth" to "bearer " + token, "yktcard" to config.targetId,
-            "synAccessSource" to "h5", "abstracts" to JSONObject().put("type", "recharge").put("othersRecharge", config.recipient != null).toString(),
+            "synAccessSource" to "h5", "abstracts" to jsonObjectOf("type" to ("recharge"), "othersRecharge" to (config.recipient != null)).toString(),
         ))
         val response = request("/charge/order/thirdOrder", token, form = form)
         RechargeErrors.creationFailure(response)
@@ -103,13 +103,13 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
     override suspend fun launchRecharge(token: String, pending: PendingRecharge): WechatRechargeLaunch {
         val order = pending.orderId ?: throw YktException("订单号缺失")
         val info = json(request("/charge/pay/getpayinfo", token, mapOf("orderid" to order, "userAgent" to "h5")))
-        val o = info.getJSONObject("order")
-        if (o.rechargeText("orderid") != order || RechargeMoney.responseCents(o.opt("tranamt")) != pending.amountCents) throw YktException("充值订单信息不匹配")
+        val o = info.objectValue("order")
+        if (o.rechargeText("orderid") != order || RechargeMoney.responseCents(o.scalarOrElement("tranamt")) != pending.amountCents) throw YktException("充值订单信息不匹配")
         val target = o.rechargeText("third_party")
         if (target.isNotBlank() && target != pending.targetId) throw YktException("订单收款账户不匹配，请在官网核实")
-        if (o.optInt("status", -1) == 1) throw YktException("订单已支付，请查询结果")
-        val methods = info.optJSONArray("payList") ?: throw YktException("没有可用的微信支付方式")
-        val method = (0 until methods.length()).map { methods.getJSONObject(it) }
+        if (o.intOrDefault("status", -1) == 1) throw YktException("订单已支付，请查询结果")
+        val methods = info.arrayOrNull("payList") ?: throw YktException("没有可用的微信支付方式")
+        val method = (0 until methods.size).map { methods.objectValue(it) }
             .firstOrNull { it.rechargeText("code") == "CAMPUSCARD" && it.rechargeText("remark") == "weixin" && it.rechargeText("payid") == pending.payId }
             ?: throw YktException("该订单微信支付方式已变化，请在官网处理")
         // HAR confirms synAccessSource is added AFTER signing this payment request.
@@ -119,20 +119,20 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
         )) + ("synAccessSource" to "h5")
         val response = request("/blade-pay/pay", token, form = form)
         RechargeErrors.paymentFailure(response)
-        val payload = json(response).getJSONObject("data")
+        val payload = json(response).objectValue("data")
         if (payload.rechargeText("orderid") != order) throw YktException("支付订单响应不匹配")
         return http.wechatLaunch(payload.rechargeText("paysubmit"), pending)
     }
     override suspend fun rechargeResult(token: String, pending: PendingRecharge): RechargeResult {
         val order = pending.orderId ?: throw YktException("订单号缺失")
         val payload = json(request("/charge/order/personal_data", token, buildMap { put("orderid", order); pending.payId?.let { put("payid", it) } }))
-        val list = payload.optJSONArray("orderList") ?: throw YktException("订单查询响应异常")
+        val list = payload.arrayOrNull("orderList") ?: throw YktException("订单查询响应异常")
         // The official result page synthesizes status=0 for an empty orderList.
         // Only a valid successful response with an actual empty array uses this
         // fallback; request/response errors remain request errors.
-        if (list.length() == 0) return RechargeResult(false, 0)
-        if (list.length() != 1) throw YktException("订单查询响应异常")
-        val o = list.getJSONObject(0)
+        if (list.size == 0) return RechargeResult(false, 0)
+        if (list.size != 1) throw YktException("订单查询响应异常")
+        val o = list.objectValue(0)
         if (o.rechargeText("orderid") != order) throw YktException("订单结果与本次充值不匹配")
         // Unlike the empty-list fallback, null status on an existing record is
         // NOT explicitly normalized by the official normal H5 result flow.
@@ -144,19 +144,19 @@ class RechargeApi(private val client: Call.Factory = AppHttp.service) : Recharge
         }
         val amountText = o.rechargeText("tranamt")
         val amountMatches = (!paid && amountText.isBlank()) ||
-            RechargeMoney.responseCents(o.opt("tranamt")) == pending.amountCents
-        val fees = o.optJSONArray("feeitemlist")
-        val feesAbsent = o.isNull("feeitemlist") || fees?.length() == 0
+            RechargeMoney.responseCents(o.scalarOrElement("tranamt")) == pending.amountCents
+        val fees = o.arrayOrNull("feeitemlist")
+        val feesAbsent = o.isNull("feeitemlist") || fees?.size == 0
         val feeMatches = (!paid && feesAbsent) ||
-            (fees != null && (0 until fees.length()).any { fees.getJSONObject(it).rechargeText("feeitemid") == pending.feeItemId })
+            (fees != null && (0 until fees.size).any { fees.objectValue(it).rechargeText("feeitemid") == pending.feeItemId })
         // Payment completion fields may be absent on a provisional/unpaid order.
         // Present conflicting fields are still rejected; a successful order must
         // include all fields needed to prove its account, amount and fee item.
         val matches = textMatches("third_party", pending.targetId) && amountMatches &&
             (pending.payId == null || textMatches("payid", pending.payId)) && feeMatches
         if (!matches) throw YktException("订单结果与本次充值不匹配")
-        if (!paid) return RechargeResult(false, status, (o.opt("msg") as? String)?.takeIf { it.isNotEmpty() })
-        if (RechargeMoney.responseCents(o.opt("actulamt")) != pending.amountCents) throw YktException("实付金额异常")
+        if (!paid) return RechargeResult(false, status, (o.scalarOrElement("msg") as? String)?.takeIf { it.isNotEmpty() })
+        if (RechargeMoney.responseCents(o.scalarOrElement("actulamt")) != pending.amountCents) throw YktException("实付金额异常")
         return RechargeResult(true, status)
     }
 }

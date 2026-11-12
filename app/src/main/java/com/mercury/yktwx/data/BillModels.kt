@@ -1,7 +1,6 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.*
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.math.roundToLong
@@ -74,8 +73,8 @@ data class BillRecord(
     /** Some legacy transactions omit orderId; UI identity must still survive refresh/pagination. */
     val stableId: String get() = orderId.ifBlank {
         serialNumber.takeIf { it.isNotBlank() }?.let { "serial:$fromAccount:$it" } ?: "record:" +
-            java.security.MessageDigest.getInstance("SHA-256").digest(JSONArray(listOf(fromAccount, typeId,
-                typeFrom, effectTime, bookTime, amountCents, balanceCents, resume, merchant)).toString().toByteArray())
+            java.security.MessageDigest.getInstance("SHA-256").digest(stableIdentityArray(listOf(fromAccount, typeId,
+                typeFrom, effectTime, bookTime, amountCents, balanceCents, resume, merchant)).toByteArray())
                 .joinToString("") { "%02x".format(it) }
     }
     override fun toString() = "BillRecord(type=$typeId, amountCents=$amountCents)"
@@ -101,31 +100,31 @@ data class BillCategory(
 data class BillDailyPoint(val date: LocalDate, val amountCents: Long)
 
 internal object BillParser {
-    fun page(data: JSONObject): BillPageData {
-        val array = data.optJSONArray("records") ?: JSONArray()
-        val items = (0 until array.length()).mapNotNull { index ->
-            array.optJSONObject(index)?.let(::record)
+    fun page(data: JsonObject): BillPageData {
+        val array = data.arrayOrNull("records") ?: jsonArrayOf()
+        val items = (0 until array.size).mapNotNull { index ->
+            array.objectOrNull(index)?.let(::record)
         }
         return BillPageData(
             items = items,
-            current = data.optInt("current", 1),
-            pages = data.optInt("pages"),
+            current = data.intOrDefault("current", 1),
+            pages = data.intOrDefault("pages"),
         )
     }
 
-    fun summary(data: JSONObject) = BillSummary(
+    fun summary(data: JsonObject) = BillSummary(
         incomeCents = data.cents("income"),
         expensesCents = data.cents("expenses"),
     )
 
-    fun types(data: JSONArray): List<BillType> = (0 until data.length()).mapNotNull { index ->
-        data.optJSONObject(index)?.let { item ->
+    fun types(data: JsonArray): List<BillType> = (0 until data.size).mapNotNull { index ->
+        data.objectOrNull(index)?.let { item ->
             BillType(item.text("id"), item.text("name"))
         }
     }
 
-    fun categories(data: JSONArray): List<BillCategory> = (0 until data.length()).mapNotNull { index ->
-        data.optJSONObject(index)?.let { item ->
+    fun categories(data: JsonArray): List<BillCategory> = (0 until data.size).mapNotNull { index ->
+        data.objectOrNull(index)?.let { item ->
             BillCategory(
                 name = item.text("turnoverType"),
                 amountCents = item.cents("amount"),
@@ -133,9 +132,9 @@ internal object BillParser {
         }
     }.sortedByDescending { it.amountCents }
 
-    fun daily(data: JSONObject): List<BillDailyPoint> {
+    fun daily(data: JsonObject): List<BillDailyPoint> {
         val points = mutableListOf<BillDailyPoint>()
-        val keys = data.keys()
+        val keys = data.keys.iterator()
         while (keys.hasNext()) {
             val key = keys.next()
             val date = runCatching { LocalDate.parse(key) }.getOrNull()
@@ -146,7 +145,7 @@ internal object BillParser {
         return points.sortedBy { it.date }
     }
 
-    private fun record(item: JSONObject) = BillRecord(
+    private fun record(item: JsonObject) = BillRecord(
         orderId = item.text("orderId"),
         resume = item.text("resume"),
         payName = item.text("payName"),
@@ -168,6 +167,6 @@ internal object BillParser {
     )
 }
 
-private fun JSONObject.text(key: String): String = if (isNull(key)) "" else optString(key).trim()
+private fun JsonObject.text(key: String): String = if (isNull(key)) "" else stringOrDefault(key).trim()
 
-private fun JSONObject.cents(key: String): Long = optDouble(key, 0.0).roundToLong().coerceAtLeast(0)
+private fun JsonObject.cents(key: String): Long = doubleOrDefault(key, 0.0).roundToLong().coerceAtLeast(0)

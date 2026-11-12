@@ -1,10 +1,10 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
@@ -29,7 +29,8 @@ class DormRoomLoaderTest {
         override suspend fun feeQuery(token: String, project: FeeProject, level: Int,
             selections: Map<String, String>, detail: Boolean): FeeQuery {
             reads += Read(project, level, selections.toMap(), detail)
-            if (detail) return FeeQuery(thirdParty = JSONObject(selections).apply {
+            if (detail) return FeeQuery(thirdParty = buildJsonObject {
+                selections.forEach { (key, value) -> put(key, value) }
                 put("areaName", "当前校区"); put("buildingName", "当前楼栋"); put("floorName", "当前楼层")
                 put("roomName", if (selections["room"] == air.id) air.name else lighting.name)
                 if (wrongTarget) put("room", "different-target")
@@ -160,7 +161,8 @@ class DormRoomLoaderTest {
             override suspend fun feeQuery(token: String, project: FeeProject, level: Int,
                 selections: Map<String, String>, detail: Boolean): FeeQuery {
                 reads += Read(project, level, selections.toMap(), detail)
-                if (detail) return FeeQuery(thirdParty = JSONObject(selections).apply {
+                if (detail) return FeeQuery(thirdParty = buildJsonObject {
+                selections.forEach { (key, value) -> put(key, value) }
                     put("buildingName", "7号楼")
                     put("roomName", if (selections["building"] == "air-building") "77-201空调" else "7-201照明")
                 }.toString(), display = listOf("剩余电量(度)" to "12.3"))

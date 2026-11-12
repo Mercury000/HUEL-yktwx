@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -7,14 +8,12 @@ import java.io.OutputStream
 import java.net.URL
 import java.net.URLDecoder
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
 /** Exercises the production request builder and parser, but never contacts a server. */
 class YktApiLoginTest {
-    private class FakeResponse(url: URL, private val status: Int, body: JSONObject) : HttpFixture(url) {
+    private class FakeResponse(url: URL, private val status: Int, body: JsonObject) : HttpFixture(url) {
         private val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val sent = ByteArrayOutputStream()
         var disconnected = false
@@ -27,31 +26,28 @@ class YktApiLoginTest {
         override fun requestBodyStream(): OutputStream = sent
 
     }
-    private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JSONObject? = null,
+    private class ScriptedApi(captcha: Int = 0, private val tokenStatus: Int = 200, private val tokenBody: JsonObject? = null,
         private val balance: Any? = 1234, private val paymentStatus: Int = 1, private val lost: Int = 0, private val frozen: Int = 0,
-        private val barcodeBody: JSONObject? = null, private val barcodeHttpStatus: Int = 200,
-        private val cardBody: JSONObject? = null, private val cardHttpStatus: Int = 200,
+        private val barcodeBody: JsonObject? = null, private val barcodeHttpStatus: Int = 200,
+        private val cardBody: JsonObject? = null, private val cardHttpStatus: Int = 200,
         private val barcodeFailure: Exception? = null) {
         val calls = mutableListOf<FakeResponse>()
-        private val methods = JSONArray().put(JSONObject().put("key", "snoNew").put("encryption", "keyboard").put("openCaptcha", captcha))
-        private val config = JSONObject().put("getFrontConfig", JSONObject().put("loginType", methods.toString()).toString())
-        private val keyboard = JSONObject().put("uuid", "fake-uuid").also { obj ->
-            KeyboardEncoder.layouts.forEach { (key, value) -> obj.put(key, value.reversed()) }
+        private val methods = jsonArrayOf(listOf(jsonObjectOf("key" to ("snoNew"), "encryption" to ("keyboard"), "openCaptcha" to (captcha))))
+        private val config = jsonObjectOf("getFrontConfig" to (jsonObjectOf("loginType" to (methods.toString())).toString()))
+        private val keyboard = buildJsonObject {
+            put("uuid", "fake-uuid")
+            KeyboardEncoder.layouts.forEach { (key, value) -> put(key, value.reversed()) }
         }
         val api = fixtureYktApi { url ->
             check(url.protocol == "https" && url.host == "yktwx2.huel.edu.cn")
             if (url.path.endsWith("/batchGetBarCodeGet")) barcodeFailure?.let { throw it }
             val body = when (url.path) {
-                "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", config)
-                "/berserker-secure/keyboard" -> JSONObject().put("code", 200).put("data", keyboard)
-                "/berserker-auth/oauth/token" -> tokenBody ?: JSONObject().put("access_token", "fake-token").put("token_type", "bearer").put("expires_in", 3600)
-                "/berserker-app/ykt/tsm/codebarPayinfo" -> JSONObject().put("code", 200).put("data", JSONArray().put(
-                    JSONObject().put("code", "ACCOUNT").put("status", paymentStatus).put("lostflag", lost).put("freezeflag", frozen)
-                        .put("account", "fake-account").put("payacc", "fake-payacc").put("paytype", "1").put("name", "Demo").put("accinfo_balance", balance)))
-                "/berserker-app/ykt/tsm/getCampusCards" -> cardBody ?: JSONObject().put("code", 200).put("data", JSONObject()
-                    .put("retcode", "0").put("card", JSONArray().put(JSONObject().put("account", "fake-account")
-                        .put("lostflag", lost).put("freezeflag", frozen).put("acc_status", 0))))
-                "/berserker-app/ykt/tsm/batchGetBarCodeGet" -> barcodeBody ?: JSONObject().put("code", 200).put("data", JSONObject().put("barcode", JSONArray().put("00000000000000000000")).put("expires", 17280))
+                "/berserker-app/frontInfo" -> jsonObjectOf("code" to (200), "data" to (config))
+                "/berserker-secure/keyboard" -> jsonObjectOf("code" to (200), "data" to (keyboard))
+                "/berserker-auth/oauth/token" -> tokenBody ?: jsonObjectOf("access_token" to ("fake-token"), "token_type" to ("bearer"), "expires_in" to (3600))
+                "/berserker-app/ykt/tsm/codebarPayinfo" -> jsonObjectOf("code" to (200), "data" to (jsonArrayOf(listOf(jsonObjectOf("code" to ("ACCOUNT"), "status" to (paymentStatus), "lostflag" to (lost), "freezeflag" to (frozen), "account" to ("fake-account"), "payacc" to ("fake-payacc"), "paytype" to ("1"), "name" to ("Demo"), "accinfo_balance" to (balance))))))
+                "/berserker-app/ykt/tsm/getCampusCards" -> cardBody ?: jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(jsonObjectOf("account" to ("fake-account"), "lostflag" to (lost), "freezeflag" to (frozen), "acc_status" to (0))))))))
+                "/berserker-app/ykt/tsm/batchGetBarCodeGet" -> barcodeBody ?: jsonObjectOf("code" to (200), "data" to (jsonObjectOf("barcode" to (jsonArrayOf(listOf("00000000000000000000"))), "expires" to (17280))))
                 else -> error("Unexpected request path")
             }
             FakeResponse(url, when { url.path.endsWith("/oauth/token") -> tokenStatus
@@ -94,7 +90,7 @@ class YktApiLoginTest {
         assertEquals(1, fake.calls.count { it.url.path.endsWith("/codebarPayinfo") })
     }
     @Test fun malformedBalancesCannotBecomeZeroOrTruncatedAmounts() = runBlocking {
-        for (balance in listOf(null, JSONObject.NULL, "", "oops", -1, 12.5, "9223372036854775808")) {
+        for (balance in listOf(null, JsonNull, "", "oops", -1, 12.5, "9223372036854775808")) {
             val fake = ScriptedApi(balance = balance)
             try { fake.api.paymentAccount("fake-token"); fail("Accepted malformed balance: $balance") }
             catch (_: YktException) { }
@@ -139,7 +135,7 @@ class YktApiLoginTest {
         assertEquals(1, fake.calls.size)
     }
     @Test fun rejectedPasswordIsNotRetried() = runBlocking {
-        val fake = ScriptedApi(tokenStatus = 400, tokenBody = JSONObject().put("error", "invalid_grant"))
+        val fake = ScriptedApi(tokenStatus = 400, tokenBody = jsonObjectOf("error" to ("invalid_grant")))
         try { fake.api.login(Credentials("123", "Aa1@")); fail("Expected rejection") } catch (_: InvalidCredentials) {}
         assertEquals(3, fake.calls.size)
     }
@@ -164,11 +160,9 @@ class YktApiLoginTest {
 
     @Test fun failedOrUnmatchedCardReadRemainsAnIndependentFailure() = runBlocking {
         for (body in listOf(
-            JSONObject().put("code", 500),
-            JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray()
-                .put(JSONObject().put("account", "other-card").put("lostflag", 1).put("freezeflag", 0).put("acc_status", 0)))),
-            JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray()
-                .put(JSONObject().put("account", "fake-account").put("lostflag", "invalid")))))) {
+            jsonObjectOf("code" to (500)),
+            jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(jsonObjectOf("account" to ("other-card"), "lostflag" to (1), "freezeflag" to (0), "acc_status" to (0)))))))),
+            jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(jsonObjectOf("account" to ("fake-account"), "lostflag" to ("invalid")))))))))) {
             val fake = ScriptedApi(cardBody = body)
             assertThrows(YktException::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
             assertEquals(1, fake.calls.size)
@@ -177,26 +171,24 @@ class YktApiLoginTest {
     }
 
     @Test fun duplicateMatchOrMalformedFreezeStatusCannotBePresentedAsVerified() = runBlocking {
-        val normal = JSONObject().put("account", "fake-account").put("lostflag", 0).put("freezeflag", 0).put("acc_status", 0)
-        for (cards in listOf(JSONArray().put(normal).put(normal),
-            JSONArray().put(JSONObject(normal.toString()).put("freezeflag", "invalid")),
-            JSONArray().put(JSONObject(normal.toString()).put("acc_status", "invalid")))) {
-            val fake = ScriptedApi(cardBody = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", cards)))
+        val normal = jsonObjectOf("account" to ("fake-account"), "lostflag" to (0), "freezeflag" to (0), "acc_status" to (0))
+        for (cards in listOf(jsonArrayOf(listOf(normal, normal)),
+            jsonArrayOf(listOf(parseObject(normal.toString()).withField("freezeflag", "invalid"))),
+            jsonArrayOf(listOf(parseObject(normal.toString()).withField("acc_status", "invalid"))))) {
+            val fake = ScriptedApi(cardBody = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (cards)))))
             assertThrows(YktException::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
             assertEquals(1, fake.calls.size)
         }
     }
 
     @Test fun lossOnAnotherCardDoesNotBlockTheMatchingPaymentAccount() = runBlocking {
-        val cards = JSONArray()
-            .put(JSONObject().put("account", "other-card").put("lostflag", 1).put("freezeflag", 0).put("acc_status", 0))
-            .put(JSONObject().put("account", "fake-account").put("lostflag", 0).put("freezeflag", 0).put("acc_status", 0))
-        val fake = ScriptedApi(cardBody = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", cards)))
+        val cards = jsonArrayOf(listOf(jsonObjectOf("account" to ("other-card"), "lostflag" to (1), "freezeflag" to (0), "acc_status" to (0)), jsonObjectOf("account" to ("fake-account"), "lostflag" to (0), "freezeflag" to (0), "acc_status" to (0))))
+        val fake = ScriptedApi(cardBody = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (cards)))))
         assertFalse(fake.api.paymentCard("fake-token", "fake-account").lost)
     }
 
     @Test fun cardReadAuthenticationFailureStillRequiresAuthentication() = runBlocking {
-        val fake = ScriptedApi(cardHttpStatus = 401, cardBody = JSONObject().put("code", 401))
+        val fake = ScriptedApi(cardHttpStatus = 401, cardBody = jsonObjectOf("code" to (401)))
         assertThrows(AuthenticationRequired::class.java) { runBlocking { fake.api.paymentCard("fake-token", "fake-account") } }
         Unit
     }
@@ -211,8 +203,7 @@ class YktApiLoginTest {
 
     @Test fun serverBarcodeRejectionKeepsCurrentAccountAndOriginalMessage() = runBlocking {
         val message = "  持卡人已挂失！\n"
-        val fake = ScriptedApi(barcodeBody = JSONObject().put("code", 60050)
-            .put("success", false).put("msg", message))
+        val fake = ScriptedApi(barcodeBody = jsonObjectOf("code" to (60050), "success" to (false), "msg" to (message)))
         val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
         assertEquals(message, error.message)
         assertEquals(1234L, error.account.balanceCents)
@@ -232,15 +223,14 @@ class YktApiLoginTest {
     }
 
     @Test fun emptyBarcodePreservesInnerServerReasonAndBalance() = runBlocking {
-        val fake = ScriptedApi(barcodeBody = JSONObject().put("code", 200).put("data", JSONObject()
-            .put("barcode", JSONArray()).put("errmsg", "账户状态提示")))
+        val fake = ScriptedApi(barcodeBody = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("barcode" to (jsonArrayOf()), "errmsg" to ("账户状态提示")))))
         val error = assertThrows(PaymentCodeUnavailable::class.java) { runBlocking { fake.api.payment("fake-token") } }
         assertEquals("账户状态提示", error.message)
         assertEquals(1234L, error.account.balanceCents)
     }
 
     @Test fun barcodeAuthenticationFailureStillRequiresAuthentication() = runBlocking {
-        val fake = ScriptedApi(barcodeHttpStatus = 401, barcodeBody = JSONObject().put("code", 401))
+        val fake = ScriptedApi(barcodeHttpStatus = 401, barcodeBody = jsonObjectOf("code" to (401)))
         assertThrows(AuthenticationRequired::class.java) { runBlocking { fake.api.payment("fake-token") } }
         Unit
     }

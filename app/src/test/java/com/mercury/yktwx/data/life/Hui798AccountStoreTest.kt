@@ -1,14 +1,31 @@
 package com.mercury.yktwx.data.life
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class Hui798AccountStoreTest {
+    @Test fun unversionedFlatRecordsReadThroughCurrentDtoAndUnknownStartCanBeRemoved() {
+        val records = Records()
+        records.data["account"] = """{"phone":"13800000000","token":"fixture-token"}"""
+        records.data["sessions"] = """{"owner":"13800000000","items":[{"deviceId":"fixture-device","name":"用水","phase":"Starting","attemptedAt":100000,"acknowledged":true,"sessionId":"old-id"}]}"""
+        val store = Hui798AccountStore(records)
+        val restored = store.sessions().single()
+        assertEquals("old-id", restored.sessionId)
+        assertTrue(restored.uncertain)
+        assertTrue(restored.startAcknowledged)
+        assertTrue(restored.canDismissException)
+        store.clearAccount()
+        store.removeSession("old-id")
+        assertEquals(2L, records.read("sessions")!!.strictLongValue("schemaVersion"))
+        store.saveAccount(Hui798Account("13800000000", "renewed-token"))
+        assertTrue(store.sessions().isEmpty())
+    }
     private class Records : LifeDeviceRecords {
         val data = mutableMapOf<String, String>()
         var failWrite = false
-        override fun read(key: String) = data[key]?.let(::JSONObject)
+        override fun read(key: String) = data[key]?.let(::parseObject)
         override fun write(values: Map<String, String>) { if (failWrite) throw IllegalStateException("storage unavailable"); data.putAll(values) }
         override fun remove(key: String) { data.remove(key) }
     }
@@ -43,7 +60,7 @@ class Hui798AccountStoreTest {
         val records = Records(); val store = Hui798AccountStore(records)
         val account = Hui798Account("13800000000", "fixture-token", "fixture-user")
         store.saveAccount(account); assertEquals(account, Hui798AccountStore(records).account())
-        records.data["account"] = records.read("account")!!.apply { remove("userId") }.toString()
+        records.data["account"] = records.read("account")!!.withField("userId", null).toString()
         assertEquals(account.copy(userId = null), store.account())
         store.saveAccount(account); assertEquals(account, store.account())
     }

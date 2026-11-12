@@ -1,9 +1,9 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -17,8 +17,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 internal interface DisplayCodec<T> {
-    fun encode(value: T): JSONObject
-    fun decode(json: JSONObject): T
+    fun encode(value: T): JsonObject
+    fun decode(json: JsonObject): T
 }
 
 /** Disposable, bounded display snapshots. Never stores credentials, codes or payment authority. */
@@ -29,7 +29,7 @@ class DisplayCache internal constructor(
     private val limitBytes: Long = 5 * 1024 * 1024,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    internal constructor(context: Context) : this(File(context.cacheDir, "display-v1"),
+    internal constructor(context: Context) : this(File(context.cacheDir, "display-v2"),
         DisplayCipher()::seal, DisplayCipher()::open)
 
     private fun digest(value: String) = MessageDigest.getInstance("SHA-256")
@@ -41,9 +41,9 @@ class DisplayCache internal constructor(
         if (!target.isFile) return null
         return try {
             require(target.length() <= limitBytes)
-            val json = JSONObject(String(open(target.readBytes(), target.name.toByteArray()), Charsets.UTF_8))
-            require(json.getInt("version") == 1 && json.getLong("successAt") > 0)
-            codec.decode(json.getJSONObject("value")).also { target.setLastModified(clock()) }
+            val json = parseObject(String(open(target.readBytes(), target.name.toByteArray()), Charsets.UTF_8))
+            require(json.intValue("version") == 2 && json.longValue("successAt") > 0)
+            codec.decode(json.objectValue("value")).also { target.setLastModified(clock()) }
         } catch (_: Exception) { target.delete(); null }
     }
 
@@ -51,7 +51,7 @@ class DisplayCache internal constructor(
         if (owner.isBlank()) return
         try {
             val target = file(owner, key)
-            val json = JSONObject().put("version", 1).put("successAt", clock()).put("value", codec.encode(value))
+            val json = jsonObjectOf("version" to 2, "successAt" to clock(), "value" to codec.encode(value))
             val encrypted = seal(json.toString().toByteArray(Charsets.UTF_8), target.name.toByteArray())
             if (encrypted.size > minOf(limitBytes / 2, 512 * 1024)) return
             if (!directory.isDirectory && !directory.mkdirs()) return

@@ -5,6 +5,8 @@ import java.net.URLDecoder
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 /** Device codes use explicit fields; a UUID is the observed laundry NQT, not an IMEI. */
 object LifeDeviceCode {
@@ -29,7 +31,7 @@ object LifeDeviceCode {
     }
 }
 
-enum class LaundryPhase { Checking, Creating, Paying, Starting, Running, Refunding, Ended, Closed }
+@Serializable enum class LaundryPhase { Checking, Creating, Paying, Starting, Running, Refunding, Ended, Closed }
 data class LaundryQuote(val deviceId: String, val skuId: String, val price: String, val minutes: Int?,
     val channels: List<LifePayChannel>) {
     val payable: BigDecimal get() = price.toBigDecimal()
@@ -39,13 +41,13 @@ data class LaundryReading(val orderNo: String, val orderId: String, val deviceId
     val status: Int?, val price: String, val program: String, val minutes: Int?,
     val paidAtMillis: Long?, val expectedEndMillis: Long?, val finishedAtMillis: Long?, val createdAtMillis: Long? = null,
     val deviceName: String = "", val shopName: String = "", val payTypeName: String = "", val programFeature: String = "")
-data class LaundrySession(val device: LifeDevice, val skuId: String, val price: String, val payMethod: String,
+@Serializable data class LaundrySession(val device: LifeDevice, val skuId: String, val price: String, val payMethod: String,
     val phase: LaundryPhase = LaundryPhase.Checking, val createSent: Boolean = false,
     val orderNo: String = "", val orderId: String = "", val paymentSent: Boolean = false,
-    val paid: Boolean = false, val minutes: Int? = null, val startedAtMillis: Long? = null,
-    val expectedEndMillis: Long? = null, val finishedAtMillis: Long? = null,
-    val sessionId: String = java.util.UUID.randomUUID().toString(), val createdAtMillis: Long? = null,
-    val payTypeName: String = "", val completionObservedAtMillis: Long? = null,
+    val paid: Boolean = false, val minutes: Int? = null, @SerialName("startedAt") val startedAtMillis: Long? = null,
+    @SerialName("expectedEnd") val expectedEndMillis: Long? = null, @SerialName("finishedAt") val finishedAtMillis: Long? = null,
+    val sessionId: String = java.util.UUID.randomUUID().toString(), @SerialName("createdAt") val createdAtMillis: Long? = null,
+    val payTypeName: String = "", @SerialName("completionObservedAt") val completionObservedAtMillis: Long? = null,
     val creationUncertain: Boolean = false, val islandDismissed: Boolean = false, val serverStatus: Int? = null) {
     val active: Boolean get() = phase !in setOf(LaundryPhase.Ended, LaundryPhase.Closed)
     val canDismissUnknownCreation: Boolean get() = phase == LaundryPhase.Creating && createSent &&

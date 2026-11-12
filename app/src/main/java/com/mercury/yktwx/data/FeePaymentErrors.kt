@@ -1,6 +1,6 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
@@ -17,14 +17,14 @@ internal class FeeOrderAlreadyPaid : YktException("订单已完成，正在确�
 internal class FeePaymentNotStarted(message: String) : YktException(message)
 
 internal object FeePaymentErrors {
-    fun rejection(body: JSONObject): FeePaymentRejected? {
+    fun rejection(body: JsonObject): FeePaymentRejected? {
         if (PaymentErrors.feeSucceeded(body)) return null
-        val reason = when (body.optInt("code")) {
+        val reason = when (body.intOrDefault("code")) {
             60005 -> FeeRejectionReason.Password
             60050 -> FeeRejectionReason.Rejected
             else -> FeeRejectionReason.Other
         }
-        return FeePaymentRejected(reason, body.opt("msg") as? String)
+        return FeePaymentRejected(reason, body.scalarOrElement("msg") as? String)
     }
 }
 

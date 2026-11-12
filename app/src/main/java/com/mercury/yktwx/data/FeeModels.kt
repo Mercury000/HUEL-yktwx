@@ -1,6 +1,6 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
 
 /** Public catalog only. Location IDs and payment methods always come from the server. */
 enum class FeeProject(val id: String, val label: String, val network: Boolean = false) {
@@ -51,9 +51,9 @@ interface FeeService {
     suspend fun feeResult(token: String, order: PendingRecharge): RechargeResult
 }
 
-internal fun JSONObject.jsonTargetEquals(other: JSONObject): Boolean = keys().asSequence().toSet() == other.keys().asSequence().toSet() && keys().asSequence().all { key ->
-    val left = opt(key); val right = other.opt(key)
-    if (left is JSONObject && right is JSONObject) left.jsonTargetEquals(right)
+internal fun JsonObject.jsonTargetEquals(other: JsonObject): Boolean = keys == other.keys && keys.all { key ->
+    val left = scalarOrElement(key); val right = other.scalarOrElement(key)
+    if (left is JsonObject && right is JsonObject) left.jsonTargetEquals(right)
     else if (left is Number && right is Number) java.math.BigDecimal(left.toString()).compareTo(java.math.BigDecimal(right.toString())) == 0
     else left == right
 }

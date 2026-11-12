@@ -1,8 +1,8 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import android.content.Context
 import android.content.SharedPreferences
-import org.json.JSONObject
 
 /** Throttling belongs to the installed version, independent of account and login caches. */
 internal class UpdateCheckStore(private val prefs: SharedPreferences, private var key: String,
@@ -77,10 +77,10 @@ internal class UpdateCheckStore(private val prefs: SharedPreferences, private va
             return best.copy(maxForcedVersionCode = forcedBoundary().coerceAtMost(best.versionCode - 1))
         }
         return runCatching { prefs.getString("$key:release", null)?.let { body ->
-            val json = JSONObject(body)
+            val json = parseObject(body)
             // Unsigned legacy caches cannot introduce forced policy or installable APKs.
-            UpdateRelease(json.getInt("versionCode"), json.getString("versionName"), json.getString("notes"),
-                json.getString("downloadPageUrl"))
+            UpdateRelease(json.intValue("versionCode"), json.stringValue("versionName"), json.stringValue("notes"),
+                json.stringValue("downloadPageUrl"))
         } }.getOrNull()
     }
 
@@ -91,9 +91,7 @@ internal class UpdateCheckStore(private val prefs: SharedPreferences, private va
             editor.putBoolean("$policyKey:policy:$it:available", it in available)
         }
         if (release == null) editor.remove("$key:release")
-        else if (release.signedManifest.isEmpty()) editor.putString("$key:release", JSONObject().put("versionCode", release.versionCode)
-                .put("versionName", release.versionName).put("notes", release.notes)
-                .put("downloadPageUrl", release.downloadPageUrl).toString())
+        else if (release.signedManifest.isEmpty()) editor.putString("$key:release", jsonObjectOf("versionCode" to (release.versionCode), "versionName" to (release.versionName), "notes" to (release.notes), "downloadPageUrl" to (release.downloadPageUrl)).toString())
         else editor.remove("$key:release")
         editor.apply()
     }

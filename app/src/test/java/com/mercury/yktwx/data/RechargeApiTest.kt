@@ -1,8 +1,7 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -30,19 +29,14 @@ class RechargeApiTest {
     private fun params(text: String) = text.split('&').filter { it.isNotEmpty() }.associate {
         val p = it.split('=', limit = 2); URLDecoder.decode(p[0], "UTF-8") to URLDecoder.decode(p.getOrElse(1) { "" }, "UTF-8")
     }
-    private fun cards() = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray().put(
-        JSONObject().put("account", "fake-card").put("lostflag", 0).put("freezeflag", 0).put("accinfo", JSONArray().put(
-            JSONObject().put("type", "fake-account").put("name", "统一账户").put("balance", 2000)
-        )))))
-    private fun result(status: Int, amount: Int = 10) = JSONObject().put("code", 200).put("orderList", JSONArray().put(JSONObject()
-        .put("orderid", "FAKE-ORDER").put("payid", 81).put("third_party", "fake-account").put("tranamt", amount).put("actulamt", amount)
-        .put("status", status).put("feeitemid", 0).put("feeitemlist", JSONArray().put(JSONObject().put("feeitemid", 401)))))
+    private fun cards() = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(jsonObjectOf("account" to ("fake-card"), "lostflag" to (0), "freezeflag" to (0), "accinfo" to (jsonArrayOf(listOf(jsonObjectOf("type" to ("fake-account"), "name" to ("统一账户"), "balance" to (2000))))))))))))
+    private fun result(status: Int, amount: Int = 10) = jsonObjectOf("code" to (200), "orderList" to (jsonArrayOf(listOf(jsonObjectOf("orderid" to ("FAKE-ORDER"), "payid" to (81), "third_party" to ("fake-account"), "tranamt" to (amount), "actulamt" to (amount), "status" to (status), "feeitemid" to (0), "feeitemlist" to (jsonArrayOf(listOf(jsonObjectOf("feeitemid" to (401))))))))))
     @Test fun configurationReadsTopLevelFeeAndMapsElectronicAccount() = runBlocking {
         val calls = mutableListOf<FakeResponse>()
         val api = fixtureRechargeApi { url ->
             val payload = when (url.path) {
-                "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", JSONObject().put("getFrontConfig", "{\"recharge\":\"401\"}").put("getEcardConfig", "{\"type\":\"1\"}"))
-                "/charge/feeitem/singleFeeitem" -> JSONObject().put("code", 200).put("feeitem", JSONObject().put("layout", "10,50,100").put("flag", "1100000000"))
+                "/berserker-app/frontInfo" -> jsonObjectOf("code" to (200), "data" to (jsonObjectOf("getFrontConfig" to ("{\"recharge\":\"401\"}"), "getEcardConfig" to ("{\"type\":\"1\"}"))))
+                "/charge/feeitem/singleFeeitem" -> jsonObjectOf("code" to (200), "feeitem" to (jsonObjectOf("layout" to ("10,50,100"), "flag" to ("1100000000"))))
                 else -> cards()
             }
             FakeResponse(url, 200, payload.toString()).also(calls::add)
@@ -56,15 +50,14 @@ class RechargeApiTest {
         assertNull(c.amountError(80_000)) // No invented 500 yuan ceiling when the config is silent.
         assertEquals("recharge", params(calls.last().url.query)["scene"])
         assertTrue(calls.all { it.disconnected && it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" })
-        val front = JSONObject().put("rechargeMaxAmount", "600")
-        val fee = JSONObject().put("retain_money", "1").put("maxmoney", "800").put("flag", "1100000200")
+        val front = jsonObjectOf("rechargeMaxAmount" to ("600"))
+        val fee = jsonObjectOf("retain_money" to ("1"), "maxmoney" to ("800"), "flag" to ("1100000200"))
         val limited = RechargeApi.amountConfiguration("401", "fake-account", front, fee)
         assertEquals(100L, limited.minimumCents)
         assertEquals(80_000L, limited.maximumCents)
         assertTrue(limited.integerOnly)
         assertEquals("单次最高 ¥ 800", limited.amountError(80_001))
-        fee.remove("maxmoney")
-        assertEquals(60_000L, RechargeApi.amountConfiguration("401", "fake-account", front, fee).maximumCents)
+        assertEquals(60_000L, RechargeApi.amountConfiguration("401", "fake-account", front, fee.withField("maxmoney", null)).maximumCents)
     }
     @Test fun createUsesSignedPostAndDoesNotFollowTokenRedirect() = runBlocking {
         lateinit var call: FakeResponse
@@ -110,8 +103,8 @@ class RechargeApiTest {
         val form = "<form method='POST' action='" + action + "'><input name='' value='' type='hidden'></form><script>doNotExecute()</script>"
         val api = fixtureRechargeApi { url ->
             val text = when (url.path) {
-                "/charge/pay/getpayinfo" -> JSONObject().put("code", 200).put("order", JSONObject().put("orderid", "FAKE-ORDER").put("tranamt", 10)).put("payList", JSONArray().put(JSONObject().put("payid", 81).put("code", "CAMPUSCARD").put("remark", "weixin"))).toString()
-                "/blade-pay/pay" -> JSONObject().put("code", 200).put("data", JSONObject().put("orderid", "FAKE-ORDER").put("paysubmit", form)).toString()
+                "/charge/pay/getpayinfo" -> jsonObjectOf("code" to (200), "order" to (jsonObjectOf("orderid" to ("FAKE-ORDER"), "tranamt" to (10))), "payList" to (jsonArrayOf(listOf(jsonObjectOf("payid" to (81), "code" to ("CAMPUSCARD"), "remark" to ("weixin")))))).toString()
+                "/blade-pay/pay" -> jsonObjectOf("code" to (200), "data" to (jsonObjectOf("orderid" to ("FAKE-ORDER"), "paysubmit" to (form)))).toString()
                 else -> "<script>var url='weixin://wap/pay?prepayid%3Dfake-prepay&package=fake&noncestr=fake-nonce&sign=fake-sign';</script>"
             }
             FakeResponse(url, 200, text).also(calls::add)
@@ -139,7 +132,8 @@ class RechargeApiTest {
         val unpaid = fixtureRechargeApi { url -> FakeResponse(url, 200, result(0).toString()) }.rechargeResult("fake-token", pending())
         assertFalse(unpaid.paid)
         for (status in listOf(0, 2, 9)) {
-            val response = result(status).apply { getJSONArray("orderList").getJSONObject(0).put("msg", "后端订单提示") }
+            val response = result(status).let { it.withField("orderList",
+                jsonArrayOf(listOf(it.arrayValue("orderList").objectValue(0).withField("msg", "后端订单提示")))) }
             val checked = fixtureRechargeApi { url -> FakeResponse(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
             assertEquals("后端订单提示", checked.message)
             assertEquals(status, checked.serverStatus)
@@ -151,11 +145,11 @@ class RechargeApiTest {
             "payid" to 99,
             "tranamt" to 20,
             "actulamt" to 20,
-            "feeitemlist" to JSONArray().put(JSONObject().put("feeitemid", 999)),
+            "feeitemlist" to jsonArrayOf(listOf(jsonObjectOf("feeitemid" to (999)))),
         )
         for ((field, value) in conflictingFields) {
-            val response = result(1)
-            response.getJSONArray("orderList").getJSONObject(0).put(field, value)
+            val response = result(1).let { it.withField("orderList",
+                jsonArrayOf(listOf(it.arrayValue("orderList").objectValue(0).withField(field, value)))) }
             try {
                 fixtureRechargeApi { url -> FakeResponse(url, 200, response.toString()) }.rechargeResult("fake-token", pending())
                 fail("Successful response must match the submitted $field")
@@ -178,8 +172,8 @@ class RechargeApiTest {
         api.createRecharge("fake-token", config, 1000)
         val p = params(call.sent.toString("UTF-8"))
         assertEquals("other-target", p["yktcard"])
-        assertTrue(JSONObject(p.getValue("abstracts")).getBoolean("othersRecharge"))
-        assertEquals("recharge", JSONObject(p.getValue("abstracts")).getString("type"))
+        assertTrue(parseObject(p.getValue("abstracts")).booleanValue("othersRecharge"))
+        assertEquals("recharge", parseObject(p.getValue("abstracts")).stringValue("type"))
         assertEquals("10.00", p["tranamt"]); assertEquals(64, p.getValue("SIGN").length)
         val pending = PendingRecharge("payer", config.targetId, "401", 1000, recipient = recipient).withOrder("FAKE-ORDER", "81")
         assertSame(recipient, pending.recipient); assertEquals("other-target", pending.targetId)
@@ -192,9 +186,7 @@ class RechargeApiTest {
             val calls = mutableListOf<FakeResponse>()
             val api = fixtureRechargeApi { url ->
                 val text = when (url.path) {
-                    "/charge/pay/getpayinfo" -> JSONObject().put("code", 200).put("order", JSONObject()
-                        .put("orderid", "FAKE-ORDER").put("third_party", "fake-account").put("tranamt", 10))
-                        .put("payList", JSONArray().put(JSONObject().put("payid", 81).put("code", "CAMPUSCARD").put("remark", "weixin"))).toString()
+                    "/charge/pay/getpayinfo" -> jsonObjectOf("code" to (200), "order" to (jsonObjectOf("orderid" to ("FAKE-ORDER"), "third_party" to ("fake-account"), "tranamt" to (10))), "payList" to (jsonArrayOf(listOf(jsonObjectOf("payid" to (81), "code" to ("CAMPUSCARD"), "remark" to ("weixin")))))).toString()
                     "/blade-pay/pay" -> "{\"code\":60007,\"success\":false,\"data\":null,\"msg\":\"账户已挂失\"}"
                     else -> error("No external payment bridge is allowed")
                 }
@@ -243,8 +235,7 @@ class RechargeApiTest {
 
     @Test fun lostPaymentKeepsOriginalMessageAndOfficialEmptyFallback() {
         for (text in listOf("账户已挂失", "  服务端提示\n", "<b>业务提示</b>", "提示".repeat(160), "", null)) {
-            val body = JSONObject().put("code", 60007).put("success", false).put("data", JSONObject.NULL)
-                .put("msg", text ?: JSONObject.NULL)
+            val body = jsonObjectOf("code" to (60007), "success" to (false), "data" to (JsonNull), "msg" to (text ?: JsonNull))
             val error = assertThrows(RechargePaymentRejected::class.java) {
                 RechargeErrors.paymentFailure(PaymentHttp.Response(200, body.toString(), null))
             }
@@ -272,14 +263,16 @@ class RechargeApiTest {
     @Test fun ownRechargeSelectionHonorsOfficialLossAndFreezeConfiguration() = runBlocking {
         for ((key, blocked) in listOf("showLost" to "已挂失", "freezeRecharge" to "已冻结")) {
             for (allow in listOf(true, false)) {
-                val response = cards().apply { getJSONObject("data").getJSONArray("card").getJSONObject(0)
-                    .put(if (key == "showLost") "lostflag" else "freezeflag", 1) }
-                val settings = JSONObject().put("type", "1").put(key, if (allow) "1" else "0")
+                val response = cards().let { body ->
+                    val data = body.objectValue("data")
+                    body.withField("data", data.withField("card", jsonArrayOf(listOf(data.arrayValue("card").objectValue(0)
+                        .withField(if (key == "showLost") "lostflag" else "freezeflag", 1)))))
+                }
+                val settings = jsonObjectOf("type" to ("1"), key to (if (allow) "1" else "0"))
                 val api = fixtureRechargeApi { url ->
                     val payload = when (url.path) {
-                        "/berserker-app/frontInfo" -> JSONObject().put("code", 200).put("data", JSONObject()
-                            .put("getFrontConfig", "{\"recharge\":\"401\"}").put("getEcardConfig", settings.toString()))
-                        "/charge/feeitem/singleFeeitem" -> JSONObject().put("code", 200).put("feeitem", JSONObject().put("layout", "10").put("flag", "1100000000"))
+                        "/berserker-app/frontInfo" -> jsonObjectOf("code" to (200), "data" to (jsonObjectOf("getFrontConfig" to ("{\"recharge\":\"401\"}"), "getEcardConfig" to (settings.toString()))))
+                        "/charge/feeitem/singleFeeitem" -> jsonObjectOf("code" to (200), "feeitem" to (jsonObjectOf("layout" to ("10"), "flag" to ("1100000000"))))
                         else -> response
                     }
                     FakeResponse(url, 200, payload.toString())
@@ -294,13 +287,13 @@ class RechargeApiTest {
     }
 
     @Test fun officialFreezeOverrideAndMissingFlagsAreNotGuessed() {
-        val card = JSONObject().put("lostflag", 1).put("freezeflag", 1).put("acc_status", 99)
+        val card = jsonObjectOf("lostflag" to (1), "freezeflag" to (1), "acc_status" to (99))
         val error = assertThrows(RechargeTargetUnavailable::class.java) {
-            RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "0").put("freezeRecharge", "0"))
+            RechargeErrors.requireAvailable(card, jsonObjectOf("showLost" to ("0"), "freezeRecharge" to ("0")))
         }
         assertEquals("已冻结，禁止充值，请先解冻", error.message)
-        RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "1")) // Missing freeze setting does not block.
-        RechargeErrors.requireAvailable(card, JSONObject().put("showLost", "1").put("freezeRecharge", "1"))
+        RechargeErrors.requireAvailable(card, jsonObjectOf("showLost" to ("1"))) // Missing freeze setting does not block.
+        RechargeErrors.requireAvailable(card, jsonObjectOf("showLost" to ("1"), "freezeRecharge" to ("1")))
     }
 
 }

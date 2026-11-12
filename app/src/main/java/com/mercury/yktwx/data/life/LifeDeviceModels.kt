@@ -2,20 +2,23 @@ package com.mercury.yktwx.data.life
 
 import java.net.URI
 import java.net.URLDecoder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣") }
 
-data class LifeAccount(val phone: String, val token: String) {
+@Serializable data class LifeAccount(val phone: String, val token: String) {
     val maskedPhone: String get() = if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else ""
+    override fun toString() = "LifeAccount([redacted])"
 }
 
-data class LifeSku(val id: String, val name: String, val available: Boolean?, val price: String = "", val feature: String = "",
+@Serializable data class LifeSku(val id: String, val name: String, val available: Boolean?, val price: String = "", val feature: String = "",
     val minutes: Int? = null)
-data class LifePayChannel(val method: String, val name: String, val available: Boolean?,
+@Serializable data class LifePayChannel(val method: String, val name: String, val available: Boolean?,
     val needsOpen: Boolean?, val remark: String? = null, val link: String? = null)
 
 /** Route shopId and detail shopId have different meanings in the captured protocol. */
-data class LifeDevice(
+@Serializable data class LifeDevice(
     val id: String, val serial: String, val name: String, val category: String,
     val routeShopId: String, val orgId: String, val shopId: String, val imei: String,
     val shopName: String, val address: String, val payment: String, val bluetooth: Boolean?,
@@ -46,11 +49,12 @@ data class LifeDevice(
     }
 }
 
-enum class WaterPhase { Ready, Starting, Running, Stopping, Ended }
-data class WaterSession(
+@Serializable enum class WaterPhase { Ready, Starting, Running, Stopping, Ended }
+@Serializable data class WaterSession(
     val device: LifeDevice, val skuId: String, val phase: WaterPhase = WaterPhase.Ready,
     val startSent: Boolean = false, val messageId: String = "", val orderNo: String = "",
-    val orderId: String = "", val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
+    val orderId: String = "", @SerialName("startedAt") val startedAtMillis: Long? = null,
+    @SerialName("endedAt") val endedAtMillis: Long? = null,
     val finalized: Boolean = false,
     val sessionId: String = java.util.UUID.randomUUID().toString(),
     val creationUncertain: Boolean = false, val fault: String? = null,

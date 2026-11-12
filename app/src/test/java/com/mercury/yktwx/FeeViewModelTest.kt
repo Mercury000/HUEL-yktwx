@@ -1,10 +1,11 @@
 package com.mercury.yktwx
 
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
-import com.mercury.yktwx.data.*
 import com.mercury.yktwx.analytics.AppAnalytics
 import com.mercury.yktwx.analytics.RecordingAnalyticsBackend
 import kotlinx.coroutines.CompletableDeferred
@@ -46,7 +47,7 @@ class FeeViewModelTest {
     @Test fun passwordRejectionKeepsOrderAndKeyboardForExplicitPasswordCorrection() {
         openPassword()
         val before = model.state.value
-        fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
+        fees.failure = FeePaymentErrors.rejection(parseObject(
             "{\"code\":60005,\"success\":false,\"data\":null,\"msg\":\"账户密码错误\"}"))
         model.payAccount("demo-type", "123456")
         await { fees.payments == 1 && !model.state.value.loading }
@@ -205,7 +206,7 @@ class FeeViewModelTest {
 
     @Test fun server60050ShowsOfficialMessageInResultWithoutAutomaticallyPaying() {
         openPassword()
-        fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
+        fees.failure = FeePaymentErrors.rejection(parseObject(
             "{\"code\":60050,\"success\":false,\"data\":null,\"msg\":\"账户余额不足！\"}"))
         model.payAccount("demo-type", "123456")
         await { !model.state.value.loading }
@@ -535,7 +536,7 @@ class FeeViewModelTest {
         model.open(FeeProject.Network, "test-user", false)
         await { !model.state.value.loading && model.state.value.query != null }
         val message = "金额大于每笔交易允许的最大金额300元"
-        fees.createFailure = FeePaymentErrors.rejection(org.json.JSONObject(
+        fees.createFailure = FeePaymentErrors.rejection(parseObject(
             "{\"code\":500,\"success\":false,\"data\":null,\"msg\":\"$message\"}"))
         model.createWithMethod(100, "ACCOUNTTSM")
         await { !model.state.value.loading && model.state.value.stage == FeeStage.Result }
@@ -714,7 +715,7 @@ class FeeViewModelTest {
     }
     @Test fun lost60050KeepsBackendReasonAndDoesNotSuggestRechargingOrQuery() {
         openPassword()
-        fees.failure = FeePaymentErrors.rejection(org.json.JSONObject(
+        fees.failure = FeePaymentErrors.rejection(parseObject(
             "{\"code\":60050,\"success\":false,\"data\":null,\"msg\":\"持卡人已挂失！\"}"))
         model.payAccount("demo-type", "123456")
         await { !model.state.value.loading }
