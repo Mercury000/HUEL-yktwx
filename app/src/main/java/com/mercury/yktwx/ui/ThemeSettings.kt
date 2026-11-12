@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
+import com.mercury.yktwx.BuildConfig
 import com.mercury.yktwx.data.life.LifeProvider
 
 /** Persistent UI preferences, including SonyPods theme controls with their original defaults. */
@@ -19,6 +20,13 @@ class ThemeSettings(context: Context) {
     val paymentBrightness = mutableStateOf(prefs.getBoolean("payment_brightness", true))
     val preventScreenshots = mutableStateOf(prefs.getBoolean("prevent_screenshots", true))
     val automaticUpdates = mutableStateOf(prefs.getBoolean("automatic_updates", true))
+    private val updatePrefs = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
+    val updateChannel = mutableStateOf(updatePrefs.getString("${BuildConfig.APPLICATION_ID}:channel", BuildConfig.UPDATE_CHANNEL)
+        ?.takeIf { it in listOf("stable", "beta") } ?: "stable")
+    init {
+        if (!updatePrefs.contains("${BuildConfig.APPLICATION_ID}:channel"))
+            updatePrefs.edit().putString("${BuildConfig.APPLICATION_ID}:channel", updateChannel.value).apply()
+    }
     val pangguiLoginNoticeDismissed = mutableStateOf(prefs.getBoolean("panggui_login_notice_dismissed", false))
     val hui798LoginNoticeDismissed = mutableStateOf(prefs.getBoolean("hui798_login_notice_dismissed", false))
     fun dismissLifeLoginNotice(provider: LifeProvider) {
@@ -40,4 +48,9 @@ class ThemeSettings(context: Context) {
     fun setPaymentBrightness(v: Boolean) { paymentBrightness.value = v; prefs.edit().putBoolean("payment_brightness", v).apply() }
     fun setPreventScreenshots(v: Boolean) { preventScreenshots.value = v; prefs.edit().putBoolean("prevent_screenshots", v).apply() }
     fun setAutomaticUpdates(v: Boolean) { automaticUpdates.value = v; prefs.edit().putBoolean("automatic_updates", v).apply() }
+    fun setUpdateChannel(value: String) {
+        require(value in listOf("stable", "beta"))
+        updateChannel.value = value
+        updatePrefs.edit().putString("${BuildConfig.APPLICATION_ID}:channel", value).apply()
+    }
 }

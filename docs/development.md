@@ -16,6 +16,8 @@
 
 `assemblePreview` 使用独立 `.preview` 包名。调试和预览从 `app/src/uiPreview/` 读取样本，release 使用 `app/src/production/` 禁用预览实现。
 
+版本从 `version.txt` 与 `ci-version.properties` 读取，CI 显式通过 `APP_BUILD_VERSION_FILE` 使用生成的版本文件。
+
 ## 测试
 
 按改动范围选择直接相关的测试，例如：

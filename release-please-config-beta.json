@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "1efc687c78bce3d077f6ecca687f5756d2f5dd8d",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "versioning": "prerelease",
+      "prerelease": true,
+      "prerelease-type": "beta",
+      "version-file": "version.txt",
+      "changelog-path": "CHANGELOG.md",
+      "draft": true,
+      "force-tag-creation": true
+    }
+  }
+}
