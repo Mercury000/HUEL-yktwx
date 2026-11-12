@@ -8,13 +8,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mercury.yktwx.data.UsageNotice
+import com.mercury.yktwx.analytics.AppAnalytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Independent of display caches and UI settings; logout explicitly revokes this record. */
-class UsageConsent internal constructor(private val prefs: SharedPreferences, private val hash: String, private val previousLogin: Boolean = false) {
+class UsageConsent internal constructor(private val prefs: SharedPreferences, private val hash: String, private val previousLogin: Boolean = false,
+    private val onRevoked: () -> Unit = {}) {
     constructor(context: Context) : this(context.getSharedPreferences("usage_consent", Context.MODE_PRIVATE), UsageNotice.hash,
-        context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE).contains("credentials"))
+        context.getSharedPreferences("encrypted_account", Context.MODE_PRIVATE).contains("credentials"),
+        { AppAnalytics.from(context).revoke() })
     // This history explains why confirmation is needed; it never authorizes business requests.
     private var previousHash by mutableStateOf(prefs.getString("accepted_hash", null) ?: prefs.getString("known_hash", null))
     val confirmationHint: String?
@@ -41,6 +44,7 @@ class UsageConsent internal constructor(private val prefs: SharedPreferences, pr
 
     fun revoke() {
         accepted = false
+        onRevoked()
         prefs.edit { remove("accepted_hash"); remove("accepted_at") }
     }
 }

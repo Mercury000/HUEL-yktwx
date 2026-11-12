@@ -65,10 +65,13 @@ def main():
     build_type = "release" if publish else os.environ.get("REQUESTED_BUILD_TYPE", "debug") or "debug"
     if build_type not in ("debug", "release"):
         raise ValueError("Invalid build type")
+    umeng_enabled = build_type == "release" and (
+        publish or event == "workflow_dispatch" and os.environ.get("REQUESTED_UMENG_ENABLED") == "true")
     Path("build-version.properties").write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
     Path("build-metadata.json").write_text(json.dumps(values, indent=2) + "\n", encoding="utf-8")
     output(dict(version_name=values["versionName"], version_code=values["versionCode"], channel=channel,
-                release_tag=tag, publish=str(publish).lower(), build_type=build_type))
+                release_tag=tag, publish=str(publish).lower(), build_type=build_type,
+                umeng_enabled=str(umeng_enabled).lower()))
 
 
 if __name__ == "__main__":

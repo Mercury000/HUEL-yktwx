@@ -3,6 +3,7 @@ package com.mercury.yktwx
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
@@ -47,6 +48,9 @@ class RechargeViewModel internal constructor(
     private var attempt = 0L
     private val resultPoller = OrderResultPoller(viewModelScope, checkDelayMillis)
     private var paymentExplicitlyRejected = false
+    private val analytics get() = AppAnalytics.from(getApplication())
+    private var analyticsAttempt: AnalyticsAttempt? = null
+    private var analyticsFeature = AnalyticsFeature.RechargeSelf
     private val paymentReturn = PaymentReturnObserver(
         viewModelScope, { task }, { mutable.value.loading && mutable.value.phase == RechargePhase.Checking }, ::checkResult,
     )
@@ -99,6 +103,8 @@ class RechargeViewModel internal constructor(
         val config = state.config ?: return
         config.amountError(amountCents)?.let { update(error = it, errorFields = setOf(FormField.Amount)); return }
         if (!repository.ownsAccount(owner)) { update(error = "账户已切换，请重新打开充值"); return }
+        analyticsFeature = if (config.recipient == null) AnalyticsFeature.RechargeSelf else AnalyticsFeature.RechargeOther
+        analyticsAttempt = analytics.submit(analyticsFeature)
         val current = attempt
         val pending = PendingRecharge(owner, config.targetId, config.feeItemId, amountCents, recipient = config.recipient)
         update(loading = true, pending = pending, phase = RechargePhase.Creating, error = null)
@@ -126,12 +132,16 @@ class RechargeViewModel internal constructor(
             catch (e: RechargePaymentRejected) {
                 if (current == attempt) {
                     paymentExplicitlyRejected = true
+                    analytics.operationFailed(analyticsAttempt, analyticsFeature, AnalyticsError.from(e))
                     paymentReturn.reset()
                     showResult(RechargePhase.Failed, e.message)
                 }
             }
             catch (e: Exception) {
-                if (current == attempt) requestError(resultError(e))
+                if (current == attempt) {
+                    analytics.operationFailed(analyticsAttempt, analyticsFeature, AnalyticsError.from(e))
+                    requestError(resultError(e))
+                }
             }
         }
     }
@@ -139,6 +149,7 @@ class RechargeViewModel internal constructor(
     fun canLaunchWechat(): Boolean = paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.phase == RechargePhase.AwaitingPayment
     fun wechatLaunched() = paymentReturn.launched()
     fun launchFailed() {
+        analytics.operationFailed(analyticsAttempt, analyticsFeature, AnalyticsError.External)
         paymentReturn.consume()
         showResult(RechargePhase.Failed, "无法打开微信，请确认已安装微信")
     }
@@ -174,6 +185,7 @@ class RechargeViewModel internal constructor(
                 income = true.takeIf { previous.pending?.recipient == null }))
     }
     private fun requestError(message: String) {
+        analytics.operationFailed(analyticsAttempt, analyticsFeature, AnalyticsError.External)
         paymentReturn.reset()
         update(visible = true, loading = false, phase = RechargePhase.Amount, pending = null, error = message)
     }
@@ -192,6 +204,7 @@ class RechargeViewModel internal constructor(
         mutable.value = RechargeUiState()
     }
     private fun endAttempt() {
+        analyticsAttempt = null
         attempt++
         task?.cancel()
         task = null
