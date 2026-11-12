@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Version Catalog | 完成 | root/app 统一引用 `gradle/libs.versions.toml`；迁移前后 debug、preview、release 和 debug 单元测试的编译依赖及根构建脚本依赖完全一致 |
 | kotlinx.serialization | 完成 | 生产代码及测试依赖移除 org.json；18 组、224 项 JSON 相关定向测试通过；专门存储兼容集中到 `StoredRecordJson` |
-| DataStore 与启动准备状态 | 待实施 | 尚未完成三类旧设置迁移、策略原子性及加载前阻断 |
+| DataStore 与启动准备状态 | 完成 | 一个类型化文件与仓库；1.4.1 一次性迁移；9 个相关类中的 68 项定向验证通过，含真实文件迁移与启动阻断 |
 | Hilt 全图接入 | 待实施 | 尚未完成应用依赖图和三种构建绑定验证 |
 | Macrobenchmark 与 Profiles | 待实施 | 尚未生成/打包 profile，也没有发布配置测量数据 |
 | Camera2 session API | 待实施 | 尚未更新重载及完成相机定向验证 |
@@ -30,3 +30,13 @@
 按发布边界收紧后，仅重新运行 `StoredRecordJsonTest`、`LifeDeviceAccountStoreTest`、`Hui798AccountStoreTest`，验证基线记录恢复和未发布显式版本拒绝；全部通过。
 
 Android 启动验证发现系统 Ed25519 KeyFactory 无法导入发布公钥，更新验签改用 Tink Android 1.24.0 的可移植实现。公钥继续采用固定 Ed25519 SPKI 编码，先校验原始 payload 字节、再解析 JSON，不修改全局安全提供者。复用 Python 发布工具的真实签名样本，24 项主机更新接口测试及 4 项 Android 验签/应用入口测试通过、无跳过；Android 验证在暂停设备操作前完成。
+
+## DataStore 与启动准备状态
+
+使用 DataStore 1.3.0 与 JSON Serializer，UI 设置、账号哈希房间选择、更新渠道、提醒/跳过状态及签名策略统一到 `files/datastore/app-preferences.json`。三个旧文件只由 `LegacyPreferencesMigration` 读取，迁移来源限定为正式版 1.4.1；更新展示缓存以及之后未发布的渠道、跳过与策略字段不迁移。保存完成后检查清理结果，失败可幂等重试，已保存目标不会再次导入旧值。新目录同时排除云备份和设备迁移。
+
+设置通过持久快照的只读 Compose 投影显示，写入走同一仓库，失败保留原值并提示。每次写入递增持久 revision，发布时拒绝迟到旧快照。签名账本在 updateData 内一次比较并保存 revision、payload 摘要、版本、强制边界和原始签名清单；跨渠道合并强制边界，不能用切换渠道解除阻断。设置写入本身不触发额外自动检查，渠道切换继续取消旧检查/下载并隔离迟到结果。
+
+设置及更新状态明确为 Loading、Ready、Failed。主 Activity 在异步读盘前设置截图保护，准备完成前不创建业务模型，生命周期回调也不会提前创建；读取失败显示重试入口。付款本地身份恢复、业务前台启动和同意处理在加载后继续按原规则运行，强制更新阻断业务页面与前台读取。usage_consent 与加密凭据/生活订单继续独立保存。损坏文件和缺少当前持久字段的文件进入读取失败，不配置默认空对象覆盖；重试只重读原文件，不清空已接受策略。
+
+定向验证共 68 项、全部通过、无跳过，涉及 9 个类：AppPreferencesRepositoryTest（5）、LegacyPreferencesMigrationTest（2）、ThemeSettingsTest（2）、AppUpdateApiTest（24）、AppUpdateViewModelTest（25）、PreferencesStartupTest（2）、UsageConsentStartupTest（4），以及 HallViewModelTest 的三项选择恢复/账户隔离测试和 LoginUpdateUiTest 的强制更新阻断测试。覆盖真实文件保存和清理失败重试、签名账本序列化恢复、并发策略冲突/回滚、迟到快照、写入失败、渠道取消、加载前截图保护与生命周期阻断、同意恢复及强制页。仅筛选直接相关测试；未运行全量测试、发布构建或 Lint。

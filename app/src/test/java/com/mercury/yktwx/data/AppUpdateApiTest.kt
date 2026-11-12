@@ -42,7 +42,8 @@ class AppUpdateApiTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("signed-update-api-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        return UpdateCheckStore(prefs, "package:stable:9", "package", 9)
+        resetUpdateFixture(prefs)
+        return updateStoreFixture(prefs, "package:stable:9", "package", 9, verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
     }
     private open class FakeResponse(url: URL, private val body: String, private val status: Int = 200) : HttpFixture(url) {
         var disconnected = false
@@ -108,7 +109,7 @@ class AppUpdateApiTest {
         val prefs = ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences("python-publisher-interoperability", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
+        fun restored() = updateStoreFixture(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
             now = { instant }, verifyCached = { body, channel -> verifier.manifest(body, channel).first })
         val api = AppUpdateApi(fixtureUpdateHttp { url ->
             when {
@@ -285,18 +286,18 @@ class AppUpdateApiTest {
         Unit
     }
 
-    @Test fun channelSwitchClearsOptionalBetaCacheButRetainsConfirmedForcedPolicy() {
+    @Test fun channelSwitchClearsOptionalBetaCacheButRetainsConfirmedForcedPolicy() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("channel-policy-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "package:beta:9", "package", 9) { body, channel ->
+        fun restored() = updateStoreFixture(prefs, "package:beta:9", "package", 9) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }
         val store = restored()
         val optional = fixture.verifier.manifest(fixture.sign(fixture.json(channel = "beta")), "beta")
         store.acceptPolicy("beta", optional.first, optional.second)
         assertNotNull(store.cachedRelease())
-        store.selectChannel("stable")
+        store.repository.update { it.copy(updateChannel = "stable") }
         assertNull(store.cachedRelease())
         assertEquals("stable", restored().channel)
         val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2, channel = "beta")
@@ -358,15 +359,16 @@ class AppUpdateApiTest {
                 .check(fixture.request, store())
         } }
     }
-    @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() {
+    @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() = runBlocking {
         val store = store()
         val first = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2).withField("maxForcedVersionCode", 8)), "stable")
         store.acceptPolicy("stable", first.first, first.second)
         val lower = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 1)), "stable")
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", lower.first, lower.second) }
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", first.first, "b".repeat(64)) }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", lower.first, lower.second) } }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", first.first, "b".repeat(64)) } }
         val reset = fixture.verifier.manifest(fixture.sign(fixture.json(version = 11, revision = 3)), "stable")
-        assertThrows(Exception::class.java) { store.acceptPolicy("stable", reset.first, reset.second) }
+        assertThrows(Exception::class.java) { runBlocking { store.acceptPolicy("stable", reset.first, reset.second) } }
+        Unit
     }
     @Test fun timestampParsingAndDangerousUrlsAreBounded() {
         val invalidTime = fixture.verifier.manifest(fixture.sign(fixture.json().withField("publishedAt", "not a date")), "stable").first
@@ -374,23 +376,23 @@ class AppUpdateApiTest {
         listOf("http://example.com/a", "https://user@example.com/a", "file:///a", "https://example.com:8080/a")
             .forEach { url -> assertThrows(Exception::class.java) { httpsUri(url) } }
     }
-    @Test fun forcedSignedPolicySurvivesRestartButActualNewInstalledVersionClearsIt() {
+    @Test fun forcedSignedPolicySurvivesRestartButActualNewInstalledVersionClearsIt() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("forced-restart-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
-        fun restored(version: Int) = UpdateCheckStore(prefs, "package:stable:$version", "package", version) { body, channel ->
+        fun restored(version: Int) = updateStoreFixture(prefs, "package:stable:$version", "package", version) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }
         restored(9).acceptPolicy("stable", release, digest)
         assertTrue(restored(9).cachedRelease()!!.required(9))
         assertNull(restored(10).cachedRelease())
     }
-    @Test fun expiredOptionalCacheIsHiddenButConfirmedForcedUpdatesRemainBlocked() {
+    @Test fun expiredOptionalCacheIsHiddenButConfirmedForcedUpdatesRemainBlocked() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("expired-cache-review-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        fun restored() = UpdateCheckStore(prefs, "package:stable:9", "package", 9,
+        fun restored() = updateStoreFixture(prefs, "package:stable:9", "package", 9,
             now = { Instant.parse("2026-11-11T00:00:00Z") }) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }

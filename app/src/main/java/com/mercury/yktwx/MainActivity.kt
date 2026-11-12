@@ -13,6 +13,12 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mercury.yktwx.data.AppPreferencesRepository
+import com.mercury.yktwx.data.PreferencesLoadState
+import com.mercury.yktwx.ui.AppTheme
+import com.mercury.yktwx.ui.PreferencesEntry
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import com.mercury.yktwx.analytics.AppAnalytics
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.ui.ThemeSettings
@@ -27,32 +33,55 @@ class MainActivity : ComponentActivity() {
     private val latestConfig = mutableStateOf<Configuration?>(null)
     private lateinit var consent: UsageConsent
     private var businessStarted = false
+    private var modelsInitialized = false
+    private var preview = false
+    private lateinit var preferences: AppPreferencesRepository
+    private val updateViewModel: AppUpdateViewModel by viewModels()
     private val analytics by lazy { AppAnalytics.from(application) }
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val preview = UiPreview.enabled && UiPreview.requested(intent)
-        val settings = ThemeSettings(this)
+        preview = UiPreview.enabled && UiPreview.requested(intent)
+        // Enable protection before the first asynchronous disk read or rendered screen.
+        if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        preferences = AppPreferencesRepository.from(this)
+        val settings = ThemeSettings(preferences)
         consent = UsageConsent(this)
-        // Payments and password screens must not leak through screenshots or task previews.
-        if (!preview && settings.preventScreenshots.value) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-        // Restore only local identity; foreground business remains gated by consent.
-        if (!consent.accepted && !preview) stopBusiness()
-        initializePayment(preview)
         setContent {
+            val loaded by preferences.state.collectAsStateWithLifecycle()
+            if (loaded !is PreferencesLoadState.Ready) {
+                SideEffect { if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+                LaunchedEffect(loaded) { stopBusiness() }
+                AppTheme(ColorSchemeMode.System, 0) {
+                    PreferencesEntry(loaded is PreferencesLoadState.Failed, preferences::retry)
+                }
+                return@setContent
+            }
+            val updateState by updateViewModel.state.collectAsStateWithLifecycle()
+            if (!updateState.ready) {
+                LaunchedEffect(updateState.ready) { stopBusiness() }
+                AppTheme(ColorSchemeMode.System, 0) {
+                    PreferencesEntry(updateState.loadFailed, updateViewModel::retryLoading)
+                }
+                return@setContent
+            }
             val agreed = preview || consent.accepted
-            LaunchedEffect(agreed) {
+            LaunchedEffect(agreed, updateState.required) {
+                initializePayment(preview)
+                modelsInitialized = true
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
                     analytics.resume(this@MainActivity, consent.accepted, preview)
-                if (agreed) {
-                    initializePayment(preview)
+                if (businessAllowed()) {
                     billViewModel.initialize(preview)
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startBusiness()
                 } else stopBusiness()
+            }
+            LaunchedEffect(preferences) {
+                preferences.failures.collect {
+                    android.widget.Toast.makeText(this@MainActivity, "设置保存失败，请重试", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
             val secure = !preview && settings.preventScreenshots.value
             SideEffect {
@@ -78,9 +107,10 @@ class MainActivity : ComponentActivity() {
     private fun initializePayment(preview: Boolean) {
         viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))
     }
-    private fun businessAllowed() = (UiPreview.enabled && UiPreview.requested(intent)) || consent.accepted
+    private fun businessAllowed() = modelsInitialized && preferences.readyOrNull() != null &&
+        (preview || consent.accepted) && updateViewModel.state.value.ready && !updateViewModel.state.value.required
     private fun startBusiness() {
-        if (businessStarted) return
+        if (businessStarted || !businessAllowed()) return
         businessStarted = true
         viewModel.onForeground(); rechargeViewModel.onForeground(); feeViewModel.onForeground()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -89,6 +119,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun stopBusiness() {
+        if (!businessStarted) return
         businessStarted = false
         feeViewModel.onBackground(); rechargeViewModel.onBackground(); viewModel.onBackground()
     }
@@ -103,8 +134,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onPause() {
         analytics.pause(this)
-        rechargeViewModel.onPaused()
-        feeViewModel.onPaused()
+        if (businessStarted) { rechargeViewModel.onPaused(); feeViewModel.onPaused() }
         super.onPause()
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {

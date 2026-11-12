@@ -41,6 +41,7 @@ import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.ReadEnvironment
 import com.mercury.yktwx.data.ReadPage
 import com.mercury.yktwx.data.UsageNotice
+import com.mercury.yktwx.data.PreferencesLoadState
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
 import androidx.compose.ui.Modifier
@@ -91,6 +92,13 @@ private enum class AuthPage : NavKey { Restoring, Login, Main }
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null,
     onExit: (() -> Unit)? = null) {
+    val loaded by settings.repository.state.collectAsStateWithLifecycle()
+    if (loaded !is PreferencesLoadState.Ready) {
+        AppTheme(ColorSchemeMode.System, 0) {
+            PreferencesEntry(loaded is PreferencesLoadState.Failed, settings.repository::retry)
+        }
+        return
+    }
     val mode = when (settings.themeMode.value) {
         1 -> ColorSchemeMode.Light
         2 -> ColorSchemeMode.Dark
@@ -110,7 +118,9 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             channel = settings.updateChannel.value)
         val activity = LocalActivity.current
         Scaffold {
-            if (!agreed) {
+            if (!updateState.ready) {
+                PreferencesEntry(updateState.loadFailed, updateModel::retryLoading)
+            } else if (!agreed) {
                 // Life model constructors recover orders over the network. Defer the
                 // business composition, navigation and payment launches until agreement.
                 ConsentEntryPage(settings, state, authenticated)
@@ -120,7 +130,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             } else {
                 ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState, updateInstall)
             }
-            if (consent != null) RequiredUsageConsent(consent,
+            if (consent != null && updateState.ready) RequiredUsageConsent(consent,
                 onExit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() })
         }
     }

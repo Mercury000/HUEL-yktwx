@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 
 internal enum class UpdateFeedback { Current, NoRelease, Incompatible, Network, Failed, Preview }
 internal data class AppUpdateUiState(
+    val ready: Boolean = false,
+    val loadFailed: Boolean = false,
     val checking: Boolean = false,
     val release: UpdateRelease? = null, val visible: Boolean = false,
     val noticeVisible: Boolean = false,
@@ -39,9 +41,12 @@ internal class AppUpdateViewModel internal constructor(
     private constructor(app: Application, store: UpdateCheckStore, request: UpdateRequest) : this(app,
         store, { AppUpdateApi().check(request.copy(channel = store.channel), store) })
 
-    private val mutable = MutableStateFlow(store.cachedRelease().let { release ->
-        AppUpdateUiState(release = release, required = release?.required(BuildConfig.VERSION_CODE) == true)
-    })
+    private fun restoredState(): AppUpdateUiState {
+        if (store.repository.readyOrNull() == null) return AppUpdateUiState()
+        val release = store.cachedRelease()
+        return AppUpdateUiState(ready = true, release = release, required = release?.required(BuildConfig.VERSION_CODE) == true)
+    }
+    private val mutable = MutableStateFlow(restoredState())
     val state = mutable.asStateFlow()
     private val feedback = MutableSharedFlow<UpdateFeedback>(extraBufferCapacity = 1)
     val messages = feedback.asSharedFlow()
@@ -56,9 +61,49 @@ internal class AppUpdateViewModel internal constructor(
     private var awaitingAuthorization = false
     private var pendingInstallLauncher: ((android.content.Intent) -> Unit)? = null
     private var reopenDownloadDetails = false
+    private var activeChannel = store.repository.readyOrNull()?.updateChannel
+    private var knownPolicies = store.repository.readyOrNull()?.policies
 
-    fun configure(reminders: Boolean, allowed: Boolean, inForeground: Boolean, channel: String = store.channel) {
-        val channelChanged = channel != store.channel
+    init {
+        viewModelScope.launch {
+            store.repository.state.collect { value ->
+                when (value) {
+                    PreferencesLoadState.Loading, PreferencesLoadState.Failed -> {
+                        generation++; job?.cancel(); job = null
+                        downloadGeneration++; downloadJob?.cancel(); downloadJob = null
+                        pendingInstallLauncher = null; awaitingAuthorization = false
+                        mutable.value = state.value.copy(ready = false, loadFailed = value is PreferencesLoadState.Failed,
+                            checking = false, visible = false, noticeVisible = false)
+                    }
+                    is PreferencesLoadState.Ready -> {
+                        val firstReady = !state.value.ready
+                        val channelChanged = activeChannel != value.preferences.updateChannel
+                        if (firstReady) {
+                            mutable.value = restoredState()
+                            activeChannel = store.channel
+                        } else if (knownPolicies != value.preferences.policies) {
+                            store.cachedRelease()?.takeIf { it.required(BuildConfig.VERSION_CODE) }?.let {
+                                mutable.value = state.value.copy(release = it, required = true)
+                            }
+                        }
+                        knownPolicies = value.preferences.policies
+                        // A settings write is not a foreground transition or a request to check again.
+                        if (firstReady || channelChanged) configure(remindersEnabled, networkAllowed, foreground)
+                        else refreshNotice()
+                    }
+                }
+            }
+        }
+    }
+    fun retryLoading() = store.repository.retry()
+
+    fun configure(reminders: Boolean, allowed: Boolean, inForeground: Boolean) {
+        if (!state.value.ready) {
+            remindersEnabled = reminders; networkAllowed = allowed; foreground = inForeground
+            return
+        }
+        val channel = store.channel
+        val channelChanged = activeChannel != channel
         if (channelChanged) {
             generation++
             job?.cancel(); job = null
@@ -68,10 +113,10 @@ internal class AppUpdateViewModel internal constructor(
             pendingInstallLauncher = null
             awaitingAuthorization = false
             reopenDownloadDetails = false
-            store.selectChannel(channel)
+            activeChannel = channel
             val retained = state.value.release?.takeIf { it.required(BuildConfig.VERSION_CODE) }
                 ?: store.cachedRelease()
-            mutable.value = AppUpdateUiState(release = retained,
+            mutable.value = AppUpdateUiState(ready = true, release = retained,
                 required = retained?.required(BuildConfig.VERSION_CODE) == true)
         }
         if (!allowed) {
@@ -106,6 +151,7 @@ internal class AppUpdateViewModel internal constructor(
     }
 
     fun checkManually() {
+        if (!state.value.ready) return
         if (!networkAllowed) {
             feedback.tryEmit(UpdateFeedback.Preview)
             return
@@ -128,19 +174,23 @@ internal class AppUpdateViewModel internal constructor(
         val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         val analyticsChannel = store.channel
-        // Reserve the short cooldown while a request is pending or cancelled.
-        store.checked(now(), successful = false)
         mutable.value = state.value.copy(checking = manual,
             visible = state.value.visible && state.value.download.busy, detailsPending = false)
         viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
+                // Persist the short cooldown before issuing a request, including cancellation paths.
+                store.checked(now(), successful = false, channel = analyticsChannel)
+                currentCoroutineContext().ensureActive()
+                if (generation != attempt) return@launch
                 val result = checkUpdate()
                 currentCoroutineContext().ensureActive()
                 if (generation != attempt) return@launch
                 if (result.reason == UpdateCheckReason.UpdateAvailable) result.release?.let {
                     analytics.updateAvailable(analyticsAttempt, it.versionName, analyticsChannel)
                 }
-                store.checked(now(), successful = true)
+                store.checked(now(), successful = true, channel = analyticsChannel)
+                currentCoroutineContext().ensureActive()
+                if (generation != attempt) return@launch
                 val known = state.value.release
                 val selected = if (known?.required(BuildConfig.VERSION_CODE) == true &&
                     result.release?.required(BuildConfig.VERSION_CODE) != true) known else result.release
@@ -152,7 +202,6 @@ internal class AppUpdateViewModel internal constructor(
                     pendingInstallLauncher = null
                     reopenDownloadDetails = false
                 }
-                store.cacheRelease(selected)
                 // Only a user-requested check can open a dialog. Automatic checks update the inline notice.
                 val message = if (!manualRequest) null else when (result.reason) {
                     UpdateCheckReason.CurrentOrNewer -> UpdateFeedback.Current
@@ -160,7 +209,7 @@ internal class AppUpdateViewModel internal constructor(
                     UpdateCheckReason.NoCompatibleRelease -> UpdateFeedback.Incompatible
                     UpdateCheckReason.UpdateAvailable -> null
                 }
-                mutable.value = AppUpdateUiState(release = selected,
+                mutable.value = AppUpdateUiState(ready = true, release = selected,
                     visible = sameDownload && state.value.visible && state.value.download.busy,
                     download = if (sameDownload) state.value.download else UpdateDownloadState(),
                     detailsPending = selected != null && manualRequest)
@@ -170,7 +219,7 @@ internal class AppUpdateViewModel internal constructor(
                 throw cancelled
             } catch (error: Exception) {
                 if (generation == attempt) {
-                    store.checked(now(), successful = false)
+                    runCatching { store.checked(now(), successful = false, channel = analyticsChannel) }
                     val forced = store.cachedRelease()?.takeIf { it.required(BuildConfig.VERSION_CODE) }
                     mutable.value = state.value.copy(checking = false,
                         visible = state.value.visible && state.value.download.busy,
@@ -207,18 +256,18 @@ internal class AppUpdateViewModel internal constructor(
 
     fun dismissNotice() {
         if (state.value.required) return
-        state.value.release?.let { store.dismissNotice(it.versionCode, now()) }
-        refreshNotice()
+        val version = state.value.release?.versionCode ?: return
+        persistReminder { store.dismissNotice(version, now()) }
     }
 
     private fun refreshNotice() {
+        if (!state.value.ready) return
         val release = state.value.release
         if (release != null && !release.required(BuildConfig.VERSION_CODE) &&
             release.expiresAt?.isAfter(java.time.Instant.ofEpochMilli(now())) == false) {
             downloadGeneration++
             downloadJob?.cancel(); downloadJob = null
             awaitingAuthorization = false; pendingInstallLauncher = null; reopenDownloadDetails = false
-            store.cacheRelease(null)
             mutable.value = state.value.copy(release = null, visible = false, detailsPending = false,
                 download = UpdateDownloadState())
         }
@@ -241,8 +290,16 @@ internal class AppUpdateViewModel internal constructor(
 
     fun skip() {
         if (state.value.required || state.value.download.busy) return
-        state.value.release?.let { store.skip(it.versionCode) }
-        dismiss(); refreshNotice()
+        val version = state.value.release?.versionCode ?: return
+        persistReminder { store.skip(version); dismiss() }
+    }
+
+    private fun persistReminder(write: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { write(); refreshNotice() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { feedback.tryEmit(UpdateFeedback.Failed) }
+        }
     }
 
     fun downloadAndInstall(launch: (android.content.Intent) -> Unit) {

@@ -126,6 +126,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
     implementation(libs.tink.android)
+    implementation(libs.androidx.datastore)
     implementation(libs.okhttp)
     "releaseImplementation"(libs.umeng.common)
     "releaseImplementation"(libs.umeng.asms)

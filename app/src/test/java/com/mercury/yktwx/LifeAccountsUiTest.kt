@@ -34,10 +34,9 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeAccountsUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    private fun settings() = ThemeSettings(compose.activity).also {
-        it.pangguiLoginNoticeDismissed.value = false
-        it.hui798LoginNoticeDismissed.value = false
-    }
+    private fun settings() = ThemeSettings(com.mercury.yktwx.data.AppPreferencesRepository(
+        com.mercury.yktwx.data.MemoryPreferences(),
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)))
     private fun capture(name: String) {
         val file = File("../tools/life-accounts-ui/$name.png").absoluteFile
         file.parentFile?.mkdirs()

@@ -35,13 +35,36 @@ class AppUpdateViewModelTest {
     private val update = UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
         UpdateRelease(4, "1.2.0", "修复与优化", "https://cxt.303889.xyz/download/"))
     private fun model(key: String = "v3", check: suspend () -> UpdateCheckResult = { count++; update }) =
-        AppUpdateViewModel(app, UpdateCheckStore(prefs, key), check) { time }
+        AppUpdateViewModel(app, updateStoreFixture(prefs, key), check) { time }
             .also { model ->
                 models.put("model-${System.nanoTime()}", model)
                 listeners.launch(start = CoroutineStart.UNDISPATCHED) { model.messages.collect { events += it } }
             }
-    @Before fun setup() { prefs.edit().clear().commit(); Dispatchers.setMain(dispatcher) }
+    @Before fun setup() { resetUpdateFixtures(); prefs.edit().clear().commit(); Dispatchers.setMain(dispatcher) }
     @After fun cleanup() { models.clear(); listeners.cancel(); Dispatchers.resetMain(); AppAnalytics.instance = null }
+
+    @Test fun initialPolicyReadinessDoesNotExposeBusinessBeforeForcedPolicyLoads() = runTest(dispatcher) {
+        val loaded = CompletableDeferred<AppPreferences>()
+        val fixture = SignedUpdateFixture()
+        val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
+        val source = object : androidx.datastore.core.DataStore<AppPreferences> {
+            override val data = kotlinx.coroutines.flow.flow { emit(loaded.await()); awaitCancellation() }
+            override suspend fun updateData(transform: suspend (AppPreferences) -> AppPreferences) = transform(loaded.await())
+        }
+        val repository = AppPreferencesRepository(source, backgroundScope, fixture.verifier::manifest)
+        val store = UpdateCheckStore(repository, fixture.request.packageName, 9,
+            verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
+        val model = AppUpdateViewModel(app, store, { count++; update })
+        models.put("loading-policy", model)
+        model.configure(true, false, true); runCurrent()
+        assertFalse(model.state.value.ready)
+        assertEquals(0, count)
+        loaded.complete(AppPreferences(legacyMigrated = true, policies = mapOf("${fixture.request.packageName}:stable" to
+            AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, release.signedManifest))))
+        runCurrent()
+        assertTrue(model.state.value.ready); assertTrue(model.state.value.required)
+        assertEquals(0, count)
+    }
 
     @Test fun analyticsDeduplicatesAValidatedVersionAcrossRepeatedChecks() = runTest(dispatcher) {
         val statistics = RecordingAnalyticsBackend()
@@ -75,7 +98,8 @@ class AppUpdateViewModelTest {
         model.configure(true, true, true)
         runCurrent()
         assertEquals(1, count)
-        model.configure(false, true, true, "beta")
+        updateStoreFixture(prefs, "v3").repository.update { it.copy(updateChannel = "beta") }
+        model.configure(false, true, true)
         runCurrent()
         assertEquals(2, count)
         assertFalse(model.state.value.checking)
@@ -252,11 +276,11 @@ class AppUpdateViewModelTest {
     @Test fun dismissedNoticesStayHiddenAcrossRestartsFor24HoursButManualChecksStillShowDetails() = runTest(dispatcher) {
         val model = model()
         model.configure(true, true, true); runCurrent()
-        model.dismissNotice()
+        model.dismissNotice(); runCurrent()
         assertFalse(model.state.value.noticeVisible)
         val restarted = model()
         restarted.configure(true, true, true); runCurrent()
-        assertEquals(update.release, restarted.state.value.release)
+        assertNull(restarted.state.value.release)
         assertFalse(restarted.state.value.noticeVisible)
         time += UpdateCheckStore.DAY - 1
         restarted.configure(true, true, true); runCurrent()
@@ -276,37 +300,23 @@ class AppUpdateViewModelTest {
         var result = update
         val model = model { result }
         model.configure(true, true, true); runCurrent()
-        model.dismissNotice()
+        model.dismissNotice(); runCurrent()
         result = update.copy(release = update.release!!.copy(versionCode = 5, versionName = "1.3.0"))
         model.checkManually(); runCurrent()
         assertTrue(model.state.value.noticeVisible)
     }
 
-    @Test fun cachedReleaseSurvivesRestartAndFailureButACurrentResultClearsIt() = runTest(dispatcher) {
-        model().configure(true, true, true); runCurrent()
-        var fail = true
-        val restarted = model {
-            count++
-            if (fail) throw java.io.IOException("offline")
-            UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
-        }
-        restarted.configure(true, true, true); runCurrent()
-        assertEquals(1, count)
-        assertEquals(update.release, restarted.state.value.release)
-        assertTrue(restarted.state.value.noticeVisible)
-        restarted.checkManually(); runCurrent()
-        assertEquals(update.release, restarted.state.value.release)
-        assertTrue(restarted.state.value.noticeVisible)
-        fail = false
+    @Test fun unsignedDisplayResultsAreKeptOnlyInTheCurrentSession() = runTest(dispatcher) {
+        val current = model()
+        current.configure(true, true, true); runCurrent()
+        assertEquals(update.release, current.state.value.release)
+        val restarted = model { throw java.io.IOException("offline") }
+        assertNull(restarted.state.value.release)
         restarted.checkManually(); runCurrent()
         assertNull(restarted.state.value.release)
-        assertFalse(restarted.state.value.noticeVisible)
-        assertNull(model().state.value.release)
-        assertNull(model("v4").state.value.release)
     }
 
-    @Test fun invalidCachedDataIsIgnoredAndNoticesRespectTheReminderSwitchAndPreview() = runTest(dispatcher) {
-        prefs.edit().putString("v3:release", "invalid json").commit()
+    @Test fun noticesRespectTheReminderSwitchAndPreview() = runTest(dispatcher) {
         val model = model()
         assertNull(model.state.value.release)
         model.configure(true, true, true); runCurrent()
@@ -370,7 +380,7 @@ class AppUpdateViewModelTest {
     @Test fun skipSuppressesAutomaticBannerButManualChecksStillShowDetails() = runTest(dispatcher) {
         val model = model()
         model.configure(true, true, true); runCurrent()
-        model.openDetails(); model.skip()
+        model.openDetails(); model.skip(); runCurrent()
         assertFalse(model.state.value.noticeVisible)
         assertFalse(model.state.value.visible)
         model.checkManually(); runCurrent(); model.presentIfAllowed(true)
@@ -386,7 +396,7 @@ class AppUpdateViewModelTest {
         assertTrue(model.state.value.required)
         assertTrue(model.state.value.visible)
         assertFalse(model.state.value.noticeVisible)
-        model.dismiss(); model.ignore(); model.skip(); model.dismissNotice(); model.presentIfAllowed(false)
+        model.dismiss(); model.ignore(); model.skip(); runCurrent(); model.dismissNotice(); runCurrent(); model.presentIfAllowed(false)
         assertTrue(model.state.value.visible)
         model.configure(false, true, true)
         assertTrue(model.state.value.visible)
@@ -409,7 +419,7 @@ class AppUpdateViewModelTest {
         assertTrue(model.state.value.required)
         assertTrue(model.state.value.visible)
         assertFalse(model.state.value.noticeVisible)
-        model.dismiss(); model.ignore(); model.skip(); model.dismissNotice()
+        model.dismiss(); model.ignore(); model.skip(); runCurrent(); model.dismissNotice(); runCurrent()
         assertTrue(model.state.value.visible)
     }
 
@@ -430,7 +440,7 @@ class AppUpdateViewModelTest {
         val result = update.copy(release = update.release!!.copy(versionCode = 10, sha256 = "a".repeat(64), size = 100,
             urls = (1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk"))
         val checked = CompletableDeferred<UpdateCheckResult>()
-        val model = AppUpdateViewModel(app, UpdateCheckStore(prefs, "download-review"), {
+        val model = AppUpdateViewModel(app, updateStoreFixture(prefs, "download-review"), {
             count++
             if (count == 1) result else checked.await()
         }, installer) { time }
