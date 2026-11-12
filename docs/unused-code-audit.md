@@ -27,7 +27,7 @@
 ## 明确保留
 
 - Manifest、`MainActivity`、AndroidX ViewModel 和 Compose 生命周期回调属于框架入口。
-- 预览变体和工具代码有独立用途。2026-10-28 将假数据、预览文案及启动参数移至仅由 `debug` / `preview` 编译的 `src/uiPreview/kotlin/`，`release` / `personal` 使用禁用实现和 `UiPreview.enabled` 编译期常量隔离。
+- 预览变体和工具代码有独立用途。2026-10-28 将假数据、预览文案及启动参数移至仅由 `debug` / `preview` 编译的 `src/uiPreview/kotlin/`，`release` 使用禁用实现和 `UiPreview.enabled` 编译期常量隔离。
 - 传感器、导航、主题特效和协议字段均有运行或框架调用链。
 - Gradle 中的 Core KTX、Compose 工具、ZXing、miuix、AboutLibraries 等依赖仍有构建、调试或运行用途，本次没有删除整库依赖。
 
