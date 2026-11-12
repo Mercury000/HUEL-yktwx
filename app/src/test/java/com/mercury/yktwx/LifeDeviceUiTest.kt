@@ -1,8 +1,9 @@
 package com.mercury.yktwx
 
+import kotlinx.serialization.json.*
+import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureLifeDeviceApi
-
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -19,7 +20,6 @@ import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.pages.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -241,11 +241,11 @@ class LifeDeviceUiTest {
     @Test fun capturedWaterDeviceFitsNativePageAndDoesNotInventPrices() {
         val fixture = File("../tools/life-device-capture.json")
         assumeTrue("Optional local HAR device fixture", fixture.isFile)
-        val payloads = JSONObject(fixture.readText())
-        val api = fixtureLifeDeviceApi("test-secret", { url -> OfflineResponse(url, payloads.getJSONObject(url.path).toString()) })
+        val payloads = parseObject(fixture.readText())
+        val api = fixtureLifeDeviceApi("test-secret", { url -> OfflineResponse(url, payloads.objectValue(url.path).toString()) })
         val device = runBlocking { api.device("867369079842630", "test-token") }
-        val times = payloads.getJSONObject("__waterSession")
-        val captureClock = { times.getLong("runningAt") }
+        val times = payloads.objectValue("__waterSession")
+        val captureClock = { times.longValue("runningAt") }
         val model = model()
         val settings = settings()
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Water, device = device,
@@ -286,7 +286,7 @@ class LifeDeviceUiTest {
             compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot)
         capture("water-starting-shared-page")
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id,
-            phase = WaterPhase.Running, startedAtMillis = times.getLong("startedAt"))) }
+            phase = WaterPhase.Running, startedAtMillis = times.longValue("startedAt"))) }
         compose.onNodeWithText("结束接水").assertIsDisplayed()
         compose.onNodeWithTag("water-elapsed").assertIsDisplayed()
         compose.onNodeWithText("本地参考计时").assertIsDisplayed()
@@ -295,7 +295,7 @@ class LifeDeviceUiTest {
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
         capture("05-water-running-from-capture")
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id,
-            phase = WaterPhase.Ended, finalized = true, startedAtMillis = times.getLong("startedAt"), endedAtMillis = times.getLong("endedAt"))) }
+            phase = WaterPhase.Ended, finalized = true, startedAtMillis = times.longValue("startedAt"), endedAtMillis = times.longValue("endedAt"))) }
         compose.onNodeWithText("接水已结束").assertIsDisplayed()
         compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("water-ended-icon").assertIsDisplayed()

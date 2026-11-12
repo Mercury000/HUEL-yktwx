@@ -75,4 +75,15 @@ class DisplayCacheTest {
         assertFalse(restored.canPay)
         assertNull(restored.thirdParty)
     }
+
+    @Test fun oldCacheVersionIsDiscardedAndReloadCanWriteTheCurrentFormat() {
+        val cache = DisplayCache(folder.root, seal = { bytes, _ -> bytes }, open = { bytes, _ -> bytes })
+        cache.write("owner", "summary", BillSummary(1, 2), DisplayCodecs.Summary)
+        val file = folder.root.listFiles()!!.single()
+        file.writeText(parseObject(file.readText()).withField("version", 1).toString())
+        assertNull(cache.read("owner", "summary", DisplayCodecs.Summary))
+        assertFalse(file.exists())
+        cache.write("owner", "summary", BillSummary(3, 4), DisplayCodecs.Summary)
+        assertEquals(BillSummary(3, 4), cache.read("owner", "summary", DisplayCodecs.Summary))
+    }
 }

@@ -1,8 +1,7 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -24,10 +23,8 @@ class CardPasswordApiTest {
 
     }
     private val card = CampusCard("fake-card", "校园卡", "202600000001", false, false, 0)
-    private val configuration = JSONObject().put("code", 200).put("data", JSONObject()
-        .put("getFrontConfig", "{}").put("getEcardConfig", "{}")).toString()
-    private val cards = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0").put("card", JSONArray().put(
-        JSONObject().put("account", "fake-card").put("lostflag", 0).put("freezeflag", 0).put("acc_status", 0)))).toString()
+    private val configuration = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("getFrontConfig" to ("{}"), "getEcardConfig" to ("{}")))).toString()
+    private val cards = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(jsonObjectOf("account" to ("fake-card"), "lostflag" to (0), "freezeflag" to (0), "acc_status" to (0)))))))).toString()
     private val calls = mutableListOf<FakeResponse>()
     private fun api(result: String = "{\"code\":200,\"data\":{\"retcode\":\"0\"}}", status: Int = 200,
         timeout: Boolean = false, keyboard: String? = null, config: String = configuration,
@@ -39,9 +36,7 @@ class CardPasswordApiTest {
                 url.path.endsWith("getCampusCards") -> cards
                 url.path.endsWith("keyboard") -> {
                     keyboardCount++
-                    keyboard ?: JSONObject().put("code", 200).put("data", JSONObject()
-                        .put("numberKeyboard", keyboardMappings[keyboardCount - 1])
-                        .put("uuid", "fake-uuid-$keyboardCount")).toString()
+                    keyboard ?: jsonObjectOf("code" to (200), "data" to (jsonObjectOf("numberKeyboard" to (keyboardMappings[keyboardCount - 1]), "uuid" to ("fake-uuid-$keyboardCount")))).toString()
                 }
                 url.path.endsWith("modifyPwd") -> result
                 else -> error("Unexpected fake path: " + url.path)
@@ -59,16 +54,16 @@ class CardPasswordApiTest {
     @Test fun usesThreeIndependentFixedKeyboardsAndOneAuthenticatedJsonWrite() {
         change(api())
         val post = calls.single { it.request.method == "POST" }
-        val body = JSONObject(post.sent.toString("UTF-8"))
+        val body = parseObject(post.sent.toString("UTF-8"))
         assertEquals("/berserker-app/ykt/tsm/modifyPwd", post.url.path)
         assertNull(post.url.query)
-        assertEquals("fake-card", body.getString("account"))
-        assertEquals("1\$1\$abcdef\$1\$fake-uuid-1", body.getString("oldpw"))
-        assertEquals("1\$1\$qrstkl\$1\$fake-uuid-2", body.getString("newpw"))
-        assertEquals("1\$1\$GHIJAB\$1\$fake-uuid-3", body.getString("renewpw"))
-        assertEquals("h5", body.getString("synAccessSource"))
-        assertFalse(body.has("pwdType"))
-        assertEquals(5, body.length())
+        assertEquals("fake-card", body.stringValue("account"))
+        assertEquals("1\$1\$abcdef\$1\$fake-uuid-1", body.stringValue("oldpw"))
+        assertEquals("1\$1\$qrstkl\$1\$fake-uuid-2", body.stringValue("newpw"))
+        assertEquals("1\$1\$GHIJAB\$1\$fake-uuid-3", body.stringValue("renewpw"))
+        assertEquals("h5", body.stringValue("synAccessSource"))
+        assertFalse(body.containsKey("pwdType"))
+        assertEquals(5, body.size)
         assertEquals(3, calls.count { it.url.path.endsWith("keyboard") })
         assertTrue(calls.filter { it.url.path.endsWith("keyboard") }.all { it.url.query.contains("type=Number") && it.url.query.contains("order=0") })
         assertTrue(calls.all { it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" &&
@@ -81,23 +76,22 @@ class CardPasswordApiTest {
             val mappings = MutableList(3) { "abcdefghij" }.apply { this[fieldIndex] = "\$bcdefghij" }
             change(api(keyboardMappings = mappings), new = "012345")
             val post = calls.single { it.request.method == "POST" }
-            val body = JSONObject(post.sent.toString("UTF-8"))
+            val body = parseObject(post.sent.toString("UTF-8"))
             val field = listOf("oldpw", "newpw", "renewpw")[fieldIndex]
-            assertEquals("1\$1\$\$bcdef\$1\$fake-uuid-${fieldIndex + 1}", body.getString(field))
+            assertEquals("1\$1\$\$bcdef\$1\$fake-uuid-${fieldIndex + 1}", body.stringValue(field))
             assertEquals(3, calls.count { it.url.path.endsWith("keyboard") })
             assertEquals(1, calls.count { it.request.method == "POST" })
         }
     }
     @Test fun outerFailurePreservesMsgExactly() {
         val msg = "  服务端原始错误\n请稍后再试  "
-        val result = JSONObject().put("code", 500).put("msg", msg).toString()
+        val result = jsonObjectOf("code" to (500), "msg" to (msg)).toString()
         assertEquals(msg, rejection { change(api(result)) }.message)
         assertEquals(1, calls.count { it.request.method == "POST" })
     }
     @Test fun innerFailurePreservesErrmsgRatherThanOuterSuccessText() {
         val msg = "  原密码校验失败\n请重新输入 "
-        val result = JSONObject().put("code", 200).put("success", true).put("msg", "封装成功")
-            .put("data", JSONObject().put("retcode", "60004").put("errmsg", msg)).toString()
+        val result = jsonObjectOf("code" to (200), "success" to (true), "msg" to ("封装成功"), "data" to (jsonObjectOf("retcode" to ("60004"), "errmsg" to (msg)))).toString()
         assertEquals(msg, rejection { change(api(result)) }.message)
         assertEquals(1, calls.count { it.request.method == "POST" })
     }
@@ -142,15 +136,14 @@ class CardPasswordApiTest {
     }
     @Test fun preflightAuthenticationRejectionPreservesOriginalMessageAndNeverWrites() {
         val msg = "  official keyboard authentication message\n"
-        val keyboard = JSONObject().put("code", 401).put("msg", msg).toString()
+        val keyboard = jsonObjectOf("code" to (401), "msg" to (msg)).toString()
         val failure = rejection { change(api(keyboard = keyboard)) }
         assertTrue(failure is AuthenticationRequired)
         assertEquals(msg, failure.message)
         assertTrue(calls.none { it.request.method == "POST" })
     }
     @Test fun unsupportedPasswordRulesStopBeforeWrite() {
-        val config = JSONObject().put("code", 200).put("data", JSONObject().put("getFrontConfig", "{}")
-            .put("getEcardConfig", "{\"passwordType\":\"1\"}")).toString()
+        val config = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("getFrontConfig" to ("{}"), "getEcardConfig" to ("{\"passwordType\":\"1\"}")))).toString()
         rejection { change(api(config = config)) }
         assertTrue(calls.none { it.request.method == "POST" || it.url.path.endsWith("keyboard") })
     }

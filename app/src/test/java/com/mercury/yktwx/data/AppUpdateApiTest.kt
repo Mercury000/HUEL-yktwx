@@ -1,10 +1,9 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.*
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,27 +20,16 @@ internal class SignedUpdateFixture {
     val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
     val verifier = UpdateManifestVerifier(Base64.getEncoder().encodeToString(key.public.encoded))
     val request = UpdateRequest("com.mercury.yktwx", 9, 35)
-    fun json(version: Int = 10, revision: Long = 1, channel: String = "stable") = JSONObject()
-        .put("schemaVersion", 1).put("channel", channel).put("packageName", request.packageName)
-        .put("versionCode", version).put("versionName", "1.5.0").put("minSdk", 34)
-        .put("publishedAt", "2026-11-01T00:00:00Z").put("expiresAt", "2099-01-01T00:00:00Z")
-        .put("changelog", "## 更新\n\n- **修复**问题").put("maxForcedVersionCode", 0)
-        .put("policyRevision", revision).put("sha256", "a".repeat(64)).put("size", 1024)
-        .put("releaseUrl", "https://github.com/${AppUpdateApi.REPOSITORY}/releases/tag/10")
-        .put("urls", JSONArray((1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk"))
-    fun sign(json: JSONObject): String {
+    fun json(version: Int = 10, revision: Long = 1, channel: String = "stable") = jsonObjectOf("schemaVersion" to (1), "channel" to (channel), "packageName" to (request.packageName), "versionCode" to (version), "versionName" to ("1.5.0"), "minSdk" to (34), "publishedAt" to ("2026-11-01T00:00:00Z"), "expiresAt" to ("2099-01-01T00:00:00Z"), "changelog" to ("## 更新\n\n- **修复**问题"), "maxForcedVersionCode" to (0), "policyRevision" to (revision), "sha256" to ("a".repeat(64)), "size" to (1024), "releaseUrl" to ("https://github.com/${AppUpdateApi.REPOSITORY}/releases/tag/10"), "urls" to (jsonArrayOf((1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk")))
+    fun sign(json: JsonObject): String {
         val bytes = json.toString().toByteArray()
         val signer = Signature.getInstance("Ed25519").apply { initSign(key.private); update(bytes) }
-        return JSONObject().put("algorithm", "Ed25519").put("payload", Base64.getEncoder().encodeToString(bytes))
-            .put("signature", Base64.getEncoder().encodeToString(signer.sign())).toString()
+        return jsonObjectOf("algorithm" to ("Ed25519"), "payload" to (Base64.getEncoder().encodeToString(bytes)), "signature" to (Base64.getEncoder().encodeToString(signer.sign()))).toString()
     }
-    fun pair(json: JSONObject): Pair<String, String> {
+    fun pair(json: JsonObject): Pair<String, String> {
         val manifest = sign(json)
         val hash = sha256(manifest.toByteArray())
-        val pointer = JSONObject().put("schemaVersion", 1).put("channel", json.getString("channel"))
-            .put("policyRevision", json.getLong("policyRevision"))
-            .put("manifestPath", "manifests/${json.getLong("policyRevision")}-${hash}.json")
-            .put("manifestSha256", hash).put("expiresAt", json.getString("expiresAt"))
+        val pointer = jsonObjectOf("schemaVersion" to (1), "channel" to (json.stringValue("channel")), "policyRevision" to (json.longValue("policyRevision")), "manifestPath" to ("manifests/${json.longValue("policyRevision")}-${hash}.json"), "manifestSha256" to (hash), "expiresAt" to (json.stringValue("expiresAt")))
         return sign(pointer) to manifest
     }
 }
@@ -339,7 +327,7 @@ class AppUpdateApiTest {
         assertNull(store.cachedRelease())
         assertEquals("stable", restored().channel)
         val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2, channel = "beta")
-            .put("maxForcedVersionCode", 9)), "beta")
+            .withField("maxForcedVersionCode", 9)), "beta")
         store.acceptPolicy("beta", forced.first, forced.second)
         assertTrue(store.cachedRelease()!!.required(9))
         assertEquals(9, restored().forcedBoundary())
@@ -347,31 +335,31 @@ class AppUpdateApiTest {
     @Test fun signedSchemaRejectsInvalidNumbersChannelsHashesAndCdns() {
         val valid = fixture.sign(fixture.json())
         assertEquals(10, fixture.verifier.manifest(valid, "stable").first.versionCode)
-        for (invalid in listOf(fixture.json().put("versionCode", "10"), fixture.json().put("versionCode", 10.5),
-            fixture.json().put("maxForcedVersionCode", 10), fixture.json().put("sha256", "A".repeat(64)),
-            fixture.json().put("urls", JSONArray(listOf("https://cdn.example.com/app.apk"))),
-            fixture.json().put("releaseUrl", "intent://install"))) {
+        for (invalid in listOf(fixture.json().withField("versionCode", "10"), fixture.json().withField("versionCode", 10.5),
+            fixture.json().withField("maxForcedVersionCode", 10), fixture.json().withField("sha256", "A".repeat(64)),
+            fixture.json().withField("urls", jsonArrayOf(listOf("https://cdn.example.com/app.apk"))),
+            fixture.json().withField("releaseUrl", "intent://install"))) {
             assertThrows(Exception::class.java) { fixture.verifier.manifest(fixture.sign(invalid), "stable") }
         }
         assertThrows(Exception::class.java) { fixture.verifier.manifest(valid, "beta") }
-        val altered = JSONObject(valid).put("payload", Base64.getEncoder().encodeToString(fixture.json(11).toString().toByteArray()))
+        val altered = parseObject(valid).withField("payload", Base64.getEncoder().encodeToString(fixture.json(11).toString().toByteArray()))
         assertThrows(Exception::class.java) { fixture.verifier.manifest(altered.toString(), "stable") }
     }
     @Test fun signedManifestRetainsCertificateFingerprintAndRejectsMalformedValues() {
         val signer = sha256(byteArrayOf(1))
-        val signed = fixture.sign(fixture.json().put("signerSha256", signer))
+        val signed = fixture.sign(fixture.json().withField("signerSha256", signer))
         assertEquals(signer, fixture.verifier.manifest(signed, "stable").first.signerSha256)
         assertNull(fixture.verifier.manifest(fixture.sign(fixture.json()), "stable").first.signerSha256)
         for (invalid in listOf("", "A".repeat(64), "not-a-certificate", 123)) {
             assertThrows(Exception::class.java) {
-                fixture.verifier.manifest(fixture.sign(fixture.json().put("signerSha256", invalid)), "stable")
+                fixture.verifier.manifest(fixture.sign(fixture.json().withField("signerSha256", invalid)), "stable")
             }
         }
     }
     @Test fun localVersionAndCompatibilityDecideResult() = runBlocking {
         for ((json, reason) in listOf(fixture.json() to UpdateCheckReason.UpdateAvailable,
             fixture.json(version = 9) to UpdateCheckReason.CurrentOrNewer,
-            fixture.json().put("minSdk", 99) to UpdateCheckReason.NoCompatibleRelease)) {
+            fixture.json().withField("minSdk", 99) to UpdateCheckReason.NoCompatibleRelease)) {
             val (pointer, manifest) = fixture.pair(json)
             val result = api { url -> (if (url.path.endsWith("latest.json")) pointer else manifest) to 200 }.check(fixture.request, store())
             assertEquals(reason, result.reason)
@@ -402,7 +390,7 @@ class AppUpdateApiTest {
                 (if (url.path.endsWith("latest.json")) pair.first else pair.second) to 200
             }.check(fixture.request, store())
         } }
-        val expired = fixture.pair(fixture.json().put("expiresAt", "2020-01-01T00:00:00Z"))
+        val expired = fixture.pair(fixture.json().withField("expiresAt", "2020-01-01T00:00:00Z"))
         assertThrows(Exception::class.java) { runBlocking {
             api { url -> (if (url.path.endsWith("latest.json")) expired.first else expired.second) to 200 }
                 .check(fixture.request, store())
@@ -410,7 +398,7 @@ class AppUpdateApiTest {
     }
     @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() {
         val store = store()
-        val first = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2).put("maxForcedVersionCode", 8)), "stable")
+        val first = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2).withField("maxForcedVersionCode", 8)), "stable")
         store.acceptPolicy("stable", first.first, first.second)
         val lower = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 1)), "stable")
         assertThrows(Exception::class.java) { store.acceptPolicy("stable", lower.first, lower.second) }
@@ -419,7 +407,7 @@ class AppUpdateApiTest {
         assertThrows(Exception::class.java) { store.acceptPolicy("stable", reset.first, reset.second) }
     }
     @Test fun timestampParsingAndDangerousUrlsAreBounded() {
-        val invalidTime = fixture.verifier.manifest(fixture.sign(fixture.json().put("publishedAt", "not a date")), "stable").first
+        val invalidTime = fixture.verifier.manifest(fixture.sign(fixture.json().withField("publishedAt", "not a date")), "stable").first
         assertNull(invalidTime.publishedAt)
         listOf("http://example.com/a", "https://user@example.com/a", "file:///a", "https://example.com:8080/a")
             .forEach { url -> assertThrows(Exception::class.java) { httpsUri(url) } }
@@ -428,7 +416,7 @@ class AppUpdateApiTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("forced-restart-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().put("maxForcedVersionCode", 9)), "stable")
+        val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
         fun restored(version: Int) = UpdateCheckStore(prefs, "package:stable:$version", "package", version) { body, channel ->
             fixture.verifier.manifest(body, channel).first
         }
@@ -445,11 +433,11 @@ class AppUpdateApiTest {
             fixture.verifier.manifest(body, channel).first
         }
         val optional = fixture.verifier.manifest(fixture.sign(fixture.json()
-            .put("expiresAt", "2026-11-10T00:00:00Z")), "stable")
+            .withField("expiresAt", "2026-11-10T00:00:00Z")), "stable")
         restored().acceptPolicy("stable", optional.first, optional.second)
         assertNull(restored().cachedRelease())
         val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2)
-            .put("maxForcedVersionCode", 9).put("expiresAt", "2026-11-10T00:00:00Z")), "stable")
+            .withField("maxForcedVersionCode", 9).withField("expiresAt", "2026-11-10T00:00:00Z")), "stable")
         restored().acceptPolicy("stable", forced.first, forced.second)
         assertTrue(restored().cachedRelease()!!.required(9))
     }
