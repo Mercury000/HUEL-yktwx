@@ -70,6 +70,21 @@ class ReadFeedbackUiTest {
             ReadRegion("余额", error, false), ReadRegion("本月概览", error, false), ReadRegion("资料", null, true)))
     }
 
+    @Test fun networkUnblockClearsOfflineNoticeWhileAReadIsStillPending() {
+        var offline by mutableStateOf(true)
+        var loading by mutableStateOf(false)
+        var displayed: String? = null
+        compose.setContent {
+            CompositionLocalProvider(LocalReadOffline provides offline) {
+                displayed = rememberPageNetworkError(loading, true, null,
+                    ReadRegion("余额", ReadError(FeedbackText.Offline, ReadFailureKind.Network).takeIf { offline }, true, loading))
+            }
+        }
+        compose.runOnIdle { assertEquals(cachedOffline, displayed) }
+        compose.runOnIdle { offline = false; loading = true }
+        compose.runOnIdle { assertNull(displayed) }
+    }
+
     @Test fun partialCachedStatisticsNameFailedRegionsAndWrapAtLargeDarkText() {
         val settings = ThemeSettings(compose.activity.application)
         val ready = PreviewData.billState()
@@ -814,16 +829,12 @@ class ReadFeedbackUiTest {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         shadowOf(connectivity).setActiveNetworkInfo(null)
         ShadowToast.reset()
-        assertFalse(allowOnlineEntry(context))
+        assertFalse(allowOnlineEntry(context, online = false))
         assertEquals(1, ShadowToast.shownToastCount())
         assertEquals("网络连接失败", ShadowToast.getTextOfLatestToast())
-        // A connected network without Android's validation may still reach campus services.
-        shadowOf(connectivity).setActiveNetworkInfo(org.robolectric.shadows.ShadowNetworkInfo.newInstance(
-            android.net.NetworkInfo.DetailedState.CONNECTED, ConnectivityManager.TYPE_WIFI, 0, true, true))
-        val capabilities = org.robolectric.shadows.ShadowNetworkCapabilities.newInstance()
-        shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        shadowOf(connectivity).setNetworkCapabilities(connectivity.activeNetwork, capabilities)
-        assertTrue(allowOnlineEntry(context))
+        // Entry and display use the same callback state even while system getters lag behind.
+        assertTrue(allowOnlineEntry(context, online = true))
+        assertTrue(allowOnlineEntry(context, online = null))
         assertEquals(1, ShadowToast.shownToastCount())
     }
 }

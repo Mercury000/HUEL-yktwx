@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.fixtureUpdateHttp
 import android.app.Activity
 import android.app.Application
 import android.content.Context
@@ -35,7 +36,7 @@ class UpdateInstallRecoveryTest {
     private val release = UpdateRelease(10, "1.5.0", "更新说明", "https://github.com/release",
         sha256 = sha256(bytes), size = bytes.size.toLong(), packageName = app.packageName,
         urls = (1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk")
-    private val installer = AppUpdateInstaller(app, UpdateHttp { error("Verified APK must be reused") }) {
+    private val installer = AppUpdateInstaller(app, fixtureUpdateHttp { error("Verified APK must be reused") }) {
         Uri.parse("content://${app.packageName}.updates/verified.apk")
     }
     private val launched = mutableListOf<Intent>()

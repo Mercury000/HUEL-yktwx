@@ -571,7 +571,10 @@ class BillViewModel internal constructor(
         val current = mutable.value
         if (current.needsLogin || preview || current.statsVisible) return
         val cached = listCache[listKey(current)]
-        if (cached != null) {
+        // Restore a newly selected query only. The current loaded query is newer than its
+        // last successful cache, including any failed refresh and appended pages. Replacing
+        // it here could erase a transport failure before admission and suppress recovery.
+        if (cached != null && !current.loaded) {
             val fresh = !listPending(current) && ReadCachePolicy.isFresh(cached.readAt, now())
             val snapshot = cached.value.state
             // Search/filter changes keep the latest overview for the same date range.
