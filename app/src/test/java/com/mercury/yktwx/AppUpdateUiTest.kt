@@ -153,7 +153,7 @@ class AppUpdateUiTest {
     @Test fun manualCheckShowsLoadingAndCanRetryAfterFailure() {
         var checks = 0
         val gate = CompletableDeferred<UpdateCheckResult>()
-        val model = AppUpdateViewModel(compose.activity.application, UpdateCheckStore(
+        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(
             compose.activity.getSharedPreferences("update-ui-test", Context.MODE_PRIVATE), "v3"), {
             checks++
             if (checks == 1) gate.await() else UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
@@ -235,7 +235,7 @@ class AppUpdateUiTest {
 
     @Test fun forcedRootBlocksBusinessPagesAndHasNoDismissActions() {
         val settings = settings()
-        val model = AppUpdateViewModel(compose.activity.application, UpdateCheckStore(
+        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(
             compose.activity.getSharedPreferences("forced-root-test", Context.MODE_PRIVATE), "v9"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
                 UpdateRelease(10, "1.5.0", "## 必须更新\n\n- 修复问题", "https://github.com/release", maxForcedVersionCode = 9))
@@ -261,7 +261,7 @@ class AppUpdateUiTest {
         val settings = settings()
         val prefs = compose.activity.getSharedPreferences("inline-update-ui-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        val model = AppUpdateViewModel(compose.activity.application, UpdateCheckStore(prefs, "v4"), {
+        val model = AppUpdateViewModel(compose.activity.application, updateStoreFixture(prefs, "v4"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
                 UpdateRelease(5, "1.3.0", "优化付款码展示体验\n改进页面加载与更新提示", "https://cxt.303889.xyz/download/"))
         })

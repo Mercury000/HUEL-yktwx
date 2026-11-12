@@ -164,6 +164,7 @@ internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
         val started = System.nanoTime()
         Log.d("AppUpdate", "check channel=${request.channel} started")
         val result = withTimeoutOrNull(sourceTimeoutMillis + 1_000) {
+            store.repository.awaitReady()
             checkChannels(request, store)
         } ?: throw java.net.SocketTimeoutException("更新检查超时")
         Log.d("AppUpdate", "check channel=${request.channel} elapsedMs=${(System.nanoTime() - started) / 1_000_000} " +
