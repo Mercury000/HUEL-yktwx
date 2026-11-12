@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
@@ -39,10 +40,11 @@ data class MyUiState(
     val restoringDisplay: Boolean = false,
 ) { override fun toString() = "MyUiState([redacted])" }
 
-class MyViewModel internal constructor(app: Application, private val repository: AccountRepository,
+@HiltViewModel
+class MyViewModel internal constructor(private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
-    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.My)) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
+    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.My)) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository) : this(repository, initialEnvironment = ReadEnvironment.Inactive)
     private val mutable = MutableStateFlow(MyUiState())
     val state = mutable.asStateFlow()
     private var owner = ""

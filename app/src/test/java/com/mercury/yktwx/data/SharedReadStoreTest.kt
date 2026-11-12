@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import com.mercury.yktwx.data.sharedReadStoreFixture
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -12,7 +13,7 @@ class SharedReadStoreTest {
     private val owner = AccountIdentity("user", 1)
 
     @Test fun cancellingOnePageDoesNotCancelTheSameQueryObservedByAnotherPage() = runTest {
-        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val store = sharedReadStoreFixture(backgroundScope).apply { reset(owner) }
         val gate = CompletableDeferred<String>()
         var requests = 0
         suspend fun read() = store.read(owner, "summary", 0, false, now = { 10_000L }) {
@@ -32,7 +33,7 @@ class SharedReadStoreTest {
     }
 
     @Test fun unchangedTransactionReadRemainsStaleUntilTheEndpointChanges() = runTest {
-        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val store = sharedReadStoreFixture(backgroundScope).apply { reset(owner) }
         suspend fun read(stamp: Long, value: String) = store.read(owner, "summary", stamp, false, now = { 10_000L }) { value }
         assertEquals("before", read(0, "before"))
         assertTrue(store.snapshot<String>(owner, "summary", 1).pending)
@@ -43,7 +44,7 @@ class SharedReadStoreTest {
     }
 
     @Test fun failedRefreshKeepsTheSuccessfulValueAndRequiresARecoveryRead() = runTest {
-        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val store = sharedReadStoreFixture(backgroundScope).apply { reset(owner) }
         store.read(owner, "counts", 0, false, now = { 10_000L }) { 1 }
         try {
             store.read<Int>(owner, "counts", 0, true, now = { 10_000L }) { throw IllegalStateException("offline") }
@@ -57,7 +58,7 @@ class SharedReadStoreTest {
     }
 
     @Test fun aNewerConfirmedEndpointResultSupersedesAnOlderConcurrentRead() = runTest {
-        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val store = sharedReadStoreFixture(backgroundScope).apply { reset(owner) }
         val gate = CompletableDeferred<String>()
         val old = async { store.read(owner, "card", 0, false, now = { 10_000L }) { gate.await() } }
         runCurrent()
@@ -68,7 +69,7 @@ class SharedReadStoreTest {
     }
 
     @Test fun generationsAndQueryRangesHaveIndependentValues() = runTest {
-        val store = SharedReadStore(backgroundScope).apply { reset(owner) }
+        val store = sharedReadStoreFixture(backgroundScope).apply { reset(owner) }
         store.read(owner, "summary:october", 0, false) { "october" }
         store.read(owner, "summary:november", 0, false) { "november" }
         assertEquals("october", store.snapshot<String>(owner, "summary:october", 0).value)

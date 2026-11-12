@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
@@ -24,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NavigationRailBackUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun collapsedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
@@ -36,9 +37,9 @@ class NavigationRailBackUiTest {
 
     private fun verifyPredictiveReturn(style: Int = 0) {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(compose.activity).apply { setNavTransitionStyle(style) }
-        val payments = PaymentViewModel(compose.activity.application).apply { initialize(true) }
-        val bills = BillViewModel(compose.activity.application).apply { initialize(true) }
+        val settings = themeSettingsFixture(compose.activity).apply { setNavTransitionStyle(style) }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }

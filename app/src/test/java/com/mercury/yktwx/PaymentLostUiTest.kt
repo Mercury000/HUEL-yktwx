@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -33,12 +34,12 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PaymentLostUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     @Before fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(context)
+        settings = themeSettingsFixture(context)
     }
     private fun screenshot(name: String) {
         File("../tools/$name.png").outputStream().use {
@@ -47,8 +48,8 @@ class PaymentLostUiTest {
     }
     private fun lostApp(dark: Boolean = false) {
         settings.setTheme(if (dark) 2 else 1)
-        val model = PaymentViewModel(compose.activity.application)
-        val bills = BillViewModel(compose.activity.application)
+        val model = paymentViewModelFixture(compose.activity.application)
+        val bills = billViewModelFixture(compose.activity.application)
         model.initialize(uiPreview = true, previewLost = true)
         bills.initialize(true)
         compose.setContent {

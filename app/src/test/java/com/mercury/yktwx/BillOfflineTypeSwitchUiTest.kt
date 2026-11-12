@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -33,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillOfflineTypeSwitchUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     @get:Rule val folder = TemporaryFolder()
 
     @Test fun firstOfflineSwitchWithBothTypesCachedKeepsNoticeDuringTheSlide() =
@@ -75,7 +77,7 @@ class BillOfflineTypeSwitchUiTest {
                 networkReads.incrementAndGet(); throw NetworkFailure()
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache)
         val period = BillDateFilter.currentMonth()
         runBlocking {
             repository.username()
@@ -87,9 +89,9 @@ class BillOfflineTypeSwitchUiTest {
                 repository.saveDisplay("fictional-user", DisplayKeys.stats(period, type, "ranking"), stats.ranking, DisplayCodecs.Records)
             }
         }
-        val model = BillViewModel(compose.activity.application, repository)
+        val model = billViewModelFixture(compose.activity.application, repository)
         val store = ViewModelStore().apply { put("bill", model) }
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         fun frame() { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
         try {
             model.accountChanged("fictional-user")

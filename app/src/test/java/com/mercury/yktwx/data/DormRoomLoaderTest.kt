@@ -20,7 +20,7 @@ class DormRoomLoaderTest {
     private fun config(project: FeeProject = FeeProject.Zhengdong, room: FeeRoomBinding? = binding()) =
         FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false), true, room)
     private data class Read(val project: FeeProject, val level: Int, val selections: Map<String, String>, val detail: Boolean)
-    private inner class FakeFees : FeeService by FeeApi({ error("No live request") }) {
+    private inner class FakeFees : FeeService by feeApiFixture({ error("No live request") }) {
         val reads = mutableListOf<Read>()
         var pickerGate: CompletableDeferred<Unit>? = null
         var shortFailure = false
@@ -121,7 +121,7 @@ class DormRoomLoaderTest {
         val entered = AtomicInteger()
         val active = AtomicInteger()
         val maximum = AtomicInteger()
-        val fees = object : FeeService by FeeApi({ error("No live request") }) {
+        val fees = object : FeeService by feeApiFixture({ error("No live request") }) {
             override suspend fun feeQuery(token: String, project: FeeProject, level: Int,
                 selections: Map<String, String>, detail: Boolean): FeeQuery {
                 if (level == 2) return FeeQuery(levels, (1..6).map { FeeOption("air-floor-" + it, "楼层" + it) })
@@ -157,7 +157,7 @@ class DormRoomLoaderTest {
         val reads = mutableListOf<Read>()
         val source = FeeRoomBinding.from(levels, binding().selections,
             binding().names + ("building" to "7号楼照明") + ("room" to "7-201照明"))!!
-        val fees = object : FeeService by FeeApi({ error("No live request") }) {
+        val fees = object : FeeService by feeApiFixture({ error("No live request") }) {
             override suspend fun feeQuery(token: String, project: FeeProject, level: Int,
                 selections: Map<String, String>, detail: Boolean): FeeQuery {
                 reads += Read(project, level, selections.toMap(), detail)

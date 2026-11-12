@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -38,12 +39,12 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ExperienceUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private fun content(page: @Composable () -> Unit) {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { page() } } }
     }
     @Composable private fun bill(state: BillUiState, onSearch: (String) -> Unit = {}, onFilter: (String?, Long?, Long?) -> Unit = { _, _, _ -> }) {
-        BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {}, onFilter, onSearch, {}, {})
+        BillPage(state, themeSettingsFixture(compose.activity.application), {}, {}, {}, {}, onFilter, onSearch, {}, {})
     }
     private fun capture(name: String) {
         val file = File("../tools/experience/$name.png")
@@ -116,7 +117,7 @@ class ExperienceUiTest {
         var state by mutableStateOf(PreviewData.billState().copy(info = "原搜索"))
         var active by mutableStateOf(true)
         val searches = mutableListOf<String>()
-        content { BillPage(state, ThemeSettings(compose.activity.application), {}, {}, {}, {},
+        content { BillPage(state, themeSettingsFixture(compose.activity.application), {}, {}, {}, {},
             { _, _, _ -> }, { searches += it; state = state.copy(info = it) }, {}, {}, isActive = active) }
         compose.mainClock.autoAdvance = false
         val field = compose.onNodeWithTag("bill-search")
@@ -293,7 +294,7 @@ class ExperienceUiTest {
 
     @Test fun validCodeCanBeEnlargedAndDisappearsImmediatelyWhenItBecomesInvalid() {
         var state by mutableStateOf(PreviewData.paymentState(false))
-        content { top.yukonga.miuix.kmp.basic.Scaffold { PaymentPage(state, ThemeSettings(compose.activity.application), 0.dp, {}) } }
+        content { top.yukonga.miuix.kmp.basic.Scaffold { PaymentPage(state, themeSettingsFixture(compose.activity.application), 0.dp, {}) } }
         compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("付款二维码").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("付款二维码").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("放大的付款二维码").fetchSemanticsNodes().isNotEmpty() }
@@ -305,7 +306,7 @@ class ExperienceUiTest {
     @Test fun codeNumberVisibilityUsesCurrentCodeAndKeepsTheCardInPlace() {
         var state by mutableStateOf(PreviewData.paymentState(false))
         var active by mutableStateOf(true)
-        content { top.yukonga.miuix.kmp.basic.Scaffold { PaymentPage(state, ThemeSettings(compose.activity.application), 0.dp, {}, isActive = active) } }
+        content { top.yukonga.miuix.kmp.basic.Scaffold { PaymentPage(state, themeSettingsFixture(compose.activity.application), 0.dp, {}, isActive = active) } }
         val code = requireNotNull(state.code)
         val card = compose.onNodeWithTag("payment-code-card")
         val bounds = card.fetchSemanticsNode().boundsInRoot
@@ -378,7 +379,7 @@ class ExperienceUiTest {
     }
 
     @Test fun paymentPageHonorsBrightnessPreferenceWhileKeepingValidCodeAwake() {
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         settings.setPaymentBrightness(false)
         var state by mutableStateOf(PreviewData.paymentState(false))
         var active by mutableStateOf(true)

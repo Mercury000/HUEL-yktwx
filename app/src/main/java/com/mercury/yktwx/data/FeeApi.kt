@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Call
 
 /** Common fee protocol; only observed payment branches are accepted. */
-class FeeApi(client: Call.Factory = AppHttp.service) : FeeService {
+class FeeApi(client: Call.Factory) : FeeService {
     private val http = PaymentHttp(client)
     private suspend fun get(path: String, token: String, params: Map<String, String>) =
         http.json(http.request(path, token, params, chargeClient = true), feePayment = true)

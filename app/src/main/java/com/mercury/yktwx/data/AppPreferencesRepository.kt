@@ -1,12 +1,9 @@
 package com.mercury.yktwx.data
 
 import android.util.Log
-
-import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.datastore.core.DataStore
-import androidx.datastore.dataStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -19,16 +16,11 @@ internal sealed interface PreferencesLoadState {
     data class Failed(val failure: PreferencesFailure) : PreferencesLoadState
 }
 
-private val Context.preferencesDataStore by dataStore("app-preferences.json", AppPreferencesSerializer,
-    produceMigrations = { context -> listOf(LegacyPreferencesMigration(context)) })
-
 /** A persisted snapshot is published only after migration, signature checks and durable writes. */
 internal class AppPreferencesRepository internal constructor(
     private val store: DataStore<AppPreferences>,
     internal val scope: CoroutineScope,
-    private val verifyManifest: (String, String) -> Pair<UpdateRelease, String> = { body, channel ->
-        UpdateManifestVerifier().manifest(body, channel)
-    },
+    private val verifyManifest: (String, String) -> Pair<UpdateRelease, String>,
 ) {
     private val mutable = MutableStateFlow<PreferencesLoadState>(PreferencesLoadState.Loading)
     val state = mutable.asStateFlow()
@@ -111,7 +103,7 @@ internal class AppPreferencesRepository internal constructor(
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 val detail = when {
-                    generateSequence<Throwable>(error) { it.cause }.take(16).any { it is GeneralSecurityException } || error.message == "更新清单签名无效" ->
+                    generateSequence<Throwable>(error) { it.cause }.take(16).any { it is GeneralSecurityException } ->
                         "保存的更新清单签名验证失败"
                     error is SerializationException -> "保存的更新签名清单 JSON 格式或必填字段无效"
                     error is IllegalArgumentException && error.message == "更新渠道不匹配" ->
@@ -126,20 +118,6 @@ internal class AppPreferencesRepository internal constructor(
             checkPolicy(release.versionCode == policy.versionCode, "签名清单版本号与本机记录不一致（versionCode）")
             checkPolicy(release.maxForcedVersionCode == policy.forcedBoundary,
                 "签名清单强制更新边界与本机记录不一致（forcedBoundary）")
-        }
-    }
-
-    companion object {
-        private var sharedContext: Context? = null
-        private var sharedRepository: AppPreferencesRepository? = null
-        @Synchronized fun from(context: Context): AppPreferencesRepository {
-            val app = context.applicationContext
-            if (sharedContext !== app) {
-                sharedContext = app
-                sharedRepository = AppPreferencesRepository(app.preferencesDataStore,
-                    CoroutineScope(SupervisorJob() + Dispatchers.IO))
-            }
-            return checkNotNull(sharedRepository)
         }
     }
 

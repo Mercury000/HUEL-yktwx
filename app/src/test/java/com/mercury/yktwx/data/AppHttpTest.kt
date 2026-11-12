@@ -28,7 +28,7 @@ class AppHttpTest {
         val certificate = HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build()
         val serverTls = HandshakeCertificates.Builder().heldCertificate(certificate).build()
         val clientTls = HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
-        val builder = (if (publicReads) AppHttp.publicRead else AppHttp.service).newBuilder()
+        val builder = (if (publicReads) testHttpClients.publicRead else testHttpClients.service).newBuilder()
             .sslSocketFactory(clientTls.sslSocketFactory(), clientTls.trustManager)
             .dispatcher(Dispatcher())
             .protocols(if (protocol == Protocol.HTTP_2) listOf(Protocol.HTTP_2, Protocol.HTTP_1_1) else listOf(protocol))

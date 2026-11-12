@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -30,12 +32,12 @@ class RechargeViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeRechargeService()
     // Any unexpected authentication/payment request fails locally, never reaches the network.
-    private val repository = AccountRepository(FakeAccountService(), vault, service)
-    private val model = RechargeViewModel(ApplicationProvider.getApplicationContext<Application>(), repository, 0L)
-    private val store = ViewModelStore().apply { put("recharge", model) }
+    private val repository = accountRepositoryFixture(FakeAccountService(), vault, service)
+    private val model by lazy { rechargeViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), repository, 0L) }
+    private val store by lazy { ViewModelStore().apply { put("recharge", model) } }
 
     @After fun cleanup() {
-        AppAnalytics.instance = null
+        AnalyticsFixtures.instance = null
         store.clear()
         service.configurationGate.complete(Unit)
         service.creationGate.complete(Unit)

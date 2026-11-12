@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -45,7 +47,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DarkModeAuditTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private var output = File("../tools/dark-mode-adapted").absoluteFile
 
     private fun settle() {
@@ -87,9 +89,9 @@ class DarkModeAuditTest {
     @Test fun dashboardPagesAcrossThemes() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app).apply { setTheme(1); setFloating(true); setFloatingStyle(1) }
-        val payment = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val settings = themeSettingsFixture(app).apply { setTheme(1); setFloating(true); setFloatingStyle(1) }
+        val payment = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payment, bills) } }
         for (theme in 1..2) for (accent in 0..1) {
             compose.runOnIdle { settings.setTheme(theme); settings.setAccent(accent) }
@@ -102,9 +104,9 @@ class DarkModeAuditTest {
     @Test fun billPagesAndProfileIcons() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app).apply { setTheme(2); setFloating(true); setFloatingStyle(1) }
-        val payment = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val settings = themeSettingsFixture(app).apply { setTheme(2); setFloating(true); setFloatingStyle(1) }
+        val payment = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payment, bills) } }
         for (accent in 0..1) {
             compose.runOnIdle { settings.setAccent(accent); bills.showDetails() }
@@ -125,7 +127,7 @@ class DarkModeAuditTest {
         var accent by mutableIntStateOf(0)
         var statistics by mutableStateOf(false)
         val state = PreviewData.billState()
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var surface = Color.Unspecified
         var track = Color.Unspecified
         var selected = Color.Unspecified
@@ -182,7 +184,7 @@ class DarkModeAuditTest {
     @Test fun transparentAvatarCropAcrossThemes() {
         var theme by mutableStateOf(ColorSchemeMode.Light)
         var accent by mutableIntStateOf(0)
-        val avatar = AvatarViewModel(compose.activity.application)
+        val avatar = avatarViewModelFixture(compose.activity.application)
         val blue = android.graphics.Color.rgb(75, 128, 183)
         val draft = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply {
             android.graphics.Canvas(this).drawRect(120f, 120f, 280f, 280f,
@@ -228,7 +230,7 @@ class DarkModeAuditTest {
     @Test fun floatingBarsKeepSeparateSurfaceOverCards() {
         var theme by mutableStateOf(ColorSchemeMode.Light)
         var accent by mutableIntStateOf(0)
-        val settings = ThemeSettings(compose.activity.application).apply {
+        val settings = themeSettingsFixture(compose.activity.application).apply {
             setFloating(true); setFloatingStyle(0); setBlurBottom(false)
         }
         var card = Color.Unspecified
@@ -275,9 +277,9 @@ class DarkModeAuditTest {
     @Test fun navigationPagesAndTheirOverlays() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app).apply { setTheme(2); setFloating(true); setFloatingStyle(1) }
-        val payment = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val settings = themeSettingsFixture(app).apply { setTheme(2); setFloating(true); setFloatingStyle(1) }
+        val payment = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payment, bills) } }
         for (accent in 0..1) {
             compose.runOnIdle { settings.setAccent(accent) }
@@ -357,9 +359,9 @@ class DarkModeAuditTest {
         var accent by mutableIntStateOf(0)
         var screen by mutableIntStateOf(0)
         val app = compose.activity.application
-        val settings = ThemeSettings(app)
-        val consent = UsageConsent(app)
-        val avatar = AvatarViewModel(app)
+        val settings = themeSettingsFixture(app)
+        val consent = usageConsentFixture(app)
+        val avatar = avatarViewModelFixture(app)
         val draft = Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.rgb(95, 130, 160)) }
         val payment = PreviewData.paymentState(false)
         val lost = PreviewData.paymentState(true)
@@ -513,7 +515,7 @@ class DarkModeAuditTest {
     @Test fun statisticsViewportPositions() {
         var accent by mutableIntStateOf(0)
         val app = compose.activity.application
-        val settings = ThemeSettings(app)
+        val settings = themeSettingsFixture(app)
         val state = PreviewData.billState().copy(statsVisible = true)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {

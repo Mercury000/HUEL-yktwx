@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -30,8 +31,8 @@ import java.util.concurrent.TimeUnit
 class CardServiceViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeCards()
-    private val repository = AccountRepository(FakeAccountService(), vault, cardService = service)
-    private val model = CardServiceViewModel(ApplicationProvider.getApplicationContext<Application>(), repository)
+    private val repository = accountRepositoryFixture(FakeAccountService(), vault, cardService = service)
+    private val model = cardServiceViewModelFixture(ApplicationProvider.getApplicationContext<Application>(), repository)
     private val store = ViewModelStore().apply { put("card", model) }
     @After fun cleanup() {
         service.writeGate.complete(Unit); service.queryGate.complete(Unit); service.cardGate.complete(Unit); service.configGate.complete(Unit)

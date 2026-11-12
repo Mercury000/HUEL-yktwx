@@ -43,7 +43,7 @@ class CardServiceApiTest {
         val result = api.cardConfiguration("fake-token")
         assertFalse(result.lostNeedsPassword); assertTrue(result.unlostNeedsPassword)
         assertFalse(result.cards.single().lost)
-        assertTrue(calls.all { it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" && it.closed && !AppHttp.service.followRedirects })
+        assertTrue(calls.all { it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" && it.closed && !testHttpClients.service.followRedirects })
     }
     @Test fun unlostUsesFreshNumberKeyboardSingleJsonWriteAndRefreshesState() = runBlocking {
         var lost = true

@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.appUpdateInstallerFixture
 import com.mercury.yktwx.data.fixtureUpdateHttp
 import android.app.Activity
 import android.app.Application
@@ -36,7 +37,7 @@ class UpdateInstallRecoveryTest {
     private val release = UpdateRelease(10, "1.5.0", "更新说明", "https://github.com/release",
         sha256 = sha256(bytes), size = bytes.size.toLong(), packageName = app.packageName,
         urls = (1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk")
-    private val installer = AppUpdateInstaller(app, fixtureUpdateHttp { error("Verified APK must be reused") }) {
+    private val installer = appUpdateInstallerFixture(app, fixtureUpdateHttp { error("Verified APK must be reused") }) {
         Uri.parse("content://${app.packageName}.updates/verified.apk")
     }
     private val launched = mutableListOf<Intent>()
@@ -66,7 +67,7 @@ class UpdateInstallRecoveryTest {
     private fun model(candidate: UpdateRelease = release, now: () -> Long = System::currentTimeMillis): AppUpdateViewModel {
         val prefs = app.getSharedPreferences("installation-recovery", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        return AppUpdateViewModel(app, updateStoreFixture(prefs, "recovery"), {
+        return appUpdateViewModelFixture(app, updateStoreFixture(prefs, "recovery"), {
             UpdateCheckResult(UpdateCheckReason.UpdateAvailable, candidate)
         }, installer, now).also { models.put("recovery", it) }
     }

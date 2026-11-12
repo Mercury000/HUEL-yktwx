@@ -20,6 +20,8 @@ import okio.BufferedSink
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration.Companion.nanoseconds
@@ -31,7 +33,8 @@ import kotlin.time.Duration.Companion.nanoseconds
  * replay of a request that may already have reached the server.
  * Credentials belong to individual requests, never to a shared interceptor or cookie jar.
  */
-internal object AppHttp {
+@Singleton
+internal class AppHttp @Inject constructor() {
     // retryOnConnectionFailure(false) does not disable 503/Retry-After or coalesced
     // HTTP/2 421 follow-ups. Keep service operations at one wire attempt in both cases.
     private val noServiceReplay = Interceptor { chain ->
@@ -87,17 +90,19 @@ internal object AppHttp {
         .callTimeout(0, TimeUnit.SECONDS)
         .build()
 
-    fun request(url: String): Request.Builder = Request.Builder().url(url)
-        .header("Cache-Control", "no-store")
-        .header("Accept", "application/json")
+    companion object {
+        fun request(url: String): Request.Builder = Request.Builder().url(url)
+            .header("Cache-Control", "no-store")
+            .header("Accept", "application/json")
 
-    fun form(fields: Map<String, String>, contentType: String? = null): RequestBody {
-        val form = FormBody.Builder(Charsets.UTF_8).apply { fields.forEach { (key, value) -> add(key, value) } }.build()
-        if (contentType == null) return form
-        return object : RequestBody() {
-            override fun contentType() = contentType.toMediaType()
-            override fun contentLength() = form.contentLength()
-            override fun writeTo(sink: BufferedSink) = form.writeTo(sink)
+        fun form(fields: Map<String, String>, contentType: String? = null): RequestBody {
+            val form = FormBody.Builder(Charsets.UTF_8).apply { fields.forEach { (key, value) -> add(key, value) } }.build()
+            if (contentType == null) return form
+            return object : RequestBody() {
+                override fun contentType() = contentType.toMediaType()
+                override fun contentLength() = form.contentLength()
+                override fun writeTo(sink: BufferedSink) = form.writeTo(sink)
+            }
         }
     }
 }

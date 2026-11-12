@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -34,7 +35,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadStatusUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun capture(name: String) {
         val file = File("../tools/read-status-review/$name.png").absoluteFile
@@ -214,7 +215,7 @@ class ReadStatusUiTest {
         val ready = PreviewData.hallState()
         var state by mutableStateOf(ready)
         var refreshes = 0
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             HallPage(settings, 0.dp, dorm = state, onRefreshDorm = {
                 refreshes++
@@ -235,7 +236,7 @@ class ReadStatusUiTest {
 
     @Test fun cachedQueryShowsLocalProgressAndLeavesOverviewPixelsAndBoundsUnchanged() {
         var state by mutableStateOf(PreviewData.billState())
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             BillPage(state, settings, {}, {}, {}, {}, { _, _, _ -> }, {}, {}, {}, showBack = false)
         } } }
@@ -253,7 +254,7 @@ class ReadStatusUiTest {
     @Test fun paymentCircleTracksOnlyBalanceReadAndReservesSpaceAtNarrowLargeText() {
         var state by mutableStateOf(PreviewData.paymentState(false).copy(busy = true, code = null, balanceLoading = true))
         var dark by mutableStateOf(false)
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalInspectionMode provides true,
@@ -288,7 +289,7 @@ class ReadStatusUiTest {
         val hall = PreviewData.hallState()
         val bill = PreviewData.billState()
         val my = PreviewData.myState()
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalInspectionMode provides true,
@@ -346,7 +347,7 @@ class ReadStatusUiTest {
     }
 
     @Test fun avatarReadProgressDoesNotMoveTheSheetActions() {
-        val model = AvatarViewModel(compose.activity.application)
+        val model = avatarViewModelFixture(compose.activity.application)
         var state by mutableStateOf(AvatarUiState(visible = true))
         compose.setContent { AppTheme {
             top.yukonga.miuix.kmp.basic.Scaffold {

@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.data.life.LifeProvider
@@ -13,9 +14,9 @@ class ThemeSettingsTest {
     @Test fun unsupportedAppearanceValuesRenderDefaultsAndSurviveUnrelatedWrites() = runTest {
         val unknown = UiPreferences(themeMode = 99, accentMode = -1, floatingBottomBarStyle = 99, navTransitionStyle = 7)
         val store = MemoryPreferences(AppPreferences(legacyMigrated = true, ui = unknown))
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
-        val settings = ThemeSettings(repository)
+        val settings = themeSettingsFixture(repository)
         assertTrue(repository.state.value is PreferencesLoadState.Ready)
         assertEquals(0, settings.themeMode.value)
         assertEquals(0, settings.accentMode.value)
@@ -30,10 +31,10 @@ class ThemeSettingsTest {
 
     @Test fun everySettingIsReadFromThePersistedSharedSnapshot() = runTest {
         val store = MemoryPreferences()
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
-        val settings = ThemeSettings(repository)
-        val other = ThemeSettings(repository)
+        val settings = themeSettingsFixture(repository)
+        val other = themeSettingsFixture(repository)
         assertTrue(settings.preventScreenshots.value)
         assertTrue(settings.automaticUpdates.value)
         assertTrue(settings.paymentBrightness.value)
@@ -65,9 +66,9 @@ class ThemeSettingsTest {
 
     @Test fun failedWritesKeepThePersistedValueAndReportFailure() = runTest {
         val store = MemoryPreferences()
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
-        val settings = ThemeSettings(repository)
+        val settings = themeSettingsFixture(repository)
         val failures = mutableListOf<PreferencesFailure>()
         backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
             repository.failures.collect { failures += it }

@@ -1,6 +1,5 @@
 package com.mercury.yktwx.ui
 
-import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import com.mercury.yktwx.data.*
@@ -8,7 +7,6 @@ import com.mercury.yktwx.data.life.LifeProvider
 
 /** Read-only Compose projections of the single persisted settings snapshot. */
 class ThemeSettings internal constructor(internal val repository: AppPreferencesRepository) {
-    constructor(context: Context) : this(AppPreferencesRepository.from(context))
     private fun <T> ui(select: (UiPreferences) -> T): State<T> = derivedStateOf {
         select((repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.ui ?: UiPreferences())
     }

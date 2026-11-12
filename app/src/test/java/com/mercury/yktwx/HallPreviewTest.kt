@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -33,7 +34,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class HallPreviewTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private fun capture(name: String, settleMillis: Long = 1500) {
         if (settleMillis > 0) compose.mainClock.advanceTimeBy(settleMillis)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }
@@ -45,7 +46,7 @@ class HallPreviewTest {
     private fun settings(): ThemeSettings {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        return ThemeSettings(app).apply { setTheme(1); setFloating(true); setFloatingStyle(1) }
+        return themeSettingsFixture(app).apply { setTheme(1); setFloating(true); setFloatingStyle(1) }
     }
     private fun back() {
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
@@ -162,8 +163,8 @@ class HallPreviewTest {
     @Test fun threeCardsAndTemporaryCrossProjectPaymentRemainInHall() {
         val app = compose.activity.application
         val settings = settings()
-        val payments = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         val fee = ViewModelProvider(compose.activity)[FeeViewModel::class.java]
         val hall = ViewModelProvider(compose.activity)[HallViewModel::class.java]
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) } }
