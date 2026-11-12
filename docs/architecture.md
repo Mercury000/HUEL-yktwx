@@ -18,6 +18,8 @@
 
 `data/life/` 按平台组织服务、模型与账户记录。
 
+Version Catalog 集中管理插件和依赖版本。
+
 `analytics/` 管理统计事件与授权。
 
 ## 依赖关系
