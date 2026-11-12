@@ -10,9 +10,30 @@ import android.widget.Toast
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.UpdateFeedback
 import com.mercury.yktwx.R
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.Settings
 
 @Composable
-internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allowed: Boolean) {
+internal fun rememberUpdateInstallAction(model: AppUpdateViewModel): () -> Unit {
+    val dispatch = remember { mutableStateOf<(android.content.Intent) -> Unit>({}) }
+    val install = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        model.installationReturned(result.resultCode)
+    }
+    val authorization = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        model.authorizationReturned(dispatch.value)
+    }
+    val launch: (android.content.Intent) -> Unit = { intent ->
+        if (intent.action == Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES) authorization.launch(intent)
+        else install.launch(intent)
+    }
+    SideEffect { dispatch.value = launch }
+    return { model.downloadAndInstall(launch) }
+}
+
+@Composable
+internal fun AppUpdateEffect(model: AppUpdateViewModel, reminders: Boolean, allowed: Boolean,
+    channel: String = com.mercury.yktwx.BuildConfig.UPDATE_CHANNEL) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
     LaunchedEffect(model, lifecycle) {
@@ -23,6 +44,12 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allo
                     UpdateFeedback.NoRelease -> R.string.update_no_release
                     UpdateFeedback.Incompatible -> R.string.update_incompatible
                     UpdateFeedback.Network -> R.string.update_network_failed
+                    UpdateFeedback.Service -> R.string.update_service_unavailable
+                    UpdateFeedback.StableUnavailable -> R.string.update_stable_unavailable
+                    UpdateFeedback.BetaUnavailable -> R.string.update_beta_unavailable
+                    UpdateFeedback.StaleMetadata -> R.string.update_metadata_stale
+                    UpdateFeedback.ConflictingMetadata -> R.string.update_metadata_conflict
+                    UpdateFeedback.InvalidMetadata -> R.string.update_metadata_invalid
                     UpdateFeedback.Failed -> R.string.update_failed
                     UpdateFeedback.Preview -> R.string.update_preview
                 }
@@ -30,19 +57,20 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, automatic: Boolean, allo
             }
         }
     }
-    val currentAutomatic by rememberUpdatedState(automatic)
+    val currentReminders by rememberUpdatedState(reminders)
     val currentAllowed by rememberUpdatedState(allowed)
+    val currentChannel by rememberUpdatedState(channel)
     DisposableEffect(model, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
-            model.configure(currentAutomatic, currentAllowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+            model.configure(currentReminders, currentAllowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), currentChannel)
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            model.configure(automatic = false, allowed = false, inForeground = false)
+            model.configure(reminders = false, allowed = false, inForeground = false)
         }
     }
-    LaunchedEffect(model, automatic, allowed) {
-        model.configure(automatic, allowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    LaunchedEffect(model, reminders, allowed, channel) {
+        model.configure(reminders, allowed, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), channel)
     }
 }

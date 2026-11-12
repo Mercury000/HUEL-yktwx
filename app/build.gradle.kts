@@ -16,6 +16,20 @@ val hui798Gateway = providers.environmentVariable("HUI798_API_GATEWAY")
 val hui798Salt = providers.environmentVariable("HUI798_SIGN_SALT")
     .orElse(machineProperties.getProperty("hui798.signSalt", "")).get()
 fun buildString(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+val versionProperties = Properties().apply {
+    rootProject.file("ci-version.properties").inputStream().use { load(it) }
+}
+val generatedVersion = Properties().apply {
+    providers.environmentVariable("APP_BUILD_VERSION_FILE").orNull?.let { path ->
+        rootProject.file(path).inputStream().use { load(it) }
+    }
+}
+val appVersionName = generatedVersion.getProperty("versionName", rootProject.file("version.txt").readText().trim())
+val appVersionCode = generatedVersion.getProperty("versionCode", versionProperties.getProperty("localVersionCode")).toInt()
+val updateChannel = generatedVersion.getProperty("channel",
+    providers.environmentVariable("UPDATE_CHANNEL").orElse("stable").get())
+require(appVersionCode > 0 && appVersionName.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-beta(?:\\.[0-9]+)?)?")))
+require(updateChannel in listOf("stable", "beta"))
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
@@ -23,13 +37,17 @@ android {
         applicationId = "com.mercury.yktwx"
         minSdk = 34
         targetSdk = 37
-        versionCode = 9
-        versionName = "1.4.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PANGGUI_API_SECRET", "\"" + pangguiSecret.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
         buildConfigField("String", "HUI798_API_GATEWAY", buildString(hui798Gateway))
         buildConfigField("String", "HUI798_SIGN_SALT", buildString(hui798Salt))
+        buildConfigField("String", "UPDATE_PUBLIC_KEY", buildString(rootProject.file("updates/public-key.txt").readText().trim()))
+        buildConfigField("String", "UPDATE_CHANNEL", buildString(updateChannel))
+        manifestPlaceholders["updateChannel"] = updateChannel
+        buildConfigField("String", "BUILD_COMMIT", buildString(generatedVersion.getProperty("commit", "local")))
     }
     buildFeatures { compose = true; buildConfig = true; resValues = true }
     buildTypes {

@@ -1,94 +1,65 @@
 package com.mercury.yktwx.data
 
-import kotlinx.coroutines.runBlocking
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.*
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.net.URL
+import java.security.KeyPairGenerator
+import java.security.Signature
 import java.security.cert.Certificate
+import java.time.Instant
+import java.util.Base64
 import javax.net.ssl.HttpsURLConnection
 
+internal class SignedUpdateFixture {
+    val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+    val verifier = UpdateManifestVerifier(Base64.getEncoder().encodeToString(key.public.encoded))
+    val request = UpdateRequest("com.mercury.yktwx", 9, 35)
+    fun json(version: Int = 10, revision: Long = 1, channel: String = "stable") = JSONObject()
+        .put("schemaVersion", 1).put("channel", channel).put("packageName", request.packageName)
+        .put("versionCode", version).put("versionName", "1.5.0").put("minSdk", 34)
+        .put("publishedAt", "2026-11-01T00:00:00Z").put("expiresAt", "2099-01-01T00:00:00Z")
+        .put("changelog", "## 更新\n\n- **修复**问题").put("maxForcedVersionCode", 0)
+        .put("policyRevision", revision).put("sha256", "a".repeat(64)).put("size", 1024)
+        .put("releaseUrl", "https://github.com/${AppUpdateApi.REPOSITORY}/releases/tag/10")
+        .put("urls", JSONArray((1..5).map { "https://cdn$it.example.com/app.apk" } + "https://github.com/app.apk"))
+    fun sign(json: JSONObject): String {
+        val bytes = json.toString().toByteArray()
+        val signer = Signature.getInstance("Ed25519").apply { initSign(key.private); update(bytes) }
+        return JSONObject().put("algorithm", "Ed25519").put("payload", Base64.getEncoder().encodeToString(bytes))
+            .put("signature", Base64.getEncoder().encodeToString(signer.sign())).toString()
+    }
+    fun pair(json: JSONObject): Pair<String, String> {
+        val manifest = sign(json)
+        val hash = sha256(manifest.toByteArray())
+        val pointer = JSONObject().put("schemaVersion", 1).put("channel", json.getString("channel"))
+            .put("policyRevision", json.getLong("policyRevision"))
+            .put("manifestPath", "manifests/${json.getLong("policyRevision")}-${hash}.json")
+            .put("manifestSha256", hash).put("expiresAt", json.getString("expiresAt"))
+        return sign(pointer) to manifest
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class AppUpdateApiTest {
-    private val request = UpdateRequest("com.mercury.yktwx", 3, 35)
-    private fun response() = JSONObject().put("schemaVersion", 1).put("updateAvailable", true)
-        .put("reason", "updateAvailable").put("latest", JSONObject()
-            .put("id", "r_fb80282e9ed7f90694a0ec56").put("name", "1.2.0").put("channel", "stable")
-            .put("versionCode", 4).put("versionName", "1.2.0")
-            .put("publishedAt", "2026-11-01T00:00:00Z").put("syncedAt", "2026-11-01T00:00:00Z")
-            .put("minSdk", 34).put("assets", org.json.JSONArray().put(JSONObject()
-                .put("id", "a_test").put("name", "CaiXiaoTong-1.2.0-release.apk").put("sizeBytes", 2121535)
-                .put("sha256", "a".repeat(64)).put("packageName", request.packageName)
-                .put("versionCode", 4).put("versionName", "1.2.0").put("minSdk", 34)
-                .put("signerSha256", org.json.JSONArray().put("b".repeat(64)))
-                .put("downloadUrl", "https://cxt.303889.xyz/v1/assets/a_test/download")))
-            .put("notes", "修复与优化").put("downloadPageUrl", "https://cxt.303889.xyz/download/"))
-
-    @Test fun publicRequestUsesDeviceVersionAndChannelWithoutAccountParameters() {
-        val url = AppUpdateApi.checkUrl(request)
-        assertEquals("https", url.protocol)
-        assertEquals("cxt.303889.xyz", url.host)
-        assertEquals("/v1/app/check", url.path)
-        assertEquals("packageName=com.mercury.yktwx&versionCode=3&sdkInt=35&channel=stable", url.query)
-        assertTrue(AppUpdateApi.checkUrl(request.copy(channel = "preview")).query.contains("channel=preview"))
+    private val fixture = SignedUpdateFixture()
+    private fun store(): UpdateCheckStore {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("signed-update-api-test", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        return UpdateCheckStore(prefs, "package:stable:9", "package", 9,
+            verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
     }
-
-    @Test fun trustsBackendUpdateDecisionAndPreservesReleaseNotes() {
-        val json = response()
-        val notes = "- feat(ui): 后端整理的更新说明\n\n原有格式"
-        json.getJSONObject("latest").put("versionName", "0.9.0").put("versionCode", 3).put("notes", notes)
-        val result = AppUpdateApi.parse(json.toString())
-        assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
-        assertEquals(3, result.release!!.versionCode)
-        assertEquals("0.9.0", result.release.versionName)
-        assertEquals(notes, result.release.notes)
-        assertEquals("https://cxt.303889.xyz/download/", result.release.downloadPageUrl)
-    }
-
-    @Test fun downloadPageUrlsAreUsedExactlyAsReturnedByTheBackend() {
-        for (url in listOf(
-            "https://cxt.303889.xyz/download/",
-            "https://cxt.303889.xyz/download",
-            "https://cxt.303889.xyz/download.html",
-            "https://cxt.303889.xyz/download.html#history",
-            "https://example.com/download/",
-        )) {
-            val json = response().apply { getJSONObject("latest").put("downloadPageUrl", url) }
-            assertEquals(url, AppUpdateApi.parse(json.toString()).release!!.downloadPageUrl)
-        }
-    }
-
-    @Test fun currentVersionDoesNotPromptEvenWhenLatestContainsARelease() {
-        val json = response().put("updateAvailable", false).put("reason", "currentOrNewer")
-        val result = AppUpdateApi.parse(json.toString())
-        assertEquals(UpdateCheckReason.CurrentOrNewer, result.reason)
-        assertNull(result.release)
-    }
-
-    @Test fun distinguishesCurrentVersionMissingReleaseAndIncompatibleDevice() {
-        for ((reason, expected) in listOf("currentOrNewer" to UpdateCheckReason.CurrentOrNewer,
-            "noPublishedRelease" to UpdateCheckReason.NoPublishedRelease,
-            "noCompatibleRelease" to UpdateCheckReason.NoCompatibleRelease)) {
-            val body = JSONObject().put("schemaVersion", 1).put("updateAvailable", false).put("reason", reason)
-                .put("latest", JSONObject.NULL)
-            val result = AppUpdateApi.parse(body.toString())
-            assertEquals(expected, result.reason)
-            assertNull(result.release)
-        }
-    }
-
-    @Test fun unreadableResponsesFailInsteadOfReportingCurrentVersion() {
-        for (body in listOf("not-json", response().put("schemaVersion", 2).toString(),
-            response().put("reason", "unknown").toString(), response().put("latest", JSONObject.NULL).toString(),
-            response().put("updateAvailable", false).toString(), response().put("reason", "currentOrNewer").toString(),
-            response().apply { remove("latest") }.toString(),
-            response().apply { getJSONObject("latest").remove("notes") }.toString(),
-            response().apply { getJSONObject("latest").remove("downloadPageUrl") }.toString())) {
-            assertThrows(Exception::class.java) { AppUpdateApi.parse(body) }
-        }
-    }
-
-    private class FakeHttps(url: URL, private val body: String, private val status: Int = 200) : HttpsURLConnection(url) {
+    private open class FakeHttps(url: URL, private val body: String, private val status: Int = 200) : HttpsURLConnection(url) {
         var disconnected = false
         override fun getResponseCode() = status
         override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
@@ -99,23 +70,701 @@ class AppUpdateApiTest {
         override fun getLocalCertificates(): Array<Certificate>? = null
         override fun getServerCertificates(): Array<Certificate> = emptyArray()
     }
+    private fun api(responses: (URL) -> Pair<String, Int>): AppUpdateApi = AppUpdateApi(UpdateHttp { url ->
+        val (body, status) = responses(url); FakeHttps(url, body, status)
+    }, fixture.verifier, now = { Instant.parse("2026-11-10T00:00:00Z") })
 
-    @Test fun transportHasNoAuthHeadersAndDoesNotFollowRedirects() = runBlocking {
-        val connection = FakeHttps(AppUpdateApi.checkUrl(request), response().toString())
-        val result = AppUpdateApi { connection }.check(request)
-        assertNotNull(result.release)
-        assertNull(connection.getRequestProperty("Authorization"))
-        assertNull(connection.getRequestProperty("synjones-auth"))
-        assertNull(connection.getRequestProperty("Cookie"))
-        assertFalse(connection.instanceFollowRedirects)
-        assertTrue(connection.disconnected)
+    private suspend fun withDelayedThirdSource(first: Pair<String, String>, third: Pair<String, String>,
+        thirdHost: String, firstPointerDelayMillis: Long = 0, thirdPointerDelayMillis: Long = 100,
+        sourceTimeoutMillis: Long = 2_500, verify: suspend (AppUpdateApi) -> Unit) {
+        val fastManifestsRead = java.util.concurrent.CountDownLatch(2)
+        val releaseOtherSources = java.util.concurrent.CountDownLatch(1)
+        val http = UpdateHttp { url ->
+            val fast = url.host in listOf("cdn.jsdelivr.net", "fastly.jsdelivr.net")
+            val delayed = url.host == thirdHost
+            val pointer = url.path.endsWith("latest.json")
+            val pair = if (delayed) third else first
+            object : FakeHttps(url, if (pointer) pair.first else pair.second) {
+                override fun getResponseCode(): Int {
+                    if (delayed && pointer) {
+                        check(fastManifestsRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
+                        Thread.sleep(thirdPointerDelayMillis)
+                    } else if (fast && pointer) {
+                        Thread.sleep(firstPointerDelayMillis)
+                    } else if (!fast && !delayed) {
+                        releaseOtherSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                        return 503
+                    }
+                    return super.getResponseCode()
+                }
+                override fun getInputStream() = super.getInputStream().also {
+                    if (fast && !pointer) fastManifestsRead.countDown()
+                }
+            }
+        }
+        try { verify(AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = sourceTimeoutMillis)) }
+        finally { releaseOtherSources.countDown() }
     }
 
-    @Test fun redirectsAndOversizedResponsesFailInsteadOfReportingCurrentVersion() {
-        for (connection in listOf(FakeHttps(AppUpdateApi.checkUrl(request), "", 302),
-            FakeHttps(AppUpdateApi.checkUrl(request), "x".repeat(262_145)))) {
-            assertThrows(Exception::class.java) { runBlocking { AppUpdateApi { connection }.check(request) } }
-            assertTrue(connection.disconnected)
+    @Test fun configHasSevenHttpsSourcesAndNoAccountOrDeviceParameters() {
+        val sources = AppUpdateApi.sources("stable", "latest.json")
+        assertEquals(7, sources.size)
+        assertEquals("api.github.com", URL(sources.first()).host)
+        sources.forEach { assertEquals("https", URL(it).protocol); assertFalse(it.contains("versionCode=")) }
+        assertTrue(AppUpdateApi.cacheBust(sources.first()).contains("&t="))
+    }
+
+    @Test fun pythonPublisherOutputResolvesInAndroidAndSurvivesVerifiedCacheRestoration() = runBlocking {
+        fun resource(name: String) = checkNotNull(javaClass.getResourceAsStream("/app-updates/publisher/$name"))
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val publicKey = resource("public-key.txt").trim()
+        val pointer = resource("latest.json")
+        val manifest = resource("manifest.json")
+        val verifier = UpdateManifestVerifier(publicKey)
+        val expected = verifier.manifest(manifest, "beta").first
+        // Time is bound to the immutable fixture, so its 90-day expiry cannot age this test out.
+        val instant = checkNotNull(expected.publishedAt).plusSeconds(60)
+        val prefs = ApplicationProvider.getApplicationContext<Context>()
+            .getSharedPreferences("python-publisher-interoperability", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        fun restored() = UpdateCheckStore(prefs, "${expected.packageName}:beta:9", expected.packageName, 9,
+            now = { instant }, verifyCached = { body, channel -> verifier.manifest(body, channel).first })
+        val api = AppUpdateApi(UpdateHttp { url ->
+            when {
+                url.path.contains("/stable/") -> FakeHttps(url, "", 404)
+                url.path.endsWith("latest.json") -> FakeHttps(url, pointer)
+                else -> FakeHttps(url, manifest)
+            }
+        }, verifier) { instant }
+        val result = api.check(UpdateRequest(expected.packageName, 9, 35, "beta"), restored())
+        assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+        assertEquals(100001, result.release!!.versionCode)
+        assertEquals("1.5.0-beta.100001", result.release!!.versionName)
+        assertEquals("beta", result.release!!.channel)
+        assertEquals(expected.sha256, result.release!!.sha256)
+        assertEquals(6, result.release!!.urls.size)
+        assertEquals(result.release, restored().cachedRelease())
+    }
+    @Test fun unpublishedChannelsGiveAnExplicitResultWhileUnavailableServicesRemainFailures() = runBlocking {
+        assertEquals(UpdateCheckReason.NoPublishedRelease,
+            api { "" to 404 }.check(fixture.request, store()).reason)
+        assertEquals(UpdateCheckReason.NoPublishedRelease,
+            api { "" to 404 }.check(fixture.request.copy(channel = "beta"), store()).reason)
+        assertThrows(UpdateSourceUnavailable::class.java) { runBlocking {
+            api { "" to 503 }.check(fixture.request, store())
+        } }
+        for (unavailable in listOf("stable", "beta")) {
+            assertThrows(UpdateSourceUnavailable::class.java) { runBlocking {
+                api { url -> "" to if (url.path.contains("/$unavailable/")) 503 else 404 }
+                    .check(fixture.request.copy(channel = "beta"), store())
+            } }
         }
+        val pointer = fixture.pair(fixture.json()).first
+        assertThrows(UpdateSourceUnavailable::class.java) { runBlocking {
+            api { url -> (if (url.path.endsWith("latest.json")) pointer to 200 else "" to 404) }
+                .check(fixture.request, store())
+        } }
+        Unit
+    }
+    @Test fun unpublishedAuthorityDoesNotWaitForBlockedMirrors() = runBlocking {
+        val releaseMirrors = java.util.concurrent.CountDownLatch(1)
+        val http = UpdateHttp { url ->
+            if (url.host == "api.github.com") FakeHttps(url, "", 404)
+            else object : FakeHttps(url, "", 404) {
+                override fun getResponseCode(): Int {
+                    releaseMirrors.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return super.getResponseCode()
+                }
+            }
+        }
+        try {
+            val result = withTimeout(2_000) {
+                AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 2_000)
+                    .check(fixture.request, store())
+            }
+            assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
+            assertEquals(1L, releaseMirrors.count)
+        } finally { releaseMirrors.countDown() }
+    }
+    @Test fun api403AndOfficialRaw404ReturnUnpublishedBeforeBlockedMirrorsFinish() = runBlocking {
+        val releaseMirrors = java.util.concurrent.CountDownLatch(1)
+        val cancelled = java.util.concurrent.atomic.AtomicInteger()
+        val http = UpdateHttp { url -> when (url.host) {
+            "api.github.com" -> FakeHttps(url, "", 403)
+            "raw.githubusercontent.com" -> FakeHttps(url, "", 404)
+            else -> object : FakeHttps(url, "", 404) {
+                override fun getResponseCode(): Int {
+                    releaseMirrors.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return super.getResponseCode()
+                }
+                override fun disconnect() { cancelled.incrementAndGet(); super.disconnect() }
+            }
+        } }
+        try {
+            val updates = store()
+            val started = System.nanoTime()
+            val result = withTimeout(1_500) {
+                AppUpdateApi(http, fixture.verifier).check(fixture.request, updates)
+            }
+            println("api403-raw404 elapsedMs=${(System.nanoTime() - started) / 1_000_000}")
+            assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
+            assertEquals(setOf("stable"), result.resolvedChannels)
+            assertEquals(1L, releaseMirrors.count)
+            assertTrue(cancelled.get() > 0)
+        } finally { releaseMirrors.countDown() }
+    }
+
+    @Test fun officialRaw404DoesNotOverrideValidAuthorityInsideConvergenceWindow() = runBlocking {
+        val (pointer, manifest) = fixture.pair(fixture.json())
+        val http = UpdateHttp { url -> when (url.host) {
+            "raw.githubusercontent.com" -> FakeHttps(url, "", 404)
+            "api.github.com" -> object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                override fun getResponseCode(): Int {
+                    if (url.path.endsWith("latest.json")) Thread.sleep(100)
+                    return super.getResponseCode()
+                }
+            }
+            else -> FakeHttps(url, "", 503)
+        } }
+        val result = AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+        assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+        assertEquals(10, result.release!!.versionCode)
+    }
+
+    @Test fun fastBetaReturnsBeforeStableDeadlineAndCancelsBlockedRequests() = runBlocking {
+        val releaseStable = java.util.concurrent.CountDownLatch(1)
+        val stableStarted = java.util.concurrent.CountDownLatch(1)
+        val cancelled = java.util.concurrent.atomic.AtomicInteger()
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 12, channel = "beta"))
+        val http = UpdateHttp { url ->
+            if (url.path.contains("/beta/"))
+                object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                    override fun getResponseCode(): Int {
+                        check(stableStarted.await(2, java.util.concurrent.TimeUnit.SECONDS))
+                        return super.getResponseCode()
+                    }
+                }
+            else when (url.host) {
+                "api.github.com" -> FakeHttps(url, "", 403)
+                "raw.githubusercontent.com", "cdn.jsdelivr.net" -> object : FakeHttps(url, "", 404) {
+                    override fun getResponseCode(): Int {
+                        stableStarted.countDown()
+                        releaseStable.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                        return super.getResponseCode()
+                    }
+                    override fun disconnect() { cancelled.incrementAndGet(); super.disconnect() }
+                }
+                else -> FakeHttps(url, "", 404)
+            }
+        }
+        try {
+            val updates = store()
+            updates.selectChannel("beta")
+            val started = System.nanoTime()
+            val result = withTimeout(1_500) {
+                AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), updates)
+            }
+            println("fast-beta-blocked-stable elapsedMs=${(System.nanoTime() - started) / 1_000_000}")
+            assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+            assertEquals(12, result.release!!.versionCode)
+            assertEquals(setOf("beta"), result.resolvedChannels)
+            assertEquals(1L, releaseStable.count)
+            assertTrue(cancelled.get() > 0)
+            val checkedAt = 1_000_000L
+            updates.checked(checkedAt, true, "beta", result)
+            assertFalse(updates.automaticDue(checkedAt + UpdateCheckStore.HOUR - 1))
+            assertTrue(updates.automaticDue(checkedAt + UpdateCheckStore.HOUR))
+        } finally { releaseStable.countDown() }
+    }
+
+    @Test fun higherStableCompletingShortlyAfterBetaIsStillSelected() = runBlocking {
+        val beta = fixture.pair(fixture.json(version = 11, channel = "beta"))
+        val stable = fixture.pair(fixture.json(version = 12))
+        val betaRead = java.util.concurrent.CountDownLatch(1)
+        val http = UpdateHttp { url ->
+            val isBeta = url.path.contains("/beta/")
+            val pair = if (isBeta) beta else stable
+            object : FakeHttps(url, if (url.path.endsWith("latest.json")) pair.first else pair.second) {
+                override fun getResponseCode(): Int {
+                    if (!isBeta && url.path.endsWith("latest.json")) {
+                        check(betaRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
+                        Thread.sleep(100)
+                    }
+                    return super.getResponseCode()
+                }
+                override fun getInputStream() = super.getInputStream().also {
+                    if (isBeta && !url.path.endsWith("latest.json")) betaRead.countDown()
+                }
+            }
+        }
+        val result = AppUpdateApi(http, fixture.verifier)
+            .check(fixture.request.copy(channel = "beta"), store())
+        assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+        assertEquals(12, result.release!!.versionCode)
+        assertEquals("stable", result.release.channel)
+        assertEquals(setOf("stable", "beta"), result.resolvedChannels)
+    }
+
+    @Test fun currentBetaAndBlockedStableReturnPartialBeforeTheNetworkDeadline() = runBlocking {
+        val releaseStable = java.util.concurrent.CountDownLatch(1)
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 9, channel = "beta"))
+        val http = UpdateHttp { url ->
+            if (url.path.contains("/beta/")) FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest)
+            else object : FakeHttps(url, "", 503) {
+                override fun getResponseCode(): Int {
+                    releaseStable.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return super.getResponseCode()
+                }
+            }
+        }
+        try {
+            val result = withTimeout(1_500) {
+                AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
+            }
+            assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
+            assertNull(result.release)
+            assertEquals(setOf("beta"), result.resolvedChannels)
+            assertEquals(1L, releaseStable.count)
+        } finally { releaseStable.countDown() }
+    }
+
+    @Test fun httpAccessOrServerFailuresAreServiceFailuresRatherThanNetworkFailures() = runBlocking {
+        for (status in listOf(403, 503)) {
+            val error = runCatching { api { "" to status }.check(fixture.request, store()) }.exceptionOrNull()
+            assertTrue(error is UpdateServiceUnavailable)
+        }
+    }
+    @Test fun slowAuthoritative404StillReportsNoPublishedRelease() = runBlocking {
+        val http = UpdateHttp { url ->
+            if (url.host != "api.github.com") FakeHttps(url, "", 503)
+            else object : FakeHttps(url, "", 404) {
+                override fun getResponseCode(): Int {
+                    java.util.concurrent.CountDownLatch(1).await(1_800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    return super.getResponseCode()
+                }
+            }
+        }
+        val result = withTimeout(4_000) {
+            AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+        }
+        assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
+    }
+
+    @Test fun slowPointerAndManifestBothFinishBeforeTheCheckDeadline() = runBlocking {
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 12, channel = "beta"))
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val http = UpdateHttp { url ->
+            when {
+                url.path.contains("/stable/") -> FakeHttps(url, "", 404)
+                url.host != "api.github.com" -> FakeHttps(url, "", 503)
+                else -> object : FakeHttps(url, if (url.path.endsWith("latest.json")) pointer else manifest) {
+                    override fun getResponseCode(): Int {
+                        java.util.concurrent.CountDownLatch(1).await(1_800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        reads.incrementAndGet()
+                        return super.getResponseCode()
+                    }
+                }
+            }
+        }
+        val result = withTimeout(6_000) {
+            AppUpdateApi(http, fixture.verifier).check(fixture.request.copy(channel = "beta"), store())
+        }
+        assertEquals(2, reads.get())
+        assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+        assertEquals(12, result.release!!.versionCode)
+        assertEquals("beta", result.release.channel)
+    }
+
+    @Test fun publishedRevisionResetIsRejectedWithItsReasonAndKeepsTheAcceptedPolicy() = runBlocking {
+        val updates = store()
+        updates.selectChannel("beta")
+        val (previous, digest) = fixture.verifier.manifest(
+            fixture.sign(fixture.json(version = 10, revision = 2, channel = "beta")), "beta")
+        updates.acceptPolicy("beta", previous, digest)
+        val policy = updates.cachedRelease()
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 11, revision = 1, channel = "beta"))
+        val rejected = assertThrows(UpdateMetadataRejected::class.java) { runBlocking {
+            api { url ->
+                if (url.path.contains("/stable/")) "" to 404
+                else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+            }.check(fixture.request.copy(channel = "beta"), updates)
+        } }
+        assertEquals(UpdateMetadataRejection.Stale, rejected.reason)
+        assertEquals(policy, updates.cachedRelease())
+    }
+    @Test fun unpublishedAuthorityOverridesOldSignedMirrors() = runBlocking {
+        val (pointer, manifest) = fixture.pair(fixture.json())
+        val updates = store()
+        val result = api { url ->
+            if (url.host == "api.github.com") "" to 404
+            else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+        }.check(fixture.request, updates)
+        assertEquals(UpdateCheckReason.NoPublishedRelease, result.reason)
+        assertNull(result.release)
+        assertNull(updates.cachedRelease())
+    }
+    @Test fun failedBetaChannelCannotBeReportedAsCurrentOrClearTheKnownUpdate() = runBlocking {
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 9))
+        val updates = store()
+        updates.selectChannel("beta")
+        val (known, digest) = fixture.verifier.manifest(fixture.sign(fixture.json(channel = "beta")), "beta")
+        updates.acceptPolicy("beta", known, digest)
+        val metadata = api { url ->
+            if (url.path.contains("/beta/")) "" to 503
+            else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+        }
+        val result = metadata.check(fixture.request.copy(channel = "beta"), updates)
+        assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
+        assertEquals(known, result.release)
+        assertEquals(setOf("stable"), result.resolvedChannels)
+        val knownPolicy = updates.cachedRelease()
+        updates.checked(1_000_000, true, "beta", result)
+        assertEquals(knownPolicy, updates.cachedRelease())
+        assertEquals(known, updates.cachedRelease())
+        Unit
+    }
+    @Test fun verifiedMirrorsReturnWithoutWaitingForBlockedAuthority() = runBlocking {
+        val releaseAuthority = java.util.concurrent.CountDownLatch(1)
+        val (pointer, manifest) = fixture.pair(fixture.json())
+        val http = UpdateHttp { url ->
+            val body = if (url.path.endsWith("latest.json")) pointer else manifest
+            if (url.host != "api.github.com") FakeHttps(url, body)
+            else object : FakeHttps(url, body) {
+                override fun getResponseCode(): Int {
+                    releaseAuthority.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return super.getResponseCode()
+                }
+            }
+        }
+        try {
+            val result = withTimeout(1_000) {
+                AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 2_500)
+                    .check(fixture.request, store())
+            }
+            assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+            assertEquals(10, result.release!!.versionCode)
+            assertEquals(1L, releaseAuthority.count)
+        } finally { releaseAuthority.countDown() }
+    }
+    @Test fun oneVerifiedMirrorIsEnoughWhenEveryOtherSourceIsBlocked() = runBlocking {
+        val releaseSources = java.util.concurrent.CountDownLatch(1)
+        val (pointer, manifest) = fixture.pair(fixture.json())
+        val http = UpdateHttp { url ->
+            val body = if (url.path.endsWith("latest.json")) pointer else manifest
+            if (url.host == "cdn.jsdelivr.net") FakeHttps(url, body)
+            else object : FakeHttps(url, body) {
+                override fun getResponseCode(): Int {
+                    releaseSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return super.getResponseCode()
+                }
+            }
+        }
+        try {
+            val result = withTimeout(1_000) {
+                AppUpdateApi(http, fixture.verifier).check(fixture.request, store())
+            }
+            assertEquals(UpdateCheckReason.UpdateAvailable, result.reason)
+            assertEquals(10, result.release!!.versionCode)
+            assertEquals(1L, releaseSources.count)
+        } finally { releaseSources.countDown() }
+    }
+    @Test fun authorityArrivingAfterTwoMirrorsStillWinsWithinConvergenceWindow() = runBlocking {
+        val mirrors = fixture.pair(fixture.json(version = 11, revision = 2))
+        val authority = fixture.pair(fixture.json())
+        withDelayedThirdSource(mirrors, authority, "api.github.com") { api ->
+            val result = withTimeout(2_000) { api.check(fixture.request, store()) }
+            assertEquals(10, result.release!!.versionCode)
+            assertEquals(1L, result.release.policyRevision)
+        }
+    }
+    @Test fun convergenceWindowContinuesBeyondInitialSourceWaitDeadline() = runBlocking {
+        val mirrors = fixture.pair(fixture.json(version = 11, revision = 2))
+        val authority = fixture.pair(fixture.json())
+        withDelayedThirdSource(mirrors, authority, "api.github.com", firstPointerDelayMillis = 400,
+            thirdPointerDelayMillis = 200, sourceTimeoutMillis = 550) { api ->
+            val result = withTimeout(2_000) { api.check(fixture.request, store()) }
+            assertEquals(10, result.release!!.versionCode)
+        }
+    }
+    @Test fun newerMirrorArrivingAfterTwoMirrorsIsUsedWithinConvergenceWindow() = runBlocking {
+        val first = fixture.pair(fixture.json())
+        val newer = fixture.pair(fixture.json(version = 11, revision = 2))
+        withDelayedThirdSource(first, newer, "gcore.jsdelivr.net") { api ->
+            val result = withTimeout(2_000) { api.check(fixture.request, store()) }
+            assertEquals(11, result.release!!.versionCode)
+            assertEquals(2L, result.release.policyRevision)
+        }
+    }
+    @Test fun conflictingThirdMirrorWithinConvergenceWindowIsRejected() = runBlocking {
+        val first = fixture.pair(fixture.json())
+        val conflict = fixture.pair(fixture.json(version = 11))
+        withDelayedThirdSource(first, conflict, "gcore.jsdelivr.net") { api ->
+            val failure = withTimeout(2_000) {
+                runCatching { api.check(fixture.request, store()) }.exceptionOrNull()
+            }
+            assertNotNull(failure)
+            assertEquals("更新清单存在冲突", failure!!.message)
+        }
+    }
+    @Test fun stalledSourcesRespectTheDeadlineWithoutClaimingNoPublishedRelease() = runBlocking {
+        val releaseSources = java.util.concurrent.CountDownLatch(1)
+        val http = UpdateHttp { url -> object : FakeHttps(url, "", 503) {
+            override fun getResponseCode(): Int {
+                releaseSources.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                return super.getResponseCode()
+            }
+        } }
+        try {
+            val failure = withTimeout(2_000) {
+                runCatching {
+                    AppUpdateApi(http, fixture.verifier, sourceTimeoutMillis = 500)
+                        .check(fixture.request, store())
+                }.exceptionOrNull()
+            }
+            assertTrue(failure is UpdateSourceUnavailable)
+            assertFalse((failure as UpdateSourceUnavailable).notPublished)
+            assertEquals(1L, releaseSources.count)
+        } finally { releaseSources.countDown() }
+    }
+    @Test fun betaFallsBackWhenOneChannelIsUnavailableButRejectsInvalidSignedMetadata() = runBlocking {
+        val stable = fixture.pair(fixture.json(version = 11))
+        val beta = fixture.pair(fixture.json(version = 12, channel = "beta"))
+        for (missing in listOf("stable", "beta")) for (status in listOf(404, 503)) {
+            val result = api { url ->
+                val isBeta = url.path.contains("/beta/")
+                val pair = if (isBeta) beta else stable
+                (if (url.path.endsWith("latest.json")) pair.first else pair.second) to
+                    (if (isBeta == (missing == "beta")) status else 200)
+            }.check(fixture.request.copy(channel = "beta"), store())
+            assertEquals(if (missing == "beta") 11 else 12, result.release!!.versionCode)
+            assertEquals(if (status == 404) setOf("stable", "beta") else setOf("stable", "beta") - missing,
+                result.resolvedChannels)
+        }
+        assertThrows(Exception::class.java) { runBlocking {
+            api { url ->
+                if (url.path.contains("/beta/")) "{}" to 200
+                else (if (url.path.endsWith("latest.json")) stable.first else stable.second) to 200
+            }.check(fixture.request.copy(channel = "beta"), store())
+        } }
+        Unit
+    }
+
+    @Test fun betaSelectsTheHigherVerifiedVersionFromEitherChannel() = runBlocking {
+        for (higher in listOf("stable", "beta")) {
+            val pairs = listOf("stable", "beta").associateWith { channel ->
+                fixture.pair(fixture.json(version = if (channel == higher) 12 else 11, channel = channel))
+            }
+            val result = api { url ->
+                val pair = pairs.getValue(if (url.path.contains("/beta/")) "beta" else "stable")
+                (if (url.path.endsWith("latest.json")) pair.first else pair.second) to 200
+            }.check(fixture.request.copy(channel = "beta"), store())
+            assertEquals(12, result.release!!.versionCode)
+            assertEquals(higher, result.release!!.channel)
+            assertEquals(setOf("stable", "beta"), result.availableChannels)
+        }
+    }
+
+    @Test fun unavailableChannelDoesNotReplaceAHigherKnownUpdateWithALowerNewRelease() = runBlocking {
+        val updates = store()
+        updates.selectChannel("beta")
+        val (known, digest) = fixture.verifier.manifest(fixture.sign(fixture.json(version = 12, channel = "beta")), "beta")
+        updates.acceptPolicy("beta", known, digest)
+        val (pointer, manifest) = fixture.pair(fixture.json(version = 11))
+        val result = api { url ->
+            if (url.path.contains("/beta/")) "" to 503
+            else (if (url.path.endsWith("latest.json")) pointer else manifest) to 200
+        }.check(fixture.request.copy(channel = "beta"), updates)
+        assertEquals(UpdateCheckReason.PartiallyChecked, result.reason)
+        assertEquals(known, result.release)
+        assertEquals(setOf("stable"), result.resolvedChannels)
+        assertEquals(known, updates.cachedRelease())
+        Unit
+    }
+
+    @Test fun channelSwitchClearsOptionalBetaCacheButRetainsConfirmedForcedPolicy() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("channel-policy-test", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        fun restored() = UpdateCheckStore(prefs, "package:beta:9", "package", 9) { body, channel ->
+            fixture.verifier.manifest(body, channel).first
+        }
+        val store = restored()
+        val optional = fixture.verifier.manifest(fixture.sign(fixture.json(channel = "beta")), "beta")
+        store.acceptPolicy("beta", optional.first, optional.second)
+        assertNotNull(store.cachedRelease())
+        store.selectChannel("stable")
+        assertNull(store.cachedRelease())
+        assertEquals("stable", restored().channel)
+        val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2, channel = "beta")
+            .put("maxForcedVersionCode", 9)), "beta")
+        store.acceptPolicy("beta", forced.first, forced.second)
+        assertTrue(store.cachedRelease()!!.required(9))
+        assertEquals(9, restored().forcedBoundary())
+    }
+    @Test fun signedSchemaRejectsInvalidNumbersChannelsHashesAndCdns() {
+        val valid = fixture.sign(fixture.json())
+        assertEquals(10, fixture.verifier.manifest(valid, "stable").first.versionCode)
+        for (invalid in listOf(fixture.json().put("versionCode", "10"), fixture.json().put("versionCode", 10.5),
+            fixture.json().put("maxForcedVersionCode", 10), fixture.json().put("sha256", "A".repeat(64)),
+            fixture.json().put("urls", JSONArray(listOf("https://cdn.example.com/app.apk"))),
+            fixture.json().put("releaseUrl", "intent://install"))) {
+            assertThrows(Exception::class.java) { fixture.verifier.manifest(fixture.sign(invalid), "stable") }
+        }
+        assertThrows(Exception::class.java) { fixture.verifier.manifest(valid, "beta") }
+        val altered = JSONObject(valid).put("payload", Base64.getEncoder().encodeToString(fixture.json(11).toString().toByteArray()))
+        assertThrows(Exception::class.java) { fixture.verifier.manifest(altered.toString(), "stable") }
+    }
+    @Test fun signedManifestRetainsCertificateFingerprintAndRejectsMalformedValues() {
+        val signer = sha256(byteArrayOf(1))
+        val signed = fixture.sign(fixture.json().put("signerSha256", signer))
+        assertEquals(signer, fixture.verifier.manifest(signed, "stable").first.signerSha256)
+        assertNull(fixture.verifier.manifest(fixture.sign(fixture.json()), "stable").first.signerSha256)
+        for (invalid in listOf("", "A".repeat(64), "not-a-certificate", 123)) {
+            assertThrows(Exception::class.java) {
+                fixture.verifier.manifest(fixture.sign(fixture.json().put("signerSha256", invalid)), "stable")
+            }
+        }
+    }
+    @Test fun localVersionAndCompatibilityDecideResult() = runBlocking {
+        for ((json, reason) in listOf(fixture.json() to UpdateCheckReason.UpdateAvailable,
+            fixture.json(version = 9) to UpdateCheckReason.CurrentOrNewer,
+            fixture.json().put("minSdk", 99) to UpdateCheckReason.NoCompatibleRelease)) {
+            val (pointer, manifest) = fixture.pair(json)
+            val result = api { url -> (if (url.path.endsWith("latest.json")) pointer else manifest) to 200 }.check(fixture.request, store())
+            assertEquals(reason, result.reason)
+        }
+    }
+    @Test fun authorityWinsOverNewerMirrorAndMirrorsRecoverAuthorityFailure() = runBlocking {
+        val authoritative = fixture.pair(fixture.json(revision = 1))
+        val mirror = fixture.pair(fixture.json(version = 11, revision = 2))
+        val metadata = api { url ->
+            if (url.host !in listOf("api.github.com", "cdn.jsdelivr.net")) return@api "" to 503
+            val pair = if (url.host == "api.github.com") authoritative else mirror
+            (if (url.path.endsWith("latest.json")) pair.first else pair.second) to 200
+        }
+        assertEquals(10, metadata.check(fixture.request, store()).release!!.versionCode)
+        val fallback = api { url ->
+            (if (url.path.endsWith("latest.json")) mirror.first else mirror.second) to
+                (if (url.host == "api.github.com") 503 else 200)
+        }
+        assertEquals(11, fallback.check(fixture.request, store()).release!!.versionCode)
+    }
+    @Test fun sameRevisionConflictsAndExpiredSignedMetadataFail() {
+        val one = fixture.pair(fixture.json())
+        val two = fixture.pair(fixture.json(version = 11))
+        assertThrows(Exception::class.java) { runBlocking {
+            api { url ->
+                if (url.host !in listOf("api.github.com", "cdn.jsdelivr.net")) return@api "" to 503
+                val pair = if (url.host == "api.github.com") one else two
+                (if (url.path.endsWith("latest.json")) pair.first else pair.second) to 200
+            }.check(fixture.request, store())
+        } }
+        val expired = fixture.pair(fixture.json().put("expiresAt", "2020-01-01T00:00:00Z"))
+        assertThrows(Exception::class.java) { runBlocking {
+            api { url -> (if (url.path.endsWith("latest.json")) expired.first else expired.second) to 200 }
+                .check(fixture.request, store())
+        } }
+    }
+    @Test fun policyRejectsRollbackConflictsAndForcedBoundaryReset() {
+        val store = store()
+        val first = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2).put("maxForcedVersionCode", 8)), "stable")
+        store.acceptPolicy("stable", first.first, first.second)
+        val lower = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 1)), "stable")
+        assertThrows(Exception::class.java) { store.acceptPolicy("stable", lower.first, lower.second) }
+        assertThrows(Exception::class.java) { store.acceptPolicy("stable", first.first, "b".repeat(64)) }
+        val reset = fixture.verifier.manifest(fixture.sign(fixture.json(version = 11, revision = 3)), "stable")
+        assertThrows(Exception::class.java) { store.acceptPolicy("stable", reset.first, reset.second) }
+    }
+    @Test fun timestampParsingAndDangerousUrlsAreBounded() {
+        val invalidTime = fixture.verifier.manifest(fixture.sign(fixture.json().put("publishedAt", "not a date")), "stable").first
+        assertNull(invalidTime.publishedAt)
+        listOf("http://example.com/a", "https://user@example.com/a", "file:///a", "https://example.com:8080/a")
+            .forEach { url -> assertThrows(Exception::class.java) { httpsUri(url) } }
+    }
+    @Test fun forcedSignedPolicySurvivesRestartButActualNewInstalledVersionClearsIt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("forced-restart-test", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().put("maxForcedVersionCode", 9)), "stable")
+        fun restored(version: Int) = UpdateCheckStore(prefs, "package:stable:$version", "package", version) { body, channel ->
+            fixture.verifier.manifest(body, channel).first
+        }
+        restored(9).acceptPolicy("stable", release, digest)
+        assertTrue(restored(9).cachedRelease()!!.required(9))
+        assertNull(restored(10).cachedRelease())
+    }
+    @Test fun expiredOptionalCacheIsHiddenButConfirmedForcedUpdatesRemainBlocked() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("expired-cache-review-test", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        fun restored() = UpdateCheckStore(prefs, "package:stable:9", "package", 9,
+            now = { Instant.parse("2026-11-11T00:00:00Z") }) { body, channel ->
+            fixture.verifier.manifest(body, channel).first
+        }
+        val optional = fixture.verifier.manifest(fixture.sign(fixture.json()
+            .put("expiresAt", "2026-11-10T00:00:00Z")), "stable")
+        restored().acceptPolicy("stable", optional.first, optional.second)
+        assertNull(restored().cachedRelease())
+        val forced = fixture.verifier.manifest(fixture.sign(fixture.json(revision = 2)
+            .put("maxForcedVersionCode", 9).put("expiresAt", "2026-11-10T00:00:00Z")), "stable")
+        restored().acceptPolicy("stable", forced.first, forced.second)
+        assertTrue(restored().cachedRelease()!!.required(9))
+    }
+    @Test fun transportClosesConnectionsLimitsSizeAndAddsCacheControl() = runBlocking {
+        val connection = FakeHttps(URL("https://example.com/update"), "{}")
+        assertEquals("{}", UpdateHttp { connection }.json("https://example.com/update"))
+        assertTrue(connection.disconnected)
+        assertFalse(connection.instanceFollowRedirects)
+        assertEquals("no-cache, no-store", connection.getRequestProperty("Cache-Control"))
+        assertNull(connection.getRequestProperty("Authorization"))
+        assertNull(connection.getRequestProperty("Cookie"))
+        val oversized = FakeHttps(URL("https://example.com/update"), "x".repeat(1_048_577))
+        assertThrows(Exception::class.java) { runBlocking { UpdateHttp { oversized }.json("https://example.com/update") } }
+        assertTrue(oversized.disconnected)
+    }
+    @Test fun cancellingARequestDisconnectsItsBlockedInputStream() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val stopped = java.util.concurrent.CountDownLatch(1)
+        val connection = object : HttpsURLConnection(URL("https://example.com/update")) {
+            override fun getResponseCode() = 200
+            override fun getInputStream(): java.io.InputStream {
+                started.complete(Unit)
+                return object : java.io.InputStream() {
+                    override fun read(): Int {
+                        stopped.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                        throw java.io.IOException("Connection closed")
+                    }
+                }
+            }
+            override fun disconnect() { stopped.countDown() }
+            override fun connect() {}
+            override fun usingProxy() = false
+            override fun getCipherSuite() = "test"
+            override fun getLocalCertificates(): Array<Certificate>? = null
+            override fun getServerCertificates(): Array<Certificate> = emptyArray()
+        }
+        val task = launch { UpdateHttp { connection }.json("https://example.com/update") }
+        withTimeout(2_000) { started.await(); task.cancelAndJoin() }
+        assertTrue(withContext(Dispatchers.IO) { stopped.await(1, java.util.concurrent.TimeUnit.SECONDS) })
+    }
+    @Test fun metadataTimeoutReturnsEvenWhenThePlatformConnectionCannotBeInterrupted() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val releaseConnection = java.util.concurrent.CountDownLatch(1)
+        val connection = object : FakeHttps(URL("https://example.com/update"), "{}") {
+            override fun getResponseCode(): Int {
+                started.complete(Unit)
+                releaseConnection.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                return super.getResponseCode()
+            }
+        }
+        try {
+            val task = async {
+                runCatching { UpdateHttp(metadataTimeoutMillis = 500) { connection }.json("https://example.com/update") }
+            }
+            withTimeout(2_000) { started.await() }
+            val failure = withTimeout(2_000) { task.await() }.exceptionOrNull()
+            assertTrue(failure is java.net.SocketTimeoutException)
+            assertEquals(1L, releaseConnection.count)
+        } finally { releaseConnection.countDown() }
     }
 }

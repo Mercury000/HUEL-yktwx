@@ -31,8 +31,8 @@
     <string name="payment_brightness">付款码自动提亮</string>
     <string name="payment_brightness_summary">展示付款码时提高屏幕亮度，离开后恢复</string>
     <string name="payment_motion_detection_summary">展示付款码后转回手机，静默查询余额；仅余额减少时提示支付成功</string>
-    <string name="automatic_updates">自动检查更新</string>
-    <string name="automatic_updates_summary">静默检查新版本，在页面内提示</string>
+    <string name="automatic_updates">普通更新提醒</string>
+    <string name="automatic_updates_summary">关闭后仍会检查版本，强制更新和手动检查不受影响</string>
     <string name="update_notice_dismiss">24 小时内不再提醒此版本</string>
     <string name="check_updates">检查更新</string>
     <string name="update_current">已是最新版本</string>
@@ -40,6 +40,12 @@
     <string name="update_incompatible">暂无适用于此设备的更新</string>
     <string name="update_failed">检查更新失败，请稍后重试</string>
     <string name="update_network_failed">网络连接失败，请稍后重试</string>
+    <string name="update_service_unavailable">更新服务暂时不可用，请稍后重试</string>
+    <string name="update_stable_unavailable">测试版检查已完成，正式版暂时无法检查</string>
+    <string name="update_beta_unavailable">正式版检查已完成，测试版暂时无法检查</string>
+    <string name="update_metadata_stale">更新信息已过期，请稍后重试</string>
+    <string name="update_metadata_conflict">更新信息暂时不一致，请稍后重试</string>
+    <string name="update_metadata_invalid">更新信息校验未通过，请稍后重试</string>
     <string name="update_preview">界面预览不检查更新</string>
     <string name="update_found">发现新版本 %1$s</string>
     <string name="update_later">稍后</string>

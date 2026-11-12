@@ -212,6 +212,12 @@ internal fun AboutPage(
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     fontSize = 14.sp,
                 )
+                if (BuildConfig.BUILD_COMMIT != "local") Text(
+                    text = "源码版本 ${BuildConfig.BUILD_COMMIT.take(7)}",
+                    modifier = Modifier.graphicsLayer { alpha = (1f - scrollProgress * 8f).coerceIn(0f, 1f) },
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
+                )
             }
 
             LazyColumn(

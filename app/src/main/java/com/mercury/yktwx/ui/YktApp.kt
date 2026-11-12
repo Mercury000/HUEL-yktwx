@@ -99,17 +99,22 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val agreed = consent?.accepted != false
         val updateModel: AppUpdateViewModel = viewModel()
         val updateState by updateModel.state.collectAsStateWithLifecycle()
+        val updateInstall = rememberUpdateInstallAction(updateModel)
         // Release metadata needs consent, but never a campus account or successful login.
         AppUpdateEffect(updateModel, settings.automaticUpdates.value,
-            allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current)
+            allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current,
+            channel = settings.updateChannel.value)
         val activity = LocalActivity.current
         Scaffold {
             if (!agreed) {
                 // Life model constructors recover orders over the network. Defer the
                 // business composition, navigation and payment launches until agreement.
                 ConsentEntryPage(settings, state, authenticated)
+            } else if (updateState.required) {
+                Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface))
+                AppUpdateDialog(updateState, onDownload = updateInstall, onDismiss = {})
             } else {
-                ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState)
+                ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState, updateInstall)
             }
             if (consent != null) RequiredUsageConsent(consent,
                 onExit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() })
@@ -120,7 +125,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
 @Composable
 private fun ApprovedApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel,
     consent: UsageConsent?, state: PaymentUiState, authenticated: Boolean,
-    updateModel: AppUpdateViewModel, updateState: AppUpdateUiState) {
+    updateModel: AppUpdateViewModel, updateState: AppUpdateUiState, onInstallUpdate: () -> Unit) {
     val agreed = consent?.accepted != false
     val session by viewModel.sessionState.collectAsStateWithLifecycle()
     var hadLogin by remember { mutableStateOf(false) }
@@ -221,7 +226,8 @@ private fun ApprovedApp(settings: ThemeSettings, viewModel: PaymentViewModel, bi
                                 updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp)
                         },
                         updateDialog = {
-                            AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible), updateModel::dismiss)
+                            AppUpdateDialog(updateState.copy(visible = interactive && agreed && updateState.visible),
+                                onSkip = updateModel::skip, onDownload = onInstallUpdate, onDismiss = updateModel::ignore)
                         })
                     AuthPage.Main -> {
                         // Keep only shell identity for the outgoing animation.
@@ -239,6 +245,7 @@ private fun ApprovedApp(settings: ThemeSettings, viewModel: PaymentViewModel, bi
                                         isActive = interactive,
                                         onLogout = { consent?.revoke(); viewModel.logout() },
                                         updateModel = updateModel, updateState = updateState,
+                                        onInstallUpdate = onInstallUpdate,
                                     )
                                 }
                             }
@@ -345,6 +352,7 @@ private fun MainContent(
     onLogout: () -> Unit,
     updateModel: AppUpdateViewModel,
     updateState: AppUpdateUiState,
+    onInstallUpdate: () -> Unit,
 ) {
     val context = LocalContext.current
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
@@ -792,7 +800,8 @@ private fun MainContent(
     }
     LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
     Hui798LoginSheet(hui798State, hui798Model, active = isActive && !state.needsLogin)
-    AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible), updateModel::dismiss)
+    AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible),
+        onSkip = updateModel::skip, onDownload = onInstallUpdate, onDismiss = updateModel::ignore)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,
         active = isActive && !state.needsLogin && layers.lastOrNull() == Screen.Profile &&
             avatarState.owner == state.username && avatarState.preview == state.preview)
