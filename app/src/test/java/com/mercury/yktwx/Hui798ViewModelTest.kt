@@ -99,7 +99,7 @@ class Hui798ViewModelTest {
     }
     private fun model(api: Api, store: Store): Hui798ViewModel {
         val app = ApplicationProvider.getApplicationContext<Application>()
-        return Hui798ViewModel(app, api, store, dispatcher) { clock }.also { models.put("model-${System.identityHashCode(it)}", it) }
+        return hui798ViewModelFixture(app, api, store, dispatcher) { clock }.also { models.put("model-${System.identityHashCode(it)}", it) }
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
 

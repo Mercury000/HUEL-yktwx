@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -36,13 +37,13 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-hdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class IosBottomBarBlurTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
 
     @Before fun setup() {
         compose.activity.getSharedPreferences("ui_settings", android.content.Context.MODE_PRIVATE)
             .edit().clear().commit()
-        settings = ThemeSettings(compose.activity).apply {
+        settings = themeSettingsFixture(compose.activity).apply {
             setTheme(1)
             setFloating(true)
             setFloatingStyle(1)
@@ -52,8 +53,8 @@ class IosBottomBarBlurTest {
 
     @Test fun appBlurSwitchChangesIosSurfaceAndRestoresItInBothThemes() {
         val app = compose.activity.application
-        val payments = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }

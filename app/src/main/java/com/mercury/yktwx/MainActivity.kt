@@ -25,30 +25,29 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.UsageConsent
 
+@dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
     private val billViewModel: BillViewModel by viewModels()
     private val rechargeViewModel: RechargeViewModel by viewModels()
     private val feeViewModel: FeeViewModel by viewModels()
     private val latestConfig = mutableStateOf<Configuration?>(null)
-    private lateinit var consent: UsageConsent
+    @javax.inject.Inject internal lateinit var consent: UsageConsent
     private var businessStarted = false
     private var modelsInitialized = false
     private var preview = false
-    private lateinit var preferences: AppPreferencesRepository
+    @javax.inject.Inject internal lateinit var preferences: AppPreferencesRepository
+    @javax.inject.Inject internal lateinit var settings: ThemeSettings
     private val updateViewModel: AppUpdateViewModel by viewModels()
-    private val analytics by lazy { AppAnalytics.from(application) }
+    @javax.inject.Inject internal lateinit var analytics: AppAnalytics
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig); latestConfig.value = Configuration(newConfig)
     }
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
         preview = UiPreview.enabled && UiPreview.requested(intent)
-        // Enable protection before the first asynchronous disk read or rendered screen.
+        // Hilt initializes the settings graph inside super.onCreate; protect the window first.
         if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        preferences = AppPreferencesRepository.from(this)
-        val settings = ThemeSettings(preferences)
-        consent = UsageConsent(this)
+        super.onCreate(savedInstanceState)
         setContent {
             val loaded by preferences.state.collectAsStateWithLifecycle()
             if (loaded !is PreferencesLoadState.Ready) {

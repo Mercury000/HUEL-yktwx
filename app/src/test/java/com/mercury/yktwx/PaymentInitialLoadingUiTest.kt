@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -31,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PaymentInitialLoadingUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     @get:Rule val folder = TemporaryFolder()
     private val gate = CompletableDeferred<Unit>()
     private val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 12860)
@@ -74,17 +76,17 @@ class PaymentInitialLoadingUiTest {
             }
         }
         val cache = DisplayCache(folder.root, { bytes, _ -> bytes }, { bytes, _ -> bytes })
-        val repository = AccountRepository(service, vault, displayCache = cache)
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache)
         if (cached) runBlocking {
             repository.username()
             repository.saveDisplay("fake-user", DisplayKeys.Account, account, DisplayCodecs.Account)
         }
-        val payment = PaymentViewModel(compose.activity.application, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val payment = paymentViewModelFixture(compose.activity.application, repository, initialEnvironment = ReadEnvironment.Inactive)
         model = payment
         compose.activity.viewModelStore.put("payment", payment)
         payment.initialize()
         await { !payment.state.value.restoringLogin }
-        val settings = ThemeSettings(compose.activity)
+        val settings = themeSettingsFixture(compose.activity)
         compose.setContent {
             val state by payment.state.collectAsState()
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -148,7 +150,7 @@ class PaymentInitialLoadingUiTest {
     }
 
     @Test fun offlineCachedAccountShowsConnectionFeedbackInsteadOfWaitingForANetworkRead() {
-        val settings = ThemeSettings(compose.activity)
+        val settings = themeSettingsFixture(compose.activity)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true, LocalReadOffline provides true) {
                 AppTheme(ColorSchemeMode.Light) {

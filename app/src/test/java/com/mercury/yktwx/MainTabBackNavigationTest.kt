@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
@@ -27,16 +28,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MainTabBackNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val restoration by lazy { StateRestorationTester(compose) }
     private lateinit var settings: ThemeSettings
 
     @Before fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(context)
-        val payments = PaymentViewModel(compose.activity.application)
-        val bills = BillViewModel(compose.activity.application)
+        settings = themeSettingsFixture(context)
+        val payments = paymentViewModelFixture(compose.activity.application)
+        val bills = billViewModelFixture(compose.activity.application)
         payments.initialize(true)
         bills.initialize(true)
         restoration.setContent {

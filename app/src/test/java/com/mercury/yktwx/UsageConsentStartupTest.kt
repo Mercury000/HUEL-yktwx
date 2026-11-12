@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
@@ -29,11 +31,14 @@ import org.robolectric.annotation.GraphicsMode
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
+@dagger.hilt.android.testing.HiltAndroidTest
+@dagger.hilt.android.testing.UninstallModules(com.mercury.yktwx.di.RepositoryModule::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
+@Config(application = dagger.hilt.android.testing.HiltTestApplication::class, sdk = [35], qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UsageConsentStartupTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule(order = 0) val hilt = dagger.hilt.android.testing.HiltAndroidRule(this)
+    @get:Rule(order = 1) val compose = createEmptyComposeRule()
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private var scenario: ActivityScenario<MainActivity>? = null
     private var requests = 0
@@ -70,12 +75,11 @@ class UsageConsentStartupTest {
             return CampusCard(account, "校园卡", "fictional-user", false, false, 0)
         }
     }
-    private val sharedField = AccountRepository::class.java.getDeclaredField("sharedInstance").apply { isAccessible = true }
-    private var previousRepository: Any? = null
+    @dagger.hilt.android.testing.BindValue
+    internal lateinit var repository: AccountRepository
 
     @Before fun prepare() {
-        previousRepository = sharedField.get(null)
-        sharedField.set(null, AccountRepository(service, vault))
+        repository = accountRepositoryFixture(service, vault)
         app.getSharedPreferences("usage_consent", Context.MODE_PRIVATE).edit().clear().commit()
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().putBoolean("automatic_updates", false).commit()
         val connectivity = app.getSystemService(ConnectivityManager::class.java)
@@ -84,11 +88,11 @@ class UsageConsentStartupTest {
         val capabilities = ShadowNetworkCapabilities.newInstance()
         shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         shadowOf(connectivity).setNetworkCapabilities(connectivity.activeNetwork, capabilities)
+        hilt.inject()
     }
     @After fun cleanup() {
         restorationGate?.countDown()
         scenario?.close()
-        sharedField.set(null, previousRepository)
     }
     private fun launch(): MainActivity {
         scenario = ActivityScenario.launch(MainActivity::class.java)
@@ -106,7 +110,7 @@ class UsageConsentStartupTest {
         compose.onNodeWithText("同意并继续").performClick()
         compose.waitUntil(5_000) {
             shadowOf(Looper.getMainLooper()).idle()
-            UsageConsent(app).accepted && compose.onAllNodesWithTag("usage-notice-body").fetchSemanticsNodes().isEmpty()
+            usageConsentFixture(app).accepted && compose.onAllNodesWithTag("usage-notice-body").fetchSemanticsNodes().isEmpty()
         }
     }
     private fun storedLoginWithOldNotice() {
@@ -148,7 +152,7 @@ class UsageConsentStartupTest {
         scenario!!.recreate()
         compose.onNodeWithTag("consent-main-shell").assertExists()
         compose.onNodeWithTag("usage-notice-paragraph-0").assertIsDisplayed()
-        assertFalse(UsageConsent(app).accepted)
+        assertFalse(usageConsentFixture(app).accepted)
         assertEquals(0, requests)
         assertEquals(0, clears)
         accept()
@@ -161,7 +165,7 @@ class UsageConsentStartupTest {
         assertTrue(requests > 0)
         scenario!!.recreate()
         compose.onNodeWithTag("usage-notice-body").assertDoesNotExist()
-        assertTrue(UsageConsent(app).accepted)
+        assertTrue(usageConsentFixture(app).accepted)
     }
 
     @Test fun confirmingChangedNoticeWhileLocalLoginIsStillRestoringEventuallyEntersThePaymentPage() {
@@ -202,7 +206,7 @@ class UsageConsentStartupTest {
         val activity = launch()
         compose.onNodeWithText("不同意").performClick()
         assertTrue(activity.isFinishing)
-        assertFalse(UsageConsent(app).accepted)
+        assertFalse(usageConsentFixture(app).accepted)
         assertEquals("previous-body-hash", app.getSharedPreferences("usage_consent", Context.MODE_PRIVATE).getString("accepted_hash", null))
         scenario!!.close()
         val reopened = launch()
@@ -215,6 +219,6 @@ class UsageConsentStartupTest {
         compose.runOnIdle { reopened.onBackPressedDispatcher.onBackPressed() }
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); reopened.isFinishing }
         assertTrue(reopened.isFinishing)
-        assertFalse(UsageConsent(app).accepted)
+        assertFalse(usageConsentFixture(app).accepted)
     }
 }

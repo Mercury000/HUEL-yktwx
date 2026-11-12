@@ -1,12 +1,11 @@
 package com.mercury.yktwx.ui
 
-import android.app.Application
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mercury.yktwx.data.AndroidNetworkMonitor
@@ -14,8 +13,8 @@ import com.mercury.yktwx.data.NetworkState
 import com.mercury.yktwx.ui.components.FeedbackText
 
 /** Keep connectivity epochs aligned with page ViewModels across Activity recreation. */
-internal class NetworkStateViewModel(app: Application) : AndroidViewModel(app) {
-    val monitor = AndroidNetworkMonitor(app)
+@dagger.hilt.android.lifecycle.HiltViewModel
+internal class NetworkStateViewModel @javax.inject.Inject constructor(val monitor: AndroidNetworkMonitor) : ViewModel() {
     override fun onCleared() { monitor.stop() }
 }
 

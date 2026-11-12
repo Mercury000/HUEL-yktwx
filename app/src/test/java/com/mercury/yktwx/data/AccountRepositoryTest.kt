@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import com.mercury.yktwx.data.accountRepositoryFixture
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -73,7 +74,7 @@ class AccountRepositoryTest {
         try { action(); fail("Expected error") } catch (e: YktException) { assertTrue(type.isInstance(e)) }
     }
     @Test fun freshTokenDoesNotLogin() = runBlocking {
-        val s = FakeService(); AccountRepository(s, MemoryVault()).refresh()
+        val s = FakeService(); accountRepositoryFixture(s, MemoryVault()).refresh()
         assertEquals(0, s.logins); assertEquals(1, s.payments)
     }
     @Test fun sessionVaultReadsNeverBlockTheCallingThread() = runBlocking {
@@ -88,7 +89,7 @@ class AccountRepositoryTest {
             override fun clear() = Unit
         }
 
-        AccountRepository(FakeService(), vault).refresh()
+        accountRepositoryFixture(FakeService(), vault).refresh()
 
         assertTrue(accessThreads.isNotEmpty())
         assertTrue(accessThreads.all { it !== caller })
@@ -101,7 +102,7 @@ class AccountRepositoryTest {
             override fun credentials() = delegate.credentials().also { reads += Thread.currentThread() }
             override fun session() = delegate.session().also { reads += Thread.currentThread() }
         }
-        val repo = AccountRepository(FakeService(), vault)
+        val repo = accountRepositoryFixture(FakeService(), vault)
         assertFalse(repo.ownsAccount("123"))
         assertTrue(reads.isEmpty())
         assertTrue(repo.hasCredentials())
@@ -119,50 +120,50 @@ class AccountRepositoryTest {
     }
     @Test fun businessProcessingNeverRunsOnTheCallingThread() = runBlocking {
         val caller = Thread.currentThread()
-        val repo = AccountRepository(FakeService(), MemoryVault())
+        val repo = accountRepositoryFixture(FakeService(), MemoryVault())
         assertNotSame(caller, repo.withSession { Thread.currentThread() })
         assertNotSame(caller, repo.withSession(retryAuthentication = false) { Thread.currentThread() })
     }
     @Test fun expiredTokenLogsInOnce() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = Session("expired", 0)
-        AccountRepository(s, v).refresh(); assertEquals(1, s.logins); assertEquals("new", v.session()?.accessToken)
+        accountRepositoryFixture(s, v).refresh(); assertEquals(1, s.logins); assertEquals("new", v.session()?.accessToken)
     }
     @Test fun rejectedTokenGetsOneRetry() = runBlocking {
         val s = FakeService(); s.paymentFailures.add(AuthenticationRequired())
-        AccountRepository(s, MemoryVault()).refresh(); assertEquals(1, s.logins); assertEquals(2, s.payments)
+        accountRepositoryFixture(s, MemoryVault()).refresh(); assertEquals(1, s.logins); assertEquals(2, s.payments)
     }
     @Test fun rejectedNewTokenClearsLoginWithoutLoop() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); s.paymentFailures.addAll(listOf(AuthenticationRequired(), AuthenticationRequired()))
-        fails(AuthenticationRequired::class.java) { AccountRepository(s, v).refresh() }
+        fails(AuthenticationRequired::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(1, s.logins); assertEquals(2, s.payments); assertNull(v.credentials())
     }
     @Test fun expiredAndRejectedTokenNeverLogsInTwice() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = null; s.paymentFailures.add(AuthenticationRequired())
-        fails(AuthenticationRequired::class.java) { AccountRepository(s, v).refresh() }
+        fails(AuthenticationRequired::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(1, s.logins); assertNull(v.credentials())
     }
     @Test fun invalidPasswordClearsStoredCredentials() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = null; s.loginFailure = InvalidCredentials()
-        fails(InvalidCredentials::class.java) { AccountRepository(s, v).refresh() }
+        fails(InvalidCredentials::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(1, s.logins); assertNull(v.credentials())
     }
     @Test fun captchaStopsAndClearsCredentials() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = null; s.loginFailure = CaptchaRequired()
-        fails(CaptchaRequired::class.java) { AccountRepository(s, v).refresh() }
+        fails(CaptchaRequired::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(1, s.logins); assertNull(v.credentials())
     }
     @Test fun networkFailureKeepsCredentials() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.savedSession = null; s.loginFailure = NetworkFailure()
-        fails(NetworkFailure::class.java) { AccountRepository(s, v).refresh() }
+        fails(NetworkFailure::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertNotNull(v.credentials()); assertEquals(1, s.logins)
     }
     @Test fun paymentNetworkFailureDoesNotRelogin() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); s.paymentFailures.add(NetworkFailure())
-        fails(NetworkFailure::class.java) { AccountRepository(s, v).refresh() }
+        fails(NetworkFailure::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(0, s.logins); assertNotNull(v.credentials())
     }
     @Test fun concurrentExpiredRequestsShareSingleLogin() = runBlocking {
-        val s = FakeService(); val v = MemoryVault(); v.savedSession = null; val repo = AccountRepository(s, v)
+        val s = FakeService(); val v = MemoryVault(); v.savedSession = null; val repo = accountRepositoryFixture(s, v)
         val a = async { repo.refresh() }; val b = async { repo.refresh() }; a.await(); b.await()
         assertEquals(1, s.logins); assertEquals(2, s.payments)
     }
@@ -177,7 +178,7 @@ class AccountRepositoryTest {
                 return PaymentBatch(emptyList(), 60, PaymentAccount("0", "0", "0", "Demo", 0))
             }
         }
-        val repo = AccountRepository(s, MemoryVault())
+        val repo = accountRepositoryFixture(s, MemoryVault())
         val a = async { repo.refresh() }; val b = async { repo.refresh() }
         try { withTimeout(1000) { entered.await() } }
         finally { release.complete(Unit) }
@@ -200,7 +201,7 @@ class AccountRepositoryTest {
                 return PaymentBatch(emptyList(), 60, PaymentAccount("0", "0", "0", "Demo", 0))
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val a = async { repo.refresh() }; val b = async { repo.refresh() }
         try { withTimeout(1000) { entered.await() } }
         finally { release.complete(Unit) }
@@ -218,7 +219,7 @@ class AccountRepositoryTest {
                 return PaymentAccount("0", "0", "0", "Demo", 1234)
             }
         }.apply { paymentFailures.add(AuthenticationRequired()) }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val slow = async { repo.paymentAccount("123") }
         try {
             withTimeout(1000) { entered.await() }
@@ -251,7 +252,7 @@ class AccountRepositoryTest {
                 throw AuthenticationRequired()
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val a = async { runCatching { repo.refresh() } }; val b = async { runCatching { repo.refresh() } }
         try {
             withTimeout(1000) { entered.await() }
@@ -272,7 +273,7 @@ class AccountRepositoryTest {
                 return PaymentAccount("0", "0", "0", "Demo", 1234)
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val read = async { runCatching { repo.paymentAccount("123") } }
         try { withTimeout(1000) { entered.await(); repo.logout() } }
         finally { release.complete(Unit) }
@@ -287,7 +288,7 @@ class AccountRepositoryTest {
                 entered.complete(Unit); release.await(); throw AuthenticationRequired()
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val read = async { runCatching { repo.paymentAccount("123") } }
         try {
             withTimeout(1000) { entered.await(); repo.login("123", "changed-password") }
@@ -306,7 +307,7 @@ class AccountRepositoryTest {
                 throw AuthenticationRequired()
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val read = launch { repo.paymentAccount("123") }
         try { withTimeout(1000) { entered.await() }; read.cancel() }
         finally { release.complete(Unit) }
@@ -325,7 +326,7 @@ class AccountRepositoryTest {
                 throw AuthenticationRequired()
             }
         }
-        val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val read = launch { runCatching { repo.paymentAccount("123") } }
         try { withTimeout(1000) { entered.await() }; read.cancel() }
         finally { release.complete(Unit) }
@@ -344,7 +345,7 @@ class AccountRepositoryTest {
                     throw rejection
                 }
             }.apply { paymentFailures.add(AuthenticationRequired()) }
-            val v = MemoryVault(); val repo = AccountRepository(s, v)
+            val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
             val read = launch { runCatching { repo.refresh() } }
             try { withTimeout(1000) { entered.await() }; read.cancel() }
             finally { release.complete(Unit) }
@@ -357,7 +358,7 @@ class AccountRepositoryTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var secondEntered = false
-        val s = FakeService(); val v = MemoryVault(); val repo = AccountRepository(s, v)
+        val s = FakeService(); val v = MemoryVault(); val repo = accountRepositoryFixture(s, v)
         val first = async { repo.withSession(retryAuthentication = false) { entered.complete(Unit); release.await() } }
         withTimeout(1000) { entered.await() }
         val second = async(start = CoroutineStart.UNDISPATCHED) {
@@ -385,7 +386,7 @@ class AccountRepositoryTest {
                 return type * 2
             }
         }
-        val read = async { AccountRepository(s, MemoryVault()).billCounts("2026-10-01", "2026-10-31") }
+        val read = async { accountRepositoryFixture(s, MemoryVault()).billCounts("2026-10-01", "2026-10-31") }
         try { withTimeout(1000) { entered.await() } }
         finally { release.complete(Unit) }
         val result = read.await()
@@ -393,7 +394,7 @@ class AccountRepositoryTest {
     }
     @Test fun manualLoginTrimsUsernameAndStoresAfterSuccess() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.clear()
-        AccountRepository(s, v).login(" 123 ", "fake-password")
+        accountRepositoryFixture(s, v).login(" 123 ", "fake-password")
         assertEquals("123", v.credentials()?.username); assertEquals("new", v.session()?.accessToken)
     }
     @Test fun canceledLoginDuringPersistenceKeepsTheStoredAndCachedAccountConsistentWithoutFetchingCodes() = runBlocking {
@@ -408,7 +409,7 @@ class AccountRepositoryTest {
             }
         }
         val service = FakeService()
-        val repository = AccountRepository(service, vault)
+        val repository = accountRepositoryFixture(service, vault)
         assertEquals("123", repository.username())
         val login = launch { repository.login("456", "changed-password") }
         try {
@@ -431,32 +432,32 @@ class AccountRepositoryTest {
     }
     @Test fun noCredentialsNeverMakesNetworkRequest() = runBlocking {
         val s = FakeService(); val v = MemoryVault(); v.clear()
-        fails(AuthenticationRequired::class.java) { AccountRepository(s, v).refresh() }
+        fails(AuthenticationRequired::class.java) { accountRepositoryFixture(s, v).refresh() }
         assertEquals(0, s.logins); assertEquals(0, s.payments)
     }
     @Test fun balanceQueryUsesSessionWithoutRequestingPaymentCodes() = runBlocking {
         val s = FakeService(); val v = MemoryVault()
-        assertEquals(1234L, AccountRepository(s, v).paymentAccount("123").balanceCents)
+        assertEquals(1234L, accountRepositoryFixture(s, v).paymentAccount("123").balanceCents)
         assertEquals(1, s.balanceQueries); assertEquals(0, s.payments); assertEquals(0, s.logins)
     }
     @Test fun balanceQueryRejectsAnotherLoginBeforeAnyRequest() = runBlocking {
         val s = FakeService()
-        fails(YktException::class.java) { AccountRepository(s, MemoryVault()).paymentAccount("other") }
+        fails(YktException::class.java) { accountRepositoryFixture(s, MemoryVault()).paymentAccount("other") }
         assertEquals(0, s.balanceQueries); assertEquals(0, s.payments)
     }
     @Test fun rejectedBalanceTokenRelogsOnceWithoutFetchingCodes() = runBlocking {
         val s = FakeService(); s.balanceFailures.add(AuthenticationRequired())
-        AccountRepository(s, MemoryVault()).paymentAccount("123")
+        accountRepositoryFixture(s, MemoryVault()).paymentAccount("123")
         assertEquals(2, s.balanceQueries); assertEquals(1, s.logins); assertEquals(0, s.payments)
     }
     @Test fun logoutClearsEverything() = runBlocking {
-        val v = MemoryVault(); AccountRepository(FakeService(), v).logout()
+        val v = MemoryVault(); accountRepositoryFixture(FakeService(), v).logout()
         assertNull(v.credentials()); assertNull(v.session())
     }
 
     @Test fun restorationAndRenewalPublishOneAccountLifetime() = runBlocking {
         val service = FakeService()
-        val repo = AccountRepository(service, MemoryVault())
+        val repo = accountRepositoryFixture(service, MemoryVault())
         assertFalse(repo.sessionState.value.restored)
         val restored = repo.restoreSession()
         assertEquals("123", restored.username)
@@ -481,7 +482,7 @@ class AccountRepositoryTest {
                 stored.clear()
             }
         }
-        val repo = AccountRepository(FakeService(), vault)
+        val repo = accountRepositoryFixture(FakeService(), vault)
         val before = repo.restoreSession()
         val logout = async { repo.logout() }
         try {
@@ -502,7 +503,7 @@ class AccountRepositoryTest {
     @Test fun terminalEndpointRejectionsUseTheSameAuthorityAsLoginRejections() = runBlocking {
         for (rejection in listOf(InvalidCredentials(), CaptchaRequired())) {
             val vault = MemoryVault()
-            val repo = AccountRepository(FakeService(), vault)
+            val repo = accountRepositoryFixture(FakeService(), vault)
             repo.restoreSession()
             fails(rejection.javaClass) { repo.withSession { throw rejection } }
             assertNull(repo.sessionState.value.username)
@@ -515,7 +516,7 @@ class AccountRepositoryTest {
     @Test fun aLateRetryRejectionCannotPublishRevocationForANewerToken() = runBlocking {
         val retryEntered = CompletableDeferred<Unit>()
         val releaseRetry = CompletableDeferred<Unit>()
-        val repo = AccountRepository(FakeService(), MemoryVault())
+        val repo = accountRepositoryFixture(FakeService(), MemoryVault())
         val identity = repo.restoreSession()
         val old = async {
             runCatching {

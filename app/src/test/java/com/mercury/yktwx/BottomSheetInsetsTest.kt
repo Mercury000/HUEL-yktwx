@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class BottomSheetInsetsTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     @Test fun bottomSafeAreaReservesNavigationBarAndUsesLargerImeInsteadOfStacking() {
         val bottom = mutableStateOf(24.dp)
         compose.setContent {

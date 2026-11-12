@@ -33,7 +33,7 @@ interface YktService {
 
 /** First-party HTTPS only; no cookie jar, redirects, insecure TLS or automatic login retries. */
 class YktApi(
-    private val client: Call.Factory = AppHttp.service,
+    private val client: Call.Factory,
 ) : YktService {
     private suspend fun request(path: String, params: Map<String, String> = emptyMap(), token: String? = null, login: Boolean = false): JsonObject {
         val fields = params + ("synAccessSource" to "h5")

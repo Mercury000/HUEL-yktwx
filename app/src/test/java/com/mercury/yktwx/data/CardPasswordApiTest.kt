@@ -67,7 +67,7 @@ class CardPasswordApiTest {
         assertEquals(3, calls.count { it.url.path.endsWith("keyboard") })
         assertTrue(calls.filter { it.url.path.endsWith("keyboard") }.all { it.url.query.contains("type=Number") && it.url.query.contains("order=0") })
         assertTrue(calls.all { it.request.header("Cookie") == null && it.request.header("synjones-auth") == "bearer fake-token" &&
-            !AppHttp.service.followRedirects && it.closed })
+            !testHttpClients.service.followRedirects && it.closed })
         assertTrue(calls.none { it.url.path.endsWith("oauth/token") })
     }
     @Test fun dollarInAnyOfTheThreeKeyboardsIsAcceptedOnFirstSubmissionWithoutRetry() {

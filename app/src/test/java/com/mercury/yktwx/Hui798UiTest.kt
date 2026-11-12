@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -41,7 +42,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class Hui798UiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val models = ViewModelStore()
     private fun model(): Hui798ViewModel {
         val store = object : Hui798Store {
@@ -69,10 +70,10 @@ class Hui798UiTest {
             override suspend fun start(id: String, token: String) { error("No live starts") }
             override suspend fun end(id: String, token: String) { error("No live stops") }
         }
-        return Hui798ViewModel(compose.activity.application, api, store, io = Dispatchers.Main.immediate).also { models.put("hui798", it) }
+        return hui798ViewModelFixture(compose.activity.application, api, store, io = Dispatchers.Main.immediate).also { models.put("hui798", it) }
     }
     @After fun cleanup() { models.clear() }
-    private fun settings(dark: Boolean = false) = ThemeSettings(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
+    private fun settings(dark: Boolean = false) = themeSettingsFixture(compose.activity.application).apply { setTheme(if (dark) 2 else 1) }
     private fun capture(name: String) {
         compose.mainClock.advanceTimeBy(1000)
         compose.runOnIdle { compose.activity.window.decorView.invalidate() }
@@ -256,7 +257,7 @@ class Hui798UiTest {
     }
     @Test fun deviceQueryStatesKeepIdentityVisibleAndOfferRetryInsteadOfStart() = deviceQueryStates(false)
     @Test fun accountRecoveryKeepsRescanAvailableAndDefersLogin() {
-        val model = model(); val settings = ThemeSettings(compose.activity.application).apply { setTheme(1) }
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
         val id = "123456789012345"
         var scans = 0
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {

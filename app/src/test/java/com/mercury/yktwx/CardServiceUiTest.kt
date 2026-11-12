@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -41,12 +42,12 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CardServiceUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     @Before fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(context)
+        settings = themeSettingsFixture(context)
     }
     private fun screenshot(name: String) {
         val output = File("../tools/$name.png").absoluteFile
@@ -214,7 +215,7 @@ class CardServiceUiTest {
         compose.onNodeWithText("已选择").assertExists()
     }
     @Test fun queryDirectlyShowsAmountsAndDefaultSelectedRecipientCanBeToggled() {
-        val model = CardServiceViewModel(compose.activity.application)
+        val model = cardServiceViewModelFixture(compose.activity.application)
         val store = androidx.lifecycle.ViewModelStore().apply { put("card", model) }
         try {
             compose.setContent {

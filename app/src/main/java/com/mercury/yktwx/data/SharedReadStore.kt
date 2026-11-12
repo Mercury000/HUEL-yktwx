@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Account-scoped successful values and single-flight reads; a page never owns another page's job. */
-internal class SharedReadStore(scope: CoroutineScope = CoroutineScope(Dispatchers.Default)) {
+internal class SharedReadStore(scope: CoroutineScope) {
     private val scope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
     data class Snapshot<T>(val value: T?, val readAt: Long, val pending: Boolean, val error: Throwable?) {
         fun fresh(now: Long = ReadCachePolicy.now()) = !pending && error == null && ReadCachePolicy.isFresh(readAt, now)

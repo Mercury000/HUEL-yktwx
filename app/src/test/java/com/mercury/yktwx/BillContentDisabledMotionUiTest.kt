@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,7 +26,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BillContentDisabledMotionUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>(effectContext = object : MotionDurationScale {
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>(effectContext = object : MotionDurationScale {
         override val scaleFactor = 0f
     })
 
@@ -49,7 +50,7 @@ class BillContentDisabledMotionUiTest {
 
     @Test fun disabledMotionSwitchesImmediatelyWithoutRetainingTheOldContents() {
         var state by mutableStateOf(PreviewData.billState())
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme {

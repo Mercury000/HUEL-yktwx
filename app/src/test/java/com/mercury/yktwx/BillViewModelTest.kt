@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -26,8 +27,8 @@ class BillViewModelTest {
     private val vault = MemoryVault()
     private val service = FakeService()
     private var now = 10_000L
-    private val model = BillViewModel(
-        ApplicationProvider.getApplicationContext<Application>(), AccountRepository(service, vault, readNow = { now }), { now },
+    private val model = billViewModelFixture(
+        ApplicationProvider.getApplicationContext<Application>(), accountRepositoryFixture(service, vault, readNow = { now }), { now },
     )
     private val store = ViewModelStore().apply { put("bills", model) }
 

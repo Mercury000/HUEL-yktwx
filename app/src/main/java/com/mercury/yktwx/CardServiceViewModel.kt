@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
@@ -42,8 +43,8 @@ class RecipientRechargeRequest(val username: String, val config: RechargeConfigu
     override fun toString() = "RecipientRechargeRequest([redacted])"
 }
 
-class CardServiceViewModel internal constructor(app: Application, private val repository: AccountRepository) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app))
+@HiltViewModel
+class CardServiceViewModel @Inject constructor(private val repository: AccountRepository) : ViewModel() {
     private val mutable = MutableStateFlow(CardServiceUiState())
     val state = mutable.asStateFlow()
     private val ready = Channel<RecipientRechargeRequest>(Channel.BUFFERED)

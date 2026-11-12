@@ -22,6 +22,8 @@ Version Catalog 集中管理插件和依赖版本。
 
 业务 JSON 使用 kotlinx.serialization。
 
+`di/` 使用 Hilt 管理应用依赖与 ViewModel 作用域。
+
 `analytics/` 管理统计事件与授权。
 
 ## 依赖关系

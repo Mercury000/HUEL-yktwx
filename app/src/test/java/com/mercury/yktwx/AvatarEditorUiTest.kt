@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -36,16 +37,16 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AvatarEditorUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     private val model get() = ViewModelProvider(compose.activity)[AvatarViewModel::class.java]
 
     private fun setup() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        settings = ThemeSettings(app).apply { setTheme(1) }
-        val payments = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        settings = themeSettingsFixture(app).apply { setTheme(1) }
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) } }
         compose.onNode(hasText("我的") and hasClickAction()).performClick()
         compose.onNodeWithContentDescription("个人信息").performClick()
@@ -160,17 +161,17 @@ class AvatarEditorUiTest {
 
     @Test fun coldLocalRestoreNeverShowsDefaultOrOfficialAvatarAndReadyFramesDrawTheStoredImage() {
         val app = compose.activity.application
-        val payments = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         val store = LocalAvatarStore(app)
         val bitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val bytes = AvatarImage.encode(bitmap, AvatarCrop())
         bitmap.recycle()
         val owner = "preview:${payments.state.value.username}"
         store.write(owner, bytes)
-        val avatars = AvatarViewModel(app, store)
+        val avatars = avatarViewModelFixture(app, store)
         compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:com.mercury.yktwx.AvatarViewModel", avatars)
-        settings = ThemeSettings(app).apply { setTheme(1) }
+        settings = themeSettingsFixture(app).apply { setTheme(1) }
         synchronized(store) {
             compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) } }
             compose.runOnIdle { assertSame(avatars, model) }

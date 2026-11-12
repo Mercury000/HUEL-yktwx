@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.RechargeResult
@@ -37,11 +38,13 @@ data class LifeDevicesUiState(
 )
 
 /** One login gate and scanner route each recognized code to its device service. */
+@HiltViewModel
 class LifeDevicesViewModel internal constructor(
-    app: Application, private val api: LifeDeviceService, private val store: LifeDeviceStore,
+    private val api: LifeDeviceService, private val store: LifeDeviceStore,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, LifeDeviceApi(), LifeDeviceAccountStore(app))
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(api: LifeDeviceService, store: LifeDeviceStore, analytics: AppAnalytics) : this(api, store, io = Dispatchers.IO, analytics = analytics)
     private val mutable = MutableStateFlow(LifeDevicesUiState())
     val state = mutable.asStateFlow()
     private var account: LifeAccount? = null
@@ -270,7 +273,6 @@ class LifeDevicesViewModel internal constructor(
         if (!value.phone.matches(Regex("1[0-9]{10}")) || value.code.isBlank()) {
             mutable.update { it.copy(loginError = "请输入手机号和验证码") }; return
         }
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         authTask = viewModelScope.launch {
             mutable.update { it.copy(loggingIn = true, loginError = null) }
@@ -394,7 +396,6 @@ class LifeDevicesViewModel internal constructor(
         val device = value.device ?: return
         if (value.feature != LifeFeature.Water || value.water?.active == true || value.loadingDevice || value.accountBusy || waterTask?.isActive == true) return
         val token = account?.token ?: return requireLogin()
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         val analyticsFeature = if (device.isShower) AnalyticsFeature.PangguiShower else AnalyticsFeature.PangguiWater
         waterPollTask?.cancel(); waterPollTask = null
@@ -753,7 +754,6 @@ class LifeDevicesViewModel internal constructor(
         if (value.feature != LifeFeature.Laundry || !value.paymentVisible || value.laundryBusy || value.quoteLoading || value.paymentLaunch != null ||
             quote.deviceId != device.id || (value.laundry == null && quote.skuId != value.selectedSkuId) ||
             quote.channels.none { it.method == method && it.laundryUnavailableReason() == null }) return
-        val analytics = AppAnalytics.from(getApplication())
         val analyticsAttempt = analytics.begin()
         laundryWork { token, service ->
             var session = mutable.value.laundry
@@ -827,7 +827,7 @@ class LifeDevicesViewModel internal constructor(
         val launch = mutable.value.paymentLaunch?.takeIf { it.id == requestId } ?: return
         val session = mutable.value.laundry?.takeIf { it.orderNo == launch.orderNo } ?: return
         if (resultStatus == "launch_failed" || resultStatus == "6002")
-            AppAnalytics.from(getApplication()).operationFailed(laundryAnalyticsAttempt,
+            analytics.operationFailed(laundryAnalyticsAttempt,
                 AnalyticsFeature.PangguiLaundry, AnalyticsError.External)
         mutable.update { it.copy(paymentLaunch = null) }
         paymentInFlight = null

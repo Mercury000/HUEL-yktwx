@@ -20,7 +20,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class InputFocusDismissalUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val username get() = compose.onNode(hasText("学号 / 工号") and hasSetTextAction())
     private val password get() = compose.onNode(hasText("密码") and hasSetTextAction())
 

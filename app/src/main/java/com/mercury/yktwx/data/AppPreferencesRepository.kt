@@ -1,10 +1,8 @@
 package com.mercury.yktwx.data
 
-import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.datastore.core.DataStore
-import androidx.datastore.dataStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -15,16 +13,11 @@ internal sealed interface PreferencesLoadState {
     data object Failed : PreferencesLoadState
 }
 
-private val Context.preferencesDataStore by dataStore("app-preferences.json", AppPreferencesSerializer,
-    produceMigrations = { context -> listOf(LegacyPreferencesMigration(context)) })
-
 /** A persisted snapshot is published only after migration, signature checks and durable writes. */
 internal class AppPreferencesRepository internal constructor(
     private val store: DataStore<AppPreferences>,
     internal val scope: CoroutineScope,
-    private val verifyManifest: (String, String) -> Pair<UpdateRelease, String> = { body, channel ->
-        UpdateManifestVerifier().manifest(body, channel)
-    },
+    private val verifyManifest: (String, String) -> Pair<UpdateRelease, String>,
 ) {
     private val mutable = MutableStateFlow<PreferencesLoadState>(PreferencesLoadState.Loading)
     val state = mutable.asStateFlow()
@@ -105,17 +98,4 @@ internal class AppPreferencesRepository internal constructor(
         }
     }
 
-    companion object {
-        private var sharedContext: Context? = null
-        private var sharedRepository: AppPreferencesRepository? = null
-        @Synchronized fun from(context: Context): AppPreferencesRepository {
-            val app = context.applicationContext
-            if (sharedContext !== app) {
-                sharedContext = app
-                sharedRepository = AppPreferencesRepository(app.preferencesDataStore,
-                    CoroutineScope(SupervisorJob() + Dispatchers.IO))
-            }
-            return checkNotNull(sharedRepository)
-        }
-    }
 }

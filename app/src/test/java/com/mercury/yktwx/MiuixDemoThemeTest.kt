@@ -23,7 +23,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-hdpi")
 class MiuixDemoThemeTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     // Color's JVM getters return its packed Long. Read every public color role,
     // including disabled/error roles, without maintaining a partial sample list.
