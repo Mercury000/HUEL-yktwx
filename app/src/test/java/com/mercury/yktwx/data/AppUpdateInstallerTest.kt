@@ -5,7 +5,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.Signature
 import android.content.pm.SigningInfo
 import androidx.test.core.app.ApplicationProvider
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -15,8 +15,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.net.URL
-import java.security.cert.Certificate
-import javax.net.ssl.HttpsURLConnection
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -39,27 +37,28 @@ class AppUpdateInstallerTest {
     }
     @Test fun firstBadHashFallsBackAndVerifiedFileIsRehashedBeforeInstall() = runBlocking {
         var requests = 0
-        val installer = AppUpdateInstaller(context, UpdateHttp { url ->
+        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { url ->
             requests++
-            object : HttpsURLConnection(url) {
-                override fun getResponseCode() = 200
-                override fun getContentLengthLong() = bytes.size.toLong()
-                override fun getInputStream() = ByteArrayInputStream(if (requests == 1) "wrong-apk-byte-data!!".toByteArray() else bytes)
-                override fun disconnect() {}
-                override fun connect() {}
-                override fun usingProxy() = false
-                override fun getCipherSuite() = "test"
-                override fun getLocalCertificates(): Array<Certificate>? = null
-                override fun getServerCertificates(): Array<Certificate> = emptyArray()
+            object : HttpFixture(url) {
+                override fun statusCode() = 200
+                override fun contentLength() = bytes.size.toLong()
+                override fun bodyStream() = ByteArrayInputStream(if (requests == 1) "wrong-apk-byte-data!!".toByteArray() else bytes)
+                override fun close() {}
+
             }
         })
         val file = installer.apk(release)
         file.delete()
-        val temporary = file.resolveSibling(file.name + ".download")
-        shadowOf(context.packageManager).setPackageArchiveInfo(temporary.absolutePath, info())
+        lateinit var temporary: java.io.File
         shadowOf(context.packageManager).setPackageArchiveInfo(file.absolutePath, info())
         val states = mutableListOf<UpdateDownloadState>()
-        assertEquals(file, installer.download(release) { states += it })
+        assertEquals(file, installer.download(release) {
+            states += it
+            if (it.phase == UpdateDownloadPhase.Verifying) {
+                temporary = file.parentFile!!.listFiles()!!.single { candidate -> candidate.name.endsWith(".download") }
+                shadowOf(context.packageManager).setPackageArchiveInfo(temporary.absolutePath, info())
+            }
+        })
         assertEquals(2, requests)
         assertFalse(temporary.exists())
         assertTrue(states.any { it.phase == UpdateDownloadPhase.Verifying })
@@ -80,9 +79,43 @@ class AppUpdateInstallerTest {
             assertFalse(file.exists())
         }
     }
+    @Test fun cancellationCleansPartialFileAfterTheBodyWorkerClosesAndDoesNotTryAnotherCdn() = runBlocking {
+        val reading = CompletableDeferred<Unit>()
+        val stopped = java.util.concurrent.CountDownLatch(1)
+        val releaseWorker = java.util.concurrent.CountDownLatch(1)
+        var requests = 0
+        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { url ->
+            requests++
+            object : HttpFixture(url) {
+                override fun bodyStream() = object : java.io.InputStream() {
+                    var first = true
+                    override fun read(): Int = error("Use buffered reads")
+                    override fun read(target: ByteArray, offset: Int, length: Int): Int {
+                        if (first) { first = false; target[offset] = 1; return 1 }
+                        reading.complete(Unit)
+                        stopped.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                        releaseWorker.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                        throw java.io.IOException("Cancelled read")
+                    }
+                }
+                override fun close() { stopped.countDown() }
+            }
+        })
+        installer.apk(release).delete()
+        val job = launch { installer.download(release) {} }
+        try {
+            withTimeout(2_000) { reading.await() }
+            val temporary = installer.apk(release).parentFile!!.listFiles()!!.single { it.name.endsWith(".download") }
+            withTimeout(1_000) { job.cancelAndJoin() }
+            releaseWorker.countDown()
+            withTimeout(2_000) { while (temporary.exists()) delay(10) }
+            assertEquals(1, requests)
+            assertFalse(installer.apk(release).exists())
+        } finally { releaseWorker.countDown(); job.cancel() }
+    }
     @Test fun authorizationUsesCurrentPackageAndDoesNotDownloadAgainWhenFileMatches() = runBlocking {
         var network = 0
-        val installer = AppUpdateInstaller(context, UpdateHttp { network++; error("Must reuse verified bytes") })
+        val installer = AppUpdateInstaller(context, fixtureUpdateHttp { network++; error("Must reuse verified bytes") })
         val file = installer.apk(release)
         file.writeBytes(bytes)
         shadowOf(context.packageManager).setPackageArchiveInfo(file.absolutePath, info())

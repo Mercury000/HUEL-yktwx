@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.UUID
 
 internal enum class UpdateDownloadPhase { Idle, Downloading, Verifying, Ready, NeedsAuthorization, Installing, Failed }
 internal data class UpdateDownloadState(val phase: UpdateDownloadPhase = UpdateDownloadPhase.Idle,
@@ -43,31 +44,40 @@ internal class AppUpdateInstaller(private val context: Context, private val http
         var last: Exception? = null
         for (url in release.urls) {
             currentCoroutineContext().ensureActive()
-            val temporary = File(directory, destination.name + ".download")
+            // A cancelled callback can still be closing its stream when a new attempt starts.
+            val temporary = File(directory, destination.name + "-${UUID.randomUUID()}.download")
             try {
                 progress(UpdateDownloadState(UpdateDownloadPhase.Downloading))
-                http.read(url) { connection ->
-                    val declared = connection.contentLengthLong
-                    require(declared < 0 || declared == release.size) { "安装包大小不符" }
-                    connection.inputStream.use { input -> FileOutputStream(temporary).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var total = 0L; var lastProgress = 0L
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val count = input.read(buffer); if (count < 0) break
-                            total += count
-                            require(total <= release.size) { "安装包大小不符" }
-                            output.write(buffer, 0, count)
-                            val now = System.nanoTime()
-                            if (now - lastProgress >= 300_000_000) {
-                                progress(UpdateDownloadState(UpdateDownloadPhase.Downloading,
-                                    if (declared > 0) (total * 100 / declared).toInt().coerceAtMost(99) else null))
-                                lastProgress = now
+                val downloadContext = currentCoroutineContext()
+                http.read(url) { response ->
+                    try {
+                        val declared = response.body.contentLength()
+                        require(declared < 0 || declared == release.size) { "安装包大小不符" }
+                        response.body.byteStream().use { input -> FileOutputStream(temporary).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L; var lastProgress = 0L
+                            while (true) {
+                                downloadContext.ensureActive()
+                                val count = input.read(buffer); if (count < 0) break
+                                downloadContext.ensureActive()
+                                total += count
+                                require(total <= release.size) { "安装包大小不符" }
+                                output.write(buffer, 0, count)
+                                val now = System.nanoTime()
+                                if (now - lastProgress >= 300_000_000) {
+                                    progress(UpdateDownloadState(UpdateDownloadPhase.Downloading,
+                                        if (declared > 0) (total * 100 / declared).toInt().coerceAtMost(99) else null))
+                                    lastProgress = now
+                                }
                             }
-                        }
-                        require(total == release.size) { "安装包下载不完整" }
-                        output.fd.sync()
-                    } }
+                            require(total == release.size) { "安装包下载不完整" }
+                            output.fd.sync()
+                        } }
+                    } finally {
+                        // Cancellation resumes the caller immediately; also clean up after
+                        // the callback closes the file (needed when an open file cannot be deleted).
+                        if (!downloadContext.isActive) temporary.delete()
+                    }
                 }
                 progress(UpdateDownloadState(UpdateDownloadPhase.Verifying))
                 verify(release, temporary)

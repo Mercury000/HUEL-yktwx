@@ -1,12 +1,11 @@
 package com.mercury.yktwx.data
 
+import okhttp3.Call
 import org.json.JSONObject
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 
 /** No browser, Cookie, redirect following, JS execution, or side-effect retries. */
-class RechargeApi(private val openConnection: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) : RechargeService {
-    private val http = PaymentHttp(openConnection)
+class RechargeApi(private val client: Call.Factory = AppHttp.service) : RechargeService {
+    private val http = PaymentHttp(client)
     private suspend fun request(path: String, token: String, params: Map<String, String> = emptyMap(), form: Map<String, String>? = null) =
         http.request(path, token, params, form)
     private suspend fun json(response: PaymentHttp.Response) = http.json(response, rechargePayment = true)

@@ -372,6 +372,28 @@ class BillViewModelTest {
         assertEquals(listOf(record), model.state.value.items)
     }
 
+    @Test fun reactivationCannotReplaceAFailedCurrentQueryWithItsOlderSuccessfulCache() {
+        model.initialize()
+        loadExistingBills()
+        service.failure = NetworkFailure("transport interrupted")
+        model.refresh()
+        await { !model.state.value.refreshing && model.state.value.error != null }
+        val firstFailureReads = service.requests
+        model.onActivate()
+        await { !model.state.value.refreshing && model.state.value.error != null && service.requests > firstFailureReads }
+        val exhaustedReads = service.requests
+        model.onActivate()
+        shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+        assertEquals(exhaustedReads, service.requests)
+        assertEquals(ReadFailureKind.Network, model.state.value.errorKind)
+        assertEquals(listOf(record), model.state.value.items)
+        model.setPageVisible(false)
+        service.failure = null
+        model.setPageVisible(true)
+        await { !model.state.value.refreshing && model.state.value.error == null && service.requests > exhaustedReads }
+        assertEquals(exhaustedReads + 1, service.requests)
+    }
+
     @Test fun credentialReadFailureDoesNotLeaveRefreshStuck() {
         vault.readFailure = IllegalStateException("fake vault failure")
         model.refresh()

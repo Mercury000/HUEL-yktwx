@@ -61,7 +61,11 @@ class NetworkRecoveryNavigationTest {
             val capabilities = ShadowNetworkCapabilities.newInstance()
             shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             shadowOf(manager).setNetworkCapabilities(manager.activeNetwork, capabilities)
-            shadowOf(manager).networkCallbacks.forEach { it.onCapabilitiesChanged(manager.activeNetwork!!, capabilities) }
+            shadowOf(manager).networkCallbacks.forEach {
+                it.onAvailable(manager.activeNetwork!!)
+                it.onCapabilitiesChanged(manager.activeNetwork!!, capabilities)
+                it.onBlockedStatusChanged(manager.activeNetwork!!, false)
+            }
         } else {
             shadowOf(manager).setActiveNetworkInfo(null)
             if (previous != null) shadowOf(manager).networkCallbacks.forEach { it.onLost(previous) }
@@ -214,7 +218,7 @@ class NetworkRecoveryNavigationTest {
         }
     }
 
-    @Test fun hallRecoversInPlaceAndCachedMyPageRecoversOnReconnectAndForegroundWithoutFetchingPaymentCodes() {
+    @Test fun allMainPagesRecoverAcrossReconnectTabReturnAndForegroundWithoutHiddenPaymentReads() {
         val app = compose.activity.application
         val feeReads = AtomicInteger()
         val profileReads = AtomicInteger()
@@ -383,6 +387,78 @@ class NetworkRecoveryNavigationTest {
         assertNull(payment.state.value.accountErrorKind)
         assertEquals(paymentReadsBeforeMy, paymentReads.get())
         assertNull(payment.state.value.code)
+
+        // Exhaust the shared automatic budget while Android keeps the SAME default network.
+        // Both tab return and Activity return must recover each page and remove its banner.
+        data class PageRecovery(val tab: String, val surface: String, val refresh: () -> Unit,
+            val activate: () -> Unit, val loading: () -> Boolean, val failure: () -> String?,
+            val reads: () -> Int, val ready: () -> Boolean)
+        val pages = listOf(
+            PageRecovery("大厅", "hall-page-list", hall::refresh, hall::onActivate,
+                { hall.state.value.loading }, { hall.state.value.networkError }, { feeReads.get() },
+                { hall.state.value.network != null && !hall.state.value.restoringDisplay }),
+            PageRecovery("账单", "bill-scroll-surface", bills::refresh, bills::onActivate,
+                { bills.state.value.loading || bills.state.value.refreshing }, { bills.state.value.error }, { billReads.get() },
+                { bills.state.value.listAvailable && bills.state.value.summary != null && !bills.state.value.restoringDisplay }),
+            PageRecovery("我的", "my-page-list", mine::refresh, mine::onActivate,
+                { mine.state.value.loading }, { mine.state.value.profileError }, { profileReads.get() },
+                { mine.state.value.profile != null && !mine.state.value.restoringDisplay }),
+        )
+        for (page in pages) {
+            compose.onNode(hasText(page.tab) and hasClickAction()).performClick()
+            await { page.ready() && !page.loading() && page.failure() == null }
+            for (foregroundReturn in listOf(false, true)) {
+                online = false // Transport fails; there is deliberately no connectivity event.
+                compose.runOnIdle { page.refresh() }
+                await { !page.loading() && page.failure() != null }
+                val firstAttemptReads = page.reads()
+                compose.runOnIdle { page.activate() }
+                await { !page.loading() && page.failure() != null && page.reads() > firstAttemptReads }
+                val exhaustedReads = page.reads()
+                compose.runOnIdle { page.activate() }
+                compose.mainClock.advanceTimeBy(1_000)
+                assertEquals(page.tab, exhaustedReads, page.reads())
+                compose.onNode(visibleTag("page-network-error", page.surface)).assertIsDisplayed()
+                if (foregroundReturn) {
+                    compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+                    online = true
+                    compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+                } else {
+                    val otherTab = if (page.tab == "大厅") "账单" else "大厅"
+                    compose.onNode(hasText(otherTab) and hasClickAction()).performClick()
+                    online = true
+                    compose.onNode(hasText(page.tab) and hasClickAction()).performClick()
+                }
+                await { !page.loading() && page.failure() == null && page.reads() > exhaustedReads }
+                compose.mainClock.advanceTimeBy(400)
+                compose.onNode(visibleTag("page-network-error", page.surface)).assertDoesNotExist()
+                assertEquals(paymentReadsBeforeMy, paymentReads.get())
+            }
+        }
+
+        compose.onNode(hasText("付款") and hasClickAction()).performClick()
+        await { payment.state.value.code != null && !payment.state.value.busy }
+        val manager = compose.activity.getSystemService(ConnectivityManager::class.java)
+        val defaultNetwork = manager.activeNetwork!!
+        val callback = shadowOf(manager).networkCallbacks.single()
+        repeat(3) {
+            val beforeBackground = paymentReads.get()
+            compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            // Revocation is synchronous, without waiting for another Compose frame.
+            assertNull(payment.state.value.code)
+            compose.runOnIdle {
+                callback.onBlockedStatusChanged(defaultNetwork, true)
+                shadowOf(manager).setActiveNetworkInfo(null)
+                shadowOf(Looper.getMainLooper()).idleFor(5, TimeUnit.SECONDS)
+                callback.onBlockedStatusChanged(defaultNetwork, false)
+            }
+            assertEquals(beforeBackground, paymentReads.get())
+            // The synchronous getter still reports null when ON_START runs.
+            compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            await { payment.state.value.code != null && !payment.state.value.busy }
+            assertNull(payment.state.value.error)
+            assertEquals(beforeBackground + 1, paymentReads.get())
+        }
     }
 
     @Test fun profileDetailsRecoverAnIdentityOnlyFailureFromAnOlderRequest() {

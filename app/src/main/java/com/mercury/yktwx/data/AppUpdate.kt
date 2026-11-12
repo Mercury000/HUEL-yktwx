@@ -1,18 +1,18 @@
 package com.mercury.yktwx.data
 
 import com.mercury.yktwx.BuildConfig
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import org.json.JSONObject
 import java.net.URI
-import java.net.URL
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
 import java.util.Base64
-import javax.net.ssl.HttpsURLConnection
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import okhttp3.Call
+import okhttp3.Response
+import org.json.JSONObject
 
 internal data class UpdateRequest(val packageName: String, val versionCode: Int, val sdkInt: Int,
     val channel: String = BuildConfig.UPDATE_CHANNEL)
@@ -40,61 +40,44 @@ internal class UpdateHttpFailure(val status: Int) : java.io.IOException("更新�
 
 /** Dedicated, cancellable public transport. No campus headers, cookies or account data. */
 internal class UpdateHttp(private val metadataTimeoutMillis: Long = 1_500,
-    private val open: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }) {
-    suspend fun <T> read(url: String, consume: suspend (HttpsURLConnection) -> T): T = withContext(Dispatchers.IO) {
-        var target = httpsUri(url).toURL()
+    private val client: Call.Factory = AppHttp.update) {
+    suspend fun <T> read(url: String, consume: (Response) -> T): T {
+        var target = httpsUri(url)
         repeat(6) { redirect ->
             currentCoroutineContext().ensureActive()
-            val connection = open(target)
-            val closer = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
-                try { awaitCancellation() } finally { connection.disconnect() }
-            }
-            try {
-                connection.connectTimeout = 10_000; connection.readTimeout = 10_000
-                connection.instanceFollowRedirects = false; connection.useCaches = false
-                connection.setRequestProperty("Cache-Control", "no-cache, no-store")
-                connection.setRequestProperty("Pragma", "no-cache")
-                connection.setRequestProperty("User-Agent", "CaiXiaoTong-AppUpdate/1")
-                connection.setRequestProperty("Accept", "application/vnd.github.raw+json, application/json, */*")
-                val status = connection.responseCode
-                if (status in listOf(301, 302, 303, 307, 308)) {
+            val request = AppHttp.request(target.toString())
+                .header("Cache-Control", "no-cache, no-store")
+                .header("Pragma", "no-cache")
+                .header("User-Agent", "CaiXiaoTong-AppUpdate/1")
+                .header("Accept", "application/vnd.github.raw+json, application/json, */*").build()
+            var next: URI? = null
+            val result = client.readResponse(request) { response ->
+                if (response.code in listOf(301, 302, 303, 307, 308)) {
                     require(redirect < 5) { "更新地址重定向过多" }
-                    target = httpsUri(target.toURI().resolve(connection.getHeaderField("Location")
-                        ?: error("更新地址无效")).toString()).toURL()
+                    next = httpsUri(target.resolve(response.header("Location") ?: error("更新地址无效")).toString())
+                    null
                 } else {
-                    if (status !in 200..299) throw UpdateHttpFailure(status)
-                    return@withContext consume(connection)
+                    if (!response.isSuccessful) throw UpdateHttpFailure(response.code)
+                    consume(response)
                 }
-            } catch (error: Exception) {
-                // Closing a cancelled blocking stream may throw IOException; preserve cancellation semantics.
-                currentCoroutineContext().ensureActive()
-                throw error
-            } finally { closer.cancel(); connection.disconnect() }
+            }
+            if (next == null) {
+                @Suppress("UNCHECKED_CAST")
+                return result as T
+            }
+            target = next
         }
         error("更新地址无效")
     }
     suspend fun json(url: String): String = withTimeoutOrNull(metadataTimeoutMillis) {
-        // DNS and some platform reads may outlive cancellation. The metadata caller must not
-        // join that blocking worker; cancelling it still disconnects the active connection.
-        suspendCancellableCoroutine<String> { continuation ->
-            val worker = CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val body = read(url) { connection ->
-                        val bytes = connection.inputStream.use { it.readNBytes(1_048_577) }
-                        currentCoroutineContext().ensureActive()
-                        require(bytes.size <= 1_048_576) { "更新信息过大" }
-                        val body = bytes.toString(Charsets.UTF_8)
-                        val json = JSONObject(body)
-                        if (json.optString("encoding") == "base64") {
-                            Base64.getMimeDecoder().decode(json.getString("content")).toString(Charsets.UTF_8)
-                        } else body
-                    }
-                    continuation.resumeWith(Result.success(body))
-                } catch (error: Exception) {
-                    continuation.resumeWith(Result.failure(error))
-                }
-            }
-            continuation.invokeOnCancellation { worker.cancel() }
+        read(url) { response ->
+            val bytes = response.readBytesAtMost(1_048_576)
+            require(bytes.size <= 1_048_576) { "更新信息过大" }
+            val body = bytes.toString(Charsets.UTF_8)
+            val json = JSONObject(body)
+            if (json.optString("encoding") == "base64") {
+                Base64.getMimeDecoder().decode(json.getString("content")).toString(Charsets.UTF_8)
+            } else body
         }
     } ?: throw java.net.SocketTimeoutException("更新来源响应超时")
 }

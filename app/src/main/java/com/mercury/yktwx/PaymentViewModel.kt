@@ -303,8 +303,16 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
      * Every read decision is derived from it; the ViewModel never probes the network itself.
      */
     fun onReadEnvironment(environment: ReadEnvironment) {
+        val wasForeground = foreground
+        val resumed = environment.foreground && environment.resumeEpoch > this.environment.resumeEpoch
         reads.update(environment)
         foreground = environment.foreground
+        // The shell uses this entry, not onBackground(). Also handle stop/start coalesced by
+        // Compose: a code from the previous foreground session must not survive the return.
+        if (wasForeground && (!foreground || resumed)) {
+            cancelAccountRead()
+            pausePaymentDisplay()
+        }
         readPageVisible = reads.isVisible
         setPageVisible(environment.paymentVisible, preserveDisplay = environment.paymentCovered)
         setAccountPageVisible(environment.accountVisible)

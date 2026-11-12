@@ -89,6 +89,40 @@ class PaymentViewModelTest {
 
     @After fun cleanup() { cardGate.complete(Unit); accountGate.complete(Unit); accountPublishGate.complete(Unit); paymentGate.complete(Unit); store.clear(); shadowOf(Looper.getMainLooper()).idle() }
 
+    @Test fun shellBackgroundClearsCodeAndReturnRequestsANewCodeOnTheSameNetwork() {
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        val active = ReadEnvironment(ReadPage.Payment, true, true, 0, paymentVisible = true, resumeEpoch = 1)
+        model.onReadEnvironment(active)
+        await { model.state.value.code != null }
+        val first = model.state.value.code
+        val balance = model.state.value.account
+        model.onReadEnvironment(active.copy(page = null, foreground = false))
+        assertNull(model.state.value.code)
+        assertSame(balance, model.state.value.account)
+        shadowOf(Looper.getMainLooper()).idleFor(5, TimeUnit.SECONDS)
+        assertEquals(1, payments)
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        await { model.state.value.code != null && model.state.value.code != first }
+        assertEquals(2, payments)
+        assertNull(model.state.value.error)
+    }
+
+    @Test fun coalescedShellResumeCannotKeepACodeWithAStoppedTicker() {
+        codeAvailable = true
+        model.initialize(); await { !model.state.value.restoringLogin }
+        val active = ReadEnvironment(ReadPage.Payment, true, true, 0, paymentVisible = true, resumeEpoch = 1)
+        model.onReadEnvironment(active)
+        await { model.state.value.code != null }
+        val first = model.state.value.code
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        await { model.state.value.code != null && model.state.value.code != first }
+        assertEquals(2, payments)
+        model.onReadEnvironment(active.copy(resumeEpoch = 2))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(2, payments)
+    }
+
     @Test fun localInitializationPreservesCredentialsWithoutBusinessRequests() {
         codeAvailable = true
         val credentials = vault.credentials()
