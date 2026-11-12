@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.data.*
@@ -50,7 +51,8 @@ data class PaymentUiState(
 
 class PaymentViewModel internal constructor(app: Application, private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
-    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment)) : AndroidViewModel(app) {
+    initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment),
+    private val analytics: AppAnalytics = AppAnalytics.from(app)) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
@@ -485,6 +487,8 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         balanceRefresh.clear(); lastLiveBalance = null
         reads.clear()
         val old = mutable.value
+        val analyticsAttempt = if (!preview) analytics.begin() else null
+        val codeAttempt = if (!preview) analytics.begin() else null
         val version = ++requestVersion
         val transactionRead = balanceRefresh.started()
         loginInProgress = true
@@ -494,14 +498,16 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             try {
                 val batch = withContext(Dispatchers.IO) { repository.login(username, password) }
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
                 notifications.send("登录成功")
-                show(batch, username.trim(), version, transactionRead)
+                show(batch, username.trim(), version, transactionRead, codeAttempt)
                 readPaymentCard(username.trim(), batch.account.account, version)
                 repository.saveDisplay(username.trim(), DisplayKeys.Account, batch.account, DisplayCodecs.Account)
             } catch (e: CancellationException) { throw e
             } catch (e: PaymentCodeUnavailable) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus)
                 handledLoginGeneration = sessionState.value.generation
                 // Credentials were accepted; an unavailable barcode must not hide the account.
                 notifications.send("登录成功")
@@ -511,11 +517,15 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                 repository.saveDisplay(mutable.value.username, DisplayKeys.Account, e.account, DisplayCodecs.Account)
             } catch (e: YktException) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
+                    AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = username,
                     errorKind = e.readFailureKind(), error = e.message ?: "登录失败，请重试", errorFields = inputErrorFields(e))
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 if (version != requestVersion) return@launch
+                analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Campus,
+                    AnalyticsError.from(e).takeIf { sessionState.value.username == null })
                 handledLoginGeneration = sessionState.value.generation
                 mutable.value = PaymentUiState(needsLogin = sessionState.value.username == null, username = old.username,
                     errorKind = ReadFailureKind.Other, error = "登录失败，请稍后重试")
@@ -538,6 +548,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
         val query = paymentReadKey()
         val readTrigger = if (trigger.automatic && balancePending()) ReadTrigger.Transaction else trigger
         if (!reads.canStart(query, readTrigger, replace = !trigger.automatic) { refresh(manual, trigger) }) return
+        if (manual) analytics.retryPaymentCode()
         // A newer payment refresh owns the account result, superseding any older balance read.
         cancelAccountRead()
         cancelPaymentCardRead()
@@ -557,6 +568,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             var cancelled = true
             try {
                 if (!startNetwork()) return@launch
+                val codeAttempt = analytics.begin()
                 val batch = withContext(Dispatchers.IO) { repository.refresh { fresh ->
                     withContext(Dispatchers.Main.immediate) {
                         if (version == requestVersion && repository.ownsAccount(username) && !mutable.value.needsLogin) {
@@ -570,7 +582,7 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
                         }
                     }
                 } }
-                show(batch, username, version, transactionRead)
+                show(batch, username, version, transactionRead, codeAttempt)
                 repository.saveDisplay(username, DisplayKeys.Account, batch.account, DisplayCodecs.Account)
                 cancelled = false
             }
@@ -669,8 +681,10 @@ class PaymentViewModel internal constructor(app: Application, private val reposi
             problem = PaymentCodeProblem.StatusUnverified.takeIf { accountPageVisible })
         if (accountPageVisible) refreshAccount(manual = true) else refresh()
     }
-    private fun show(batch: PaymentBatch, username: String, version: Long, transactionRead: TransactionRefresh.Read) {
+    private fun show(batch: PaymentBatch, username: String, version: Long, transactionRead: TransactionRefresh.Read,
+        codeAttempt: AnalyticsAttempt?) {
         if (version != requestVersion) return
+        analytics.paymentCodeFetched(codeAttempt)
         recordBalance(username, batch.account, transactionRead)
         if (!foreground || !paymentDisplayVisible()) {
             mutable.value = PaymentUiState(needsLogin = false, username = username, account = batch.account)

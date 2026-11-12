@@ -15,6 +15,11 @@ on:
         default: debug
         type: choice
         options: [debug, release]
+      umeng_enabled:
+        description: Enable Umeng analytics (release only)
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -120,6 +125,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.release-please.outputs.release_tag }}
           REQUESTED_BUILD_TYPE: ${{ inputs.build_type }}
+          REQUESTED_UMENG_ENABLED: ${{ inputs.umeng_enabled }}
           GH_TOKEN: ${{ github.token }}
         run: python scripts/prepare_build_version.py --release-tag "$RELEASE_TAG"
       - name: Read prepared release input
@@ -146,6 +152,9 @@ jobs:
           PANGGUI_API_SECRET: ${{ github.event_name != 'pull_request' && secrets.PANGGUI_API_SECRET || '' }}
           HUI798_SIGN_SALT: ${{ github.event_name != 'pull_request' && secrets.HUI798_SIGN_SALT || '' }}
           HUI798_API_GATEWAY: ${{ github.event_name != 'pull_request' && secrets.HUI798_API_GATEWAY || '' }}
+          UMENG_ENABLED: ${{ steps.version.outputs.umeng_enabled }}
+          UMENG_APP_KEY: ${{ github.event_name != 'pull_request' && steps.version.outputs.build_type == 'release' && secrets.UMENG_APP_KEY || '' }}
+          UMENG_CHANNEL: ${{ github.event_name != 'pull_request' && steps.version.outputs.build_type == 'release' && vars.UMENG_CHANNEL || '' }}
         run: |
           set -euo pipefail
           if [ "$BUILD_TYPE" = release ] && [ -z "$HUI798_SIGN_SALT" ]; then

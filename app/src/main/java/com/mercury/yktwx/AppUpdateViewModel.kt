@@ -5,6 +5,7 @@ import android.app.Application
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -126,6 +127,9 @@ internal class AppUpdateViewModel internal constructor(
         }
         manualRequest = manual
         val attempt = ++generation
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
+        val analyticsChannel = store.channel
         // Reserve the short cooldown while a request is pending or cancelled.
         store.checked(now(), successful = false)
         mutable.value = state.value.copy(checking = manual,
@@ -135,6 +139,9 @@ internal class AppUpdateViewModel internal constructor(
                 val result = checkUpdate()
                 currentCoroutineContext().ensureActive()
                 if (generation != attempt) return@launch
+                if (result.reason == UpdateCheckReason.UpdateAvailable) result.release?.let {
+                    analytics.updateAvailable(analyticsAttempt, it.versionName, analyticsChannel)
+                }
                 store.checked(now(), successful = true, result = result)
                 val known = state.value.release
                 val selected = if (known?.required(BuildConfig.VERSION_CODE) == true &&
@@ -177,8 +184,8 @@ internal class AppUpdateViewModel internal constructor(
                         is java.io.IOException -> UpdateFeedback.Network
                         else -> UpdateFeedback.Failed
                     }
-                    android.util.Log.w("AppUpdate", "check channel=${store.channel} result=$failureFeedback")
-                    runCatching { store.checked(now(), successful = false) }
+                    android.util.Log.w("AppUpdate", "check channel=$analyticsChannel result=$failureFeedback")
+                    runCatching { store.checked(now(), successful = false, channel = analyticsChannel) }
                     val forced = store.cachedRelease()?.takeIf { it.required(BuildConfig.VERSION_CODE) }
                     mutable.value = state.value.copy(checking = false,
                         visible = state.value.visible && state.value.download.busy,
@@ -268,10 +275,14 @@ internal class AppUpdateViewModel internal constructor(
             return
         }
         val downloadAttempt = ++downloadGeneration
+        val analytics = AppAnalytics.from(getApplication())
+        val analyticsAttempt = analytics.begin()
+        var downloadStarted = false
         val binding = release.versionCode to release.sha256
         fun current() = downloadAttempt == downloadGeneration &&
             state.value.release?.let { it.versionCode to it.sha256 } == binding
         fun progress(value: UpdateDownloadState) {
+            if (value.phase in listOf(UpdateDownloadPhase.SelectingSource, UpdateDownloadPhase.Downloading)) downloadStarted = true
             mutable.update { latest ->
                 if (downloadAttempt == downloadGeneration && latest.release?.let { it.versionCode to it.sha256 } == binding)
                     latest.copy(download = value) else latest
@@ -290,6 +301,7 @@ internal class AppUpdateViewModel internal constructor(
                 require(currentRelease.expiresAt?.isAfter(java.time.Instant.ofEpochMilli(now())) != false) {
                     "更新信息已过期，请重新检查"
                 }
+                if (downloadStarted) analytics.downloadResult(analyticsAttempt)
                 readyForInstall = true
                 progress(UpdateDownloadState(UpdateDownloadPhase.Ready, 100))
                 // A background download never opens another app unexpectedly.
@@ -301,9 +313,16 @@ internal class AppUpdateViewModel internal constructor(
                 } else {
                     progress(UpdateDownloadState(UpdateDownloadPhase.Installing, 100))
                     launch(installer.installIntent(currentRelease))
+                    analytics.installHandoff()
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (error: Exception) {
+                if (current() && downloadStarted && !readyForInstall) {
+                    val causes = generateSequence<Throwable>(error) { it.cause?.takeUnless { cause -> cause === it } }.take(8)
+                    val kind = if (causes.any { it is IllegalArgumentException || it is IllegalStateException })
+                        AnalyticsError.Integrity else AnalyticsError.from(error)
+                    analytics.downloadResult(analyticsAttempt, kind)
+                }
                 if (current()) progress(UpdateDownloadState(UpdateDownloadPhase.Failed,
                     error = if (readyForInstall) "无法打开安装界面，请重试" else error.message ?: "更新失败，请重试",
                     retryInstallation = readyForInstall))
