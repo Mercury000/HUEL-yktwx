@@ -1,8 +1,8 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import java.net.URI
 import okhttp3.Call
-import org.json.JSONObject
 
 /** Keep only display fields. The full user response contains identity and contact data. */
 class PersonalProfile(
@@ -27,11 +27,11 @@ class ProfileApi(private val client: Call.Factory = AppHttp.service,
     private val imageClient: Call.Factory = AppHttp.publicRead) : ProfileService {
     private val http = PaymentHttp(client)
     override suspend fun profile(token: String): PersonalProfile {
-        val data = http.json(http.request("/berserker-base/user", token)).getJSONObject("data")
+        val data = http.json(http.request("/berserker-base/user", token)).objectValue("data")
         return parse(data)
     }
     override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity? {
-        val data = http.json(http.request("/berserker-app/cardStyle", token)).getJSONObject("data")
+        val data = http.json(http.request("/berserker-app/cardStyle", token)).objectValue("data")
         return parseHomeIdentity(data, sno)
     }
     override suspend fun avatar(path: String): ByteArray? {
@@ -47,19 +47,19 @@ class ProfileApi(private val client: Call.Factory = AppHttp.service,
         } catch (e: java.io.IOException) { throw NetworkFailure(cause = e) }
     }
     companion object {
-        internal fun parseHomeIdentity(data: JSONObject, sno: String): HomeCardIdentity? {
+        internal fun parseHomeIdentity(data: JsonObject, sno: String): HomeCardIdentity? {
             if (sno.isBlank()) return null
-            val identities = data.keys().asSequence().mapNotNull { account ->
-                val raw = data.optJSONObject(account)?.opt("model") as? String ?: return@mapNotNull null
-                val model = runCatching { org.json.JSONArray(raw) }.getOrNull() ?: return@mapNotNull null
+            val identities = data.keys.iterator().asSequence().mapNotNull { account ->
+                val raw = data.objectOrNull(account)?.scalarOrElement("model") as? String ?: return@mapNotNull null
+                val model = runCatching { jsonArrayOf(raw) }.getOrNull() ?: return@mapNotNull null
                 val fields = linkedMapOf<String, String>()
-                for (i in 0 until model.length()) {
-                    val element = model.optJSONObject(i) ?: continue
-                    if (element.optString("type") != "text") continue
-                    val prop = element.optJSONObject("prop") ?: continue
-                    val code = prop.opt("code") as? String ?: continue
+                for (i in 0 until model.size) {
+                    val element = model.objectOrNull(i) ?: continue
+                    if (element.stringOrDefault("type") != "text") continue
+                    val prop = element.objectOrNull("prop") ?: continue
+                    val code = prop.scalarOrElement("code") as? String ?: continue
                     if (code !in setOf("name", "sno", "thirdLevelDepartment", "fourthLevelDepartment")) continue
-                    val value = prop.opt("value") as? String ?: continue
+                    val value = prop.scalarOrElement("value") as? String ?: continue
                     // Ambiguous configured fields must not pick an arbitrary value.
                     if (fields.containsKey(code)) return@mapNotNull null
                     fields[code] = value
@@ -71,8 +71,8 @@ class ProfileApi(private val client: Call.Factory = AppHttp.service,
             return distinct.singleOrNull()
         }
 
-        internal fun parse(data: JSONObject): PersonalProfile {
-            fun text(key: String) = (data.opt(key) as? String).orEmpty()
+        internal fun parse(data: JsonObject): PersonalProfile {
+            fun text(key: String) = (data.scalarOrElement(key) as? String).orEmpty()
             return PersonalProfile(text("name"), text("sno"), text("departmentName"), text("professionName"), avatarPath(text("avatar")), text("mobile"))
         }
         internal fun avatarPath(raw: String): String? = runCatching {

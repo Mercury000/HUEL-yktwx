@@ -1,8 +1,7 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -24,17 +23,13 @@ class CardServiceApiTest {
 
     }
     private fun configuration(lock: String? = null, unlock: String? = null, type: String = "1", showLost: String? = null): String {
-        val front = JSONObject().put("recharge", "401")
-        lock?.let { front.put("lockFlag", it) }; unlock?.let { front.put("unlockFlag", it) }
-        return JSONObject().put("code", 200).put("data", JSONObject().put("getFrontConfig", front.toString())
-            .put("getEcardConfig", JSONObject().put("type", type).apply { showLost?.let { put("showLost", it) } }.toString())).toString()
+        val front = jsonObjectOf("recharge" to "401", "lockFlag" to lock, "unlockFlag" to unlock)
+        val ecard = jsonObjectOf("type" to type, "showLost" to showLost)
+        return jsonObjectOf("code" to 200, "data" to jsonObjectOf("getFrontConfig" to front.toString(),
+            "getEcardConfig" to ecard.toString())).toString()
     }
-    private fun card(lost: Int = 0) = JSONObject().put("account", "recipient-card").put("cardname", "校园卡")
-        .put("sno", "202600000002").put("name", "示例同学").put("lostflag", lost).put("freezeflag", 0).put("acc_status", 0)
-        .put("db_balance", 100).put("unsettle_amount", 200).put("accinfo", JSONArray().put(
-            JSONObject().put("type", "recipient-electronic").put("name", "统一账户").put("balance", 300)))
-    private fun cardResponse(lost: Int = 0) = JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "0")
-        .put("card", JSONArray().put(card(lost)))).toString()
+    private fun card(lost: Int = 0) = jsonObjectOf("account" to ("recipient-card"), "cardname" to ("校园卡"), "sno" to ("202600000002"), "name" to ("示例同学"), "lostflag" to (lost), "freezeflag" to (0), "acc_status" to (0), "db_balance" to (100), "unsettle_amount" to (200), "accinfo" to (jsonArrayOf(listOf(jsonObjectOf("type" to ("recipient-electronic"), "name" to ("统一账户"), "balance" to (300))))))
+    private fun cardResponse(lost: Int = 0) = jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("0"), "card" to (jsonArrayOf(listOf(card(lost))))))).toString()
     private fun params(text: String?) = text.orEmpty().split('&').filter { it.isNotEmpty() }.associate {
         val p = it.split('=', limit = 2); URLDecoder.decode(p[0], "UTF-8") to URLDecoder.decode(p.getOrElse(1) { "" }, "UTF-8")
     }
@@ -65,10 +60,10 @@ class CardServiceApiTest {
         }
         assertFalse(api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "012345").single().lost)
         val post = calls.single { it.request.method == "POST" }
-        val body = JSONObject(post.sent.toString("UTF-8"))
-        assertEquals("recipient-card", body.getString("account"))
-        assertEquals("1\$1\$abcdef\$1\$fake-uuid", body.getString("pwd"))
-        assertEquals(1, body.getInt("pwdType")); assertEquals("h5", body.getString("synAccessSource"))
+        val body = parseObject(post.sent.toString("UTF-8"))
+        assertEquals("recipient-card", body.stringValue("account"))
+        assertEquals("1\$1\$abcdef\$1\$fake-uuid", body.stringValue("pwd"))
+        assertEquals(1, body.intValue("pwdType")); assertEquals("h5", body.stringValue("synAccessSource"))
         assertFalse(post.sent.toString("UTF-8").contains("012345"))
         assertEquals("application/json;charset=UTF-8", post.request.header("Content-Type"))
         val keyboard = calls.single { it.url.path.endsWith("keyboard") }
@@ -93,8 +88,8 @@ class CardServiceApiTest {
             }).also(calls::add)
         }
         api.changeCardState("fake-token", selected(), CampusCardAction.Lost, "")
-        val body = JSONObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
-        assertFalse(body.has("pwd")); assertFalse(body.has("pwdType")); assertEquals(0, calls.count { it.url.path.endsWith("keyboard") })
+        val body = parseObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
+        assertFalse(body.containsKey("pwd")); assertFalse(body.containsKey("pwdType")); assertEquals(0, calls.count { it.url.path.endsWith("keyboard") })
     }
     @Test fun rejectedWritePreservesInnerServerErrorWithoutRetryOrStateRead() = runBlocking {
         val calls = mutableListOf<FakeResponse>()
@@ -102,8 +97,7 @@ class CardServiceApiTest {
         val api = fixtureCardServiceApi { url -> FakeResponse(url, when {
             url.path.endsWith("frontInfo") -> configuration("0", "0")
             url.path.endsWith("getCampusCards") -> cardResponse()
-            else -> JSONObject().put("code", 200).put("data", JSONObject().put("retcode", "60005")
-                .put("account", "recipient-card").put("errmsg", message)).put("msg", "外层提示").toString()
+            else -> jsonObjectOf("code" to (200), "data" to (jsonObjectOf("retcode" to ("60005"), "account" to ("recipient-card"), "errmsg" to (message))), "msg" to ("外层提示")).toString()
         }).also(calls::add) }
         val error = assertThrows(CardOperationRejected::class.java) {
             runBlocking { api.changeCardState("fake-token", selected(), CampusCardAction.Lost, "") }
@@ -151,16 +145,15 @@ class CardServiceApiTest {
             val body = when {
                 url.path.endsWith("frontInfo") -> configuration()
                 url.path.endsWith("getCampusCards") -> cardResponse(if (lost) 1 else 0)
-                url.path.endsWith("keyboard") -> JSONObject().put("code", 200).put("data", JSONObject()
-                    .put("numberKeyboard", "\$bcdefghij").put("uuid", "fake-uuid")).toString()
+                url.path.endsWith("keyboard") -> jsonObjectOf("code" to (200), "data" to (jsonObjectOf("numberKeyboard" to ("\$bcdefghij"), "uuid" to ("fake-uuid")))).toString()
                 url.path.endsWith("unlostCard") -> { lost = false; "{\"code\":200,\"data\":{\"retcode\":\"0\",\"account\":\"recipient-card\"}}" }
                 else -> error("Unexpected local path")
             }
             FakeResponse(url, body).also(calls::add)
         }
         assertFalse(api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "000000").single().lost)
-        val body = JSONObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
-        assertEquals("1\$1\$" + "\$".repeat(6) + "\$1\$fake-uuid", body.getString("pwd"))
+        val body = parseObject(calls.single { it.request.method == "POST" }.sent.toString("UTF-8"))
+        assertEquals("1\$1\$" + "\$".repeat(6) + "\$1\$fake-uuid", body.stringValue("pwd"))
         assertEquals(1, calls.count { it.url.path.endsWith("keyboard") })
         assertEquals(1, calls.count { it.request.method == "POST" })
     }
@@ -173,9 +166,9 @@ class CardServiceApiTest {
         assertFalse(selected().label.contains("202600000002"))
     }
     @Test fun businessFlagsAreParsedFromGetBusinessConfigAndMatchWebsiteConditions() = runBlocking {
-        val payload = JSONObject(configuration()).getJSONObject("data")
-        payload.put("getBusinessConfig", JSONObject().put("businessHandleConfig", "{\"lockFlag\":\"1\",\"unlockFlag\":\"0\"}"))
-        val wrapper = JSONObject().put("code", 200).put("data", payload)
+        val payload = parseObject(configuration()).objectValue("data")
+            .withField("getBusinessConfig", jsonObjectOf("businessHandleConfig" to ("{\"lockFlag\":\"1\",\"unlockFlag\":\"0\"}")))
+        val wrapper = jsonObjectOf("code" to (200), "data" to (payload))
         val api = fixtureCardServiceApi { url -> FakeResponse(url, if (url.path.endsWith("frontInfo")) wrapper.toString() else cardResponse()) }
         val c = api.cardConfiguration("fake-token")
         assertTrue(c.lostNeedsPassword); assertFalse(c.unlostNeedsPassword)
@@ -256,8 +249,8 @@ class CardServiceApiTest {
             val error = assertThrows(CardOperationRejected::class.java) {
                 runBlocking { api.changeCardState("fake-token", selected(true), CampusCardAction.Unlost, "") }
             }
-            val body = JSONObject(response)
-            assertEquals(body.opt("msg") as? String ?: body.optString("message"), error.message)
+            val body = parseObject(response)
+            assertEquals(body.scalarOrElement("msg") as? String ?: body.stringOrDefault("message"), error.message)
             assertEquals(1, calls.count { it.request.method == "POST" })
             assertEquals(1, calls.count { it.url.path.endsWith("getCampusCards") })
         }

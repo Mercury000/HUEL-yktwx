@@ -100,6 +100,7 @@ android {
         // These builds share UI fixtures and a disabled analytics backend.
         listOf("debug", "preview").forEach { getByName(it).kotlin.directories.add("src/uiPreview/kotlin") }
         getByName("release").kotlin.directories.add("src/production/kotlin")
+        getByName("androidTest").assets.directories.add("src/test/resources/app-updates")
     }
 }
 androidComponents {
@@ -131,6 +132,8 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.coroutines.android)
+    implementation(libs.serialization.json)
+    implementation(libs.tink.android)
     implementation(libs.okhttp)
     "releaseImplementation"(libs.umeng.common)
     "releaseImplementation"(libs.umeng.asms)
@@ -150,9 +153,10 @@ dependencies {
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
-    testImplementation(libs.org.json)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.okhttp.tls)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
 }
 
 aboutLibraries {

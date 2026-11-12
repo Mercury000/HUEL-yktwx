@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -9,14 +10,12 @@ import java.net.URLDecoder
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.runBlocking
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
 /** Exercises bill request construction and parsing without contacting the real server. */
 class BillApiTest {
-    private class FakeResponse(url: URL, private val status: Int, body: JSONObject) : HttpFixture(url) {
+    private class FakeResponse(url: URL, private val status: Int, body: JsonObject) : HttpFixture(url) {
         private val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val sent = ByteArrayOutputStream()
         var disconnected = false
@@ -32,44 +31,13 @@ class BillApiTest {
 
     private class ScriptedBillsApi(private val status: Int = 200) {
         val calls = mutableListOf<FakeResponse>()
-        private val record = JSONObject()
-            .put("orderId", "BILL-01")
-            .put("resume", "第一餐厅-扫码支付")
-            .put("payName", "扫码支付")
-            .put("turnoverType", "二维码支付")
-            .put("icon", "qrCode-payment")
-            .put("typeId", "4")
-            .put("typeFrom", "2")
-            .put("tranamt", 800.6)
-            .put("cardBalance", 8236.5)
-            .put("feeAmt", 0.4)
-            .put("effectdateStr", "2026-10-20 12:05:00")
-            .put("jndatetimeStr", "2026-10-20 12:06:00")
-            .put("fromAccount", "校园卡")
-            .put("posCode", "POS-01")
-            .put("remark", JSONObject.NULL)
-            .put("toMerchant", "第一餐厅")
-            .put("sno", "20260001")
-            .put("labelName", JSONObject.NULL)
-        private val page = JSONObject()
-            .put("records", JSONArray().put(record))
-            .put("total", 1)
-            .put("size", 8)
-            .put("current", 2)
-            .put("pages", 1)
-        private val summary = JSONObject().put("income", 20000.0).put("expenses", 20540.4)
-        private val types = JSONArray().put(JSONObject().put("id", "4").put("name", "二维码支付").put("icon", "qrCode-payment"))
-        private val categories = JSONArray()
-            .put(JSONObject().put("turnoverType", "餐饮").put("amount", 300.0).put("typeId", "4").put("icon", "consume"))
-            .put(JSONObject().put("turnoverType", "超市").put("amount", 1000.0).put("typeId", "5").put("icon", "consume"))
-        private val daily = JSONObject()
-            .put("2026-10-02", 500.0)
-            .put("2026-10-01", 300.4)
-            .put("not-a-date", 99.0)
-        private val yearlyDaily = JSONObject()
-            .put("2026-02", 2000.0)
-            .put("2026-01", 1000.4)
-            .put("not-a-month", 99.0)
+        private val record = jsonObjectOf("orderId" to ("BILL-01"), "resume" to ("第一餐厅-扫码支付"), "payName" to ("扫码支付"), "turnoverType" to ("二维码支付"), "icon" to ("qrCode-payment"), "typeId" to ("4"), "typeFrom" to ("2"), "tranamt" to (800.6), "cardBalance" to (8236.5), "feeAmt" to (0.4), "effectdateStr" to ("2026-10-20 12:05:00"), "jndatetimeStr" to ("2026-10-20 12:06:00"), "fromAccount" to ("校园卡"), "posCode" to ("POS-01"), "remark" to (JsonNull), "toMerchant" to ("第一餐厅"), "sno" to ("20260001"), "labelName" to (JsonNull))
+        private val page = jsonObjectOf("records" to (jsonArrayOf(listOf(record))), "total" to (1), "size" to (8), "current" to (2), "pages" to (1))
+        private val summary = jsonObjectOf("income" to (20000.0), "expenses" to (20540.4))
+        private val types = jsonArrayOf(listOf(jsonObjectOf("id" to ("4"), "name" to ("二维码支付"), "icon" to ("qrCode-payment"))))
+        private val categories = jsonArrayOf(listOf(jsonObjectOf("turnoverType" to ("餐饮"), "amount" to (300.0), "typeId" to ("4"), "icon" to ("consume")), jsonObjectOf("turnoverType" to ("超市"), "amount" to (1000.0), "typeId" to ("5"), "icon" to ("consume"))))
+        private val daily = jsonObjectOf("2026-10-02" to (500.0), "2026-10-01" to (300.4), "not-a-date" to (99.0))
+        private val yearlyDaily = jsonObjectOf("2026-02" to (2000.0), "2026-01" to (1000.4), "not-a-month" to (99.0))
 
         val api = fixtureYktApi { url ->
             check(url.protocol == "https" && url.host == "yktwx2.huel.edu.cn")
@@ -82,7 +50,7 @@ class BillApiTest {
                     if (url.query.contains("dateType=year")) yearlyDaily else daily
                 else -> error("Unexpected request path: ${url.path}")
             }
-            val body = JSONObject().put("code", 200).put("data", data)
+            val body = jsonObjectOf("code" to (200), "data" to (data))
             FakeResponse(url, status, body).also { calls.add(it) }
         }
     }

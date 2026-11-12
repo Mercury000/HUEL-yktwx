@@ -1,6 +1,6 @@
 package com.mercury.yktwx.data
 
-import org.json.JSONObject
+import kotlinx.serialization.json.*
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -72,10 +72,10 @@ interface RechargeService {
     suspend fun rechargeResult(token: String, pending: PendingRecharge): RechargeResult
 }
 
-internal fun JSONObject.rechargeText(key: String): String = optString(key).takeUnless { it == "null" }.orEmpty()
+internal fun JsonObject.rechargeText(key: String): String = stringOrDefault(key).takeUnless { it == "null" }.orEmpty()
 
 /** Missing/zero backend bounds do not justify inventing a client-side payment limit. */
-internal fun JSONObject.rechargeLimit(key: String): Long? {
+internal fun JsonObject.rechargeLimit(key: String): Long? {
     val raw = rechargeText(key).trim()
     if (raw.isEmpty()) return null
     val cents = RechargeMoney.responseCents(raw)

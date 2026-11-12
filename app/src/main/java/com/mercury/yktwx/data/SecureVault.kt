@@ -1,11 +1,11 @@
 package com.mercury.yktwx.data
 
+import kotlinx.serialization.json.*
 import android.content.Context
 import android.annotation.SuppressLint
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -53,7 +53,7 @@ class SecureVault(context: Context, storageName: String = "encrypted_account",
         encrypted.forEach { (name, value) -> editor.putString(name, value) }
         if (!editor.commit()) throw YktException("无法加密保存账户，请检查设备安全设置")
     }
-    @Synchronized internal fun read(name: String): JSONObject? {
+    @Synchronized internal fun read(name: String): JsonObject? {
         val saved = prefs.getString(name, null) ?: return null
         return try {
             val bytes = Base64.decode(saved, Base64.NO_WRAP)
@@ -62,17 +62,21 @@ class SecureVault(context: Context, storageName: String = "encrypted_account",
                 init(Cipher.DECRYPT_MODE, encryptionKey, GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
                 updateAAD(name.toByteArray())
             }
-            JSONObject(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
+            parseObject(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
         } catch (_: Exception) {
             prefs.edit().remove(name).apply()
             null // Key lost, corrupt data or restoring on a new device: ask for login.
         }
     }
 
-    override fun credentials() = read("credentials")?.let { Credentials(it.optString("username"), it.optString("password")) }
-    override fun session() = read("session")?.let { Session(it.optString("token"), it.optLong("expires")) }
-    private fun credentialsJson(value: Credentials) = JSONObject().put("username", value.username).put("password", value.password).toString()
-    private fun sessionJson(value: Session) = JSONObject().put("token", value.accessToken).put("expires", value.expiresAtMillis).toString()
+    override fun credentials() = decoded<StoredCredentials>("credentials")?.let { Credentials(it.username, it.password) }
+    override fun session() = decoded<StoredSession>("session")?.let { Session(it.token, it.expires) }
+    private inline fun <reified T> decoded(name: String): T? = read(name)?.let { json ->
+        try { StoredRecordJson.decode<T>(json) }
+        catch (_: Exception) { remove(name); null }
+    }
+    private fun credentialsJson(value: Credentials) = StoredRecordJson.encode(StoredCredentials(value.username, value.password)).toString()
+    private fun sessionJson(value: Session) = StoredRecordJson.encode(StoredSession(value.accessToken, value.expiresAtMillis)).toString()
     override fun saveCredentials(value: Credentials) = write(mapOf("credentials" to credentialsJson(value)))
     override fun saveSession(value: Session) = write(mapOf("session" to sessionJson(value)))
     override fun saveAccount(credentials: Credentials, session: Session) =
