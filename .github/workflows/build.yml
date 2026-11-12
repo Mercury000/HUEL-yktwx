@@ -2,182 +2,131 @@ name: Build APK
 
 on:
   push:
-    branches: [ "main" ]
-    paths:
-      - "app/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradlew"
-      - "gradlew.bat"
-      - ".github/workflows/build.yml"
+    branches: [main, beta]
+    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md"]
   pull_request:
-    branches: [ "main" ]
-    paths:
-      - "app/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradlew"
-      - "gradlew.bat"
-      - ".github/workflows/build.yml"
+    branches: [main, beta]
+    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md"]
   workflow_dispatch:
     inputs:
       build_type:
-        description: Build type
+        description: Build type (manual builds do not publish a Release)
         required: true
         default: debug
         type: choice
-        options:
-          - debug
-          - release
+        options: [debug, release]
 
 permissions:
   contents: read
 
 jobs:
+  release-please:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-please-${{ github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Update the release PR or create its draft Release
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          target-branch: ${{ github.ref_name }}
+          config-file: ${{ github.ref_name == 'beta' && 'release-please-config-beta.json' || 'release-please-config.json' }}
+          manifest-file: ${{ github.ref_name == 'beta' && '.release-please-manifest-beta.json' || '.release-please-manifest.json' }}
+
   build:
+    needs: release-please
+    if: always() && (needs.release-please.result == 'success' || needs.release-please.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
-      version_code: ${{ steps.version.outputs.version_code }}
       version_name: ${{ steps.version.outputs.version_name }}
-      changed: ${{ steps.version.outputs.changed }}
+      channel: ${{ steps.version.outputs.channel }}
       build_type: ${{ steps.version.outputs.build_type }}
-
+      publish: ${{ steps.version.outputs.publish }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      reused: ${{ steps.existing.outputs.reused }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
-          # Automatic releases need tags and history for version detection/notes.
-          fetch-depth: ${{ github.event_name == 'push' && '0' || '1' }}
-
-      - name: Read version and detect version update
+          ref: ${{ needs.release-please.outputs.release_tag || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare the version shared by both channels
         id: version
+        env:
+          RELEASE_TAG: ${{ needs.release-please.outputs.release_tag }}
+          REQUESTED_BUILD_TYPE: ${{ inputs.build_type }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/prepare_build_version.py --release-tag "$RELEASE_TAG"
+      - name: Reuse an already published APK on retries
+        id: existing
+        if: steps.version.outputs.publish == 'true'
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          REQUESTED_BUILD_TYPE: ${{ inputs.build_type }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
         run: |
           set -euo pipefail
-
-          read_version_code() {
-            sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' | head -n 1
-          }
-
-          read_version_name() {
-            sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n 1
-          }
-
-          VERSION_CODE=$(read_version_code < app/build.gradle.kts)
-          VERSION_NAME=$(read_version_name < app/build.gradle.kts)
-
-          if [ -z "$VERSION_CODE" ] || [ -z "$VERSION_NAME" ]; then
-            echo "Unable to read versionCode/versionName from app/build.gradle.kts." >&2
-            exit 1
+          mkdir -p release-input
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets | map(select(.name | endswith(".apk"))) | length' > apk-count.txt 2>/dev/null; then
+            COUNT=$(cat apk-count.txt)
+            if [ "$COUNT" -gt 1 ]; then
+              echo "Release contains multiple APKs; refusing to choose or replace one." >&2
+              exit 1
+            fi
+            if [ "$COUNT" = 1 ]; then
+              gh release download "$RELEASE_TAG" --pattern '*.apk' --dir release-input
+              test -f "release-input/CaiXiaoTong-${VERSION_NAME}-release.apk"
+              echo 'reused=true' >> "$GITHUB_OUTPUT"
+            fi
           fi
-          if [[ ! "$VERSION_CODE" =~ ^[0-9]+$ ]] ||
-             [[ ! "$VERSION_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
-            echo "Version must have a numeric code and a filename-safe name." >&2
-            exit 1
-          fi
-
-          VERSION_CHANGED=false
-          if [ "$EVENT_NAME" = "push" ] &&
-             ! git rev-parse -q --verify "refs/tags/${VERSION_CODE}" >/dev/null; then
-            VERSION_CHANGED=true
-          fi
-
-          BUILD_TYPE=debug
-          if [ "$VERSION_CHANGED" = "true" ]; then
-            BUILD_TYPE=release
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            BUILD_TYPE="$REQUESTED_BUILD_TYPE"
-          fi
-          if [[ "$BUILD_TYPE" != "debug" && "$BUILD_TYPE" != "release" ]]; then
-            echo "Unsupported build type." >&2
-            exit 1
-          fi
-
-          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "changed=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
-          echo "build_type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
-
-      - name: Generate release notes
-        if: github.event_name == 'push' && steps.version.outputs.changed == 'true'
+      - name: Prepare release notes
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-
-          mapfile -t VERSION_COMMITS < <(
-            git log \
-              --format='%H' \
-              --extended-regexp \
-              -G '^[[:space:]]*version(Code|Name)[[:space:]]*=' \
-              -- app/build.gradle.kts
-          )
-
-          CURRENT_VERSION_COMMIT="${VERSION_COMMITS[0]:-}"
-          PREVIOUS_VERSION_COMMIT="${VERSION_COMMITS[1]:-}"
-
-          if [ -z "$CURRENT_VERSION_COMMIT" ]; then
-            echo "No commit changing versionCode/versionName was found." >&2
-            exit 1
-          fi
-
-          if [ -n "$PREVIOUS_VERSION_COMMIT" ]; then
-            RELEASE_RANGE="${PREVIOUS_VERSION_COMMIT}..${CURRENT_VERSION_COMMIT}"
-          else
-            RELEASE_RANGE="$CURRENT_VERSION_COMMIT"
-          fi
-
-          git log \
-            --reverse \
-            --format='- %s' \
-            "$RELEASE_RANGE" > release-notes.md
-
-          if [ ! -s release-notes.md ]; then
-            echo "No commit messages were found for release notes." >&2
-            exit 1
-          fi
-
-      - name: Setup Java
-        uses: actions/setup-java@v6.0.1
+          mkdir -p release-input
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > release-input/release-notes.md
+      - uses: actions/setup-java@v6.0.1
+        if: steps.existing.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: 22
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
+      - uses: gradle/actions/setup-gradle@v6.3.0
+        if: steps.existing.outputs.reused != 'true'
         with:
-          # Also save dependency/task caches for manual builds on trusted branches.
           cache-read-only: ${{ github.event_name == 'pull_request' }}
-
-      - name: Grant execute permission
-        run: chmod +x gradlew
-
       - name: Build APK
+        if: steps.existing.outputs.reused != 'true'
         shell: bash
         env:
           BUILD_TYPE: ${{ steps.version.outputs.build_type }}
-          # PR builds compile without service secrets.
+          APP_BUILD_VERSION_FILE: build-version.properties
           PANGGUI_API_SECRET: ${{ github.event_name != 'pull_request' && secrets.PANGGUI_API_SECRET || '' }}
           HUI798_SIGN_SALT: ${{ github.event_name != 'pull_request' && secrets.HUI798_SIGN_SALT || '' }}
           HUI798_API_GATEWAY: ${{ github.event_name != 'pull_request' && secrets.HUI798_API_GATEWAY || '' }}
         run: |
           set -euo pipefail
-          if [ "$BUILD_TYPE" = "release" ] && [ -z "$HUI798_SIGN_SALT" ]; then
+          if [ "$BUILD_TYPE" = release ] && [ -z "$HUI798_SIGN_SALT" ]; then
             echo "Release requires the HUI798_SIGN_SALT repository secret." >&2
             exit 1
           fi
-          # An unset gateway lets Gradle use its default rather than an empty URL.
-          if [ -z "$HUI798_API_GATEWAY" ]; then
-            unset HUI798_API_GATEWAY
-          fi
+          if [ -z "$HUI798_API_GATEWAY" ]; then unset HUI798_API_GATEWAY; fi
+          chmod +x gradlew
           ./gradlew ":app:assemble${BUILD_TYPE^}" --no-configuration-cache --console=plain
-
       - name: Upload debug APK
         if: steps.version.outputs.build_type == 'debug'
         uses: actions/upload-artifact@v7.0.1
@@ -186,18 +135,18 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           compression-level: 1
-
       - name: Prepare release input
         if: steps.version.outputs.build_type == 'release'
         shell: bash
+        env:
+          REUSED: ${{ steps.existing.outputs.reused }}
         run: |
           set -euo pipefail
           mkdir -p release-input
-          cp app/build/outputs/apk/release/app-release-unsigned.apk release-input/
-          if [ -f release-notes.md ]; then
-            cp release-notes.md release-input/
+          if [ "$REUSED" != true ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk release-input/
+            cp build-metadata.json release-input/
           fi
-
       - name: Upload release input
         if: steps.version.outputs.build_type == 'release'
         uses: actions/upload-artifact@v7.0.1
@@ -205,7 +154,7 @@ jobs:
           name: release-input
           path: release-input/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   release:
     needs: build
@@ -213,15 +162,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
+    outputs:
+      signer_sha256: ${{ steps.sign.outputs.signer_sha256 }}
     steps:
-      - name: Download release input
-        uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.1
         with:
           name: release-input
           path: release-input
-
-      - name: Sign release APK
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: 22
+      - name: Sign or verify the release APK
         id: sign
         shell: bash
         env:
@@ -229,50 +181,76 @@ jobs:
           ALIAS: ${{ secrets.ALIAS }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           VERSION_NAME: ${{ needs.build.outputs.version_name }}
+          REUSED: ${{ needs.build.outputs.reused }}
         run: |
           set -euo pipefail
-
-          if [ -z "$SIGNING_KEY" ] || [ -z "$ALIAS" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "Release requires SIGNING_KEY, ALIAS and KEYSTORE_PASSWORD secrets." >&2
-            exit 1
-          fi
-
-          UNSIGNED_APK=release-input/app-release-unsigned.apk
-          OUT_NAME="CaiXiaoTong-${VERSION_NAME}-release.apk"
+          test -n "$SIGNING_KEY" && test -n "$ALIAS" && test -n "$KEYSTORE_PASSWORD"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-
+          OUT_NAME="CaiXiaoTong-${VERSION_NAME}-release.apk"
           umask 077
           SIGNING_FILE=$(mktemp "$RUNNER_TEMP/signing-XXXXXX.jks")
-          trap 'rm -f -- "$SIGNING_FILE"' EXIT
+          CERT_FILE=$(mktemp "$RUNNER_TEMP/certificate-XXXXXX.der")
+          trap 'rm -f -- "$SIGNING_FILE" "$CERT_FILE"' EXIT
           printf '%s' "$SIGNING_KEY" | base64 --decode > "$SIGNING_FILE"
-          "$BUILD_TOOLS/zipalign" -f 4 "$UNSIGNED_APK" "./$OUT_NAME"
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks "$SIGNING_FILE" \
-            --ks-key-alias "$ALIAS" \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --key-pass env:KEYSTORE_PASSWORD \
-            "./$OUT_NAME"
-          "$BUILD_TOOLS/apksigner" verify --verbose "./$OUT_NAME"
-
+          keytool -exportcert -keystore "$SIGNING_FILE" -alias "$ALIAS" -storepass:env KEYSTORE_PASSWORD -file "$CERT_FILE"
+          EXPECTED=$(sha256sum "$CERT_FILE" | cut -d ' ' -f1)
+          if [ "$REUSED" = true ]; then
+            cp "release-input/$OUT_NAME" "./$OUT_NAME"
+          else
+            "$BUILD_TOOLS/zipalign" -f 4 release-input/app-release-unsigned.apk "./$OUT_NAME"
+            "$BUILD_TOOLS/apksigner" sign --ks "$SIGNING_FILE" --ks-key-alias "$ALIAS" \
+              --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD "./$OUT_NAME"
+          fi
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "./$OUT_NAME" > signing-report.txt
+          ACTUAL=$(sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\.[0-9]+)* Signer( #[0-9]+)?):? certificate SHA-256 digest: ([a-fA-F0-9]{64})$/\4/p' signing-report.txt | tr 'A-F' 'a-f' | sort -u)
+          test "$ACTUAL" = "$EXPECTED"
           echo "apk=$OUT_NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Upload release APK
+          echo "signer_sha256=$EXPECTED" >> "$GITHUB_OUTPUT"
+      - name: Upload signed APK
         uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.sign.outputs.apk }}
           path: ./${{ steps.sign.outputs.apk }}
           archive: false
           if-no-files-found: error
+      - name: Publish the Release without replacing existing APKs
+        if: needs.build.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          VERSION_NAME: ${{ needs.build.outputs.version_name }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+          APK: ${{ steps.sign.outputs.apk }}
+          REUSED: ${{ needs.build.outputs.reused }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$CHANNEL" in
+            stable) PRERELEASE=false ;;
+            beta) PRERELEASE=true ;;
+            *) echo "Unknown release channel." >&2; exit 1 ;;
+          esac
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ "$REUSED" != true ]; then
+              gh release upload "$RELEASE_TAG" "./$APK" release-input/build-metadata.json
+            fi
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --latest=false
+          else
+            echo "Releases must originate from a Release Please PR." >&2
+            exit 1
+          fi
 
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && needs.build.outputs.changed == 'true'
-        uses: ncipollo/release-action@v1.21.0
-        with:
-          token: ${{ github.token }}
-          tag: ${{ needs.build.outputs.version_code }}
-          commit: ${{ github.sha }}
-          name: ${{ needs.build.outputs.version_name }}
-          bodyFile: release-input/release-notes.md
-          artifacts: ./${{ steps.sign.outputs.apk }}
-          artifactErrorsFailBuild: true
-          makeLatest: true
+  publish-updates:
+    needs: [build, release]
+    if: needs.build.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-updates.yml
+    with:
+      release_tag: ${{ needs.build.outputs.release_tag }}
+      signer_sha256: ${{ needs.release.outputs.signer_sha256 }}
+    secrets:
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+      UPDATE_PUBLISH_TOKEN: ${{ secrets.UPDATE_PUBLISH_TOKEN }}
+      APK_SIGNER_SHA256: ${{ secrets.APK_SIGNER_SHA256 }}

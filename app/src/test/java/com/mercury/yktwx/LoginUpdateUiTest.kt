@@ -123,7 +123,7 @@ class LoginUpdateUiTest {
         compose.onNodeWithText("密码").performTextInput("fictional-password")
         compose.onNodeWithTag("app-update-notice").performClick()
         compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
-        compose.onNodeWithText("稍后").performClick()
+        compose.onNodeWithText("忽略").performClick()
         compose.onNodeWithTag("app-update-notice").assertIsDisplayed()
         compose.onNodeWithTag("dismiss-update-notice").performClick()
         compose.waitForIdle()
@@ -161,10 +161,11 @@ class LoginUpdateUiTest {
         compose.onNodeWithText("密码").assertTextContains("fictional-password")
         compose.onNodeWithText("登录服务暂时不可用").assertIsDisplayed()
         compose.onNodeWithTag("app-update-notice").performClick()
-        compose.onNodeWithText("前往下载").performClick()
-        compose.runOnIdle {
-            assertEquals(update.release!!.downloadPageUrl, shadowOf(compose.activity).nextStartedActivity.data.toString())
-        }
+        compose.onNodeWithText("下载安装").performClick()
+        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); model.state.value.download.phase == com.mercury.yktwx.data.UpdateDownloadPhase.Failed }
+        compose.onNodeWithText("更新清单无效").assertIsDisplayed()
+        compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
+        compose.onNodeWithText("忽略").performClick()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
         assertTrue(payments.state.value.needsLogin)
         assertEquals(1, checks)
@@ -191,7 +192,7 @@ class LoginUpdateUiTest {
         compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
     }
 
-    @Test fun loginHonorsThePersistentAutomaticSwitchAndInspectionMode() {
+    @Test fun loginKeepsCheckingWithRemindersDisabledAndInspectionStillBlocksChecks() {
         val store = store().apply { cacheRelease(update.release) }
         val consent = consent().apply { runBlocking { accept() } }
         settings().setAutomaticUpdates(false)
@@ -201,11 +202,11 @@ class LoginUpdateUiTest {
         val model = AppUpdateViewModel(compose.activity.application, store, { checks++; update })
         content(model, consent, restoredSettings, inspection = inspection)
         assertFalse(restoredSettings.automaticUpdates.value)
-        assertEquals(0, checks)
+        assertEquals(1, checks)
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.runOnIdle { inspection.value = true; restoredSettings.setAutomaticUpdates(true) }
         compose.waitForIdle()
-        assertEquals(0, checks)
+        assertEquals(1, checks)
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.runOnIdle { inspection.value = false }
         compose.waitForIdle()
@@ -244,5 +245,33 @@ class LoginUpdateUiTest {
         compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
         assertEquals(2, checks)
         assertFalse(store.canNotify(update.release!!.versionCode, System.currentTimeMillis()))
+    }
+
+    @Test fun confirmedForcedUpdateReplacesLoginAndBusinessPagesAndSurvivesBackAndSwitchChanges() {
+        val consent = consent().apply { runBlocking { accept() } }
+        val settings = settings()
+        val gate = CompletableDeferred<UpdateCheckResult>()
+        val model = AppUpdateViewModel(compose.activity.application, store(), { gate.await() })
+        val payments = content(model, consent, settings)
+        compose.onNodeWithText("学号 / 工号").assertIsDisplayed()
+        compose.runOnIdle { gate.complete(update.copy(release = update.release!!.copy(versionCode = 10, maxForcedVersionCode = 9))) }
+        compose.waitForIdle()
+        compose.onNodeWithText("需要更新后继续使用").assertIsDisplayed()
+        compose.onNodeWithText("学号 / 工号").assertDoesNotExist()
+        compose.onNodeWithText("跳过此版本").assertDoesNotExist()
+        compose.onNodeWithText("忽略").assertDoesNotExist()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed(); settings.setAutomaticUpdates(false) }
+        compose.waitForIdle()
+        compose.onNodeWithText("需要更新后继续使用").assertIsDisplayed()
+        capture("root-forced-login")
+        compose.runOnIdle { payments.login("202600000001", "fictional-password") }
+        compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); !payments.state.value.needsLogin }
+        compose.waitForIdle()
+        compose.onNodeWithText("付款码").assertDoesNotExist()
+        compose.onNodeWithText("需要更新后继续使用").assertIsDisplayed()
+        assertTrue(compose.activity.viewModelStore.keys().none {
+            compose.activity.viewModelStore[it] is LifeDevicesViewModel || compose.activity.viewModelStore[it] is Hui798ViewModel
+        })
+        capture("root-forced-authenticated")
     }
 }

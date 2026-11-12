@@ -31,8 +31,8 @@
     <string name="payment_brightness">Automatically Brighten Payment Codes</string>
     <string name="payment_brightness_summary">Increase screen brightness while displaying a payment code; restore it when leaving</string>
     <string name="payment_motion_detection_summary">After turning the phone back, silently check the balance. Show payment success only when it decreases.</string>
-    <string name="automatic_updates">Automatically Check for Updates</string>
-    <string name="automatic_updates_summary">Check silently and show an inline notice when a new version is available</string>
+    <string name="automatic_updates">Optional Update Reminders</string>
+    <string name="automatic_updates_summary">Version checks continue when off; required updates and manual checks are unaffected</string>
     <string name="update_notice_dismiss">Dismiss update reminder for 24 hours</string>
     <string name="check_updates">Check for Updates</string>
     <string name="update_current">You are up to date</string>
