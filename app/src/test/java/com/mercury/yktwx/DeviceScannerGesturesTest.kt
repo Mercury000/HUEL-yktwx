@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DeviceScannerGesturesTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun doubleTapAndPinchCoexistWithoutPinchTriggeringQuickZoom() {
         val zoom = DeviceCameraZoom(zoomRatioRange = Range(1f, 8f))

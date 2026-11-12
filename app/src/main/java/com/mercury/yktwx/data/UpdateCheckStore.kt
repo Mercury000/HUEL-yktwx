@@ -1,6 +1,5 @@
 package com.mercury.yktwx.data
 
-import android.content.Context
 import com.mercury.yktwx.BuildConfig
 import java.time.Instant
 
@@ -10,13 +9,8 @@ internal class UpdateCheckStore(
     private val packageName: String = BuildConfig.APPLICATION_ID,
     private val installedVersion: Int = BuildConfig.VERSION_CODE,
     private val now: () -> Instant = Instant::now,
-    private val verifyCached: (String, String) -> UpdateRelease = { body, channel ->
-        UpdateManifestVerifier().manifest(body, channel).first
-    },
+    private val verifyCached: (String, String) -> UpdateRelease,
 ) {
-    constructor(context: Context, request: UpdateRequest) : this(AppPreferencesRepository.from(context),
-        request.packageName, request.versionCode)
-
     val channel: String get() = repository.snapshot().updateChannel
     private fun key(channel: String = this.channel) = "$packageName:$channel:$installedVersion"
     private fun reminder() = repository.snapshot().reminders[key()] ?: UpdateReminder()

@@ -1,5 +1,7 @@
 package com.mercury.yktwx.analytics
 
+import com.mercury.yktwx.ui.usageConsentFixture
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.NetworkFailure
@@ -22,7 +24,7 @@ class AppAnalyticsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val backend = RecordingAnalyticsBackend()
     private val analytics = AppAnalytics(backend)
-    @After fun cleanup() { AppAnalytics.instance = null }
+    @After fun cleanup() { AnalyticsFixtures.instance = null }
 
     @Test fun authorizedStartupInitializesWithoutForegroundOrBusinessEvents() {
         analytics.initialize(agreed = true)
@@ -160,8 +162,8 @@ class AppAnalyticsTest {
     }
 
     @Test fun consentRevocationStopsTheSharedCollectorImmediately() = runBlocking {
-        AppAnalytics.instance = analytics
-        val consent = UsageConsent(context)
+        AnalyticsFixtures.instance = analytics
+        val consent = usageConsentFixture(context)
         consent.accept()
         analytics.resume(context, consent.accepted)
         val attempt = analytics.submit(AnalyticsFeature.RechargeSelf)

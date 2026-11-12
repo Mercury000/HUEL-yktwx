@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -35,7 +36,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class EditingAndCodeDialogUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private var hides = 0
     private val keyboard = object : SoftwareKeyboardController {
         override fun show() = Unit
@@ -88,7 +89,7 @@ class EditingAndCodeDialogUiTest {
 
     @Test fun billFilterMovesFocusBothWaysWithoutDismissingKeyboardOrMovingTheSheet() {
         content { Scaffold {
-            BillPage(PreviewData.billState(), ThemeSettings(compose.activity.application), {}, {}, {}, {},
+            BillPage(PreviewData.billState(), themeSettingsFixture(compose.activity.application), {}, {}, {}, {},
                 { _, _, _ -> }, {}, {}, {}, showBack = false)
         } }
         compose.onNodeWithContentDescription("筛选账单").performClick()
@@ -168,7 +169,7 @@ class EditingAndCodeDialogUiTest {
 
     @Test fun bothCodeFormatsCanCollapseAndBackOutDuringExitAndNeverKeepAnInvalidCode() {
         var state by mutableStateOf(PreviewData.paymentState(false))
-        content { Scaffold { PaymentPage(state, ThemeSettings(compose.activity.application), 0.dp, {}) } }
+        content { Scaffold { PaymentPage(state, themeSettingsFixture(compose.activity.application), 0.dp, {}) } }
         fun artwork(description: String) {
             compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty() }
             compose.waitForIdle()

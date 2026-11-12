@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.preview.UiPreview
@@ -20,13 +21,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@HiltViewModel
 class HallViewModel internal constructor(
-    app: Application, private val repository: AccountRepository,
+    private val repository: AccountRepository,
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Hall),
-    private val preferences: AppPreferencesRepository = AppPreferencesRepository.from(app),
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app), initialEnvironment = ReadEnvironment.Inactive)
+    private val preferences: AppPreferencesRepository,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, preferences: AppPreferencesRepository) : this(repository, initialEnvironment = ReadEnvironment.Inactive, preferences = preferences)
     private val mutable = MutableStateFlow(DormUiState())
     val state = mutable.asStateFlow()
     private var owner = ""

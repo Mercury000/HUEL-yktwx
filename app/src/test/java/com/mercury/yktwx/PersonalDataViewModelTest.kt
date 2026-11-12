@@ -1,5 +1,8 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
@@ -54,11 +57,11 @@ class PersonalDataViewModelTest {
             }
             override suspend fun avatar(path: String) = byteArrayOf(1)
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary { summaries++; return BillSummary(100, 200) }
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { entered && summaries == 1 }
@@ -79,10 +82,10 @@ class PersonalDataViewModelTest {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "", null)
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary = throw NetworkFailure()
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { !model.state.value.loading }
@@ -106,7 +109,7 @@ class PersonalDataViewModelTest {
             override suspend fun avatar(path: String): ByteArray? = null
             override suspend fun homeIdentity(token: String, sno: String): HomeCardIdentity? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
                 if (offline) throw NetworkFailure()
                 summaryEntered = true; gate.await(); return BillSummary(100, 200)
@@ -116,7 +119,7 @@ class PersonalDataViewModelTest {
                 return type
             }
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.onActivate()
         await { model.state.value.loaded && !model.state.value.loading }
@@ -140,13 +143,13 @@ class PersonalDataViewModelTest {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "示例专业", null)
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
                 summaryEntered = true; gate.await(); return BillSummary(100, 200)
             }
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { summaryEntered && model.state.value.profileLoaded && model.state.value.countsLoaded }
@@ -174,14 +177,14 @@ class PersonalDataViewModelTest {
             }
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
                 if (!refreshing) throw NetworkFailure()
                 return BillSummary(100, 200)
             }
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { !model.state.value.loading }
@@ -210,7 +213,7 @@ class PersonalDataViewModelTest {
             }
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
                 summaryEntered = true; gate.await(); return BillSummary(100, 200)
             }
@@ -218,7 +221,7 @@ class PersonalDataViewModelTest {
                 directions += type; gate.await(); return type
             }
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { profileEntered && summaryEntered && directions.size == 2 }
@@ -244,11 +247,11 @@ class PersonalDataViewModelTest {
                 identityEntered = true; gate.await(); return HomeCardIdentity("示例姓名", sno, "示例书院", "示例专业")
             }
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(100, 200)
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = type
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { avatarEntered && identityEntered }
@@ -270,7 +273,7 @@ class PersonalDataViewModelTest {
             override suspend fun profile(token: String) = PersonalProfile("示例姓名", "fake-id", "示例部门", "", null)
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val ykt = object : YktService by YktApi({ error("No live request") }) {
+        val ykt = object : YktService by yktApiFixture({ error("No live request") }) {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String): BillSummary {
                 summaryEntered = true
                 withContext(NonCancellable) { gate.await() }
@@ -280,7 +283,7 @@ class PersonalDataViewModelTest {
                 countFailed = true; throw NetworkFailure()
             }
         }
-        val model = MyViewModel(app, AccountRepository(ykt, vault, profileService = profiles))
+        val model = myViewModelFixture(app, accountRepositoryFixture(ykt, vault, profileService = profiles))
         store.put("mine", model)
         model.accountChanged(vault.username); model.refresh()
         await { summaryEntered && countFailed }
@@ -295,14 +298,14 @@ class PersonalDataViewModelTest {
 
     @Test fun lateDormReadCannotRestorePreviousAccountRoomAfterLogout() {
         var entered = false
-        val fees = object : FeeService by FeeApi({ error("No live request") }) {
+        val fees = object : FeeService by feeApiFixture({ error("No live request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
                 entered = true
                 withContext(NonCancellable) { gate.await() }
                 return FeeConfiguration(project, RechargeConfiguration(project.id, "", listOf(100), 1, 10000, true, false))
             }
         }
-        val model = HallViewModel(app, AccountRepository(YktApi(), vault, feeService = fees))
+        val model = hallViewModelFixture(app, accountRepositoryFixture(yktApiFixture(), vault, feeService = fees))
         store.put("dorm", model)
         model.accountChanged(vault.username); model.refresh()
         await { entered }

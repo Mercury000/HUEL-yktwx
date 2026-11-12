@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
@@ -62,13 +63,14 @@ class FeeUiState(
     override fun toString() = "FeeUiState([redacted])"
 }
 
+@HiltViewModel
 class FeeViewModel internal constructor(
-    app: Application,
     private val repository: AccountRepository,
     private val checkDelayMillis: Long = 5000,
     private val checkTimeoutMillis: Long = 15_000,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app))
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, checkDelayMillis = 5000, analytics = analytics)
     private val mutable = MutableStateFlow(FeeUiState())
     val state = mutable.asStateFlow()
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
@@ -677,7 +679,6 @@ class FeeViewModel internal constructor(
         if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
             repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
     }
-    private val analytics get() = AppAnalytics.from(getApplication())
     private var analyticsAttempt: AnalyticsAttempt? = null
     private var analyticsFeature = AnalyticsFeature.Electricity
     private fun beginAnalytics(project: FeeProject) {

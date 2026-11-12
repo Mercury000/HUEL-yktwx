@@ -100,7 +100,7 @@ class LifeDevicesViewModelTest {
         }
         override suspend fun syncOrder(orderNo: String, token: String) { syncCalls++ }
     }
-    private fun model(api: Api, store: Store): LifeDevicesViewModel = LifeDevicesViewModel(
+    private fun model(api: Api, store: Store): LifeDevicesViewModel = lifeDevicesViewModelFixture(
         ApplicationProvider.getApplicationContext<Application>(), api, store, dispatcher, { 100_000L }
     ).also { viewModels.put("model", it) }
 

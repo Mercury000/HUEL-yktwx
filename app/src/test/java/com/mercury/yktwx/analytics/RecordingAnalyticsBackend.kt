@@ -1,5 +1,6 @@
 package com.mercury.yktwx.analytics
 
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import android.content.Context
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -20,7 +21,7 @@ internal class RecordingAnalyticsBackend : AnalyticsBackend {
         events += id to properties.toMap()
     }
     fun start(context: Context): AppAnalytics = AppAnalytics(this).also {
-        AppAnalytics.instance = it
+        AnalyticsFixtures.instance = it
         it.resume(context, true)
     }
 }

@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -33,7 +34,7 @@ import kotlin.math.abs
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PaymentCardLayoutTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val account = PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 12860)
     private fun state(problem: PaymentCodeProblem? = null, busy: Boolean = false, error: String? = null) =
         PaymentUiState(needsLogin = false, username = "fake-user", account = account,
@@ -41,7 +42,7 @@ class PaymentCardLayoutTest {
             code = "00000000000000000000", secondsLeft = 60, problem = problem, busy = busy, error = error)
     private fun content(current: State<PaymentUiState>, dark: Boolean = false) {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val settings = ThemeSettings(context)
+        val settings = themeSettingsFixture(context)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {

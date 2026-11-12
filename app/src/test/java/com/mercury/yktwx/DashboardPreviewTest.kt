@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
@@ -25,7 +26,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DashboardPreviewTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun capture(name: String) {
         compose.waitForIdle()
@@ -39,12 +40,12 @@ class DashboardPreviewTest {
     @Test fun dashboardScreensAndExactDormTargets() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app)
+        val settings = themeSettingsFixture(app)
         settings.setTheme(1)
         settings.setFloating(true)
         settings.setFloatingStyle(1)
-        val payment = PaymentViewModel(app)
-        val bills = BillViewModel(app)
+        val payment = paymentViewModelFixture(app)
+        val bills = billViewModelFixture(app)
         payment.initialize(true); bills.initialize(true)
         val fee = ViewModelProvider(compose.activity)[FeeViewModel::class.java]
         compose.setContent {
@@ -134,10 +135,10 @@ class DashboardPreviewTest {
     @Test fun restrictedMineStatusHasDistinctAccent() {
         val app = compose.activity.application
         app.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = ThemeSettings(app)
+        val settings = themeSettingsFixture(app)
         settings.setTheme(1); settings.setFloating(true); settings.setFloatingStyle(1)
-        val payment = PaymentViewModel(app)
-        val bills = BillViewModel(app)
+        val payment = paymentViewModelFixture(app)
+        val bills = billViewModelFixture(app)
         payment.initialize(true, previewLost = true); bills.initialize(true)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payment, bills) }

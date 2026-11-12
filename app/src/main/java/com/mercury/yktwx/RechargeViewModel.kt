@@ -1,7 +1,8 @@
 package com.mercury.yktwx
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.preview.PreviewData
@@ -30,12 +31,13 @@ class RechargeUiState(
 }
 
 /** One foreground recharge attempt; closed or cancelled attempts never lock the next one. */
+@HiltViewModel
 class RechargeViewModel internal constructor(
-    app: Application,
     private val repository: AccountRepository,
     private val checkDelayMillis: Long = 5_000,
-) : AndroidViewModel(app) {
-    constructor(app: Application) : this(app, AccountRepository.shared(app))
+    private val analytics: AppAnalytics,
+) : ViewModel() {
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, checkDelayMillis = 5000, analytics = analytics)
     private val mutable = MutableStateFlow(RechargeUiState())
     val state = mutable.asStateFlow()
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
@@ -48,7 +50,6 @@ class RechargeViewModel internal constructor(
     private var attempt = 0L
     private val resultPoller = OrderResultPoller(viewModelScope, checkDelayMillis)
     private var paymentExplicitlyRejected = false
-    private val analytics get() = AppAnalytics.from(getApplication())
     private var analyticsAttempt: AnalyticsAttempt? = null
     private var analyticsFeature = AnalyticsFeature.RechargeSelf
     private val paymentReturn = PaymentReturnObserver(

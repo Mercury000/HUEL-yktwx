@@ -24,7 +24,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PaymentSuccessDialogTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     @Test fun sheetShowsDifferenceClosesAndUpdatesForNextPayment() {
         val amount = mutableStateOf<Long?>(null)

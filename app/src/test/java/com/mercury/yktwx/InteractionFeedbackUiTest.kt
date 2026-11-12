@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -36,7 +37,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class InteractionFeedbackUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun settle() {
         repeat(20) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
@@ -154,7 +155,7 @@ class InteractionFeedbackUiTest {
 
     @Test fun myTransparentActionsDoNotPaintTilesInLightDarkAndMonetThemes() {
         val mode = mutableStateOf(ColorSchemeMode.Light)
-        val settings = ThemeSettings(compose.activity.application)
+        val settings = themeSettingsFixture(compose.activity.application)
         var profileClicks = 0
         var accountClicks = 0
         compose.setContent {

@@ -1,5 +1,7 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -32,7 +34,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UsageNoticeUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private fun capture(name: String) {
         repeat(2) { compose.mainClock.advanceTimeBy(600); compose.waitForIdle() }
         compose.onRoot().captureToImage()
@@ -46,7 +48,7 @@ class UsageNoticeUiTest {
 
     @Test @Config(qualifiers = "zh-rCN-w360dp-h780dp-xxhdpi")
     fun checkboxOpensFullNoticeAndOnlyExplicitConfirmationAfterReadingEnablesLogin() {
-        val consent = UsageConsent(compose.activity)
+        val consent = usageConsentFixture(compose.activity)
         var requests = 0
         compose.setContent { AppTheme { LoginPage(PaymentUiState(), consent) { _, _ -> requests++ } } }
         compose.onNodeWithText("同意并继续").assertDoesNotExist()
@@ -87,7 +89,7 @@ class UsageNoticeUiTest {
 
     @Test @Config(qualifiers = "zh-rCN-w320dp-h740dp-xxhdpi", fontScale = 1.5f)
     fun narrowLargeFontKeepsActionsVisibleAndReopeningResetsTheReadingPosition() {
-        val consent = UsageConsent(compose.activity)
+        val consent = usageConsentFixture(compose.activity)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
             AppTheme(ColorSchemeMode.Dark) { LoginPage(PaymentUiState(), consent) { _, _ -> } }
         } }
@@ -107,7 +109,7 @@ class UsageNoticeUiTest {
     }
 
     @Test fun existingAgreementDoesNotPromptAgainAndReadOnlyNoticeCannotChangeConsent() {
-        val consent = UsageConsent(compose.activity)
+        val consent = usageConsentFixture(compose.activity)
         runBlocking { consent.accept() }
         compose.setContent { AppTheme { LoginPage(PaymentUiState(), consent) { _, _ -> } } }
         compose.onNodeWithText("同意并继续").assertDoesNotExist()
@@ -135,11 +137,11 @@ class UsageNoticeUiTest {
         val app = compose.activity.application
         app.getSharedPreferences("usage_consent", android.content.Context.MODE_PRIVATE).edit()
             .putString("accepted_hash", "old-body").commit()
-        val consent = UsageConsent(app)
-        val payments = PaymentViewModel(app).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
+        val consent = usageConsentFixture(app)
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
-            YktApp(ThemeSettings(app), payments, bills, consent)
+            YktApp(themeSettingsFixture(app), payments, bills, consent)
         } }
         compose.onNodeWithTag("consent-main-shell").assertExists()
         compose.onNodeWithContentDescription("付款二维码").assertDoesNotExist()

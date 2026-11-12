@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.ui.themeSettingsFixture
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.data.life.LifeProvider
@@ -12,10 +13,10 @@ import org.junit.Test
 class ThemeSettingsTest {
     @Test fun everySettingIsReadFromThePersistedSharedSnapshot() = runTest {
         val store = MemoryPreferences()
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
-        val settings = ThemeSettings(repository)
-        val other = ThemeSettings(repository)
+        val settings = themeSettingsFixture(repository)
+        val other = themeSettingsFixture(repository)
         assertTrue(settings.preventScreenshots.value)
         assertTrue(settings.automaticUpdates.value)
         assertTrue(settings.paymentBrightness.value)
@@ -47,9 +48,9 @@ class ThemeSettingsTest {
 
     @Test fun failedWritesKeepThePersistedValueAndReportFailure() = runTest {
         val store = MemoryPreferences()
-        val repository = AppPreferencesRepository(store, backgroundScope)
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
-        val settings = ThemeSettings(repository)
+        val settings = themeSettingsFixture(repository)
         var failures = 0
         backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
             repository.failures.collect { failures++ }

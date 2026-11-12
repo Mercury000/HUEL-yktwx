@@ -1,5 +1,9 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.feeApiFixture
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Looper
@@ -37,7 +41,7 @@ import kotlinx.coroutines.CompletableDeferred
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NetworkRecoveryNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     @get:Rule val folder = TemporaryFolder()
     @Volatile private var online = false
     @Volatile private var failureMessage = "网络连接失败，请检查网络后刷新"
@@ -142,8 +146,8 @@ class NetworkRecoveryNavigationTest {
                 statsRead(type); return PreviewData.billStats(period, type).ranking
             }
         }
-        val repository = AccountRepository(service, vault, displayCache = cache,
-            feeService = FeeApi({ error("Unexpected fee HTTP request") }))
+        val repository = accountRepositoryFixture(service, vault, displayCache = cache,
+            feeService = feeApiFixture({ error("Unexpected fee HTTP request") }))
         runBlocking {
             repository.username()
             repository.saveDisplay("fake-user", DisplayKeys.bills(period, null, null, null, ""), BillPageData(display.items, 1, 1), DisplayCodecs.Page)
@@ -156,10 +160,10 @@ class NetworkRecoveryNavigationTest {
                 repository.saveDisplay("fake-user", DisplayKeys.stats(period, type, "ranking"), stats.ranking, DisplayCodecs.Records)
             }
         }
-        payment = PaymentViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
-        val bills = BillViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
-        for (model in listOf(payment, bills, MyViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive),
-            HallViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive))) {
+        payment = paymentViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = billViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
+        for (model in listOf(payment, bills, myViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive),
+            hallViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive))) {
             compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         }
         try {
@@ -168,7 +172,7 @@ class NetworkRecoveryNavigationTest {
             compose.runOnIdle { payment.onForeground() }
             await { !payment.state.value.busy }
             compose.setContent {
-                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
             }
             compose.onNode(hasText("账单") and hasClickAction()).performClick()
             await { bills.state.value.listAvailable && !bills.state.value.restoringDisplay }
@@ -233,7 +237,7 @@ class NetworkRecoveryNavigationTest {
             override fun clearSession() = Unit
             override fun clear() = Unit
         }
-        val service = object : YktService by YktApi({ error("Unexpected HTTP request") }) {
+        val service = object : YktService by yktApiFixture({ error("Unexpected HTTP request") }) {
             override suspend fun paymentCard(token: String, account: String): CampusCard {
                 requireOnline(); return CampusCard(account, "校园卡", "fake-user", false, false, 0)
             }
@@ -263,7 +267,7 @@ class NetworkRecoveryNavigationTest {
             }
             override suspend fun avatar(path: String): ByteArray? = null
         }
-        val fees = object : FeeService by FeeApi({ error("Unexpected HTTP request") }) {
+        val fees = object : FeeService by feeApiFixture({ error("Unexpected HTTP request") }) {
             override suspend fun feeConfiguration(token: String, project: FeeProject): FeeConfiguration {
                 feeReads.incrementAndGet()
                 requireOnline()
@@ -275,11 +279,11 @@ class NetworkRecoveryNavigationTest {
                 requireOnline(); return FeeQuery(thirdParty = "{}", display = listOf("用户套餐" to "示例套餐"))
             }
         }
-        val repository = AccountRepository(service, vault, profileService = profiles, feeService = fees)
-        payment = PaymentViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
-        val hall = HallViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
-        val mine = MyViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive)
-        val bills = BillViewModel(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
+        val repository = accountRepositoryFixture(service, vault, profileService = profiles, feeService = fees)
+        payment = paymentViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val hall = hallViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val mine = myViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = billViewModelFixture(app, repository, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
         for (model in listOf(payment, hall, mine, bills)) compose.activity.viewModelStore.put(
             "androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         compose.runOnIdle { connection(false); payment.initialize() }
@@ -289,7 +293,7 @@ class NetworkRecoveryNavigationTest {
         assertEquals(0, paymentReads.get())
         assertNull(payment.state.value.error)
         compose.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
         }
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
         assertFalse(hall.state.value.loaded)
@@ -492,12 +496,12 @@ class NetworkRecoveryNavigationTest {
             override suspend fun billSummary(token: String, timeFrom: String, timeTo: String) = BillSummary(0, 0)
             override suspend fun billCount(token: String, timeFrom: String, timeTo: String, type: Int) = 0
         }
-        val repo = AccountRepository(service, vault, profileService = profiles,
-            feeService = FeeApi({ error("Unexpected fee HTTP request") }))
-        payment = PaymentViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive)
-        val mine = MyViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive)
-        val bills = BillViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
-        for (model in listOf(payment, mine, bills, HallViewModel(app, repo, initialEnvironment = ReadEnvironment.Inactive))) {
+        val repo = accountRepositoryFixture(service, vault, profileService = profiles,
+            feeService = feeApiFixture({ error("Unexpected fee HTTP request") }))
+        payment = paymentViewModelFixture(app, repo, initialEnvironment = ReadEnvironment.Inactive)
+        val mine = myViewModelFixture(app, repo, initialEnvironment = ReadEnvironment.Inactive)
+        val bills = billViewModelFixture(app, repo, initialEnvironment = ReadEnvironment.Inactive).also { it.initialize() }
+        for (model in listOf(payment, mine, bills, hallViewModelFixture(app, repo, initialEnvironment = ReadEnvironment.Inactive))) {
             compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
         }
         try {
@@ -505,7 +509,7 @@ class NetworkRecoveryNavigationTest {
             await { !payment.state.value.restoringLogin }
             compose.runOnIdle { payment.onForeground() }
             compose.setContent {
-                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(ThemeSettings(app), payment, bills) }
+                CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
             }
             compose.onNode(hasText("我的") and hasClickAction()).performClick()
             await { identityReads.get() >= 1 && mine.state.value.profile != null }

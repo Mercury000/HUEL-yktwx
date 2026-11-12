@@ -1,5 +1,9 @@
 package com.mercury.yktwx
 
+import com.mercury.yktwx.data.yktApiFixture
+import com.mercury.yktwx.ui.themeSettingsFixture
+import com.mercury.yktwx.data.accountRepositoryFixture
+import com.mercury.yktwx.ui.usageConsentFixture
 import android.graphics.Bitmap
 import android.os.Looper
 import androidx.activity.ComponentActivity
@@ -29,7 +33,7 @@ import kotlin.math.roundToInt
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AuthenticationGlassUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
     private fun tab(label: String) = compose.onNode(hasText(label) and hasClickAction())
     private fun settle() {
@@ -111,7 +115,7 @@ class AuthenticationGlassUiTest {
             override fun clear() { credentials = null; session = null }
         }
         var logins = 0
-        val service = object : YktService by YktApi({ error("Unexpected HTTP request") }) {
+        val service = object : YktService by yktApiFixture({ error("Unexpected HTTP request") }) {
             override suspend fun login(credentials: Credentials): Session { logins++; return Session("fake-token", Long.MAX_VALUE) }
             override suspend fun payment(token: String, onAccount: suspend (PaymentAccount) -> Unit): PaymentBatch {
                 val account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
@@ -119,10 +123,10 @@ class AuthenticationGlassUiTest {
                 return PaymentBatch(listOf("12345678901234567890"), 60, account)
             }
         }
-        val payments = PaymentViewModel(app, AccountRepository(service, vault)).apply { initialize(true) }
-        val bills = BillViewModel(app).apply { initialize(true) }
-        val settings = ThemeSettings(app).apply { setFloating(true); setFloatingStyle(1); setTheme(1) }
-        val consent = UsageConsent(app).apply { runBlocking { accept() } }
+        val payments = paymentViewModelFixture(app, accountRepositoryFixture(service, vault)).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
+        val settings = themeSettingsFixture(app).apply { setFloating(true); setFloatingStyle(1); setTheme(1) }
+        val consent = usageConsentFixture(app).apply { runBlocking { accept() } }
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
             YktApp(settings, payments, bills, consent)
         } }
@@ -135,9 +139,9 @@ class AuthenticationGlassUiTest {
             compose.onNodeWithText("确定").performClick()
             compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); !payments.state.value.busy }
             assertFalse(consent.accepted)
-            assertFalse(UsageConsent(app).accepted)
+            assertFalse(usageConsentFixture(app).accepted)
             assertNull(consent.confirmationHint)
-            assertNull(UsageConsent(app).confirmationHint)
+            assertNull(usageConsentFixture(app).confirmationHint)
             assertNull(credentials)
             assertNull(session)
             compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()

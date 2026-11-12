@@ -37,7 +37,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PaymentResultUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val account = FeeMethod("64", "ACCOUNTTSM", "一卡通", false, 0)
     private val wechat = FeeMethod("101", "TSM", "微信", false, 0)
     private val methods = listOf(account, wechat)

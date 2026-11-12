@@ -212,12 +212,6 @@ internal class AppAnalytics internal constructor(private val backend: AnalyticsB
         runCatching { backend.event(event, properties) }
     }
 
-    companion object {
-        @Volatile internal var instance: AppAnalytics? = null
-        fun from(context: Context): AppAnalytics = instance ?: synchronized(this) {
-            instance ?: AppAnalytics(UmengAnalyticsBackend(context.applicationContext)).also { instance = it }
-        }
-    }
 }
 
 internal fun FeeProject.analyticsFeature() = when (this) {
