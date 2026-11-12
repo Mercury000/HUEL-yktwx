@@ -146,6 +146,7 @@ internal class AppUpdateApi(private val http: UpdateHttp = UpdateHttp(),
     private val now: () -> Instant = Instant::now) {
     private data class Candidate(val release: UpdateRelease, val digest: String, val authority: Boolean)
     suspend fun check(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult = withTimeoutOrNull(3_000) {
+        store.repository.awaitReady()
         checkChannels(request, store)
     } ?: throw java.net.SocketTimeoutException("更新检查超时")
 

@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -20,21 +20,21 @@ private val NavTransitionStyleOptions = listOf("Miuix", "AOSP")
 fun ThemeSettingsPage(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    themeMode: MutableState<Int> = mutableStateOf(0),
+    themeMode: State<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
-    accentMode: MutableState<Int> = mutableStateOf(0),
+    accentMode: State<Int> = mutableStateOf(0),
     onAccentModeChange: (Int) -> Unit = {},
-    floatingBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    floatingBottomBar: State<Boolean> = mutableStateOf(false),
     onFloatingBottomBarChange: (Boolean) -> Unit = {},
-    blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    blurBottomBar: State<Boolean> = mutableStateOf(false),
     onBlurBottomBarChange: (Boolean) -> Unit = {},
-    floatingBottomBarStyle: MutableState<Int> = mutableStateOf(0),
+    floatingBottomBarStyle: State<Int> = mutableStateOf(0),
     onFloatingBottomBarStyleChange: (Int) -> Unit = {},
-    blurTopBar: MutableState<Boolean> = mutableStateOf(false),
+    blurTopBar: State<Boolean> = mutableStateOf(false),
     onBlurTopBarChange: (Boolean) -> Unit = {},
-    swipeBack: MutableState<Boolean> = mutableStateOf(false),
+    swipeBack: State<Boolean> = mutableStateOf(false),
     onSwipeBackChange: (Boolean) -> Unit = {},
-    navTransitionStyle: MutableState<Int> = mutableStateOf(0),
+    navTransitionStyle: State<Int> = mutableStateOf(0),
     onNavTransitionStyleChange: (Int) -> Unit = {},
 ) {
     val themeOptions = listOf(
