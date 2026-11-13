@@ -59,6 +59,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     hui798LoginRequired: Boolean = false, onHui798Login: () -> Unit = {},
     additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList(),
     hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
+    lifeSessionErrors: Map<String, String> = emptyMap(),
     hellobikeLoginExpired: Boolean = false) {
     // Restoration can precede the shell's first read; show code loading without card verification.
     val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
@@ -308,7 +309,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                 .padding(bottom = (bottomPadding - 20.dp).coerceAtLeast(8.dp), start = 16.dp, end = 16.dp)
                 .imePadding().fillMaxWidth(),
             enabled = isActive && !showEnlarged,
-            nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries)
+            nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries, sessionErrors = lifeSessionErrors)
         }
     }
 }

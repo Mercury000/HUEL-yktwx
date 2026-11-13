@@ -131,6 +131,19 @@ class Hui798ViewModelTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         return hui798ViewModelFixture(app, api, store, dispatcher) { clock }.also { models.put("model-${System.identityHashCode(it)}", it) }
     }
+    @Test fun unknownStatusWithKnownDeviceMarkerCanBeDeletedWithoutSendingEnd() = runTest(dispatcher) {
+        val session = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock)
+        val api = Api().apply { reading = Hui798Reading(7, clock); overviewDevices = listOf(device) }
+        val store = Store(account, listOf(session)); val model = model(api, store); runCurrent()
+        assertTrue(model.state.value.sessionErrors.containsKey(session.sessionId))
+        api.reading = Hui798Reading(1, clock); api.deviceUseGate = CompletableDeferred()
+        model.environment(true); runCurrent()
+        model.dismissSession(session.sessionId); runCurrent()
+        api.deviceUseGate!!.complete(Unit); runCurrent()
+        assertTrue(store.saved.isEmpty()); assertTrue(model.state.value.sessions.isEmpty())
+        assertEquals(0, api.ends); assertEquals(0, api.starts)
+        model.environment(false)
+    }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
 
     @Test fun restoredRouteReopensThe798SessionAndValidatesDeviceAndAccountBeforeQuery() = runTest(dispatcher) {

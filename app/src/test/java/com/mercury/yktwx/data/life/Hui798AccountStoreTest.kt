@@ -56,6 +56,22 @@ class Hui798AccountStoreTest {
         store.clearAccount(); store.removeAccount()
         assertTrue(records.data.isEmpty())
     }
+    @Test fun logoutErasesAllProgressAndReloginCannotRestoreIt() {
+        for (expired in listOf(false, true)) {
+            val records = Records(); val store = Hui798AccountStore(records)
+            val account = Hui798Account("13800000000", "test-token")
+            store.saveAccount(account)
+            store.saveSessions(WaterPhase.entries.map { phase ->
+                Hui798Session(Hui798Device("device-$phase", "用水设备"), phase, 100_000,
+                    sessionId = "session-$phase", uncertain = true)
+            })
+            if (expired) store.clearAccount()
+            store.removeAccount()
+            assertTrue(records.data.isEmpty())
+            val restored = Hui798AccountStore(records); restored.saveAccount(account)
+            assertTrue(restored.sessions().isEmpty())
+        }
+    }
     @Test fun accountIdentityRoundTripsAndLegacyAccountsRequireServerLookup() {
         val records = Records(); val store = Hui798AccountStore(records)
         val account = Hui798Account("13800000000", "fixture-token", "fixture-user")
