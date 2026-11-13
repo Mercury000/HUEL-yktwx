@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
+import android.hardware.camera2.params.OutputConfiguration
+import android.hardware.camera2.params.SessionConfiguration
 import android.hardware.display.DisplayManager
 import android.media.ImageReader
 import android.net.Uri
@@ -65,6 +67,8 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.Executor
+import java.util.concurrent.RejectedExecutionException
 
 /** Camera preview and on-device QR recognition for device entries. */
 @Composable
@@ -208,6 +212,9 @@ internal class DeviceCamera(
     private val main = Handler(Looper.getMainLooper())
     private val cameraThread = HandlerThread("device-qr-camera").apply { start() }
     private val cameraWorker = Handler(cameraThread.looper)
+    private val cameraExecutor = Executor { callback ->
+        if (!cameraWorker.post(callback)) throw RejectedExecutionException("Camera worker has stopped")
+    }
     // Give rendering a small scheduling advantage without delaying the first scan by a timer.
     private val thread = HandlerThread("device-qr-decoder", Process.THREAD_PRIORITY_LESS_FAVORABLE).apply { start() }
     private val worker = Handler(thread.looper)
@@ -371,12 +378,11 @@ internal class DeviceCamera(
         }
         return first ?: throw IllegalStateException()
     }
-    @Suppress("DEPRECATION")
     private fun configure(device: CameraDevice, generation: Long, startup: DeviceCameraStartupTimings?) {
         val output = preview ?: return
         val reader = images ?: return
         try {
-            device.createCaptureSession(listOf(output, reader.surface), object : CameraCaptureSession.StateCallback() {
+            val callback = object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     if (!isCurrent(generation) || camera !== device) { session.close(); return }
                     startup?.record("configured")
@@ -396,7 +402,9 @@ internal class DeviceCamera(
                     session.close()
                     fail(generation)
                 }
-            }, cameraWorker)
+            }
+            device.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR,
+                listOf(OutputConfiguration(output), OutputConfiguration(reader.surface)), cameraExecutor, callback))
         } catch (_: Exception) { fail(generation) }
     }
     fun torch(enabled: Boolean) {
