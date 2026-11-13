@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -65,8 +66,17 @@ internal fun UpdateSettingsCard(state: AppUpdateUiState, reminders: Boolean,
 internal fun AppUpdateDialog(state: AppUpdateUiState, onSkip: () -> Unit = {}, onDownload: () -> Unit = {}, onDismiss: () -> Unit) {
     val release = rememberWhileShown(state.visible, state.release)
     val scroll = rememberScrollState()
+    var shownVersion by rememberSaveable { mutableStateOf<String?>(null) }
+    var wasVisible by rememberSaveable { mutableStateOf(false) }
+    var awaitingRestoredDetails by remember { mutableStateOf(wasVisible) }
     var linkError by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(state.visible, state.release?.versionCode, state.required) { if (state.visible) { scroll.scrollTo(0); linkError = null } }
+    LaunchedEffect(state.visible, state.release?.versionCode, state.release?.sha256, state.required) {
+        val version = state.release?.let { "${it.versionCode}:${it.sha256}" }
+        if (state.visible && (!wasVisible || shownVersion != version)) { scroll.scrollTo(0); linkError = null }
+        if (state.visible) shownVersion = version
+        if (state.visible) { wasVisible = true; awaitingRestoredDetails = false }
+        else if (!awaitingRestoredDetails) wasVisible = false
+    }
     val error = state.download.error ?: linkError
     LaunchedEffect(state.visible, error, scroll.maxValue) {
         if (state.visible && error != null) scroll.animateScrollTo(scroll.maxValue)

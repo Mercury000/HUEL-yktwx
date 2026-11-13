@@ -31,12 +31,14 @@ private data class FeePasswordDisplay(
 
 @Composable
 internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: FeeAccountPreparation?, loading: Boolean, error: String?,
-    onDismiss: () -> Unit, onPay: (String, String) -> Unit, onInputEdited: (FormField) -> Unit = {}) {
+    onDismiss: () -> Unit, onPay: (String, String) -> Unit, onInputEdited: (FormField) -> Unit = {},
+    selectedType: String? = null, onTypeChanged: ((String) -> Unit)? = null) {
     var password by remember(preparation, show) { mutableStateOf("") }
-    var type by remember(preparation) { mutableStateOf(preparation?.accounts?.firstOrNull()?.type.orEmpty()) }
+    var localType by remember(preparation) { mutableStateOf(preparation?.accounts?.firstOrNull()?.type.orEmpty()) }
+    val type = selectedType ?: localType
     val keyboard = LocalSoftwareKeyboardController.current
     fun pay() {
-        if (!show || type.isEmpty() || password.length != 6 || loading) return
+        if (!show || preparation?.accounts?.none { it.type == type } != false || password.length != 6 || loading) return
         val value = password
         password = ""
         keyboard?.hide()
@@ -50,8 +52,8 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("¥ " + RechargeMoney.yuan(display.amountCents), fontSize = 32.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            if (display.accounts.size > 1) display.accounts.forEach { account ->
-                Button(onClick = { if (type != account.type) { type = account.type; onInputEdited(FormField.PaymentAccount) } }, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+            if (display.accounts.size > 1 || display.accounts.none { it.type == type }) display.accounts.forEach { account ->
+                Button(onClick = { if (type != account.type) { if (onTypeChanged != null) onTypeChanged(account.type) else localType = account.type; onInputEdited(FormField.PaymentAccount) } }, enabled = enabled, modifier = Modifier.fillMaxWidth(),
                     colors = if (display.type == account.type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(account.name) }
             }
             display.accounts.firstOrNull { it.type == display.type }?.let { Text("可用余额 ¥ " + RechargeMoney.yuan(it.balanceCents), fontSize = 13.sp,
@@ -65,7 +67,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             InlineErrorGroup(display.error, 16.dp) {
-                Button(onClick = { pay() }, enabled = enabled && password.length == 6 && type.isNotEmpty(),
+                Button(onClick = { pay() }, enabled = enabled && password.length == 6 && display.accounts.any { it.type == type },
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (display.loading) "正在支付…" else "确定支付") }
             }
         }

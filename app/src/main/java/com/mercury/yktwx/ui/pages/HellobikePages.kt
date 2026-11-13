@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -135,7 +136,7 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     elapsedMillis: () -> Long = SystemClock::elapsedRealtime) {
     val currentActive by rememberUpdatedState(active)
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
-    var help by remember { mutableStateOf(false) }
+    var help by rememberSaveable { mutableStateOf(false) }
     var clock by remember { mutableLongStateOf(elapsedMillis()) }
     LaunchedEffect(active, state.precheck, state.closeProof) {
         while (active) { clock = elapsedMillis(); delay(1000) }
@@ -299,20 +300,23 @@ internal fun HellobikePaymentSheet(show: Boolean, state: HellobikeUiState, model
                     PaymentResultContent(if (phase == RechargePhase.TimedOut) RechargePhase.Checking else phase, result?.loading == true,
                         amount.toBigDecimal().movePointRight(2).longValueExact(), result?.detail, model::dismissPayment,
                         subject = "支付", retryMethods = retry, onContinuePayment = { if (enabled) model.pay(it.id) },
+                        selectedRetryId = currentState.paymentMethod, selectedRetryCode = currentState.paymentMethod,
+                        onRetrySelection = { model.selectPaymentMethod(it?.id) },
                         enabled = enabled && (!currentState.busy || result?.phase == RechargePhase.Paid),
                         onCheck = { if (enabled) model.checkPayment() }, paymentApp = when (display.session?.paymentAttempt?.channel) {
                             "003" -> "哈啰"; "1201" -> "银联"; else -> "支付宝"
                         }, retryMethodLabel = { it.name })
                 } else {
                     val options = display.payOptions
-                    var selected by remember(options) { mutableIntStateOf(options.indexOfFirst { it.channel.available == true }.coerceAtLeast(0)) }
+                    val selected = options.indexOfFirst { it.channel.method == currentState.paymentMethod }.takeIf { it >= 0 }
+                        ?: options.indexOfFirst { it.channel.available == true }.coerceAtLeast(0)
                     val option = options.getOrNull(selected)
                     Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
                         if (display.paymentLoading) CircularProgressIndicator(Modifier.size(24.dp).testTag("hellobike-payment-loading"))
                         else Text(option?.amount?.let { "¥$it" } ?: display.payDetail?.amount?.let { "¥$it" } ?: "—",
                             fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
                     }
-                    PaymentMethodActions(options.map { it.channel.name }, selected, { selected = it },
+                    PaymentMethodActions(options.map { it.channel.name }, selected, { model.selectPaymentMethod(options[it].channel.method) },
                         if (display.busy) "正在发起…" else option?.channel?.name?.let { "${it}支付" } ?: "确认支付",
                         { if (enabled && option != null) model.pay(option.channel.method) },
                         enabled = enabled && currentPage == HellobikePaymentPage.Methods && !currentState.busy && !currentState.paymentLoading && !currentState.paymentInFlight,

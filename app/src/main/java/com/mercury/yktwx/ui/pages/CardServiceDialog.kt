@@ -37,7 +37,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private enum class RecipientSheetPage { Query, Amount }
 
 @Composable
-fun CardServiceDialog(
+internal fun CardServiceDialog(
     state: CardServiceUiState,
     onDismiss: () -> Unit,
     onSelectCard: (CampusCard) -> Unit,
@@ -49,11 +49,14 @@ fun CardServiceDialog(
     onContinueRecharge: (Long) -> Unit,
     onRetryRecharge: () -> Unit = {},
     onInputEdited: (FormField) -> Unit = {},
+    savedDraft: com.mercury.yktwx.state.RecipientFormDraft? = null,
+    onDraftChanged: ((com.mercury.yktwx.state.RecipientFormDraft) -> Unit)? = null,
+    onRetryRestore: (() -> Unit)? = null,
 ) {
     // Keep each overlay mounted while its own closing animation runs.
-    CardStateDialog(state, onDismiss, onSelectCard, onChangeCard, onInputEdited)
+    CardStateDialog(state, onDismiss, onSelectCard, onChangeCard, onInputEdited, onRetryRestore)
     RecipientRechargeSheet(state, onDismiss, onRefreshCaptcha, onRecipientEdited, onQueryRecipient,
-        onSelectRecipient, onContinueRecharge, onRetryRecharge, onInputEdited)
+        onSelectRecipient, onContinueRecharge, onRetryRecharge, onInputEdited, savedDraft, onDraftChanged, onRetryRestore)
 }
 
 @Composable
@@ -62,6 +65,9 @@ private fun RecipientRechargeSheet(
     onRecipientEdited: () -> Unit, onQueryRecipient: (RecipientQueryType, String, String) -> Unit,
     onSelectRecipient: (RechargeRecipient) -> Unit, onContinueRecharge: (Long) -> Unit,
     onRetryRecharge: () -> Unit, onInputEdited: (FormField) -> Unit,
+    savedDraft: com.mercury.yktwx.state.RecipientFormDraft?,
+    onDraftChanged: ((com.mercury.yktwx.state.RecipientFormDraft) -> Unit)?,
+    onRetryRestore: (() -> Unit)?,
 ) {
     val show = state.visible && state.action == CampusCardAction.OthersRecharge
     val session = rememberOverlaySession(show)
@@ -73,11 +79,15 @@ private fun RecipientRechargeSheet(
         key(session) {
     // Only presentation data survives dismissal; the captcha key stays in live state.
     val display = rememberWhileShown(show, state.copy(captcha = null))
-    // Input is local, not SavedState. A new sheet starts with empty query and captcha fields.
-    var queryType by remember { mutableStateOf(RecipientQueryType.StudentNumber) }
-    var identifier by remember { mutableStateOf("") }
+    var localDraft by remember { mutableStateOf(com.mercury.yktwx.state.RecipientFormDraft()) }
+    val draft = savedDraft ?: localDraft
+    fun change(value: com.mercury.yktwx.state.RecipientFormDraft) {
+        if (onDraftChanged != null) onDraftChanged(value) else localDraft = value
+    }
+    val queryType = draft.type
+    val identifier = draft.identifier
     var captchaCode by remember(show, state.captcha) { mutableStateOf("") }
-    var amount by remember(display.recipients) { mutableStateOf("") }
+    val amount = draft.amount
         SheetPageContent(targetPage,
             Modifier.bottomSheetSafeArea()) { page, interactive ->
         val enabled = interactive && show && !display.loading
@@ -91,7 +101,7 @@ private fun RecipientRechargeSheet(
                 val config = display.rechargeConfig
                 PaymentFormContent(config == null && display.loading) {
                 if (config != null) {
-                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, display.loading,
+                    PaymentAmountForm(config, amount, { change(draft.copy(amount = it)) }, listOf("微信"), 0, {}, display.loading,
                         !display.preview && config.recipient === display.selectedRecipient, display.error, onContinueRecharge,
                         enabled = enabled, onInputEdited = onInputEdited,
                         submitting = display.loading && display.selectedRecipient != null)
@@ -102,14 +112,14 @@ private fun RecipientRechargeSheet(
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     RecipientQueryType.entries.forEach { type ->
-                        Button(onClick = { if (queryType != type) { queryType = type; identifier = ""; captchaCode = ""; onRecipientEdited(); onInputEdited(FormField.Captcha) } },
+                        Button(onClick = { if (queryType != type) { change(draft.copy(type = type, identifier = "", amount = "")); captchaCode = ""; onRecipientEdited(); onInputEdited(FormField.Captcha) } },
                             enabled = enabled, modifier = Modifier.weight(1f),
                             colors = if (queryType == type) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) { Text(type.label) }
                     }
                 }
                 TextField(value = identifier, onValueChange = {
                     val next = it.filter { c -> c in '0'..'9' || (queryType == RecipientQueryType.Identity && c in "Xx") }.take(32)
-                    if (next != identifier) { identifier = next; onRecipientEdited() }
+                    if (next != identifier) { change(draft.copy(identifier = next, amount = "")); onRecipientEdited() }
                 }, label = queryType.label, singleLine = true, enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = if (queryType == RecipientQueryType.StudentNumber) KeyboardType.Number else KeyboardType.Ascii),
                     modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
@@ -127,6 +137,8 @@ private fun RecipientRechargeSheet(
                         enabled = enabled, modifier = Modifier.trackInputFocus(enabled).weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
                 }
                 InlineErrorGroup(display.error, 16.dp) {
+                    if (display.restorationFailed && onRetryRestore != null)
+                        TextButton("重试", onRetryRestore, enabled = enabled)
                     val querying = display.loading && state.captcha != null
                     Button(onClick = { keyboard?.hide(); val code = captchaCode; captchaCode = ""; onQueryRecipient(queryType, identifier, code) },
                         enabled = enabled && identifier.isNotBlank() && (state.preview || (state.captcha != null && captchaCode.isNotBlank())),
@@ -139,7 +151,8 @@ private fun RecipientRechargeSheet(
 }
 
 @Composable
-private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit, onChangeCard: (String) -> Unit, onInputEdited: (FormField) -> Unit) {
+private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit,
+    onChangeCard: (String) -> Unit, onInputEdited: (FormField) -> Unit, onRetryRestore: (() -> Unit)?) {
     val show = state.visible && state.action != CampusCardAction.OthersRecharge
     val display = rememberWhileShown(show, state.copy(captcha = null))
     var password by remember(show, display.selectedCard) { mutableStateOf("") }
@@ -155,7 +168,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
             if (initialLoading) Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(28.dp))
             }
-            if (display.cards.size > 1) display.cards.forEach { candidate ->
+            if (display.cards.size > 1 || card == null) display.cards.forEach { candidate ->
                 Button(onClick = { onSelectCard(candidate) }, enabled = show && !display.loading && !candidate.frozen && candidate.status == 0,
                     modifier = Modifier.fillMaxWidth(), colors = if (card === candidate) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
                     Text(candidate.label + if (candidate.lost) " · 已挂失" else " · 未挂失")
@@ -174,6 +187,8 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                     if (display.cards.any { it.frozen || it.status != 0 }) "校园卡已冻结或状态异常" else "没有可操作的校园卡", fontSize = 14.sp)
             }
             InlineErrorGroup(display.error, 16.dp) {
+                if (display.cards.isEmpty() && display.error != null && onRetryRestore != null)
+                    TextButton("重试", onRetryRestore, enabled = show && !display.loading)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onDismiss, enabled = show, modifier = Modifier.weight(1f)) { Text("取消") }
                     Button(onClick = { keyboard?.hide(); val submitted = password; password = ""; onChangeCard(submitted) },

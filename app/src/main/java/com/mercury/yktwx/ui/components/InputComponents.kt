@@ -42,7 +42,7 @@ internal fun CaptchaTextField(value: String, onValueChange: (String) -> Unit, la
 internal fun DeviceCodeTextField(value: String, onValueChange: (String) -> Unit, label: String,
     modifier: Modifier = Modifier, enabled: Boolean = true, keyboardActions: KeyboardActions = KeyboardActions.Default) {
     StableInputTextField(value, onValueChange, label, modifier, enabled,
-        KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done), keyboardActions) { next ->
+        KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done), keyboardActions, saveText = true) { next ->
         if (next.text.length <= 256) next else next.copy(text = next.text.take(256),
             selection = TextRange(next.selection.start.coerceAtMost(256), next.selection.end.coerceAtMost(256)), composition = null)
     }
@@ -51,10 +51,14 @@ internal fun DeviceCodeTextField(value: String, onValueChange: (String) -> Unit,
 @Composable
 private fun StableInputTextField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier,
     enabled: Boolean, keyboardOptions: KeyboardOptions, keyboardActions: KeyboardActions,
+    saveText: Boolean = false,
     transform: (TextFieldValue) -> TextFieldValue) {
-    var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+    // Codes must not survive through a text field's private state. Safe device input
+    // can save its cursor; phone/recipient drafts are restored by their owning model.
+    val draftState = if (saveText) rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(value, TextRange(value.length)))
-    }
+    } else remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    var draft by draftState
     var externalValue by remember { mutableStateOf(value) }
     if (value != externalValue) {
         externalValue = value

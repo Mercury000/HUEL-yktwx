@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -91,6 +92,10 @@ fun BillPage(
     updateNotice: @Composable () -> Unit = {},
     onSearchConfirmed: (Boolean) -> Unit = {},
 ) {
+    if (state.restoringSelection) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
     val state = if (LocalReadOffline.current) state.offlineDisplay() else state
     val motion = rememberBillContentMotion(state, isActive)
     SideEffect { motion.selection = state.contentSelection() }
@@ -136,9 +141,9 @@ fun BillPage(
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
-    var showFilter by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf(TextFieldValue(state.info, TextRange(state.info.length))) }
-    var submittedQuery by remember { mutableStateOf(state.info) }
+    var showFilter by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(state.info, TextRange(state.info.length))) }
+    var submittedQuery by rememberSaveable { mutableStateOf(state.info) }
     val currentInfo by rememberUpdatedState(state.info)
     val currentOnSearch by rememberUpdatedState(onSearch)
     fun submitSearch(value: String) {
@@ -627,9 +632,9 @@ private fun BillFilterSheet(
     onApply: (String?, Long?, Long?) -> Unit,
 ) {
     val session = rememberOverlaySession(show)
-    var typeId by remember(session) { mutableStateOf(appliedTypeId) }
-    var min by remember(session) { mutableStateOf(appliedFrom?.let(::moneyInput).orEmpty()) }
-    var max by remember(session) { mutableStateOf(appliedTo?.let(::moneyInput).orEmpty()) }
+    var typeId by rememberSaveable(session) { mutableStateOf(appliedTypeId) }
+    var min by rememberSaveable(session) { mutableStateOf(appliedFrom?.let(::moneyInput).orEmpty()) }
+    var max by rememberSaveable(session) { mutableStateOf(appliedTo?.let(::moneyInput).orEmpty()) }
     var error by remember(session) { mutableStateOf<String?>(null) }
     OverlayBottomSheet(
         show = show,

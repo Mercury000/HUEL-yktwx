@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,7 +55,8 @@ internal fun DailyBillChart(
     val chartPoints = displayed.entries.toList()
     val chartMax = displayed.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
     val max = points.maxOfOrNull { it.amountCents } ?: 0L
-    var selectedDate by remember(points) { mutableStateOf<java.time.LocalDate?>(null) }
+    var selectedDay by rememberSaveable(mode) { mutableStateOf<Long?>(null) }
+    val selectedDate = selectedDay?.let { runCatching { java.time.LocalDate.ofEpochDay(it) }.getOrNull() }
     val selected = points.firstOrNull { it.date == selectedDate }
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -70,7 +72,7 @@ internal fun DailyBillChart(
             return@Column
         }
         Box(Modifier.fillMaxWidth().height(150.dp)
-            .dismissOnOutsidePress(selected != null) { selectedDate = null }) {
+            .dismissOnOutsidePress(selected != null) { selectedDay = null }) {
             Canvas(Modifier.fillMaxSize().testTag("bill-trend-plot")
                 .semantics {
                     contentDescription = selected?.let {
@@ -79,14 +81,14 @@ internal fun DailyBillChart(
                     } ?: "收支趋势"
                     customActions = listOf(CustomAccessibilityAction("查看下一个时间点") {
                         val index = points.indexOfFirst { it.date == selectedDate }
-                        selectedDate = points[(index + 1).coerceAtMost(points.lastIndex)].date
+                        selectedDay = points[(index + 1).coerceAtMost(points.lastIndex)].date.toEpochDay()
                         true
                     }, CustomAccessibilityAction("查看上一个时间点") {
                         val index = points.indexOfFirst { it.date == selectedDate }
-                        selectedDate = points[(index - 1).coerceAtLeast(0)].date
+                        selectedDay = points[(index - 1).coerceAtLeast(0)].date.toEpochDay()
                         true
                     }) + if (selected != null) listOf(CustomAccessibilityAction("收起金额详情") {
-                        selectedDate = null
+                        selectedDay = null
                         true
                     }) else emptyList()
                 }.pointerInput(points) {
@@ -94,7 +96,7 @@ internal fun DailyBillChart(
                         val index = if (points.size <= 1) 0 else
                             (position.x / size.width.coerceAtLeast(1) * points.lastIndex).roundToInt().coerceIn(points.indices)
                         val date = points[index].date
-                        selectedDate = date.takeUnless { it == selectedDate }
+                        selectedDay = date.takeUnless { it == selectedDate }?.toEpochDay()
                     }
                 }) {
                 // Empty -> nonempty may compose before the interpolation effect acquires its target.
@@ -157,8 +159,8 @@ internal fun DailyBillChart(
                         else "${selected.date.monthValue}月${selected.date.dayOfMonth}日"
                     Text("$date · ¥ ${money(selected.amountCents)}",
                         Modifier.testTag("bill-trend-selection")
-                            .semantics { onClick(label = "收起金额详情") { selectedDate = null; true } }
-                            .pointerInput(Unit) { detectTapGestures { selectedDate = null } }
+                            .semantics { onClick(label = "收起金额详情") { selectedDay = null; true } }
+                            .pointerInput(Unit) { detectTapGestures { selectedDay = null } }
                             .background(surface.copy(alpha = .96f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                         fontSize = 12.sp, color = primary, fontWeight = FontWeight.Medium,
@@ -270,7 +272,7 @@ private fun BillChartHeaderPlaceholder() {
 internal fun CategoryDonutChart(categories: List<BillCategory>, type: Int, modifier: Modifier = Modifier) {
     val palette = chartPalette()
     val total = categories.sumOf { it.amountCents }
-    var expanded by remember(type) { mutableStateOf(false) }
+    var expanded by rememberSaveable(type) { mutableStateOf(false) }
     val displayed = rememberChartValues(categories.associate { it.name to it.amountCents.toDouble() })
     val displayedTotal = displayed.values.sum()
     val assignedColors = remember(type) { linkedMapOf<String, Int>() }

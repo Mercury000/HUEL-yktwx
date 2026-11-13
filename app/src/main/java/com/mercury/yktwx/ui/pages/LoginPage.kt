@@ -59,7 +59,7 @@ fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
 fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (FormField) -> Unit = {},
     updateNotice: @Composable () -> Unit = {}, updateDialog: @Composable () -> Unit = {},
     onLogin: (String, String) -> Unit) {
-    var noticeVisible by remember(consent) { mutableStateOf(false) }
+    var noticeVisible by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var consentError by remember { mutableStateOf<String?>(null) }
@@ -139,7 +139,7 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
 private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
     updateNotice: @Composable () -> Unit,
     consentRow: (@Composable () -> Unit)? = null) {
-    var username by remember { mutableStateOf(state.username) }
+    var username by rememberSaveable { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }

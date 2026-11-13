@@ -5,6 +5,8 @@ import com.mercury.yktwx.analytics.AnalyticsFixtures
 import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.RechargeFormDraft
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.analytics.AppAnalytics
@@ -29,6 +31,93 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 @LooperMode(LooperMode.Mode.PAUSED)
 class RechargeViewModelTest {
+    @Test fun recreatedDraftWaitsForIdentityAndNetworkAndQueriesExactTargetWithoutPayment() {
+        val handle = SavedStateHandle()
+        val models = ViewModelStore()
+        fun fresh(saved: SavedStateHandle, repo: AccountRepository = repository) = RechargeViewModel(repo,
+            analytics = AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()), savedState = saved)
+        try {
+            val first = fresh(handle).also { models.put("first", it) }
+            first.open(vault.username, "fake-account", false)
+            await { first.state.value.visible }
+            first.updateForm(RechargeFormDraft("29.50", false))
+            val restoredService = FakeRechargeService()
+            val newRepository = accountRepositoryFixture(FakeAccountService(), MemoryVault(), restoredService)
+            val restoredHandle = handle.recreated()
+            val next = fresh(restoredHandle, newRepository).also { models.put("next", it) }
+            next.restoreIfNeeded(true, true)
+            assertEquals(0, restoredService.configurations)
+            next.accountChanged(vault.username)
+            next.restoreIfNeeded(true, false)
+            assertEquals(0, restoredService.configurations)
+            next.restoreIfNeeded(true, true)
+            await { next.state.value.config != null }
+            assertEquals("fake-account", next.state.value.config?.targetId)
+            assertEquals(RechargeFormDraft("29.50", false), next.form.value)
+            assertEquals(0, restoredService.creations)
+            assertEquals(0, restoredService.launches)
+            next.accountChanged("another-owner")
+            assertFalse(next.state.value.visible)
+            assertEquals(RechargeFormDraft(), next.form.value)
+        } finally { models.clear() }
+    }
+
+    @Test fun recreatedPaymentChecksOnlyOriginalOrderAndDoesNotLaunchWechatAgain() {
+        val handle = SavedStateHandle()
+        val models = ViewModelStore()
+        try {
+            val first = RechargeViewModel(repository, analytics = AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()),
+                savedState = handle).also { models.put("first", it) }
+            first.open(vault.username, "fake-account", false)
+            await { first.state.value.visible }
+            first.onForeground(); first.onResumed(true)
+            first.submit(1234)
+            await { first.state.value.phase == RechargePhase.AwaitingPayment }
+            val restoredService = FakeRechargeService()
+            val newRepository = accountRepositoryFixture(FakeAccountService(), MemoryVault(), restoredService)
+            runBlocking { newRepository.restoreSession() }
+            val next = RechargeViewModel(newRepository,
+                analytics = AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()), savedState = handle.recreated())
+                .also { models.put("next", it) }
+            next.accountChanged(vault.username)
+            next.restoreIfNeeded(true, true)
+            await { next.state.value.phase == RechargePhase.Paid }
+            assertEquals("FAKE-ORDER", next.state.value.pending?.orderId)
+            assertEquals(1234L, next.state.value.pending?.amountCents)
+            assertEquals(1, restoredService.resultQueries)
+            assertEquals(0, restoredService.configurations)
+            assertEquals(0, restoredService.creations)
+            assertEquals(0, restoredService.launches)
+            assertFalse(next.canLaunchWechat())
+        } finally { models.clear() }
+    }
+
+    @Test fun recreatedInterruptedCreationWithoutOrderRequiresVerificationAndCannotResubmit() {
+        val handle = SavedStateHandle()
+        val models = ViewModelStore()
+        try {
+            val first = RechargeViewModel(repository, analytics = AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()),
+                savedState = handle).also { models.put("first", it) }
+            first.open(vault.username, "fake-account", false)
+            await { first.state.value.visible }
+            service.creationGate = CompletableDeferred()
+            first.submit(1234)
+            await { service.creations == 1 }
+            val restoredService = FakeRechargeService()
+            val newRepository = accountRepositoryFixture(FakeAccountService(), MemoryVault(), restoredService)
+            val next = RechargeViewModel(newRepository,
+                analytics = AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()), savedState = handle.recreated())
+                .also { models.put("next", it) }
+            next.accountChanged(vault.username)
+            next.restoreIfNeeded(true, true)
+            assertTrue(next.state.value.error.orEmpty().contains("核实"))
+            assertNull(next.state.value.pending?.orderId)
+            next.checkResult(); next.submit(1234)
+            assertEquals(0, restoredService.resultQueries)
+            assertEquals(0, restoredService.creations)
+            assertEquals(0, restoredService.launches)
+        } finally { service.creationGate.complete(Unit); models.clear() }
+    }
     private val vault = MemoryVault()
     private val service = FakeRechargeService()
     // Any unexpected authentication/payment request fails locally, never reaches the network.

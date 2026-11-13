@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -64,8 +65,18 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val displayState = if (awaitingCode && !LocalReadOffline.current) state.copy(busy = true) else state
     val displayCode = displayState.code.takeIf { displayState.problem == null && !displayState.busy && displayState.error == null }
     PaymentCodePresentationEffect(isActive && displayCode != null, increaseBrightness = settings.paymentBrightness.value)
-    var enlarged by remember { mutableStateOf<BarcodeFormat?>(null) }
-    LaunchedEffect(isActive, displayCode == null) { if (!isActive || displayCode == null) enlarged = null }
+    var enlarged by rememberSaveable(state.username) { mutableStateOf<BarcodeFormat?>(null) }
+    var restoringEnlargement by remember { mutableStateOf(enlarged != null) }
+    LaunchedEffect(isActive, displayCode, state.needsLogin, state.error, state.problem) {
+        when {
+            !isActive || state.needsLogin || state.error != null ||
+                state.problem != null && state.problem != PaymentCodeProblem.StatusUnverified -> {
+                enlarged = null; restoringEnlargement = false
+            }
+            displayCode != null -> restoringEnlargement = false
+            !restoringEnlargement -> enlarged = null
+        }
+    }
     val readError = readError(displayState.error, displayState.errorKind)
         ?: ReadError(FeedbackText.Offline, com.mercury.yktwx.data.ReadFailureKind.Network)
             .takeIf { LocalReadOffline.current && displayCode == null && displayState.problem !in listOf(PaymentCodeProblem.Lost, PaymentCodeProblem.Frozen) }

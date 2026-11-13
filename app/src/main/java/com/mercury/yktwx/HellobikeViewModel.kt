@@ -2,6 +2,8 @@ package com.mercury.yktwx
 
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -30,6 +32,8 @@ data class HellobikeUiState(
     val paymentVisible: Boolean = false, val paymentLoading: Boolean = false, val payDetail: HellobikePayDetail? = null,
     val payOptions: List<HellobikePayOption> = emptyList(), val paymentFeedback: LifePaymentFeedback? = null,
     val paymentLaunch: LifePaymentLaunch? = null, val paymentInFlight: Boolean = false,
+    val paymentMethod: String? = null,
+    val paymentRestorePending: Boolean = false,
 ) {
     val connected: Boolean get() = connectedPhone.isNotBlank()
     val session: HellobikeSession? get() = sessions.firstOrNull { it.sessionId == selectedSessionId }
@@ -41,16 +45,47 @@ class HellobikeViewModel internal constructor(
     private val api: HellobikeService, private val store: HellobikeStore, private val location: HellobikeLocationService,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
     private val elapsed: () -> Long = SystemClock::elapsedRealtime,
+    savedState: SavedStateHandle = SavedStateHandle(),
     private val analytics: AppAnalytics,
 ) : ViewModel() {
-    @Inject internal constructor(api: HellobikeService, store: HellobikeStore, location: HellobikeLocationService, analytics: AppAnalytics) :
-        this(api, store, location, io = Dispatchers.IO, analytics = analytics)
+    @Inject internal constructor(api: HellobikeService, store: HellobikeStore, location: HellobikeLocationService, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(api, store, location, io = Dispatchers.IO, savedState = savedState, analytics = analytics)
     private var initialized = false
     private var preview = true
     private val mutable = MutableStateFlow(HellobikeUiState())
     val state = mutable.asStateFlow()
+    private var pendingOverlay: LifeOverlaySavedState? = null
+    private var restoreSlider = false
+    private val overlays = LifeOverlayRestoration(savedState) {
+        LifeOverlaySavedState(state.value.loginVisible, state.value.changingAccount, state.value.phone,
+            state.value.sliderVerification, pendingOverlay?.payment == true || state.value.paymentVisible,
+            pendingOverlay?.session ?: state.value.selectedSessionId, method = state.value.paymentMethod)
+    }
+    internal fun bindPresentation(campus: String, preview: Boolean, generation: Long) {
+        if (state.value.restoring) return
+        val restored = overlays.bind(campus, restorationOwner, preview, generation) {
+            pendingOverlay = null; restoreSlider = false; dismissLogin(); dismissPayment(); mutable.update { it.copy(paymentMethod = null) }
+        } ?: return
+        loginGuid = UUID.randomUUID().toString(); challenge = null
+        mutable.update { it.copy(loginVisible = restored.login, changingAccount = restored.changing, phone = restored.phone,
+            code = "", sliderVerification = restored.verification && restored.login, slider = null, sliderOffset = 0,
+            paymentMethod = restored.method, paymentRestorePending = restored.payment) }
+        restoreSlider = restored.login && restored.verification
+        pendingOverlay = restored.takeIf { it.payment }
+    }
+    internal fun resumePresentation(active: Boolean, online: Boolean, paymentPage: Boolean) {
+        if (!active || !online || state.value.restoring) return
+        if (restoreSlider && foreground) { restoreSlider = false; refreshSlider() }
+        val restored = pendingOverlay ?: return
+        if (paymentPage && restored.session != null && state.value.selectedSessionId == restored.session && foreground) {
+            pendingOverlay = null; mutable.update { it.copy(paymentRestorePending = false) }; showPayment()
+        }
+    }
+    internal fun selectPaymentMethod(method: String?) { mutable.update { it.copy(paymentMethod = method) } }
+    internal fun discardRestoredPayment() { pendingOverlay = null; mutable.update { it.copy(paymentRestorePending = false) }; dismissPayment() }
     private var account: HellobikeAccount? = null
     private var ownerGuid = ""
+    internal val restorationOwner: String? get() = ownerGuid.takeIf(String::isNotBlank)
     private var clientId = ""
     private var foreground = false
     private var visible = false
@@ -160,6 +195,7 @@ class HellobikeViewModel internal constructor(
         connectAccount(); mutable.update { it.copy(changingAccount = change) }; return true
     }
     fun dismissLogin() {
+        restoreSlider = false
         authGeneration++; authTask?.cancel(); challenge = null; pendingLocationAction = null
         mutable.update { it.copy(loginVisible = false, loggingIn = false, sendingCode = false, sliderLoading = false,
             sliderVerification = false, loginOfficialRequired = false, slider = null, sliderOffset = 0, code = "", loginError = null, locating = false, locationPermissionRequest = null) }
@@ -279,12 +315,13 @@ class HellobikeViewModel internal constructor(
                         try {
                             val saved = withContext(io) { store.saveAccount(next); store.load() }
                             account = next; ownerGuid = next.userGuid
-                            errors.clear(); launchedPayment = null; paymentAnalyticsAttempt = null
+                            errors.clear(); launchedPayment = null; paymentAnalyticsAttempt = null; pendingOverlay = null; restoreSlider = false
                             mutable.update { it.copy(connectedPhone = next.maskedPhone, loginVisible = false, changingAccount = false,
                                 loggingIn = false, code = "", sliderVerification = false, slider = null, sessions = saved.sessions, confirmedSessions = emptySet(),
                                 selectedSessionId = it.selectedSessionId?.takeIf { id -> saved.sessions.any { session -> session.sessionId == id } },
                                 precheck = null, closeProof = null, error = null, officialRequired = false, accountError = null,
                                 paymentLaunch = null, paymentInFlight = false, paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList(),
+                                paymentRestorePending = false, paymentMethod = null,
                                 recoveryRequired = saved.recoveryRequired) }
                             verifier.verified(next.maskedPhone)
                             analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Hellobike)
@@ -719,7 +756,7 @@ class HellobikeViewModel internal constructor(
             mutable.update { it.copy(payDetail = detail, payOptions = options, paymentLoading = false) }
         }
     }
-    fun dismissPayment() { mutable.update { it.copy(paymentVisible = false) } }
+    fun dismissPayment() { pendingOverlay = null; mutable.update { it.copy(paymentVisible = false, paymentRestorePending = false) } }
     fun pay(channel: String) {
         val owner = account ?: return; val session = mutable.value.session ?: return; val detail = mutable.value.payDetail ?: return
         val option = mutable.value.payOptions.singleOrNull { it.channel.method == channel } ?: return

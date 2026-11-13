@@ -7,6 +7,7 @@ import com.mercury.yktwx.data.fixtureUpdateHttp
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.analytics.AppAnalytics
@@ -25,6 +26,46 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AppUpdateViewModelTest {
+    @Test fun recreatedDetailsWaitForForegroundAndReopenWithoutDownloadOrExtraCheck() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        val store = updateStoreFixture(prefs, "v3")
+        store.cacheRelease(update.release)
+        fun fresh(saved: SavedStateHandle) = AppUpdateViewModel(store = updateStoreFixture(prefs, "v3"),
+            checkUpdate = { count++; update }, installer = appUpdateInstallerFixture(app), now = { time },
+            analytics = AnalyticsFixtures.from(app), savedState = saved).also { models.put("restore-${models.keys().size}", it) }
+        val first = fresh(handle)
+        first.configure(false, true, true); runCurrent()
+        first.checkManually(); runCurrent(); first.presentIfAllowed(true)
+        assertTrue(first.state.value.visible)
+        val restored = handle.recreated(); models.clear()
+        val next = fresh(restored)
+        next.configure(false, true, false); runCurrent()
+        assertFalse(next.state.value.visible)
+        val before = count
+        next.configure(false, true, true); runCurrent(); next.presentIfAllowed(true)
+        assertTrue(next.state.value.visible)
+        assertEquals(4, next.state.value.release?.versionCode)
+        assertEquals(before, count)
+        assertEquals(UpdateDownloadPhase.Idle, next.state.value.download.phase)
+    }
+
+    @Test fun recreatedDetailsFromAnotherChannelDoNotOpenTheOldRelease() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        val store = updateStoreFixture(prefs, "v3")
+        store.cacheRelease(update.release)
+        val first = AppUpdateViewModel(store, { count++; update }, appUpdateInstallerFixture(app), { time },
+            AnalyticsFixtures.from(app), handle).also { models.put("first", it) }
+        first.configure(false, true, true); runCurrent()
+        first.checkManually(); runCurrent(); first.presentIfAllowed(true)
+        val restored = handle.recreated(); models.clear()
+        store.repository.update { it.copy(updateChannel = "beta") }
+        val next = AppUpdateViewModel(updateStoreFixture(prefs, "v3"), { count++; update }, appUpdateInstallerFixture(app), { time },
+            AnalyticsFixtures.from(app), restored).also { models.put("next", it) }
+        next.configure(false, true, true); runCurrent(); next.presentIfAllowed(true)
+        assertFalse(next.state.value.visible)
+        assertFalse(next.state.value.detailsPending)
+        assertEquals(UpdateDownloadPhase.Idle, next.state.value.download.phase)
+    }
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val prefs = app.getSharedPreferences("update-test", Context.MODE_PRIVATE)
     private val dispatcher = StandardTestDispatcher()

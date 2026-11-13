@@ -26,7 +26,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 
 @Composable
 fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSelectCard: (CampusCard) -> Unit,
-    onSubmit: (String, String, String) -> Unit, onInputEdited: (FormField) -> Unit = {}) {
+    onSubmit: (String, String, String) -> Unit, onInputEdited: (FormField) -> Unit = {}, onRetry: (() -> Unit)? = null) {
     // Never rememberSaveable: no password in saved-state Bundles or after reopening.
     var oldPassword by remember(state.visible, state.selectedCard) { mutableStateOf("") }
     var newPassword by remember(state.visible, state.selectedCard) { mutableStateOf("") }
@@ -55,7 +55,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 "两次输入的新密码不一致" else display.error)
         ReadLayout(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (display.cards.size > 1) display.cards.forEach { card ->
+            if (display.cards.size > 1 || display.selectedCard == null) display.cards.forEach { card ->
                 Button(onClick = { onSelectCard(card) }, enabled = enabled,
                     modifier = Modifier.fillMaxWidth(), colors = if (display.selectedCard === card) ButtonDefaults.buttonColorsPrimary()
                         else ButtonDefaults.buttonColors()) { Text(card.label) }
@@ -85,6 +85,7 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.trackInputFocus(enabled).fillMaxWidth())
             InlineErrorGroup(error, 12.dp) {
+                if (display.cards.isEmpty() && error != null && onRetry != null) TextButton("重试", onRetry, enabled = enabled)
                 if (UiPreview.enabled && display.preview) PreviewNotes.CardPassword()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = ::dismiss, enabled = state.visible && !display.submitting, modifier = Modifier.weight(1f)) { Text("取消") }

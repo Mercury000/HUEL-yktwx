@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -67,7 +68,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
     onBack: () -> Unit, footerNote: String, nowMillis: () -> Long = System::currentTimeMillis,
     loginAction: WaterDeviceAction? = null, retryAction: WaterDeviceAction? = null, showRescan: Boolean = false,
     paymentContent: (@Composable (Boolean) -> Unit)? = null) {
-    var help by remember { mutableStateOf(false) }
+    var help by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val title = when (state.phase) {
         WaterPhase.Ended -> "${state.action}结束"

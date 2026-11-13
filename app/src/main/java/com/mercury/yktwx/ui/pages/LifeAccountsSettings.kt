@@ -19,6 +19,7 @@ internal data class ManagedLifeAccount(
     val restoring: Boolean = false,
     val busy: Boolean = false,
     val error: String? = null,
+    val owner: String? = null,
 ) {
     val name: String get() = provider.displayName
     val services: String get() = provider.services

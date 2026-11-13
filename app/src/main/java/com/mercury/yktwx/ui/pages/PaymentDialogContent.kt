@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
 import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -263,13 +264,21 @@ internal fun PaymentResultContent(
     loadingTitle: String? = null,
     paymentApp: String = "微信",
     retryMethodLabel: (FeeMethod) -> String = { it.name + "支付" },
+    selectedRetryId: String? = null,
+    selectedRetryCode: String? = null,
+    onRetrySelection: ((FeeMethod?) -> Unit)? = null,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
     val queryError = phase == RechargePhase.Checking && !loading
     val methods = retryMethods.distinctBy { it.id to it.code }
     val canContinue = phase == RechargePhase.Failed && !busy && methods.isNotEmpty()
-    var selectedMethod by remember(phase, detail, retryMethods) { mutableStateOf<FeeMethod?>(null) }
+    var localRetryId by rememberSaveable { mutableStateOf<String?>(null) }
+    var localRetryCode by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedMethod = methods.singleOrNull {
+        it.id == (if (onRetrySelection == null) localRetryId else selectedRetryId) &&
+            it.code == (if (onRetrySelection == null) localRetryCode else selectedRetryCode)
+    }
     val title = loadingTitle.takeIf { loading } ?: when (phase) {
         RechargePhase.Paid -> subject + "成功"
         RechargePhase.Failed -> subject + "失败"
@@ -322,7 +331,11 @@ internal fun PaymentResultContent(
                 methods.forEach { method ->
                     val selected = selectedMethod?.let { it.id == method.id && it.code == method.code } == true
                     PaymentSelectionCard(selected = selected, enabled = enabled,
-                        onClick = { selectedMethod = if (selected) null else method }) { contentColor ->
+                        onClick = {
+                            val choice = method.takeUnless { selected }
+                            if (onRetrySelection != null) onRetrySelection(choice)
+                            else { localRetryId = choice?.id; localRetryCode = choice?.code }
+                        }) { contentColor ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(retryMethodLabel(method), fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                                 color = contentColor, modifier = Modifier.weight(1f))

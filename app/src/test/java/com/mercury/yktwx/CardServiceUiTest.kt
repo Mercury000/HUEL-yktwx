@@ -316,6 +316,27 @@ class CardServiceUiTest {
         compose.onNodeWithText("操作成功").assertDoesNotExist()
         compose.onNodeWithText("完成").assertDoesNotExist()
     }
+    @Test fun recipientRestoreFailureOffersRetryWithoutRefreshingCaptchaOrQuerying() {
+        val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
+            error = "暂时无法读取收款账户", restorationFailed = true))
+        var retries = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {},
+                    { error("Retry must not refresh captcha") }, {}, { _, _, _ -> error("Retry must not query a recipient") }, {}, {},
+                    onRetryRestore = {
+                        retries++
+                        current.value = current.value.copy(loading = true, restorationFailed = false)
+                    }) } }
+            }
+        }
+        compose.onNodeWithText("暂时无法读取收款账户").assertIsDisplayed()
+        compose.onNodeWithText("重试").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(1, retries)
+        compose.onNodeWithText("重试").assertDoesNotExist()
+        compose.onNodeWithText("查询").assertIsNotEnabled()
+    }
+
     @Test fun captchaImageIsClickableBesideInputAndRefreshClearsCode() {
         val image = java.io.ByteArrayOutputStream().also {
             Bitmap.createBitmap(120, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.LTGRAY) }
