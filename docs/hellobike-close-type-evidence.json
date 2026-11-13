@@ -1,0 +1,20 @@
+{
+  "source_apk_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+  "original_dex": "classes18.dex",
+  "dex_sha256": "ae9418d3e03fea7da04ba5a364474dc989b2e7b020616f02cd75b6be0ee6db2b",
+  "source": "Original DEX encoded static field values, read with androguard; separate from REA parsed-member evidence.",
+  "observations": [
+    {
+      "class": "com.hellobike.bike.business.riding.rideinfo.model.entity.PreCloseEntity",
+      "TYPE_NET": 1,
+      "TYPE_SMS": 2,
+      "TYPE_BT": 3
+    },
+    {
+      "class": "com.hellobike.bike.business.riding.rideinfo.model.entity.PreCloseForP10Entity",
+      "TYPE_NET": 1,
+      "TYPE_SMS": 2,
+      "TYPE_BT": 3
+    }
+  ]
+}

@@ -19,15 +19,16 @@ internal data class ManagedLifeAccount(
     val restoring: Boolean = false,
     val busy: Boolean = false,
     val error: String? = null,
+    val owner: String? = null,
 ) {
-    val name: String get() = if (provider == LifeProvider.Hui798) "慧生活798" else "胖乖生活"
-    val services: String get() = if (provider == LifeProvider.Hui798) "生活用水" else "接水 · 淋浴 · 洗衣"
-    val tag: String get() = if (provider == LifeProvider.Hui798) "hui798" else "panggui"
+    val name: String get() = provider.displayName
+    val services: String get() = provider.services
+    val tag: String get() = provider.tag
     val status: String get() = if (restoring) "检查中" else when (connection.status) {
         LifeAccountStatus.NotLoggedIn -> "未登录"
         LifeAccountStatus.Checking -> "检查中"
         LifeAccountStatus.Verified -> "已登录"
-        LifeAccountStatus.Unverified -> "待验证"
+        LifeAccountStatus.Unverified -> if (connection.error != null) "检查失败" else if (connection.hasAccount) "已登录" else "未登录"
         LifeAccountStatus.Expired -> "登录失效"
     }
 }
@@ -37,7 +38,8 @@ internal fun LifeAccountsSettingsCard(accounts: List<ManagedLifeAccount>, active
     Card(Modifier.fillMaxWidth()) {
         accounts.forEach { account ->
             ArrowPreference(title = account.name,
-                summary = account.connection.phone.ifBlank { account.services },
+                summary = account.connection.error?.takeIf { account.connection.status in setOf(LifeAccountStatus.Unverified, LifeAccountStatus.Expired) }
+                    ?: account.connection.phone.ifBlank { account.services },
                 onClick = { if (active) onClick(account) }, enabled = !account.busy && (!account.restoring || account.connection.hasAccount),
                 modifier = Modifier.testTag("${account.tag}-account-row"),
                 endActions = { Text(account.status, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) })

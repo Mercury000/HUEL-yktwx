@@ -5,7 +5,7 @@ import java.net.URLDecoder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 
-enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣") }
+enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣"), Ride("骑行") }
 
 @Serializable data class LifeAccount(val phone: String, val token: String) {
     val maskedPhone: String get() = if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else ""

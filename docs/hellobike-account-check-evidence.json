@@ -1,0 +1,1745 @@
+{
+  "provenance": {
+    "source_apk": "D:\\mercu\\Downloads\\哈啰_7.0.75.apk",
+    "source_apk_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+    "derived_apk": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+    "derived_apk_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307",
+    "entries_copied_without_modification": [
+      {
+        "entry": "AndroidManifest.xml",
+        "sha256": "2333e508d8e452cf944a0e124c1cdab53b22b778c9e78e296a96370ffb9adfbe",
+        "bytes": 414528
+      },
+      {
+        "entry": "resources.arsc",
+        "sha256": "0f06b23c1bde6c44aabd6b3dcb606724a47013dcc708c0a377ad79441cc32107",
+        "bytes": 4451416
+      },
+      {
+        "entry": "classes18.dex",
+        "sha256": "ae9418d3e03fea7da04ba5a364474dc989b2e7b020616f02cd75b6be0ee6db2b",
+        "bytes": 10517228
+      },
+      {
+        "entry": "classes7.dex",
+        "sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+        "bytes": 11056916
+      }
+    ],
+    "limitations": "Only selected original DEX entries plus original manifest and resources are included. Missing cross-DEX definitions may limit decompilation and references; this is a static analysis archive and is never installed or executed."
+  },
+  "rea_records": [
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "observed",
+      "environment": null,
+      "evidence_id": "ev_30b84f3c1e9d468bbbf6a38b029c6d46c9a145ff19212eafdab4732e6f29dc3a",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "class_name": "com.hellobike.ride.internal.bean.resp.BikeRideCheck",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fields": [
+          {
+            "name": "BIKE_NEW_RED_BIKE_FLOW",
+            "reported_type": "int"
+          },
+          {
+            "name": "CREATOR",
+            "reported_type": "android.os.Parcelable$Creator<com.hellobike.ride.internal.bean.resp.BikeRideCheck>"
+          },
+          {
+            "name": "Companion",
+            "reported_type": "com.hellobike.ride.internal.bean.resp.BikeRideCheck$Companion"
+          },
+          {
+            "name": "LOCK_TYPE_NORMAL",
+            "reported_type": "int"
+          },
+          {
+            "name": "LOCK_TYPE_P10",
+            "reported_type": "int"
+          },
+          {
+            "name": "RIDING_STATUS_NORMAL",
+            "reported_type": "int"
+          },
+          {
+            "name": "RIDING_STATUS_TEMP_LOCK",
+            "reported_type": "int"
+          },
+          {
+            "name": "STATUS_RIDE_ABNORMAL",
+            "reported_type": "int"
+          },
+          {
+            "name": "STATUS_RIDE_BILLING",
+            "reported_type": "int"
+          },
+          {
+            "name": "STATUS_RIDE_FINISH",
+            "reported_type": "int"
+          },
+          {
+            "name": "STATUS_RIDE_GOING",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_BIKE_CHANGE_OTHER",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_BIKE_DEFAULT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DEDUCTION_CHARGE_DEFAULT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DEDUCTION_CHARGE_FIRST",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DEDUCTION_CHARGE_SECOND",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_APP_CARD",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_DEFAULT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_LIMIT_RIDE_TIME_FREE",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_MID_STUDENT_FREE_DEPT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_MONTH_CARD",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_OLDER_FREE_DEPT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_RED_ENVELOPE",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_SHORT_TIME_FREE",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_SPECIAL_PACKAGE",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_SPECIAL_TIME",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_TIMES_CARD",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_TRANSFER",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_VIP",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_DISCOUNT_ZMXY_FREE_DEPT",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_ORDER_REDPACKET",
+            "reported_type": "int"
+          },
+          {
+            "name": "TYPE_ORDER_UNIVERSITY",
+            "reported_type": "int"
+          },
+          {
+            "name": "bikeNo",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "chargingRule",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "createTime",
+            "reported_type": "long"
+          },
+          {
+            "name": "criticalTime",
+            "reported_type": "int"
+          },
+          {
+            "name": "discountType",
+            "reported_type": "int"
+          },
+          {
+            "name": "freeRideTime",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "hasOverdue",
+            "reported_type": "boolean"
+          },
+          {
+            "name": "heapInfo",
+            "reported_type": "com.hellobike.ride.internal.bean.resp.BikeHeapInfo"
+          },
+          {
+            "name": "insuranceText",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "insuranceUrl",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "lockTimeInSecond",
+            "reported_type": "java.lang.Long"
+          },
+          {
+            "name": "memberProperty",
+            "reported_type": "com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo"
+          },
+          {
+            "name": "openFaultWin",
+            "reported_type": "java.lang.Boolean"
+          },
+          {
+            "name": "orderGuid",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "orderType",
+            "reported_type": "int"
+          },
+          {
+            "name": "payStatus",
+            "reported_type": "int"
+          },
+          {
+            "name": "processSwitch",
+            "reported_type": "boolean"
+          },
+          {
+            "name": "processType",
+            "reported_type": "int"
+          },
+          {
+            "name": "redPacketMode",
+            "reported_type": "java.lang.Integer"
+          },
+          {
+            "name": "redPacketRule",
+            "reported_type": "com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo"
+          },
+          {
+            "name": "returnBikeGrayTest",
+            "reported_type": "boolean"
+          },
+          {
+            "name": "returnBikeShowEntrance",
+            "reported_type": "boolean"
+          },
+          {
+            "name": "rideConst",
+            "reported_type": "java.math.BigDecimal"
+          },
+          {
+            "name": "rideTime",
+            "reported_type": "int"
+          },
+          {
+            "name": "ridingStatus",
+            "reported_type": "int"
+          },
+          {
+            "name": "scanReqId",
+            "reported_type": "java.lang.String"
+          },
+          {
+            "name": "startLat",
+            "reported_type": "double"
+          },
+          {
+            "name": "startLng",
+            "reported_type": "double"
+          },
+          {
+            "name": "status",
+            "reported_type": "int"
+          },
+          {
+            "name": "tempLockSwitch",
+            "reported_type": "boolean"
+          }
+        ],
+        "inner_classes": [
+          "com.hellobike.ride.internal.bean.resp.BikeRideCheck.Companion",
+          "com.hellobike.ride.internal.bean.resp.BikeRideCheck.Creator"
+        ],
+        "methods": [
+          {
+            "dex_descriptor": "()V",
+            "is_constructor": false,
+            "name": "<clinit>",
+            "overload_index": 0,
+            "reported_signature": "<clinit>(): void"
+          },
+          {
+            "dex_descriptor": "()V",
+            "is_constructor": true,
+            "name": "<init>",
+            "overload_index": 0,
+            "reported_signature": "<init>(): void"
+          },
+          {
+            "dex_descriptor": "(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;)V",
+            "is_constructor": true,
+            "name": "<init>",
+            "overload_index": 1,
+            "reported_signature": "<init>(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer): void"
+          },
+          {
+            "dex_descriptor": "(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V",
+            "is_constructor": true,
+            "name": "<init>",
+            "overload_index": 2,
+            "reported_signature": "<init>(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer, int, kotlin.jvm.internal.DefaultConstructorMarker): void"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component1",
+            "overload_index": 0,
+            "reported_signature": "component1(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component10",
+            "overload_index": 0,
+            "reported_signature": "component10(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component11",
+            "overload_index": 0,
+            "reported_signature": "component11(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component12",
+            "overload_index": 0,
+            "reported_signature": "component12(): int"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "component13",
+            "overload_index": 0,
+            "reported_signature": "component13(): boolean"
+          },
+          {
+            "dex_descriptor": "()D",
+            "is_constructor": false,
+            "name": "component14",
+            "overload_index": 0,
+            "reported_signature": "component14(): double"
+          },
+          {
+            "dex_descriptor": "()D",
+            "is_constructor": false,
+            "name": "component15",
+            "overload_index": 0,
+            "reported_signature": "component15(): double"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "component16",
+            "overload_index": 0,
+            "reported_signature": "component16(): boolean"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "component17",
+            "overload_index": 0,
+            "reported_signature": "component17(): boolean"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "component18",
+            "overload_index": 0,
+            "reported_signature": "component18(): boolean"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component19",
+            "overload_index": 0,
+            "reported_signature": "component19(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component2",
+            "overload_index": 0,
+            "reported_signature": "component2(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component20",
+            "overload_index": 0,
+            "reported_signature": "component20(): int"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;",
+            "is_constructor": false,
+            "name": "component21",
+            "overload_index": 0,
+            "reported_signature": "component21(): com.hellobike.ride.internal.bean.resp.BikeHeapInfo"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component22",
+            "overload_index": 0,
+            "reported_signature": "component22(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Long;",
+            "is_constructor": false,
+            "name": "component23",
+            "overload_index": 0,
+            "reported_signature": "component23(): java.lang.Long"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "component24",
+            "overload_index": 0,
+            "reported_signature": "component24(): boolean"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Boolean;",
+            "is_constructor": false,
+            "name": "component25",
+            "overload_index": 0,
+            "reported_signature": "component25(): java.lang.Boolean"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component26",
+            "overload_index": 0,
+            "reported_signature": "component26(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;",
+            "is_constructor": false,
+            "name": "component27",
+            "overload_index": 0,
+            "reported_signature": "component27(): com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component28",
+            "overload_index": 0,
+            "reported_signature": "component28(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;",
+            "is_constructor": false,
+            "name": "component29",
+            "overload_index": 0,
+            "reported_signature": "component29(): com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component3",
+            "overload_index": 0,
+            "reported_signature": "component3(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Integer;",
+            "is_constructor": false,
+            "name": "component30",
+            "overload_index": 0,
+            "reported_signature": "component30(): java.lang.Integer"
+          },
+          {
+            "dex_descriptor": "()Ljava/math/BigDecimal;",
+            "is_constructor": false,
+            "name": "component4",
+            "overload_index": 0,
+            "reported_signature": "component4(): java.math.BigDecimal"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component5",
+            "overload_index": 0,
+            "reported_signature": "component5(): int"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component6",
+            "overload_index": 0,
+            "reported_signature": "component6(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "component7",
+            "overload_index": 0,
+            "reported_signature": "component7(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "component8",
+            "overload_index": 0,
+            "reported_signature": "component8(): int"
+          },
+          {
+            "dex_descriptor": "()J",
+            "is_constructor": false,
+            "name": "component9",
+            "overload_index": 0,
+            "reported_signature": "component9(): long"
+          },
+          {
+            "dex_descriptor": "(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;)Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;",
+            "is_constructor": false,
+            "name": "copy",
+            "overload_index": 0,
+            "reported_signature": "copy(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer): com.hellobike.ride.internal.bean.resp.BikeRideCheck"
+          },
+          {
+            "dex_descriptor": "(Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;",
+            "is_constructor": false,
+            "name": "copy$default",
+            "overload_index": 0,
+            "reported_signature": "copy$default(com.hellobike.ride.internal.bean.resp.BikeRideCheck, int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer, int, java.lang.Object): com.hellobike.ride.internal.bean.resp.BikeRideCheck"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "describeContents",
+            "overload_index": 0,
+            "reported_signature": "describeContents(): int"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/Object;)Z",
+            "is_constructor": false,
+            "name": "equals",
+            "overload_index": 0,
+            "reported_signature": "equals(java.lang.Object): boolean"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getBikeNo",
+            "overload_index": 0,
+            "reported_signature": "getBikeNo(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getChargingRule",
+            "overload_index": 0,
+            "reported_signature": "getChargingRule(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()J",
+            "is_constructor": false,
+            "name": "getCreateTime",
+            "overload_index": 0,
+            "reported_signature": "getCreateTime(): long"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getCriticalTime",
+            "overload_index": 0,
+            "reported_signature": "getCriticalTime(): int"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getDiscountType",
+            "overload_index": 0,
+            "reported_signature": "getDiscountType(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getFreeRideTime",
+            "overload_index": 0,
+            "reported_signature": "getFreeRideTime(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "getHasOverdue",
+            "overload_index": 0,
+            "reported_signature": "getHasOverdue(): boolean"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;",
+            "is_constructor": false,
+            "name": "getHeapInfo",
+            "overload_index": 0,
+            "reported_signature": "getHeapInfo(): com.hellobike.ride.internal.bean.resp.BikeHeapInfo"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getInsuranceText",
+            "overload_index": 0,
+            "reported_signature": "getInsuranceText(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getInsuranceUrl",
+            "overload_index": 0,
+            "reported_signature": "getInsuranceUrl(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Long;",
+            "is_constructor": false,
+            "name": "getLockTimeInSecond",
+            "overload_index": 0,
+            "reported_signature": "getLockTimeInSecond(): java.lang.Long"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;",
+            "is_constructor": false,
+            "name": "getMemberProperty",
+            "overload_index": 0,
+            "reported_signature": "getMemberProperty(): com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Boolean;",
+            "is_constructor": false,
+            "name": "getOpenFaultWin",
+            "overload_index": 0,
+            "reported_signature": "getOpenFaultWin(): java.lang.Boolean"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getOrderGuid",
+            "overload_index": 0,
+            "reported_signature": "getOrderGuid(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getOrderType",
+            "overload_index": 0,
+            "reported_signature": "getOrderType(): int"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getPayStatus",
+            "overload_index": 0,
+            "reported_signature": "getPayStatus(): int"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "getProcessSwitch",
+            "overload_index": 0,
+            "reported_signature": "getProcessSwitch(): boolean"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getProcessType",
+            "overload_index": 0,
+            "reported_signature": "getProcessType(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/Integer;",
+            "is_constructor": false,
+            "name": "getRedPacketMode",
+            "overload_index": 0,
+            "reported_signature": "getRedPacketMode(): java.lang.Integer"
+          },
+          {
+            "dex_descriptor": "()Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;",
+            "is_constructor": false,
+            "name": "getRedPacketRule",
+            "overload_index": 0,
+            "reported_signature": "getRedPacketRule(): com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "getReturnBikeGrayTest",
+            "overload_index": 0,
+            "reported_signature": "getReturnBikeGrayTest(): boolean"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "getReturnBikeShowEntrance",
+            "overload_index": 0,
+            "reported_signature": "getReturnBikeShowEntrance(): boolean"
+          },
+          {
+            "dex_descriptor": "()Ljava/math/BigDecimal;",
+            "is_constructor": false,
+            "name": "getRideConst",
+            "overload_index": 0,
+            "reported_signature": "getRideConst(): java.math.BigDecimal"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getRideTime",
+            "overload_index": 0,
+            "reported_signature": "getRideTime(): int"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getRidingStatus",
+            "overload_index": 0,
+            "reported_signature": "getRidingStatus(): int"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "getScanReqId",
+            "overload_index": 0,
+            "reported_signature": "getScanReqId(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "()D",
+            "is_constructor": false,
+            "name": "getStartLat",
+            "overload_index": 0,
+            "reported_signature": "getStartLat(): double"
+          },
+          {
+            "dex_descriptor": "()D",
+            "is_constructor": false,
+            "name": "getStartLng",
+            "overload_index": 0,
+            "reported_signature": "getStartLng(): double"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "getStatus",
+            "overload_index": 0,
+            "reported_signature": "getStatus(): int"
+          },
+          {
+            "dex_descriptor": "()Z",
+            "is_constructor": false,
+            "name": "getTempLockSwitch",
+            "overload_index": 0,
+            "reported_signature": "getTempLockSwitch(): boolean"
+          },
+          {
+            "dex_descriptor": "()I",
+            "is_constructor": false,
+            "name": "hashCode",
+            "overload_index": 0,
+            "reported_signature": "hashCode(): int"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setBikeNo",
+            "overload_index": 0,
+            "reported_signature": "setBikeNo(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setChargingRule",
+            "overload_index": 0,
+            "reported_signature": "setChargingRule(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(J)V",
+            "is_constructor": false,
+            "name": "setCreateTime",
+            "overload_index": 0,
+            "reported_signature": "setCreateTime(long): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setCriticalTime",
+            "overload_index": 0,
+            "reported_signature": "setCriticalTime(int): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setDiscountType",
+            "overload_index": 0,
+            "reported_signature": "setDiscountType(int): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setFreeRideTime",
+            "overload_index": 0,
+            "reported_signature": "setFreeRideTime(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(Z)V",
+            "is_constructor": false,
+            "name": "setHasOverdue",
+            "overload_index": 0,
+            "reported_signature": "setHasOverdue(boolean): void"
+          },
+          {
+            "dex_descriptor": "(Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;)V",
+            "is_constructor": false,
+            "name": "setHeapInfo",
+            "overload_index": 0,
+            "reported_signature": "setHeapInfo(com.hellobike.ride.internal.bean.resp.BikeHeapInfo): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setInsuranceUrl",
+            "overload_index": 0,
+            "reported_signature": "setInsuranceUrl(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/Long;)V",
+            "is_constructor": false,
+            "name": "setLockTimeInSecond",
+            "overload_index": 0,
+            "reported_signature": "setLockTimeInSecond(java.lang.Long): void"
+          },
+          {
+            "dex_descriptor": "(Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;)V",
+            "is_constructor": false,
+            "name": "setMemberProperty",
+            "overload_index": 0,
+            "reported_signature": "setMemberProperty(com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/Boolean;)V",
+            "is_constructor": false,
+            "name": "setOpenFaultWin",
+            "overload_index": 0,
+            "reported_signature": "setOpenFaultWin(java.lang.Boolean): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setOrderGuid",
+            "overload_index": 0,
+            "reported_signature": "setOrderGuid(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setOrderType",
+            "overload_index": 0,
+            "reported_signature": "setOrderType(int): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setPayStatus",
+            "overload_index": 0,
+            "reported_signature": "setPayStatus(int): void"
+          },
+          {
+            "dex_descriptor": "(Z)V",
+            "is_constructor": false,
+            "name": "setProcessSwitch",
+            "overload_index": 0,
+            "reported_signature": "setProcessSwitch(boolean): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setProcessType",
+            "overload_index": 0,
+            "reported_signature": "setProcessType(int): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/Integer;)V",
+            "is_constructor": false,
+            "name": "setRedPacketMode",
+            "overload_index": 0,
+            "reported_signature": "setRedPacketMode(java.lang.Integer): void"
+          },
+          {
+            "dex_descriptor": "(Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;)V",
+            "is_constructor": false,
+            "name": "setRedPacketRule",
+            "overload_index": 0,
+            "reported_signature": "setRedPacketRule(com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo): void"
+          },
+          {
+            "dex_descriptor": "(Z)V",
+            "is_constructor": false,
+            "name": "setReturnBikeGrayTest",
+            "overload_index": 0,
+            "reported_signature": "setReturnBikeGrayTest(boolean): void"
+          },
+          {
+            "dex_descriptor": "(Z)V",
+            "is_constructor": false,
+            "name": "setReturnBikeShowEntrance",
+            "overload_index": 0,
+            "reported_signature": "setReturnBikeShowEntrance(boolean): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/math/BigDecimal;)V",
+            "is_constructor": false,
+            "name": "setRideConst",
+            "overload_index": 0,
+            "reported_signature": "setRideConst(java.math.BigDecimal): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setRideTime",
+            "overload_index": 0,
+            "reported_signature": "setRideTime(int): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setRidingStatus",
+            "overload_index": 0,
+            "reported_signature": "setRidingStatus(int): void"
+          },
+          {
+            "dex_descriptor": "(Ljava/lang/String;)V",
+            "is_constructor": false,
+            "name": "setScanReqId",
+            "overload_index": 0,
+            "reported_signature": "setScanReqId(java.lang.String): void"
+          },
+          {
+            "dex_descriptor": "(D)V",
+            "is_constructor": false,
+            "name": "setStartLat",
+            "overload_index": 0,
+            "reported_signature": "setStartLat(double): void"
+          },
+          {
+            "dex_descriptor": "(D)V",
+            "is_constructor": false,
+            "name": "setStartLng",
+            "overload_index": 0,
+            "reported_signature": "setStartLng(double): void"
+          },
+          {
+            "dex_descriptor": "(I)V",
+            "is_constructor": false,
+            "name": "setStatus",
+            "overload_index": 0,
+            "reported_signature": "setStatus(int): void"
+          },
+          {
+            "dex_descriptor": "(Z)V",
+            "is_constructor": false,
+            "name": "setTempLockSwitch",
+            "overload_index": 0,
+            "reported_signature": "setTempLockSwitch(boolean): void"
+          },
+          {
+            "dex_descriptor": "()Ljava/lang/String;",
+            "is_constructor": false,
+            "name": "toString",
+            "overload_index": 0,
+            "reported_signature": "toString(): java.lang.String"
+          },
+          {
+            "dex_descriptor": "(Landroid/os/Parcel;I)V",
+            "is_constructor": false,
+            "name": "writeToParcel",
+            "overload_index": 0,
+            "reported_signature": "writeToParcel(android.os.Parcel, int): void"
+          }
+        ]
+      },
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.ride.internal.bean.resp.BikeRideCheck",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"metadata_scope\":\"parsed_members\",\"max_heap_bytes\":4074766336,\"java_version\":\"21.0.10\",\"available_processors\":16,\"engine_reported_version\":\"0.7.1\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-b0bf5ecb0a9959da7664610be397225b\\target.apk",
+              "resources": "full",
+              "threads": 1
+            },
+            "operation": "load_apk",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"state\":\"LOADED\",\"apk_path\":\"C:\\\\Users\\\\mercu\\\\AppData\\\\Local\\\\Temp\\\\rea-android-b0bf5ecb0a9959da7664610be397225b\\\\target.apk\",\"class_count\":8275,\"raw_class_count\":8275,\"resource_count\":4,\"load_duration_ms\":8865,\"decompile_timeout_ms\":90000,\"threads\":1,\"code_cache_size\":64,\"resources\":\"full\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.ride.internal.bean.resp.BikeRideCheck"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"methods\":[{\"signature\":\"\\u003cclinit\\u003e(): void\",\"def_pos\":0,\"name\":\"\\u003cclinit\\u003e\",\"is_constructor\":false,\"dex_descriptor\":\"()V\"},{\"signature\":\"\\u003cinit\\u003e(): void\",\"def_pos\":0,\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"()V\"},{\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer): void\",\"def_pos\":0,\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;)V\"},{\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer, int, kotlin.jvm.internal.DefaultConstructorMarker): void\",\"def_pos\":0,\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V\"},{\"signature\":\"component1(): int\",\"def_pos\":0,\"name\":\"component1\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component10(): java.lang.String\",\"def_pos\":0,\"name\":\"component10\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component11(): java.lang.String\",\"def_pos\":0,\"name\":\"component11\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component12(): int\",\"def_pos\":0,\"name\":\"component12\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component13(): boolean\",\"def_pos\":0,\"name\":\"component13\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"component14(): double\",\"def_pos\":0,\"name\":\"component14\",\"is_constructor\":false,\"dex_descriptor\":\"()D\"},{\"signature\":\"component15(): double\",\"def_pos\":0,\"name\":\"component15\",\"is_constructor\":false,\"dex_descriptor\":\"()D\"},{\"signature\":\"component16(): boolean\",\"def_pos\":0,\"name\":\"component16\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"component17(): boolean\",\"def_pos\":0,\"name\":\"component17\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"component18(): boolean\",\"def_pos\":0,\"name\":\"component18\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"component19(): int\",\"def_pos\":0,\"name\":\"component19\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component2(): java.lang.String\",\"def_pos\":0,\"name\":\"component2\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component20(): int\",\"def_pos\":0,\"name\":\"component20\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component21(): com.hellobike.ride.internal.bean.resp.BikeHeapInfo\",\"def_pos\":0,\"name\":\"component21\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;\"},{\"signature\":\"component22(): int\",\"def_pos\":0,\"name\":\"component22\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component23(): java.lang.Long\",\"def_pos\":0,\"name\":\"component23\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Long;\"},{\"signature\":\"component24(): boolean\",\"def_pos\":0,\"name\":\"component24\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"component25(): java.lang.Boolean\",\"def_pos\":0,\"name\":\"component25\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Boolean;\"},{\"signature\":\"component26(): java.lang.String\",\"def_pos\":0,\"name\":\"component26\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component27(): com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo\",\"def_pos\":0,\"name\":\"component27\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;\"},{\"signature\":\"component28(): java.lang.String\",\"def_pos\":0,\"name\":\"component28\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component29(): com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo\",\"def_pos\":0,\"name\":\"component29\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;\"},{\"signature\":\"component3(): java.lang.String\",\"def_pos\":0,\"name\":\"component3\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component30(): java.lang.Integer\",\"def_pos\":0,\"name\":\"component30\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Integer;\"},{\"signature\":\"component4(): java.math.BigDecimal\",\"def_pos\":0,\"name\":\"component4\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/math/BigDecimal;\"},{\"signature\":\"component5(): int\",\"def_pos\":0,\"name\":\"component5\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component6(): int\",\"def_pos\":0,\"name\":\"component6\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component7(): java.lang.String\",\"def_pos\":0,\"name\":\"component7\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"component8(): int\",\"def_pos\":0,\"name\":\"component8\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"component9(): long\",\"def_pos\":0,\"name\":\"component9\",\"is_constructor\":false,\"dex_descriptor\":\"()J\"},{\"signature\":\"copy(int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer): com.hellobike.ride.internal.bean.resp.BikeRideCheck\",\"def_pos\":0,\"name\":\"copy\",\"is_constructor\":false,\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;)Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;\"},{\"signature\":\"copy$default(com.hellobike.ride.internal.bean.resp.BikeRideCheck, int, java.lang.String, java.lang.String, java.math.BigDecimal, int, int, java.lang.String, int, long, java.lang.String, java.lang.String, int, boolean, double, double, boolean, boolean, boolean, int, int, com.hellobike.ride.internal.bean.resp.BikeHeapInfo, int, java.lang.Long, boolean, java.lang.Boolean, java.lang.String, com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo, java.lang.String, com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo, java.lang.Integer, int, java.lang.Object): com.hellobike.ride.internal.bean.resp.BikeRideCheck\",\"def_pos\":0,\"name\":\"copy$default\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;ILjava/lang/String;Ljava/lang/String;Ljava/math/BigDecimal;IILjava/lang/String;IJLjava/lang/String;Ljava/lang/String;IZDDZZZIILcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;ILjava/lang/Long;ZLjava/lang/Boolean;Ljava/lang/String;Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;Ljava/lang/String;Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;\"},{\"signature\":\"describeContents(): int\",\"def_pos\":0,\"name\":\"describeContents\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"equals(java.lang.Object): boolean\",\"def_pos\":0,\"name\":\"equals\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/Object;)Z\"},{\"signature\":\"getBikeNo(): java.lang.String\",\"def_pos\":0,\"name\":\"getBikeNo\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getChargingRule(): java.lang.String\",\"def_pos\":0,\"name\":\"getChargingRule\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getCreateTime(): long\",\"def_pos\":0,\"name\":\"getCreateTime\",\"is_constructor\":false,\"dex_descriptor\":\"()J\"},{\"signature\":\"getCriticalTime(): int\",\"def_pos\":0,\"name\":\"getCriticalTime\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getDiscountType(): int\",\"def_pos\":0,\"name\":\"getDiscountType\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getFreeRideTime(): java.lang.String\",\"def_pos\":0,\"name\":\"getFreeRideTime\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getHasOverdue(): boolean\",\"def_pos\":0,\"name\":\"getHasOverdue\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"getHeapInfo(): com.hellobike.ride.internal.bean.resp.BikeHeapInfo\",\"def_pos\":0,\"name\":\"getHeapInfo\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;\"},{\"signature\":\"getInsuranceText(): java.lang.String\",\"def_pos\":0,\"name\":\"getInsuranceText\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getInsuranceUrl(): java.lang.String\",\"def_pos\":0,\"name\":\"getInsuranceUrl\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getLockTimeInSecond(): java.lang.Long\",\"def_pos\":0,\"name\":\"getLockTimeInSecond\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Long;\"},{\"signature\":\"getMemberProperty(): com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo\",\"def_pos\":0,\"name\":\"getMemberProperty\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;\"},{\"signature\":\"getOpenFaultWin(): java.lang.Boolean\",\"def_pos\":0,\"name\":\"getOpenFaultWin\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Boolean;\"},{\"signature\":\"getOrderGuid(): java.lang.String\",\"def_pos\":0,\"name\":\"getOrderGuid\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getOrderType(): int\",\"def_pos\":0,\"name\":\"getOrderType\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getPayStatus(): int\",\"def_pos\":0,\"name\":\"getPayStatus\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getProcessSwitch(): boolean\",\"def_pos\":0,\"name\":\"getProcessSwitch\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"getProcessType(): int\",\"def_pos\":0,\"name\":\"getProcessType\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getRedPacketMode(): java.lang.Integer\",\"def_pos\":0,\"name\":\"getRedPacketMode\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/Integer;\"},{\"signature\":\"getRedPacketRule(): com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo\",\"def_pos\":0,\"name\":\"getRedPacketRule\",\"is_constructor\":false,\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;\"},{\"signature\":\"getReturnBikeGrayTest(): boolean\",\"def_pos\":0,\"name\":\"getReturnBikeGrayTest\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"getReturnBikeShowEntrance(): boolean\",\"def_pos\":0,\"name\":\"getReturnBikeShowEntrance\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"getRideConst(): java.math.BigDecimal\",\"def_pos\":0,\"name\":\"getRideConst\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/math/BigDecimal;\"},{\"signature\":\"getRideTime(): int\",\"def_pos\":0,\"name\":\"getRideTime\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getRidingStatus(): int\",\"def_pos\":0,\"name\":\"getRidingStatus\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getScanReqId(): java.lang.String\",\"def_pos\":0,\"name\":\"getScanReqId\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getStartLat(): double\",\"def_pos\":0,\"name\":\"getStartLat\",\"is_constructor\":false,\"dex_descriptor\":\"()D\"},{\"signature\":\"getStartLng(): double\",\"def_pos\":0,\"name\":\"getStartLng\",\"is_constructor\":false,\"dex_descriptor\":\"()D\"},{\"signature\":\"getStatus(): int\",\"def_pos\":0,\"name\":\"getStatus\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"getTempLockSwitch(): boolean\",\"def_pos\":0,\"name\":\"getTempLockSwitch\",\"is_constructor\":false,\"dex_descriptor\":\"()Z\"},{\"signature\":\"hashCode(): int\",\"def_pos\":0,\"name\":\"hashCode\",\"is_constructor\":false,\"dex_descriptor\":\"()I\"},{\"signature\":\"setBikeNo(java.lang.String): void\",\"def_pos\":0,\"name\":\"setBikeNo\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setChargingRule(java.lang.String): void\",\"def_pos\":0,\"name\":\"setChargingRule\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setCreateTime(long): void\",\"def_pos\":0,\"name\":\"setCreateTime\",\"is_constructor\":false,\"dex_descriptor\":\"(J)V\"},{\"signature\":\"setCriticalTime(int): void\",\"def_pos\":0,\"name\":\"setCriticalTime\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setDiscountType(int): void\",\"def_pos\":0,\"name\":\"setDiscountType\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setFreeRideTime(java.lang.String): void\",\"def_pos\":0,\"name\":\"setFreeRideTime\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setHasOverdue(boolean): void\",\"def_pos\":0,\"name\":\"setHasOverdue\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\"},{\"signature\":\"setHeapInfo(com.hellobike.ride.internal.bean.resp.BikeHeapInfo): void\",\"def_pos\":0,\"name\":\"setHeapInfo\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/bean/resp/BikeHeapInfo;)V\"},{\"signature\":\"setInsuranceUrl(java.lang.String): void\",\"def_pos\":0,\"name\":\"setInsuranceUrl\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setLockTimeInSecond(java.lang.Long): void\",\"def_pos\":0,\"name\":\"setLockTimeInSecond\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/Long;)V\"},{\"signature\":\"setMemberProperty(com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo): void\",\"def_pos\":0,\"name\":\"setMemberProperty\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/business/ridevip/api/entity/RideVipInfo;)V\"},{\"signature\":\"setOpenFaultWin(java.lang.Boolean): void\",\"def_pos\":0,\"name\":\"setOpenFaultWin\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/Boolean;)V\"},{\"signature\":\"setOrderGuid(java.lang.String): void\",\"def_pos\":0,\"name\":\"setOrderGuid\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setOrderType(int): void\",\"def_pos\":0,\"name\":\"setOrderType\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setPayStatus(int): void\",\"def_pos\":0,\"name\":\"setPayStatus\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setProcessSwitch(boolean): void\",\"def_pos\":0,\"name\":\"setProcessSwitch\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\"},{\"signature\":\"setProcessType(int): void\",\"def_pos\":0,\"name\":\"setProcessType\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setRedPacketMode(java.lang.Integer): void\",\"def_pos\":0,\"name\":\"setRedPacketMode\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/Integer;)V\"},{\"signature\":\"setRedPacketRule(com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo): void\",\"def_pos\":0,\"name\":\"setRedPacketRule\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/bean/resp/BikeRedBikeInfo;)V\"},{\"signature\":\"setReturnBikeGrayTest(boolean): void\",\"def_pos\":0,\"name\":\"setReturnBikeGrayTest\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\"},{\"signature\":\"setReturnBikeShowEntrance(boolean): void\",\"def_pos\":0,\"name\":\"setReturnBikeShowEntrance\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\"},{\"signature\":\"setRideConst(java.math.BigDecimal): void\",\"def_pos\":0,\"name\":\"setRideConst\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/math/BigDecimal;)V\"},{\"signature\":\"setRideTime(int): void\",\"def_pos\":0,\"name\":\"setRideTime\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setRidingStatus(int): void\",\"def_pos\":0,\"name\":\"setRidingStatus\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setScanReqId(java.lang.String): void\",\"def_pos\":0,\"name\":\"setScanReqId\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setStartLat(double): void\",\"def_pos\":0,\"name\":\"setStartLat\",\"is_constructor\":false,\"dex_descriptor\":\"(D)V\"},{\"signature\":\"setStartLng(double): void\",\"def_pos\":0,\"name\":\"setStartLng\",\"is_constructor\":false,\"dex_descriptor\":\"(D)V\"},{\"signature\":\"setStatus(int): void\",\"def_pos\":0,\"name\":\"setStatus\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\"},{\"signature\":\"setTempLockSwitch(boolean): void\",\"def_pos\":0,\"name\":\"setTempLockSwitch\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\"},{\"signature\":\"toString(): java.lang.String\",\"def_pos\":0,\"name\":\"toString\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"writeToParcel(android.os.Parcel, int): void\",\"def_pos\":0,\"name\":\"writeToParcel\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/os/Parcel;I)V\"}],\"method_count\":100,\"inner_class_count\":2,\"inner_classes\":[\"com.hellobike.ride.internal.bean.resp.BikeRideCheck.Companion\",\"com.hellobike.ride.internal.bean.resp.BikeRideCheck.Creator\"],\"name\":\"BikeRideCheck\",\"full_name\":\"com.hellobike.ride.internal.bean.resp.BikeRideCheck\",\"field_count\":62,\"fields\":[{\"type\":\"int\",\"def_pos\":0,\"name\":\"BIKE_NEW_RED_BIKE_FLOW\"},{\"type\":\"android.os.Parcelable$Creator\\u003ccom.hellobike.ride.internal.bean.resp.BikeRideCheck\\u003e\",\"def_pos\":0,\"name\":\"CREATOR\"},{\"type\":\"com.hellobike.ride.internal.bean.resp.BikeRideCheck$Companion\",\"def_pos\":0,\"name\":\"Companion\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"LOCK_TYPE_NORMAL\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"LOCK_TYPE_P10\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"RIDING_STATUS_NORMAL\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"RIDING_STATUS_TEMP_LOCK\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"STATUS_RIDE_ABNORMAL\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"STATUS_RIDE_BILLING\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"STATUS_RIDE_FINISH\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"STATUS_RIDE_GOING\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_BIKE_CHANGE_OTHER\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_BIKE_DEFAULT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DEDUCTION_CHARGE_DEFAULT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DEDUCTION_CHARGE_FIRST\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DEDUCTION_CHARGE_SECOND\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_APP_CARD\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_DEFAULT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_LIMIT_RIDE_TIME_FREE\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_MID_STUDENT_FREE_DEPT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_MONTH_CARD\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_OLDER_FREE_DEPT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_RED_ENVELOPE\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_SHORT_TIME_FREE\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_SPECIAL_PACKAGE\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_SPECIAL_TIME\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_TIMES_CARD\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_TRANSFER\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_VIP\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_DISCOUNT_ZMXY_FREE_DEPT\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_ORDER_REDPACKET\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"TYPE_ORDER_UNIVERSITY\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"bikeNo\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"chargingRule\"},{\"type\":\"long\",\"def_pos\":0,\"name\":\"createTime\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"criticalTime\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"discountType\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"freeRideTime\"},{\"type\":\"boolean\",\"def_pos\":0,\"name\":\"hasOverdue\"},{\"type\":\"com.hellobike.ride.internal.bean.resp.BikeHeapInfo\",\"def_pos\":0,\"name\":\"heapInfo\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"insuranceText\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"insuranceUrl\"},{\"type\":\"java.lang.Long\",\"def_pos\":0,\"name\":\"lockTimeInSecond\"},{\"type\":\"com.hellobike.ride.internal.business.ridevip.api.entity.RideVipInfo\",\"def_pos\":0,\"name\":\"memberProperty\"},{\"type\":\"java.lang.Boolean\",\"def_pos\":0,\"name\":\"openFaultWin\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"orderGuid\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"orderType\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"payStatus\"},{\"type\":\"boolean\",\"def_pos\":0,\"name\":\"processSwitch\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"processType\"},{\"type\":\"java.lang.Integer\",\"def_pos\":0,\"name\":\"redPacketMode\"},{\"type\":\"com.hellobike.ride.internal.bean.resp.BikeRedBikeInfo\",\"def_pos\":0,\"name\":\"redPacketRule\"},{\"type\":\"boolean\",\"def_pos\":0,\"name\":\"returnBikeGrayTest\"},{\"type\":\"boolean\",\"def_pos\":0,\"name\":\"returnBikeShowEntrance\"},{\"type\":\"java.math.BigDecimal\",\"def_pos\":0,\"name\":\"rideConst\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"rideTime\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"ridingStatus\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"scanReqId\"},{\"type\":\"double\",\"def_pos\":0,\"name\":\"startLat\"},{\"type\":\"double\",\"def_pos\":0,\"name\":\"startLng\"},{\"type\":\"int\",\"def_pos\":0,\"name\":\"status\"},{\"type\":\"boolean\",\"def_pos\":0,\"name\":\"tempLockSwitch\"}]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-b0bf5ecb0a9959da7664610be397225b\\target.apk",
+          "class_count": 8275,
+          "resource_count": 4,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "name": "hellobike-payment-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "observed",
+      "environment": null,
+      "evidence_id": "ev_37b92a7fca2ee4a28afbb4fbffed6e7d7f56f86f2c6e7500a01e602e6858a207",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "class_name": "com.hellobike.ride.internal.bean.resp.BikeCheckRide",
+        "coverage": "complete",
+        "dex_descriptor": null,
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "method_name": null,
+        "overload_index": null,
+        "reference_unit": "using_node",
+        "references": [
+          {
+            "containing_class": "",
+            "dex_offset": null,
+            "direct_invokes": null,
+            "direct_invokes_exhaustive": null,
+            "kind": "class",
+            "name": "RidingOrderRepository",
+            "reported_full_name": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository",
+            "source_line": null,
+            "top_class": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository"
+          },
+          {
+            "containing_class": "",
+            "dex_offset": null,
+            "direct_invokes": null,
+            "direct_invokes_exhaustive": null,
+            "kind": "class",
+            "name": "CommonNetService",
+            "reported_full_name": "com.hellobike.ride.internal.service.CommonNetService",
+            "source_line": null,
+            "top_class": "com.hellobike.ride.internal.service.CommonNetService"
+          }
+        ],
+        "reported_signature": null,
+        "total": 2
+      },
+      "operation": "trace_android_references",
+      "parameters": {
+        "class_name": "com.hellobike.ride.internal.bean.resp.BikeCheckRide",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\",\"available_processors\":16}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.ride.internal.bean.resp.BikeCheckRide"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"inner_class_count\":0,\"method_count\":10,\"methods\":[{\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\"},{\"def_pos\":0,\"signature\":\"canEqual(java.lang.Object): boolean\",\"dex_descriptor\":\"(Ljava/lang/Object;)Z\",\"is_constructor\":false,\"name\":\"canEqual\"},{\"def_pos\":0,\"signature\":\"equals(java.lang.Object): boolean\",\"dex_descriptor\":\"(Ljava/lang/Object;)Z\",\"is_constructor\":false,\"name\":\"equals\"},{\"def_pos\":0,\"signature\":\"getInviteFriendSwitch(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"getInviteFriendSwitch\"},{\"def_pos\":0,\"signature\":\"getReserve(): com.hellobike.ride.internal.bean.resp.AppointmentCheckResult\",\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/AppointmentCheckResult;\",\"is_constructor\":false,\"name\":\"getReserve\"},{\"def_pos\":0,\"signature\":\"getRide(): com.hellobike.ride.internal.bean.resp.BikeOrderCheck\",\"dex_descriptor\":\"()Lcom/hellobike/ride/internal/bean/resp/BikeOrderCheck;\",\"is_constructor\":false,\"name\":\"getRide\"},{\"def_pos\":0,\"signature\":\"setInviteFriendSwitch(java.lang.String): void\",\"dex_descriptor\":\"(Ljava/lang/String;)V\",\"is_constructor\":false,\"name\":\"setInviteFriendSwitch\"},{\"def_pos\":0,\"signature\":\"setReserve(com.hellobike.ride.internal.bean.resp.AppointmentCheckResult): void\",\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/bean/resp/AppointmentCheckResult;)V\",\"is_constructor\":false,\"name\":\"setReserve\"},{\"def_pos\":0,\"signature\":\"setRide(com.hellobike.ride.internal.bean.resp.BikeOrderCheck): void\",\"dex_descriptor\":\"(Lcom/hellobike/ride/internal/bean/resp/BikeOrderCheck;)V\",\"is_constructor\":false,\"name\":\"setRide\"},{\"def_pos\":0,\"signature\":\"toString(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"toString\"}],\"fields\":[{\"type\":\"java.lang.String\",\"name\":\"INVITE_FRIEND_SWITCH_TRUE\",\"def_pos\":0},{\"type\":\"java.lang.String\",\"name\":\"inviteFriendSwitch\",\"def_pos\":0},{\"type\":\"com.hellobike.ride.internal.bean.resp.AppointmentCheckResult\",\"name\":\"reserve\",\"def_pos\":0},{\"type\":\"com.hellobike.ride.internal.bean.resp.BikeOrderCheck\",\"name\":\"ride\",\"def_pos\":0}],\"field_count\":4,\"full_name\":\"com.hellobike.ride.internal.bean.resp.BikeCheckRide\",\"name\":\"BikeCheckRide\",\"inner_classes\":[]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.ride.internal.bean.resp.BikeCheckRide",
+              "limit": 2147483647,
+              "resolve_line": false
+            },
+            "operation": "get_xrefs_to_class",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"resolve_line\":false,\"target\":\"com.hellobike.ride.internal.bean.resp.BikeCheckRide\",\"count\":2,\"items\":[{\"kind\":\"class\",\"name\":\"RidingOrderRepository\",\"full_name\":\"com.hellobike.bike.business.riding.order.repo.RidingOrderRepository\",\"containing_class\":\"\",\"top_class\":\"com.hellobike.bike.business.riding.order.repo.RidingOrderRepository\",\"def_pos\":0},{\"kind\":\"class\",\"name\":\"CommonNetService\",\"full_name\":\"com.hellobike.ride.internal.service.CommonNetService\",\"containing_class\":\"\",\"top_class\":\"com.hellobike.ride.internal.service.CommonNetService\",\"def_pos\":0}],\"total\":2}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-d73f18f7fe4c398e32377937eada26ba\\target.apk",
+          "class_count": 8275,
+          "resource_count": 4,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "name": "hellobike-payment-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_e3ec35e6f9eea6d0ff3e22b48f5cd39681d0432a85325726e6b9bf341f83fd4c",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+          "is_constructor": false,
+          "name": "a",
+          "overload_index": 0,
+          "reported_signature": "a(kotlin.coroutines.Continuation<? super com.hellobike.ride.internal.bean.resp.BikeRideCheck>): java.lang.Object"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "/* JADX INFO: compiled from: RidingOrderRepository.kt */\r\n/* JADX INFO: loaded from: classes18.dex */\r\n@Metadata(d1 = {\"\\u0000\\u0010\\n\\u0002\\u0018\\u0002\\n\\u0002\\u0010\\u0000\\n\\u0002\\u0018\\u0002\\n\\u0002\\b\\u0005\\u0018\\u00002\\u00020\\u0001B\\u0007¢\\u0006\\u0004\\b\\u0005\\u0010\\u0006J\\u0015\\u0010\\u0003\\u001a\\u0004\\u0018\\u00010\\u0002H\\u0086@ø\\u0001\\u0000¢\\u0006\\u0004\\b\\u0003\\u0010\\u0004\\u0082\\u0002\\u0004\\n\\u0002\\b\\u0019¨\\u0006\\u0007\"}, d2 = {\"Lcom/hellobike/bike/business/riding/order/repo/RidingOrderRepository;\", \"\", \"Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;\", \"a\", \"(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;\", \"<init>\", \"()V\", \"business-bikebundle_release\"}, k = 1, mv = {1, 7, 1})\r\npublic final class RidingOrderRepository {\r\n    /* JADX WARN: Code duplicated, block: B:7:0x0013  */\r\n    @Nullable\r\n    public final Object a(@NotNull Continuation<? super BikeRideCheck> continuation) {\r\n        RidingOrderRepository$checkOrder$1 ridingOrderRepository$checkOrder$1;\r\n        BikeOrderCheck bikeOrderCheck;\r\n        BikeOrderCheck bikeOrderCheck2;\r\n        BikeRideCheck bikeRideCheck;\r\n        String scanReqId;\r\n        if (continuation instanceof RidingOrderRepository$checkOrder$1) {\r\n            ridingOrderRepository$checkOrder$1 = (RidingOrderRepository$checkOrder$1) continuation;\r\n            int i = ridingOrderRepository$checkOrder$1.label;\r\n            if ((i & Integer.MIN_VALUE) != 0) {\r\n                ridingOrderRepository$checkOrder$1.label = i - Integer.MIN_VALUE;\r\n            } else {\r\n                ridingOrderRepository$checkOrder$1 = new RidingOrderRepository$checkOrder$1(this, continuation);\r\n            }\r\n        } else {\r\n            ridingOrderRepository$checkOrder$1 = new RidingOrderRepository$checkOrder$1(this, continuation);\r\n        }\r\n        Object objC = ridingOrderRepository$checkOrder$1.result;\r\n        Object coroutine_suspended = IntrinsicsKt.getCOROUTINE_SUSPENDED();\r\n        int i3 = ridingOrderRepository$checkOrder$1.label;\r\n        if (i3 == 0) {\r\n            ResultKt.throwOnFailure(objC);\r\n            Call<HiResponse<BikeCheckRide>> callA = ((CommonNetService) BikeNetClient.c(BikeNetClient.a, CommonNetService.class, null, 2, null)).a(new BikeRideCheckApiModel());\r\n            ridingOrderRepository$checkOrder$1.label = 1;\r\n            objC = KotlinExtensions.c(callA, ridingOrderRepository$checkOrder$1);\r\n            if (objC == coroutine_suspended) {\r\n                return coroutine_suspended;\r\n            }\r\n        } else {\r\n            if (i3 != 1) {\r\n                throw new IllegalStateException(\"call to 'resume' before 'invoke' with coroutine\");\r\n            }\r\n            ResultKt.throwOnFailure(objC);\r\n        }\r\n        HiResponse hiResponse = (HiResponse) objC;\r\n        if (!hiResponse.isSuccess()) {\r\n            return null;\r\n        }\r\n        BikeCheckRide bikeCheckRide = (BikeCheckRide) hiResponse.getData();\r\n        if (bikeCheckRide != null && (bikeOrderCheck2 = bikeCheckRide.ride) != null && (bikeRideCheck = bikeOrderCheck2.order) != null && (scanReqId = bikeRideCheck.getScanReqId()) != null) {\r\n            OHOUseBikeFlowUbt.INSTANCE.setupScanReqId(scanReqId);\r\n        }\r\n        BikeCheckRide bikeCheckRide2 = (BikeCheckRide) hiResponse.getData();\r\n        if (bikeCheckRide2 == null || (bikeOrderCheck = bikeCheckRide2.ride) == null) {\r\n            return null;\r\n        }\r\n        return bikeOrderCheck.order;\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository",
+        "method_name": "a",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\",\"available_processors\":16}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"inner_class_count\":0,\"method_count\":2,\"methods\":[{\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\"},{\"def_pos\":0,\"signature\":\"a(kotlin.coroutines.Continuation\\u003c? super com.hellobike.ride.internal.bean.resp.BikeRideCheck\\u003e): java.lang.Object\",\"dex_descriptor\":\"(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;\",\"is_constructor\":false,\"name\":\"a\"}],\"fields\":[],\"field_count\":0,\"full_name\":\"com.hellobike.bike.business.riding.order.repo.RidingOrderRepository\",\"name\":\"RidingOrderRepository\",\"inner_classes\":[]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.bike.business.riding.order.repo.RidingOrderRepository",
+              "method_name": "a",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"overload_index\":0,\"full_name\":\"com.hellobike.bike.business.riding.order.repo.RidingOrderRepository.a\",\"fell_back\":false,\"markers\":[],\"body\":\"/* JADX INFO: compiled from: RidingOrderRepository.kt */\\r\\n/* JADX INFO: loaded from: classes18.dex */\\r\\n@Metadata(d1 \\u003d {\\\"\\\\u0000\\\\u0010\\\\n\\\\u0002\\\\u0018\\\\u0002\\\\n\\\\u0002\\\\u0010\\\\u0000\\\\n\\\\u0002\\\\u0018\\\\u0002\\\\n\\\\u0002\\\\b\\\\u0005\\\\u0018\\\\u00002\\\\u00020\\\\u0001B\\\\u0007¢\\\\u0006\\\\u0004\\\\b\\\\u0005\\\\u0010\\\\u0006J\\\\u0015\\\\u0010\\\\u0003\\\\u001a\\\\u0004\\\\u0018\\\\u00010\\\\u0002H\\\\u0086@ø\\\\u0001\\\\u0000¢\\\\u0006\\\\u0004\\\\b\\\\u0003\\\\u0010\\\\u0004\\\\u0082\\\\u0002\\\\u0004\\\\n\\\\u0002\\\\b\\\\u0019¨\\\\u0006\\\\u0007\\\"}, d2 \\u003d {\\\"Lcom/hellobike/bike/business/riding/order/repo/RidingOrderRepository;\\\", \\\"\\\", \\\"Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck;\\\", \\\"a\\\", \\\"(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;\\\", \\\"\\u003cinit\\u003e\\\", \\\"()V\\\", \\\"business-bikebundle_release\\\"}, k \\u003d 1, mv \\u003d {1, 7, 1})\\r\\npublic final class RidingOrderRepository {\\r\\n    /* JADX WARN: Code duplicated, block: B:7:0x0013  */\\r\\n    @Nullable\\r\\n    public final Object a(@NotNull Continuation\\u003c? super BikeRideCheck\\u003e continuation) {\\r\\n        RidingOrderRepository$checkOrder$1 ridingOrderRepository$checkOrder$1;\\r\\n        BikeOrderCheck bikeOrderCheck;\\r\\n        BikeOrderCheck bikeOrderCheck2;\\r\\n        BikeRideCheck bikeRideCheck;\\r\\n        String scanReqId;\\r\\n        if (continuation instanceof RidingOrderRepository$checkOrder$1) {\\r\\n            ridingOrderRepository$checkOrder$1 \\u003d (RidingOrderRepository$checkOrder$1) continuation;\\r\\n            int i \\u003d ridingOrderRepository$checkOrder$1.label;\\r\\n            if ((i \\u0026 Integer.MIN_VALUE) !\\u003d 0) {\\r\\n                ridingOrderRepository$checkOrder$1.label \\u003d i - Integer.MIN_VALUE;\\r\\n            } else {\\r\\n                ridingOrderRepository$checkOrder$1 \\u003d new RidingOrderRepository$checkOrder$1(this, continuation);\\r\\n            }\\r\\n        } else {\\r\\n            ridingOrderRepository$checkOrder$1 \\u003d new RidingOrderRepository$checkOrder$1(this, continuation);\\r\\n        }\\r\\n        Object objC \\u003d ridingOrderRepository$checkOrder$1.result;\\r\\n        Object coroutine_suspended \\u003d IntrinsicsKt.getCOROUTINE_SUSPENDED();\\r\\n        int i3 \\u003d ridingOrderRepository$checkOrder$1.label;\\r\\n        if (i3 \\u003d\\u003d 0) {\\r\\n            ResultKt.throwOnFailure(objC);\\r\\n            Call\\u003cHiResponse\\u003cBikeCheckRide\\u003e\\u003e callA \\u003d ((CommonNetService) BikeNetClient.c(BikeNetClient.a, CommonNetService.class, null, 2, null)).a(new BikeRideCheckApiModel());\\r\\n            ridingOrderRepository$checkOrder$1.label \\u003d 1;\\r\\n            objC \\u003d KotlinExtensions.c(callA, ridingOrderRepository$checkOrder$1);\\r\\n            if (objC \\u003d\\u003d coroutine_suspended) {\\r\\n                return coroutine_suspended;\\r\\n            }\\r\\n        } else {\\r\\n            if (i3 !\\u003d 1) {\\r\\n                throw new IllegalStateException(\\\"call to \\u0027resume\\u0027 before \\u0027invoke\\u0027 with coroutine\\\");\\r\\n            }\\r\\n            ResultKt.throwOnFailure(objC);\\r\\n        }\\r\\n        HiResponse hiResponse \\u003d (HiResponse) objC;\\r\\n        if (!hiResponse.isSuccess()) {\\r\\n            return null;\\r\\n        }\\r\\n        BikeCheckRide bikeCheckRide \\u003d (BikeCheckRide) hiResponse.getData();\\r\\n        if (bikeCheckRide !\\u003d null \\u0026\\u0026 (bikeOrderCheck2 \\u003d bikeCheckRide.ride) !\\u003d null \\u0026\\u0026 (bikeRideCheck \\u003d bikeOrderCheck2.order) !\\u003d null \\u0026\\u0026 (scanReqId \\u003d bikeRideCheck.getScanReqId()) !\\u003d null) {\\r\\n            OHOUseBikeFlowUbt.INSTANCE.setupScanReqId(scanReqId);\\r\\n        }\\r\\n        BikeCheckRide bikeCheckRide2 \\u003d (BikeCheckRide) hiResponse.getData();\\r\\n        if (bikeCheckRide2 \\u003d\\u003d null || (bikeOrderCheck \\u003d bikeCheckRide2.ride) \\u003d\\u003d null) {\\r\\n            return null;\\r\\n        }\\r\\n        return bikeOrderCheck.order;\\r\\n    }\",\"mode\":\"java\",\"class_name\":\"com.hellobike.bike.business.riding.order.repo.RidingOrderRepository\",\"dex_descriptor\":\"(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;\",\"overload_count\":1,\"method_name\":\"a\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-d73f18f7fe4c398e32377937eada26ba\\target.apk",
+          "class_count": 8275,
+          "resource_count": 4,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "name": "hellobike-payment-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_ece3d5f913af31c76e8678e77ebdeffc2ad8d23e3c68b79efbf254928084a70c",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.hellobike.networking.http.core.BaseApiModel",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "()V",
+          "is_constructor": true,
+          "name": "<init>",
+          "overload_index": 0,
+          "reported_signature": "<init>(): void"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "    public BaseApiModel() {\r\n        ApiModelFieldAutoWire.b(this);\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.networking.http.core.BaseApiModel",
+        "method_name": "<init>",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"metadata_scope\":\"parsed_members\",\"max_heap_bytes\":4074766336,\"java_version\":\"21.0.10\",\"available_processors\":16,\"engine_reported_version\":\"0.7.1\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.BaseApiModel"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"methods\":[{\"signature\":\"\\u003cinit\\u003e(): void\",\"def_pos\":0,\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"()V\"},{\"signature\":\"getAction(): java.lang.String\",\"def_pos\":0,\"name\":\"getAction\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getClientId(): java.lang.String\",\"def_pos\":0,\"name\":\"getClientId\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getSystemCode(): java.lang.String\",\"def_pos\":0,\"name\":\"getSystemCode\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getTicket(): java.lang.String\",\"def_pos\":0,\"name\":\"getTicket\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getToken(): java.lang.String\",\"def_pos\":0,\"name\":\"getToken\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"getVersion(): java.lang.String\",\"def_pos\":0,\"name\":\"getVersion\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"get__sysTag(): java.lang.String\",\"def_pos\":0,\"name\":\"get__sysTag\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"signature\":\"setAction(java.lang.String): void\",\"def_pos\":0,\"name\":\"setAction\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setClientId(java.lang.String): void\",\"def_pos\":0,\"name\":\"setClientId\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setSystemCode(java.lang.String): void\",\"def_pos\":0,\"name\":\"setSystemCode\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setTicket(java.lang.String): void\",\"def_pos\":0,\"name\":\"setTicket\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setToken(java.lang.String): void\",\"def_pos\":0,\"name\":\"setToken\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"setVersion(java.lang.String): void\",\"def_pos\":0,\"name\":\"setVersion\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"},{\"signature\":\"set__sysTag(java.lang.String): void\",\"def_pos\":0,\"name\":\"set__sysTag\",\"is_constructor\":false,\"dex_descriptor\":\"(Ljava/lang/String;)V\"}],\"method_count\":15,\"inner_class_count\":0,\"inner_classes\":[],\"name\":\"BaseApiModel\",\"full_name\":\"com.hellobike.networking.http.core.BaseApiModel\",\"field_count\":7,\"fields\":[{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"__sysTag\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"action\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"clientId\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"systemCode\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"ticket\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"token\"},{\"type\":\"java.lang.String\",\"def_pos\":0,\"name\":\"version\"}]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.BaseApiModel",
+              "method_name": "<init>",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"fell_back\":false,\"full_name\":\"com.hellobike.networking.http.core.BaseApiModel.\\u003cinit\\u003e\",\"overload_index\":0,\"method_name\":\"\\u003cinit\\u003e\",\"overload_count\":1,\"dex_descriptor\":\"()V\",\"class_name\":\"com.hellobike.networking.http.core.BaseApiModel\",\"mode\":\"java\",\"body\":\"    public BaseApiModel() {\\r\\n        ApiModelFieldAutoWire.b(this);\\r\\n    }\",\"markers\":[]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-b0bf5ecb0a9959da7664610be397225b\\target.apk",
+          "class_count": 8275,
+          "resource_count": 4,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "name": "hellobike-payment-slice.apk"
+      }
+    }
+  ],
+  "original_dex_annotations": [
+    {
+      "class": "com.hellobike.bundlelibrary.business.ordercheck.model.api.bike.CheckRideRequest",
+      "dex": "classes18.dex",
+      "dex_sha256": "ae9418d3e03fea7da04ba5a364474dc989b2e7b020616f02cd75b6be0ee6db2b",
+      "class_annotations": [
+        {
+          "type": "Lorg/codehaus/jackson/annotate/JsonIgnoreProperties;",
+          "values": {
+            "ignoreUnknown": true
+          }
+        }
+      ],
+      "method_annotations": []
+    },
+    {
+      "class": "com.hellobike.moped.business.internal.commonbusiness.ordercheck.MopedCheckService",
+      "dex": "classes7.dex",
+      "dex_sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+      "class_annotations": [],
+      "method_annotations": [
+        {
+          "name": "a",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "b",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "com.hellobike.ride.internal.service.CommonNetService",
+      "dex": "classes7.dex",
+      "dex_sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+      "class_annotations": [],
+      "method_annotations": [
+        {
+          "name": "a",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "b",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "c",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "d",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "e",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        },
+        {
+          "name": "f",
+          "annotations": [
+            {
+              "type": "Lretrofit2/http/POST;",
+              "values": {}
+            },
+            {
+              "type": "Lretrofit2/support/MustLogin;",
+              "values": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "com.hellobike.ride.internal.bean.req.BikeRideCheckApiModel",
+      "dex": "classes7.dex",
+      "dex_sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+      "class_annotations": [
+        {
+          "type": "Lcom/hellobike/networking/http/core/ActionValue;",
+          "values": {
+            "value": "user.ride.bikeCheck"
+          }
+        },
+        {
+          "type": "Lorg/codehaus/jackson/annotate/JsonIgnoreProperties;",
+          "values": {
+            "ignoreUnknown": true
+          }
+        }
+      ],
+      "method_annotations": []
+    },
+    {
+      "class": "com.hellobike.moped.business.internal.commonbusiness.ordercheck.MopedCheckRideRequest",
+      "dex": "classes7.dex",
+      "dex_sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+      "class_annotations": [
+        {
+          "type": "Lcom/hellobike/networking/http/core/ActionValue;",
+          "values": {
+            "value": "user.ev.ride.common.checkUserRide"
+          }
+        },
+        {
+          "type": "Lorg/codehaus/jackson/annotate/JsonIgnoreProperties;",
+          "values": {
+            "ignoreUnknown": true
+          }
+        }
+      ],
+      "method_annotations": []
+    }
+  ],
+  "original_dex_static_fields": [
+    {
+      "class": "com.hellobike.ride.internal.bean.resp.BikeRideCheck",
+      "dex": "classes7.dex",
+      "dex_sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+      "class_annotations": [
+        {
+          "type": "Ldalvik/annotation/MemberClasses;",
+          "values": {
+            "value": [
+              "Lcom/hellobike/ride/internal/bean/resp/BikeRideCheck$Companion;"
+            ]
+          }
+        },
+        {
+          "type": "Lkotlinx/android/parcel/Parcelize;",
+          "values": {}
+        },
+        {
+          "type": "Lorg/codehaus/jackson/annotate/JsonIgnoreProperties;",
+          "values": {
+            "ignoreUnknown": true
+          }
+        }
+      ],
+      "method_annotations": [],
+      "constants": {
+        "BIKE_NEW_RED_BIKE_FLOW": 2,
+        "CREATOR": null,
+        "Companion": null,
+        "LOCK_TYPE_NORMAL": 0,
+        "LOCK_TYPE_P10": 1,
+        "RIDING_STATUS_NORMAL": 0,
+        "RIDING_STATUS_TEMP_LOCK": 1,
+        "STATUS_RIDE_ABNORMAL": 3,
+        "STATUS_RIDE_BILLING": 1,
+        "STATUS_RIDE_FINISH": 2,
+        "STATUS_RIDE_GOING": 0,
+        "TYPE_BIKE_CHANGE_OTHER": 1,
+        "TYPE_BIKE_DEFAULT": 0,
+        "TYPE_DEDUCTION_CHARGE_DEFAULT": 0,
+        "TYPE_DEDUCTION_CHARGE_FIRST": 1,
+        "TYPE_DEDUCTION_CHARGE_SECOND": 2,
+        "TYPE_DISCOUNT_APP_CARD": 12,
+        "TYPE_DISCOUNT_DEFAULT": 255,
+        "TYPE_DISCOUNT_LIMIT_RIDE_TIME_FREE": 2,
+        "TYPE_DISCOUNT_MID_STUDENT_FREE_DEPT": 8,
+        "TYPE_DISCOUNT_MONTH_CARD": 5,
+        "TYPE_DISCOUNT_OLDER_FREE_DEPT": 7,
+        "TYPE_DISCOUNT_RED_ENVELOPE": 4,
+        "TYPE_DISCOUNT_SHORT_TIME_FREE": 10,
+        "TYPE_DISCOUNT_SPECIAL_PACKAGE": 6,
+        "TYPE_DISCOUNT_SPECIAL_TIME": 1,
+        "TYPE_DISCOUNT_TIMES_CARD": 11,
+        "TYPE_DISCOUNT_TRANSFER": 0,
+        "TYPE_DISCOUNT_VIP": 3,
+        "TYPE_DISCOUNT_ZMXY_FREE_DEPT": 9,
+        "TYPE_ORDER_REDPACKET": 2,
+        "TYPE_ORDER_UNIVERSITY": 3
+      }
+    }
+  ],
+  "limitations": [
+    "Static analysis only; the APK was not executed and no actual service response was acquired.",
+    "Original DEX annotation and static-field decoding is local byte parsing, separate from REA records.",
+    "Ordinary non-success ride-discovery responses have no recoverable order in the inspected native consumer; this does not establish a server-side meaning for any one business code."
+  ]
+}

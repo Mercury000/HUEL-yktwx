@@ -19,6 +19,7 @@ import java.io.OutputStream
     val paymentMotionDetection: Boolean = false, val paymentBrightness: Boolean = true,
     val preventScreenshots: Boolean = true, val automaticUpdates: Boolean = true,
     val pangguiLoginNoticeDismissed: Boolean = false, val hui798LoginNoticeDismissed: Boolean = false,
+    val hellobikeLoginNoticeDismissed: Boolean = false,
     val navigationRailExpanded: Boolean? = null,
 )
 
