@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0-beta.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0-beta...v1.5.0-beta.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **life:** 修复哈啰与胖乖登录失效判断 ([bdf35ca](https://github.com/Mercury000/HUEL-yktwx/commit/bdf35ca56ae15c0f51e7cb9a426e2e5ead9b9827))
+
 ## [1.5.0-beta](https://github.com/Mercury000/HUEL-yktwx/compare/v1.4.1...v1.5.0-beta) (2026-11-13)
 
 
