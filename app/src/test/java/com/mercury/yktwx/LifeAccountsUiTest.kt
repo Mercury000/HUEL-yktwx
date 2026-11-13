@@ -22,6 +22,7 @@ import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.ui.pages.*
 import org.junit.Assert.*
 import org.junit.Rule
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -36,9 +37,11 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeAccountsUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
-    private fun settings() = themeSettingsFixture(com.mercury.yktwx.data.appPreferencesRepositoryFixture(
-        com.mercury.yktwx.data.MemoryPreferences(),
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)))
+    private val preferences = com.mercury.yktwx.data.MemoryPreferences()
+    private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+    private fun settings() = themeSettingsFixture(appPreferencesRepositoryFixture(
+        preferences, preferenceScope))
+    @After fun cleanupPreferences() { preferenceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
     private fun capture(name: String) {
         val file = File("../tools/life-accounts-ui/$name.png").absoluteFile
         file.parentFile?.mkdirs()
@@ -62,7 +65,7 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("payment-code-card").assertIsDisplayed()
-        assertTrue(themeSettingsFixture(compose.activity).pangguiLoginNoticeDismissed.value)
+        assertTrue(settings().pangguiLoginNoticeDismissed.value)
         capture("payment-light")
     }
 
@@ -148,7 +151,8 @@ class LifeAccountsUiTest {
             }
         }
         compose.onNodeWithText("登录失效").assertIsDisplayed()
-        compose.onNodeWithText("待验证").assertIsDisplayed()
+        compose.onNodeWithText("检查失败").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，暂时无法确认登录状态。").assertIsDisplayed()
         compose.onNodeWithTag("settings-page-list").performTouchInput {
             swipe(start = center.copy(y = height * .3f), end = center.copy(y = height * .9f), durationMillis = 600)
         }
@@ -161,7 +165,6 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("panggui-account-row").performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("退出胖乖生活账户").assertIsDisplayed()
-        compose.onNodeWithText("网络连接失败，暂时无法确认登录状态。").assertDoesNotExist()
         compose.onNodeWithText("退出后需重新登录。").assertIsDisplayed()
         capture("account-logout-dark-large")
     }

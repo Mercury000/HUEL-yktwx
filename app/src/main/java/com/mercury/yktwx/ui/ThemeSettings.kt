@@ -24,14 +24,18 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     val automaticUpdates = ui { it.automaticUpdates }
     val pangguiLoginNoticeDismissed = ui { it.pangguiLoginNoticeDismissed }
     val hui798LoginNoticeDismissed = ui { it.hui798LoginNoticeDismissed }
+    val hellobikeLoginNoticeDismissed = ui { it.hellobikeLoginNoticeDismissed }
     val updateChannel = derivedStateOf {
         (repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.updateChannel
             ?: com.mercury.yktwx.BuildConfig.UPDATE_CHANNEL
     }
     private fun change(transform: (UiPreferences) -> UiPreferences) = repository.enqueueUpdate { it.copy(ui = transform(it.ui)) }
     fun dismissLifeLoginNotice(provider: LifeProvider) = change {
-        if (provider == LifeProvider.Hui798) it.copy(hui798LoginNoticeDismissed = true)
-        else it.copy(pangguiLoginNoticeDismissed = true)
+        when (provider) {
+            LifeProvider.Panggui -> it.copy(pangguiLoginNoticeDismissed = true)
+            LifeProvider.Hui798 -> it.copy(hui798LoginNoticeDismissed = true)
+            LifeProvider.Hellobike -> it.copy(hellobikeLoginNoticeDismissed = true)
+        }
     }
     fun getNavigationRailExpanded(default: Boolean): Boolean =
         (repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.ui?.navigationRailExpanded ?: default

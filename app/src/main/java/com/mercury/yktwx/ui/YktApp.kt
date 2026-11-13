@@ -30,6 +30,7 @@ import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.Hui798ViewModel
+import com.mercury.yktwx.HellobikeViewModel
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.analytics.*
@@ -383,13 +384,19 @@ private fun MainContent(
     val lifeState by lifeModel.state.collectAsStateWithLifecycle()
     val hui798Model: Hui798ViewModel = viewModel()
     val hui798State by hui798Model.state.collectAsStateWithLifecycle()
+    val hellobikeModel: HellobikeViewModel = viewModel(key = "hellobike-${state.preview}")
+    LaunchedEffect(hellobikeModel, state.preview) { hellobikeModel.initialize(state.preview) }
+    val hellobikeState by hellobikeModel.state.collectAsStateWithLifecycle()
     val pangguiConnection by lifeModel.accountConnection.collectAsStateWithLifecycle()
     val hui798Connection by hui798Model.accountConnection.collectAsStateWithLifecycle()
+    val hellobikeConnection by hellobikeModel.accountConnection.collectAsStateWithLifecycle()
     val managedAccounts = listOf(
         ManagedLifeAccount(LifeProvider.Hui798, hui798Connection, hui798State.restoring,
             hui798State.accountBusy || hui798State.loggingIn, hui798State.accountError),
         ManagedLifeAccount(LifeProvider.Panggui, pangguiConnection, lifeState.restoring,
-            lifeState.accountBusy || lifeState.loggingIn, lifeState.accountError))
+            lifeState.accountBusy || lifeState.loggingIn, lifeState.accountError),
+        ManagedLifeAccount(LifeProvider.Hellobike, hellobikeConnection, hellobikeState.restoring,
+            hellobikeState.accountBusy || hellobikeState.loggingIn || hellobikeState.paymentInFlight, hellobikeState.accountError))
     var lifeProvider by remember { mutableStateOf(LifeProvider.Panggui) }
     LifePaymentEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
         lifeModel::claimLaundryPayment, lifeModel::laundryPaymentReturned)
@@ -413,13 +420,18 @@ private fun MainContent(
     val layers = backStack.filterIsInstance<Screen>().drop(1)
     val paymentPageSelected = isActive && pagerState.currentPage == 0 && layers.isEmpty()
     val paymentPageCovered = paymentPageSelected &&
-        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible || lifeState.loginVisible || hui798State.loginVisible)
+        (dormPaymentVisible || rechargeState.visible || cardState.visible || passwordState.visible ||
+            lifeState.loginVisible || hui798State.loginVisible || hellobikeState.loginVisible)
     val accountPageSelected = isActive && (layers.lastOrNull() == Screen.Account ||
         pagerState.currentPage == 3 && layers.isEmpty())
     val networkState = rememberNetworkState(state.preview)
     val network by networkState
     val foregroundState by rememberForegroundState()
     val foreground = foregroundState.active
+    LifePaymentEffect(hellobikeState.paymentLaunch, foreground && isActive && !state.preview && !state.needsLogin,
+        hellobikeModel::claimPayment, hellobikeModel::paymentReturned)
+    HellobikeLocationPermissionEffect(hellobikeState.locationPermissionRequest,
+        foreground && isActive && !state.preview && !state.needsLogin, hellobikeModel)
     val analytics = viewModel<AnalyticsViewModel>().analytics
     val analyticsActive by analytics.active.collectAsStateWithLifecycle()
     val analyticsPage = when {
@@ -447,13 +459,16 @@ private fun MainContent(
     LaunchedEffect(foreground, isActive, state.preview) {
         lifeModel.environment(foreground && isActive && !state.preview)
         hui798Model.environment(foreground && isActive && !state.preview)
+        hellobikeModel.environment(foreground && isActive && !state.preview)
     }
-    DisposableEffect(lifeModel, hui798Model) { onDispose { lifeModel.environment(false); hui798Model.environment(false) } }
+    DisposableEffect(lifeModel, hui798Model, hellobikeModel) { onDispose {
+        lifeModel.environment(false); hui798Model.environment(false); hellobikeModel.environment(false)
+    } }
     val lifeAccountPageVisible = layers.lastOrNull() == Screen.Settings
     LaunchedEffect(foreground, foregroundState.epoch, isActive, state.preview, network.online, lifeAccountPageVisible,
-        paymentPageSelected, lifeState.restoring, hui798State.restoring) {
+        paymentPageSelected, lifeState.restoring, hui798State.restoring, hellobikeState.restoring) {
         if (foreground && isActive && !state.preview && network.online == true && (lifeAccountPageVisible || paymentPageSelected)) {
-            lifeModel.checkAccount(); hui798Model.checkAccount()
+            lifeModel.checkAccount(); hui798Model.checkAccount(); hellobikeModel.checkAccount()
         }
     }
     val readPage = when {
@@ -533,7 +548,8 @@ private fun MainContent(
     }
     fun openLifeScanner() {
         if (!isActive ||
-            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || lifeState.paymentLaunch != null) return
+            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || hellobikeState.busy ||
+            lifeState.paymentLaunch != null || hellobikeState.paymentInFlight) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeProvider = LifeProvider.Panggui
         lifeModel.openUnifiedScan()
@@ -542,23 +558,37 @@ private fun MainContent(
         if (!isActive || layers.isNotEmpty()) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hui798Model.dismissLogin()
+        hellobikeModel.dismissLogin()
         lifeModel.connectAccount()
     }
     fun connectHui798Account() {
         if (!isActive || layers.isNotEmpty()) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeModel.dismissLogin()
+        hellobikeModel.dismissLogin()
         hui798Model.connectAccount()
+    }
+    fun connectHellobikeAccount() {
+        if (!isActive || layers.isNotEmpty() || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
+        lifeModel.dismissLogin(); hui798Model.dismissLogin()
+        hellobikeModel.connectAccount()
     }
     fun manageLifeLogin(provider: LifeProvider, change: Boolean) {
         if (!isActive || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        val opened = if (provider == LifeProvider.Hui798) { lifeModel.dismissLogin(); hui798Model.manageLogin(change) }
-            else { hui798Model.dismissLogin(); lifeModel.manageLogin(change) }
+        val opened = when (provider) {
+            LifeProvider.Hui798 -> { lifeModel.dismissLogin(); hellobikeModel.dismissLogin(); hui798Model.manageLogin(change) }
+            LifeProvider.Panggui -> { hui798Model.dismissLogin(); hellobikeModel.dismissLogin(); lifeModel.manageLogin(change) }
+            LifeProvider.Hellobike -> { lifeModel.dismissLogin(); hui798Model.dismissLogin(); hellobikeModel.manageLogin(change) }
+        }
         if (!opened) Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
     }
     fun checkLifeAccount(provider: LifeProvider) {
         if (!isActive || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        if (provider == LifeProvider.Hui798) hui798Model.checkAccount(force = true) else lifeModel.checkAccount(force = true)
+        when (provider) {
+            LifeProvider.Hui798 -> hui798Model.checkAccount(force = true)
+            LifeProvider.Panggui -> lifeModel.checkAccount(force = true)
+            LifeProvider.Hellobike -> hellobikeModel.checkAccount(force = true)
+        }
     }
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive) return
@@ -573,14 +603,21 @@ private fun MainContent(
         hui798Model.openSession(id)
         if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
     }
-    fun scannedLifeDevice(raw: String) {
+    fun openHellobikeSession(id: String) {
+        if (!isActive || hellobikeState.busy || hellobikeState.paymentInFlight || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
+        lifeProvider = LifeProvider.Hellobike
+        hellobikeModel.openSession(id)
+        if (layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
+    }
+    fun scannedLifeDevice(raw: String, manual: Boolean = false) {
         if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() != Screen.LifeDevice ||
-            hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy) return
-        val route = UnifiedDeviceCode.identify(raw)
-        if (route?.provider == LifeProvider.Hui798) {
-            lifeProvider = LifeProvider.Hui798
-            hui798Model.openDevice(route.code)
-        } else lifeModel.scanned(raw)
+            hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy || hellobikeState.busy || hellobikeState.paymentInFlight) return
+        val route = if (manual) UnifiedDeviceCode.identifyManual(raw) else UnifiedDeviceCode.identify(raw)
+        when (route?.provider) {
+            LifeProvider.Hui798 -> { lifeProvider = LifeProvider.Hui798; hui798Model.openDevice(route.code) }
+            LifeProvider.Hellobike -> { lifeProvider = LifeProvider.Hellobike; hellobikeModel.openDevice(route.code) }
+            else -> lifeModel.scanned(raw)
+        }
     }
     LaunchedEffect(lifeState.entryRequest) {
         if (lifeState.entryRequest > 0 && layers.lastOrNull() != Screen.LifeDevice) open(Screen.LifeDevice)
@@ -692,11 +729,14 @@ private fun MainContent(
                                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                                     isActive = paymentPageSelected && !paymentPageCovered,
                                                     onScan = ::openLifeScanner,
-                                                    scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && lifeState.paymentLaunch == null,
+                                                    scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&
+                                                        lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight,
                                                     lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
                                                     onLifeLogin = ::connectLifeAccount,
                                                     hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
                                                     onHui798Login = ::connectHui798Account,
+                                                    hellobikeLoginRequired = !hellobikeState.restoring && !hellobikeState.connected,
+                                                    onHellobikeLogin = ::connectHellobikeAccount,
                                                     additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
                                                         when (session.phase) {
                                                             WaterPhase.Ended -> "已完成"
@@ -705,7 +745,12 @@ private fun MainContent(
                                                             else -> "用水中"
                                                         }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
                                                         progress = if (session.active) null else 1f, dismissible = session.canDismissException,
-                                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) },
+                                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
+                                                        hellobikeState.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Ride,
+                                                            session.title, "哈啰单车", session.region?.label.orEmpty().ifBlank { "哈啰" }, "hellobike-${session.sessionId}",
+                                                            completed = session.dismissible, progress = if (session.dismissible) 1f else null,
+                                                            dismissible = session.dismissible,
+                                                            onOpen = { openHellobikeSession(session.sessionId) }, onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
                                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
                                                     onOpenLifeSession = ::openLifeSession,
                                                     onDismissLifeSession = lifeModel::dismissSession,
@@ -826,13 +871,17 @@ private fun MainContent(
                                 Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
                                     onOpenReferences = { open(Screen.References) }, onBack = ::close)
                                 Screen.BillDetail -> BillDetailPage(billState.detail, settings) { close() }
-                                Screen.LifeDevice -> if (lifeProvider == LifeProvider.Hui798) Hui798DevicePage(hui798State, settings, hui798Model,
-                                    active = isActive && layers.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
-                                else LifeDevicePage(lifeState, settings, lifeModel,
-                                    // Removed entries retain their content closure for the exit motion.
-                                    // Read the live stack so camera ownership ends when the pop commits.
-                                    active = isActive && backStack.lastOrNull() == Screen.LifeDevice, onBack = ::close, onScanned = ::scannedLifeDevice,
-                                    previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
+                                Screen.LifeDevice -> when (lifeProvider) {
+                                    LifeProvider.Hui798 -> Hui798DevicePage(hui798State, settings, hui798Model,
+                                        active = isActive && backStack.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
+                                    LifeProvider.Hellobike -> HellobikeDevicePage(hellobikeState, settings, hellobikeModel,
+                                        active = isActive && backStack.lastOrNull() == Screen.LifeDevice, onScan = ::openLifeScanner, onBack = ::close)
+                                    LifeProvider.Panggui -> LifeDevicePage(lifeState, settings, lifeModel,
+                                        // Read the live stack so camera ownership ends when the pop commits.
+                                        active = isActive && backStack.lastOrNull() == Screen.LifeDevice, onBack = ::close,
+                                        onScanned = { scannedLifeDevice(it) }, onManualScanned = { scannedLifeDevice(it, manual = true) },
+                                        previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
+                                }
                                 else -> SecondaryPage(
                                     screen = screen,
                                     settings = settings,
@@ -847,7 +896,11 @@ private fun MainContent(
                                     onLoginLifeAccount = { manageLifeLogin(it, false) },
                                     onRemoveLifeAccount = { provider ->
                                         if (isActive) {
-                                            if (provider == LifeProvider.Hui798) hui798Model.removeAccount() else lifeModel.removeAccount()
+                                            when (provider) {
+                                                LifeProvider.Hui798 -> hui798Model.removeAccount()
+                                                LifeProvider.Panggui -> lifeModel.removeAccount()
+                                                LifeProvider.Hellobike -> hellobikeModel.removeAccount()
+                                            }
                                         }
                                     },
                                 )
@@ -860,6 +913,7 @@ private fun MainContent(
     }
     LifeDeviceLoginSheet(lifeState, lifeModel, active = isActive && !state.needsLogin)
     Hui798LoginSheet(hui798State, hui798Model, active = isActive && !state.needsLogin)
+    HellobikeLoginSheet(hellobikeState, hellobikeModel, active = isActive && !state.needsLogin && !state.preview)
     AppUpdateDialog(updateState.copy(visible = isActive && !state.needsLogin && updateState.visible),
         onSkip = updateModel::skip, onDownload = onInstallUpdate, onDismiss = updateModel::ignore)
     AvatarEditor(avatarModel, avatarState, collectedMyState.avatar,

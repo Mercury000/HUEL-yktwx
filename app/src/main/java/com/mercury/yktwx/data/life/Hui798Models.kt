@@ -4,15 +4,22 @@ import java.net.URI
 import java.net.URLDecoder
 import kotlinx.serialization.Serializable
 
-enum class LifeProvider { Panggui, Hui798 }
+enum class LifeProvider(val displayName: String, val services: String, val tag: String) {
+    Panggui("胖乖生活", "接水 · 淋浴 · 洗衣", "panggui"),
+    Hui798("慧生活798", "生活用水", "hui798"),
+    Hellobike("哈啰", "单车骑行", "hellobike"),
+}
 data class DeviceScanRoute(val provider: LifeProvider, val feature: LifeFeature, val code: String)
 
-/** Keep the existing bare SN/NQT meaning; 798 must have an explicit platform identity. */
+/** Bare SN/NQT keep their existing meaning. Other providers require an explicit QR identity. */
 object UnifiedDeviceCode {
+    fun identifyManual(raw: String): DeviceScanRoute? = identify(raw)
+        ?: HellobikeDeviceCode.manual(raw)?.let { DeviceScanRoute(LifeProvider.Hellobike, LifeFeature.Ride, it) }
     fun identify(raw: String): DeviceScanRoute? {
         val panggui = LifeDeviceCode.identify(raw)?.let { DeviceScanRoute(LifeProvider.Panggui, it.first, it.second) }
         val hui = Hui798DeviceCode.parse(raw)?.let { DeviceScanRoute(LifeProvider.Hui798, LifeFeature.Water, it) }
-        return listOfNotNull(panggui, hui).singleOrNull()
+        val bike = HellobikeDeviceCode.parse(raw)?.let { DeviceScanRoute(LifeProvider.Hellobike, LifeFeature.Ride, it) }
+        return listOfNotNull(panggui, hui, bike).singleOrNull()
     }
 }
 

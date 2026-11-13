@@ -311,10 +311,12 @@ class LifeDeviceUiTest {
         val settings = settings()
         var active by mutableStateOf(false)
         val scanned = mutableListOf<String>()
+        val manuallyScanned = mutableListOf<String>()
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
                 Scaffold {
-                    LifeDevicePage(LifeDevicesUiState(restoring = false, scanning = true), settings, model, active, onBack = {}, onScanned = scanned::add)
+                    LifeDevicePage(LifeDevicesUiState(restoring = false, scanning = true), settings, model, active, onBack = {},
+                        onScanned = scanned::add, onManualScanned = manuallyScanned::add)
                 }
             } }
         }
@@ -346,12 +348,17 @@ class LifeDeviceUiTest {
         val hui798Qr = "https://i.hnkzy.com/q/1/123456789012345"
         field.performTextReplacement(hui798Qr)
         compose.onNodeWithText("识别设备").assertIsEnabled().performClick()
-        assertEquals(listOf(hui798Qr), scanned)
-        assertEquals(LifeProvider.Hui798, UnifiedDeviceCode.identify(scanned.single())?.provider)
+        assertTrue(scanned.isEmpty())
+        assertEquals(listOf(hui798Qr), manuallyScanned)
+        assertEquals(LifeProvider.Hui798, UnifiedDeviceCode.identifyManual(manuallyScanned.single())?.provider)
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.mainClock.advanceTimeBy(32)
         compose.onNodeWithText("输入设备编号").performClick()
         compose.onNodeWithTag("life-device-serial").assertIsDisplayed().assertTextContains(hui798Qr)
+        compose.onNodeWithTag("life-device-serial").performTextReplacement("1234567890")
+        compose.onNodeWithText("识别设备").assertIsEnabled().performClick()
+        assertEquals(LifeProvider.Hellobike, UnifiedDeviceCode.identifyManual(manuallyScanned.last())?.provider)
+        assertTrue(scanned.isEmpty())
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-device-serial").assertDoesNotExist()

@@ -28,6 +28,11 @@ internal object ServicesModule {
     @Provides fun laundry(api: LifeDeviceApi): LifeLaundryService = api
     @Provides fun lifeAccount(api: LifeDeviceApi): LifeAccountService = api
     @Provides @Singleton fun hui(@ServiceClient client: Call.Factory): Hui798Service = Hui798Api(BuildConfig.HUI798_API_GATEWAY, BuildConfig.HUI798_SIGN_SALT, client)
+    @Provides @Singleton fun hellobike(@ServiceClient client: Call.Factory, @ApplicationContext context: Context): HellobikeService {
+        val identity = HellobikeClientIdentity(context)
+        return HellobikeApi(client, userAgent = identity::userAgent, ssid = identity::ssid)
+    }
+    @Provides @Singleton fun hellobikeLocation(@ApplicationContext context: Context): HellobikeLocationService = HellobikeLocation(context)
     @Provides @Singleton fun updateHttp(@UpdateClient client: Call.Factory): UpdateHttp = UpdateHttp(client = client)
     @Provides @Singleton fun manifestVerifier(): UpdateManifestVerifier = UpdateManifestVerifier()
     @Provides @Singleton fun updateApi(http: UpdateHttp, verifier: UpdateManifestVerifier): AppUpdateApi = AppUpdateApi(http, verifier)

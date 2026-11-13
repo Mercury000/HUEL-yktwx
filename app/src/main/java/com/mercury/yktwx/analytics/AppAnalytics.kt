@@ -5,6 +5,7 @@ import kotlinx.serialization.SerializationException
 import com.mercury.yktwx.data.*
 import android.content.Context
 import com.mercury.yktwx.data.life.Hui798Exception
+import com.mercury.yktwx.data.life.HellobikeException
 import com.mercury.yktwx.data.life.LifeDeviceException
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -24,9 +25,11 @@ internal enum class AnalyticsFeature(val id: String, val event: String?) {
     PangguiShower("panggui_shower", "panggui_shower_start_requested"),
     PangguiLaundry("panggui_laundry", "panggui_laundry_pay_submitted"),
     Hui798Water("hui798_water", "hui798_water_start_requested"),
+    HellobikeRide("hellobike_ride", "hellobike_unlock_requested"),
+    HellobikePayment("hellobike_payment", "hellobike_pay_submitted"),
 }
 
-internal enum class AnalyticsPlatform(val id: String) { Campus("campus"), Panggui("panggui"), Hui798("hui798") }
+internal enum class AnalyticsPlatform(val id: String) { Campus("campus"), Panggui("panggui"), Hui798("hui798"), Hellobike("hellobike") }
 internal enum class AnalyticsPage { Payment, BillList, BillStats }
 internal enum class AnalyticsFilter(val id: String) {
     Search("search"), Type("type"), Amount("amount"), Date("date"), Combined("combined"), Clear("clear")
@@ -41,11 +44,12 @@ internal enum class AnalyticsError(val id: String) {
             val causes = generateSequence(error) { it.cause?.takeUnless { cause -> cause === it } }.take(8).toList()
             return when {
                 causes.any { it is SocketTimeoutException } -> Timeout
-                causes.any { it.isAuthenticationFailure() || it is LifeDeviceException && it.loginExpired || it is Hui798Exception && it.loginExpired } -> Auth
+                causes.any { it.isAuthenticationFailure() || it is LifeDeviceException && it.loginExpired || it is Hui798Exception && it.loginExpired || it is HellobikeException && it.loginExpired } -> Auth
+                causes.any { it is HellobikeException && it.storageFailure } -> Integrity
                 causes.any { it is SecurityException } -> Permission
                 causes.any { it is SerializationException } -> Parse
                 causes.any { it is NetworkFailure || it is IOException } -> Network
-                causes.any { it is YktException || it is LifeDeviceException && it.businessRejected || it is Hui798Exception && it.rejected } -> Business
+                causes.any { it is YktException || it is LifeDeviceException && it.businessRejected || it is Hui798Exception && it.rejected || it is HellobikeException && (it.rejected || it.officialRequired) } -> Business
                 else -> Unknown
             }
         }

@@ -188,7 +188,7 @@ class AppAnalyticsTest {
         assertEquals(2, backend.events.size)
     }
 
-    @Test fun catalogueContainsOnlyTheNineteenDesignedEventsAndBoundedProperties() {
+    @Test fun catalogueContainsOnlyTheTwentyOneDesignedEventsAndBoundedProperties() {
         analytics.resume(context, true)
         AnalyticsFeature.entries.filter { it.event != null }.forEach { analytics.submit(it) }
         analytics.pageVisible(AnalyticsPage.Payment)
@@ -201,7 +201,7 @@ class AppAnalyticsTest {
         analytics.updateAvailable(analytics.begin(), "1.2.0-beta.1", "beta")
         analytics.downloadResult(analytics.begin(), AnalyticsError.Integrity)
         analytics.installHandoff()
-        assertEquals(19, backend.events.map { it.first }.toSet().size)
+        assertEquals(21, backend.events.map { it.first }.toSet().size)
         val allowed = setOf("filter_kind", "platform", "outcome", "error_kind", "feature", "target_version", "update_channel")
         assertTrue(backend.events.all { (_, fields) -> fields.keys.all { it in allowed } })
     }

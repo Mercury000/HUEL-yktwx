@@ -39,5 +39,6 @@ internal object StorageModule {
     @Provides @Singleton fun avatars(@ApplicationContext context: Context): LocalAvatarStore = LocalAvatarStore(context)
     @Provides @Singleton fun lifeStore(@ApplicationContext context: Context): LifeDeviceStore = LifeDeviceAccountStore(context)
     @Provides @Singleton fun huiStore(@ApplicationContext context: Context): Hui798Store = Hui798AccountStore(context)
+    @Provides @Singleton fun hellobikeStore(@ApplicationContext context: Context): HellobikeStore = HellobikeAccountStore(context)
     @Provides fun sessionAuthority(repository: AccountRepository): SessionAuthority = repository
 }

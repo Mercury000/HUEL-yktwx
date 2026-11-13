@@ -2,7 +2,7 @@
 
 设计日期：2026-11-12。
 
-本方案从产品要回答的问题出发设计，采用官方 Android 统计 SDK、标准设备用户与会话统计，以及免费版原生报表。工程已按本方案接入 SDK 与业务埋点，仅使用正式应用的一套 AppKey 和 `official` 分发渠道；正式应用的 19 个事件及中文显示名称已创建并回查一致，实机发送与后台报表验证尚待完成，详见 [接入说明](umeng-analytics-integration.md)。
+本方案从产品要回答的问题出发设计，采用官方 Android 统计 SDK、标准设备用户与会话统计，以及免费版原生报表。工程已按本方案接入 SDK 与业务埋点，仅使用正式应用的一套 AppKey 和 `official` 分发渠道；正式应用的 21 个事件及中文显示名称已创建并回查一致，实机发送与后台报表验证尚待完成，详见 [接入说明](umeng-analytics-integration.md)。
 
 ## 1. 统计目标
 
@@ -13,7 +13,7 @@
 3. 用户实际遇到了哪些功能故障，手动登录是否经常失败？
 4. 新版有没有被发现，下载是否完成，是否交给系统安装？
 
-默认范围为 19 个自定义业务事件、10 个事件参数绑定。日常看昨日及最近 7/30 日趋势，不依赖实时数据、付费 SQL、留存、个人细查或高级漏斗。
+默认范围为 21 个自定义业务事件、10 个事件参数绑定。日常看昨日及最近 7/30 日趋势，不依赖实时数据、付费 SQL、留存、个人细查或高级漏斗。
 
 “用户”按友盟设备识别口径解释，不等于学校账号数或真实个人数。清除数据、重装、标识变化及多设备会影响设备去重结果。
 
@@ -68,7 +68,7 @@
 
 本组指标名称固定为“提交次数”和“提交设备用户数”。不记录完整支付生命周期，不将跳转支付、余额变化或待确认状态解释为支付完成，不计算严格支付成功率。
 
-### 3.3 生活服务：4 个事件
+### 3.3 生活服务：6 个事件
 
 | 事件 ID | 中文显示名称 | 触发条件 | 参数 |
 | --- | --- | --- | --- |
@@ -76,8 +76,10 @@
 | panggui_shower_start_requested | 提交胖乖淋浴 | 校验通过，实际开始一次淋浴启动请求 | 无 |
 | panggui_laundry_pay_submitted | 提交胖乖洗衣付款 | 校验通过，实际开始一次洗衣付款请求 | 无 |
 | hui798_water_start_requested | 提交798开水 | 校验通过，实际开始一次798用水启动请求 | 无 |
+| hellobike_unlock_requested | 哈啰开锁提交 | 校验通过并保存原订单，实际开始一次开锁创建请求 | 无 |
+| hellobike_pay_submitted | 哈啰付款提交 | 校验通过并保存付款尝试，实际开始一次骑行费用付款请求 | 无 |
 
-这一组衡量功能提交，不宣称设备已成功启动、洗衣已启动或已经完成服务。不记录停止、关水、每轮状态轮询、设备恢复观察和实际用水/洗衣时长。
+这一组衡量功能提交，不宣称设备已成功启动、洗衣已启动、车辆已开锁或已经完成服务。不记录短信、扫码、停止、关水、还车、每轮状态轮询、设备恢复观察和实际用水/洗衣/骑行时长。哈啰仅新增开锁与付款两个提交事件，登录结果和明确失败复用下一组事件。
 
 ### 3.4 登录与故障：2 个事件
 
@@ -113,14 +115,14 @@ operation_failed 包括：没有有效付款码且取码最终失败；充值缴
 | 参数 | 出现在哪个事件 | 允许值 |
 | --- | --- | --- |
 | filter_kind | bill_filter_applied | search / type / amount / date / combined / clear |
-| platform | login_result | campus / panggui / hui798 |
+| platform | login_result | campus / panggui / hui798 / hellobike |
 | outcome | login_result、update_download_result | success / failure |
 | error_kind | login_result、operation_failed、update_download_result | offline / network / timeout / auth / business / parse / integrity / permission / external / unknown；只在明确失败时传 |
-| feature | operation_failed | payment_code / recharge_self / recharge_other / fee_electricity / fee_water / fee_network / fee_utility / panggui_water / panggui_shower / panggui_laundry / hui798_water |
+| feature | operation_failed | payment_code / recharge_self / recharge_other / fee_electricity / fee_water / fee_network / fee_utility / panggui_water / panggui_shower / panggui_laundry / hui798_water / hellobike_ride / hellobike_payment |
 | target_version | update_available | 已验证清单中的版本号，不包含地址或自由输入 |
 | update_channel | update_available | stable / beta；表示本次发现更新所用通道 |
 
-按事件与参数的绑定计数：账单 1 个、登录 3 个、故障 2 个、发现新版 2 个、下载结果 2 个，共 10 个。事件名 19 个，低于已公布免费版 100 个事件、50 个参数、1000 个参数值的额度。
+按事件与参数的绑定计数：账单 1 个、登录 3 个、故障 2 个、发现新版 2 个、下载结果 2 个，共 10 个。事件名 21 个，低于已公布免费版 100 个事件、50 个参数、1000 个参数值的额度。
 
 target_version 的不同取值随发布增加，实施时需要观察参数值额度；其他字段均为固定小枚举。额度的后台统计粒度以实际控制台为准，不将此设计计数当作账号实际余额。
 
@@ -196,7 +198,7 @@ target_version 的不同取值随发布增加，实施时需要观察参数值�
 3. 失败分类不含自由输入或敏感业务内容；取消、待确认不当失败。
 4. 用户首次同意、撤销和旧异步回调的授权边界。
 5. 测试设备同日多次触发同一事件：次数增加，独立设备用户数按后台实际识别结果核对。
-6. 免费后台的中文显示名称、19 个事件注册与参数配额，以及次日数据可见。
+6. 免费后台的中文显示名称、21 个事件注册与参数配额，以及次日数据可见。
 
 按所改 SDK 接入与埋点路径选择检查，不默认进行全量测试。
 

@@ -91,7 +91,8 @@ internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, on
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis,
-    onScanned: (String) -> Unit = model::scanned, previewStartAllowed: Boolean = true) {
+    onScanned: (String) -> Unit = model::scanned, previewStartAllowed: Boolean = true,
+    onManualScanned: (String) -> Unit = onScanned) {
     var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
     var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
@@ -197,7 +198,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
         onValue = { serial = it },
-        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onScanned(serial) })
+        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(serial) })
     LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
     LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
@@ -293,7 +294,11 @@ internal fun LifeDeviceHero(name: String, location: String, feature: LifeFeature
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             LifeDeviceGlyph(feature)
             Spacer(Modifier.height(15.dp))
-            Text(name.ifBlank { if (feature == LifeFeature.Water) "饮水设备" else "洗衣设备" }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
+            Text(name.ifBlank { when (feature) {
+                LifeFeature.Water -> "饮水设备"
+                LifeFeature.Laundry -> "洗衣设备"
+                LifeFeature.Ride -> "哈啰单车"
+            } }, Modifier.testTag("life-device-name"), fontSize = 19.sp,
                 lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             if (location.isNotBlank()) Text(location, Modifier.padding(top = 6.dp).testTag("life-device-location"),
                 fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted, textAlign = TextAlign.Center)
@@ -305,7 +310,7 @@ internal fun LifeDeviceHero(name: String, location: String, feature: LifeFeature
 internal fun LifeDeviceGlyph(feature: LifeFeature) {
     Box(Modifier.size(70.dp).clip(RoundedCornerShape(24.dp)).background(DashboardPalette.iconPanel)
         .testTag("life-device-glyph"), contentAlignment = Alignment.Center) {
-        Icon(if (feature == LifeFeature.Water) AppIcons.Water else AppIcons.Laundry, null, Modifier.size(35.dp),
+        Icon(lifeFeatureIcon(feature), null, Modifier.size(35.dp),
             tint = DashboardPalette.iconAccent)
     }
 }
@@ -443,12 +448,12 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
         val value = rememberWhileShown(show, serial)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            val identify = { if (show && UnifiedDeviceCode.identify(serial) != null) onIdentify() }
+            Text("填写设备显示屏或贴纸上的编号；哈啰单车可输入10位车号。识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+            val identify = { if (show && UnifiedDeviceCode.identifyManual(serial) != null) onIdentify() }
             DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
                 modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
             InlineErrorGroup(state.error, 16.dp) {
-                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && UnifiedDeviceCode.identify(serial) != null,
+                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && UnifiedDeviceCode.identifyManual(serial) != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
                 }
@@ -464,7 +469,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣或慧生活798用水设备上的二维码，识别后自动进入对应界面。798 手动输入请填写完整二维码链接；已有服务进度可从付款页的状态卡查看。"
+            Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。哈啰可手动输入10位车号；798 请填写完整二维码链接。已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
                 else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)

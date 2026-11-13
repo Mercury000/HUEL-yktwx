@@ -56,7 +56,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     onDismissLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
     lifeNowMillis: () -> Long = System::currentTimeMillis,
     hui798LoginRequired: Boolean = false, onHui798Login: () -> Unit = {},
-    additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList()) {
+    additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList(),
+    hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {}) {
     // Restoration can precede the shell's first read; show code loading without card verification.
     val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
         (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
@@ -113,6 +114,9 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         InlineLifeLoginNotice(hui798LoginRequired && !settings.hui798LoginNoticeDismissed.value, onHui798Login, enabled = isActive,
             text = "登录慧生活798，扫码用水", tag = "hui798-login-notice",
             onDismiss = { dismissLoginNotice(LifeProvider.Hui798) })
+        InlineLifeLoginNotice(hellobikeLoginRequired && !settings.hellobikeLoginNoticeDismissed.value, onHellobikeLogin, enabled = isActive,
+            text = "登录哈啰，扫码骑行", tag = "hellobike-login-notice",
+            onDismiss = { dismissLoginNotice(LifeProvider.Hellobike) })
     }
     val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
         additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
