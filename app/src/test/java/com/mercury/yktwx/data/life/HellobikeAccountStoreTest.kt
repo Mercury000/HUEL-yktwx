@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HellobikeAccountStoreTest {
-    @Test fun pendingRecordsSurviveExpiryLogoutAndOwnerRoundTripsWithoutExposingOtherOwners() {
+    @Test fun pendingRecordsSurviveExpiryAndOwnerRoundTripsWithoutExposingOtherOwners() {
         val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession))
         store.clearAccount()
         assertNull(store.load().account); assertEquals(listOf(fixtureBikeSession), store.load().sessions)
@@ -12,10 +12,38 @@ class HellobikeAccountStoreTest {
         store.saveAccount(other)
         assertTrue(store.load().sessions.isEmpty()); assertNull(store.load().account?.takeIf { it.userGuid == fixtureBikeAccount.userGuid })
         store.saveSessions(other.userGuid, listOf(fixtureBikeSession.copy(rideGuid = "other-ride", sessionId = "other-session")))
-        store.removeAccount(); assertNull(store.load().account); assertTrue(store.load().sessions.isEmpty())
         store.saveAccount(fixtureBikeAccount)
         assertEquals(listOf(fixtureBikeSession), store.load().sessions)
         assertEquals("other-session", store.load().retainedSessions[other.userGuid]?.single()?.sessionId)
+    }
+    @Test fun logoutErasesAllProgressAndReloginCannotRestoreIt() {
+        for (expired in listOf(false, true)) {
+            val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession))
+            val other = fixtureBikeAccount.copy(phone = "13100000000", userGuid = "other-owner")
+            store.saveAccount(other)
+            val sessions = HellobikePhase.entries.flatMap { phase ->
+                HellobikeSettlement.entries.map { settlement ->
+                    fixtureBikeSession.copy(phase = phase, settlement = settlement, uncertain = true,
+                        rideGuid = "$phase-$settlement", sessionId = "$phase-$settlement")
+                }
+            }
+            store.saveSessions(other.userGuid, sessions)
+            assertTrue(store.load().retainedSessions.isNotEmpty())
+            if (expired) store.clearAccount()
+            store.removeAccount()
+            assertEquals(HellobikeStoredState(), HellobikeAccountStore(records).load())
+            for (owner in listOf(other, fixtureBikeAccount)) {
+                store.saveAccount(owner)
+                assertTrue(store.load().sessions.isEmpty())
+                assertTrue(store.load().retainedSessions.values.all { it.isEmpty() })
+            }
+        }
+    }
+    @Test fun logoutCanEraseUnreadableRecordsWithoutRecoveringThem() {
+        val records = BikeRecords(); val store = records.store()
+        records.values["state"] = "unreadable"
+        store.removeAccount()
+        assertEquals(HellobikeStoredState(), store.load())
     }
     @Test fun failedDiskCommitsPreserveBothCredentialsAndPendingOperations() {
         val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession))

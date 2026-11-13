@@ -50,6 +50,38 @@ class HellobikeViewModelTest {
     }
     private fun riding() = HellobikeRideReading.Ride(fixtureBikeSession.rideGuid, fixtureBikeSession.bikeNo, 0, userGuid = fixtureBikeAccount.userGuid)
 
+    @Test fun uncertainAndFailedRideRecordsCanBeDeletedWithoutSendingCommands() = bikeTest {
+        val api = FakeHellobikeService().apply { onRead = { throw IOException("status unavailable") } }
+        for (session in listOf(fixtureBikeSession, fixtureBikeSession.copy(phase = HellobikePhase.Closing, uncertain = true),
+            fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Unknown),
+            fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying))) {
+            val records = BikeRecords(); val store = records.store(sessions = listOf(session))
+            val model = model(api, store); runCurrent(); model.environment(true); runCurrent()
+            if (session == fixtureBikeSession) {
+                model.openSession(session.sessionId); runCurrent()
+                assertTrue(model.state.value.sessionErrors.containsKey(session.sessionId))
+            }
+            model.dismissSession(session.sessionId); runCurrent()
+            assertTrue(store.load().sessions.isEmpty()); assertTrue(model.state.value.sessions.isEmpty())
+            assertTrue(store.load().retainedSessions.isEmpty())
+            model.environment(false); model.environment(true); runCurrent()
+            assertTrue(model.state.value.sessions.isEmpty())
+            assertEquals(0, api.closeCalls); assertEquals(0, api.createCalls); assertEquals(0, api.payCalls)
+            model.environment(false)
+        }
+    }
+    @Test fun dismissingAnUncertainRidePreventsALateRecoveryFromAddingItBack() = bikeTest {
+        val gate = CompletableDeferred<Unit>()
+        val api = FakeHellobikeService().apply { onRead = { withContext(NonCancellable) { gate.await(); riding() } } }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(uncertain = true)))
+        val model = model(api, store); runCurrent(); model.environment(true); runCurrent()
+        model.dismissSession(fixtureBikeSession.sessionId); runCurrent()
+        assertTrue(store.load().sessions.isEmpty())
+        gate.complete(Unit); runCurrent()
+        assertTrue(model.state.value.sessions.isEmpty()); assertTrue(store.load().sessions.isEmpty())
+        assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls); assertEquals(0, api.payCalls)
+    }
+
     @Test fun recreatedLoginRestoresOnlyPhoneAndRejectsAnotherCampusOwner() = bikeTest {
         val handle = SavedStateHandle()
         val records = BikeRecords()
@@ -314,11 +346,14 @@ class HellobikeViewModelTest {
     @Test fun logoutWaitsForCancelledReadsAndCannotPublishAnotherOwnersLateRide() = bikeTest {
         val gate = CompletableDeferred<Unit>()
         val api = FakeHellobikeService().apply { onRead = { withContext(NonCancellable) { gate.await(); riding().copy(userGuid = "different-owner") } } }
-        val model = model(api, BikeRecords().store())
+        val store = BikeRecords().store()
+        val model = model(api, store)
         runCurrent(); model.environment(true); runCurrent(); assertTrue(model.removeAccount()); runCurrent()
         assertTrue(model.state.value.accountBusy)
         gate.complete(Unit); runCurrent()
         assertFalse(model.state.value.connected); assertFalse(model.state.value.accountBusy); assertTrue(model.state.value.sessions.isEmpty())
+        assertNull(model.state.value.region); assertFalse(model.state.value.recoveryRequired)
+        assertEquals(HellobikeStoredState(), store.load())
         assertEquals(0, api.createCalls)
     }
     @Test fun cancellationDuringLoginCommitKeepsMemoryAndDiskOnTheSameAccount() = bikeTest {

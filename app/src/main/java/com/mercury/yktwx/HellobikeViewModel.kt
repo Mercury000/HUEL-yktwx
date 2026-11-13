@@ -34,6 +34,7 @@ data class HellobikeUiState(
     val paymentLaunch: LifePaymentLaunch? = null, val paymentInFlight: Boolean = false,
     val paymentMethod: String? = null,
     val paymentRestorePending: Boolean = false,
+    val sessionErrors: Map<String, String> = emptyMap(),
 ) {
     val connected: Boolean get() = connectedPhone.isNotBlank()
     val session: HellobikeSession? get() = sessions.firstOrNull { it.sessionId == selectedSessionId }
@@ -51,6 +52,7 @@ class HellobikeViewModel internal constructor(
     @Inject internal constructor(api: HellobikeService, store: HellobikeStore, location: HellobikeLocationService, analytics: AppAnalytics, savedState: SavedStateHandle) :
         this(api, store, location, io = Dispatchers.IO, savedState = savedState, analytics = analytics)
     private var initialized = false
+    private val dismissedRideGuids = mutableSetOf<String>()
     private var preview = true
     private val mutable = MutableStateFlow(HellobikeUiState())
     val state = mutable.asStateFlow()
@@ -350,9 +352,9 @@ class HellobikeViewModel internal constructor(
             try {
                 tasks.joinAll()
                 persistence.withLock { withContext(io) { store.removeAccount() }; account = null; ownerGuid = "" }
-                pendingBike = null; challenge = null; errors.clear(); verifier.cleared()
-                mutable.value = HellobikeUiState(restoring = false, region = mutable.value.region,
-                    recoveryRequired = mutable.value.recoveryRequired)
+                pendingBike = null; pendingOverlay = null; restoreSlider = false
+                clientId = ""; challenge = null; errors.clear(); verifier.cleared()
+                mutable.value = HellobikeUiState(restoring = false)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(accountError = failure(e)) } }
             finally { mutable.update { it.copy(accountBusy = false) } }
@@ -566,6 +568,7 @@ class HellobikeViewModel internal constructor(
     private suspend fun saveSession(owner: HellobikeAccount, session: HellobikeSession, select: Boolean = false) = withContext(NonCancellable) {
         persistence.withLock {
             if (account != owner || mutable.value.accountBusy) throw CancellationException("Account changed")
+            if (session.rideGuid in dismissedRideGuids) return@withLock
             val list = mutable.value.sessions.let { old -> if (old.none { it.sessionId == session.sessionId }) old + session
                 else old.map { if (it.sessionId == session.sessionId) session else it } }
             withContext(io) { store.saveSessions(owner.userGuid, list) }
@@ -574,14 +577,24 @@ class HellobikeViewModel internal constructor(
     }
     fun dismissSession(id: String) {
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
-        if (!session.dismissible || mutable.value.busy || mutable.value.accountBusy) return
+        if (!session.canDismissRecord(errors[id]) || mutable.value.busy || mutable.value.accountBusy) return
+        dismissedRideGuids.add(session.rideGuid)
         viewModelScope.launch {
             try { persistence.withLock {
                 val list = mutable.value.sessions.filterNot { it.sessionId == id }
                 withContext(io) { store.saveSessions(ownerGuid, list) }
-                mutable.update { it.copy(sessions = list, selectedSessionId = it.selectedSessionId?.takeUnless { selected -> selected == id }) }
+                errors.remove(id)
+                if (launchedPayment?.sessionId == id) launchedPayment = null
+                mutable.update { it.copy(sessions = list, selectedSessionId = it.selectedSessionId?.takeUnless { selected -> selected == id },
+                    confirmedSessions = it.confirmedSessions - id, sessionErrors = errors.toMap(),
+                    error = if (it.selectedSessionId == id) null else it.error,
+                    closeProof = if (it.selectedSessionId == id) null else it.closeProof,
+                    paymentVisible = it.paymentVisible && it.selectedSessionId != id,
+                    paymentFeedback = it.paymentFeedback?.takeUnless { feedback -> feedback.sessionId == id },
+                    paymentLaunch = if (it.selectedSessionId == id) null else it.paymentLaunch,
+                    paymentInFlight = it.paymentInFlight && it.selectedSessionId != id) }
             } } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { report(e, id) }
+            catch (e: Exception) { dismissedRideGuids.remove(session.rideGuid); report(e, id) }
         }
     }
     fun acknowledgeRecovery() {
@@ -648,7 +661,7 @@ class HellobikeViewModel internal constructor(
             }
         }
         ensureOwner(owner); errors.remove(id)
-        if (mutable.value.selectedSessionId == id) mutable.update { it.copy(error = null) }
+        mutable.update { it.copy(sessionErrors = errors.toMap(), error = if (it.selectedSessionId == id) null else it.error) }
     }
     private suspend fun readOpening(owner: HellobikeAccount, before: HellobikeSession,
         supplied: HellobikeOrderReading? = null) {
@@ -663,6 +676,7 @@ class HellobikeViewModel internal constructor(
         val detail = if (reading.lockStuck) reading.detail ?: "锁环被卡，请拨动锁环后查询结果" else null
         if (detail == null) errors.remove(updated.sessionId) else errors[updated.sessionId] = detail
         mutable.update { it.copy(
+            sessionErrors = errors.toMap(),
             confirmedSessions = if (reading.unlocked) it.confirmedSessions + updated.sessionId else it.confirmedSessions - updated.sessionId,
             error = if (it.selectedSessionId == updated.sessionId) detail else it.error,
             officialRequired = if (it.selectedSessionId == updated.sessionId) false else it.officialRequired) }
@@ -688,6 +702,9 @@ class HellobikeViewModel internal constructor(
             else -> detail.settlement
         }
         saveSession(owner, session.copy(settlement = settlement, amount = detail.amount ?: session.amount))
+        if (detail.unsupported != null) errors[id] = detail.unsupported
+        else if (detail.settlement != HellobikeSettlement.Unknown) errors.remove(id)
+        mutable.update { it.copy(sessionErrors = errors.toMap(), error = if (it.selectedSessionId == id) errors[id] else it.error) }
         if (detail.settlement == HellobikeSettlement.Paid) feedback(id, RechargePhase.Paid)
         if (detail.settlement == HellobikeSettlement.Closed) feedback(id, RechargePhase.Failed, detail = "订单已关闭，请在哈啰查看费用记录")
         if (mutable.value.selectedSessionId == id) mutable.update { it.copy(payDetail = detail,
@@ -712,7 +729,7 @@ class HellobikeViewModel internal constructor(
             recoveryTask = viewModelScope.launch {
                 try {
                     val reading = api.checkRide(owner); ensureOwner(owner)
-                    if (reading is HellobikeRideReading.Ride && reading.status in setOf(-1, 0)) discover(owner, reading)
+                    if (reading is HellobikeRideReading.Ride && reading.status in setOf(-1, 0) && reading.rideGuid !in dismissedRideGuids) discover(owner, reading)
                     for (session in mutable.value.sessions.filterNot { it.dismissible }) {
                         try { readSession(owner, session.sessionId) }
                         catch (e: CancellationException) { throw e }
@@ -867,9 +884,14 @@ class HellobikeViewModel internal constructor(
         if (mutable.value.selectedSessionId == id) mutable.update { it.copy(paymentFeedback = LifePaymentFeedback(id, phase, loading, detail)) }
     }
     private fun report(e: Exception, id: String? = mutable.value.selectedSessionId) {
-        val message = failure(e); if (id != null) errors[id] = message
-        if (id == null || mutable.value.selectedSessionId == id) mutable.update { it.copy(error = message,
-            officialRequired = e is HellobikeException && e.officialRequired) }
+        val message = failure(e)
+        if (id != null) {
+            if (mutable.value.sessions.none { it.sessionId == id }) return
+            errors[id] = message
+        } else mutable.value.sessions.filterNot { it.dismissible }.forEach { errors[it.sessionId] = message }
+        mutable.update { it.copy(sessionErrors = errors.toMap(),
+            error = if (id == null || it.selectedSessionId == id) message else it.error,
+            officialRequired = if (id == null || it.selectedSessionId == id) e is HellobikeException && e.officialRequired else it.officialRequired) }
     }
     private suspend fun expired(e: Exception, owner: HellobikeAccount) {
         if (e !is HellobikeException || !e.loginExpired || account != owner) return

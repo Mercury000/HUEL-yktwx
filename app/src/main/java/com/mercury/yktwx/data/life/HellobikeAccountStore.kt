@@ -54,9 +54,8 @@ class HellobikeAccountStore internal constructor(private val records: LifeDevice
     }
     @Synchronized override fun clearAccount() { write(load().copy(account = null)) }
     @Synchronized override fun removeAccount() {
-        val old = load()
-        val retained = if (old.ownerGuid.isNotBlank()) old.retainedSessions + (old.ownerGuid to old.sessions.filterNot { it.dismissible }) else old.retainedSessions
-        write(HellobikeStoredState(clientId = old.clientId, region = old.region, retainedSessions = retained, recoveryRequired = old.recoveryRequired))
+        // Explicit logout clears every owner and does not require decoding old records.
+        write(HellobikeStoredState())
     }
     @Synchronized override fun recoverUnreadable(clientId: String) {
         write(HellobikeStoredState(clientId = clientId, recoveryRequired = true))
