@@ -45,6 +45,7 @@ interface FeeService {
     suspend fun feeQuery(token: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean): FeeQuery
     suspend fun setFeeRoom(token: String, project: FeeProject, room: FeeRoomBinding?)
     suspend fun createFee(token: String, username: String, config: FeeConfiguration, query: FeeQuery, amountCents: Long): FeeOrder
+    suspend fun restoreFeeOrder(token: String, order: PendingRecharge): FeeOrder = throw YktException("请在官网核实原缴费订单")
     suspend fun prepareFeeAccount(token: String, order: PendingRecharge, method: FeeMethod): FeeAccountPreparation
     suspend fun payFeeAccount(token: String, order: PendingRecharge, method: FeeMethod, preparation: FeeAccountPreparation, type: String, password: String)
     suspend fun launchFeeWechat(token: String, order: PendingRecharge, method: FeeMethod): WechatRechargeLaunch
@@ -56,4 +57,17 @@ internal fun JsonObject.jsonTargetEquals(other: JsonObject): Boolean = keys == o
     if (left is JsonObject && right is JsonObject) left.jsonTargetEquals(right)
     else if (left is Number && right is Number) java.math.BigDecimal(left.toString()).compareTo(java.math.BigDecimal(right.toString())) == 0
     else left == right
+}
+
+/** Canonical target identity ignores object key order and insignificant decimal zeroes. */
+internal fun feeTargetFingerprint(payload: String): String {
+    fun canonical(value: JsonElement): String = when (value) {
+        is JsonObject -> value.keys.sorted().joinToString(",", "{", "}") { JsonPrimitive(it).toString() + ":" + canonical(value.getValue(it)) }
+        is JsonArray -> value.toString()
+        is JsonPrimitive -> if (!value.isString && value.content.toBigDecimalOrNull() != null)
+            value.content.toBigDecimal().stripTrailingZeros().toPlainString() else value.toString()
+    }
+    val normalized = canonical(Json.parseToJsonElement(payload).jsonObject)
+    return java.security.MessageDigest.getInstance("SHA-256").digest(normalized.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
 }

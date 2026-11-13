@@ -2,6 +2,7 @@ package com.mercury.yktwx
 
 import android.app.Application
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.life.*
 import kotlinx.coroutines.*
@@ -18,6 +19,88 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class LaundryViewModelTest {
+    @Test fun dismissedOriginalOrderPaymentCannotReopenAfterLateChannelsRead() = runTest(dispatcher) {
+        val order = LaundrySession(device, "clean", "0.00", "13", orderNo = "wash-1", orderId = "wash-id",
+            phase = LaundryPhase.Paying, sessionId = "original-order")
+        val api = Api().apply { channelsGate = CompletableDeferred() }
+        val model = fresh(api, Store(order), SavedStateHandle())
+        runCurrent(); model.openSession(LifeFeature.Laundry, order.sessionId)
+        model.showLaundryPayment(); runCurrent()
+        assertTrue(model.state.value.paymentVisible)
+        model.dismissLaundryPayment()
+        api.channelsGate!!.complete(Unit); runCurrent()
+        assertFalse(model.state.value.paymentVisible)
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays); assertTrue(api.preparedPayments.isEmpty())
+    }
+    @Test fun recreatedCancellationConfirmationKeepsOriginalIdAndDoesNotCancelOrder() = runTest(dispatcher) {
+        val order = LaundrySession(device, "clean", "0.00", "13", orderNo = "wash-1", orderId = "wash-id",
+            phase = LaundryPhase.Paying, sessionId = "original-order")
+        val handle = SavedStateHandle()
+        val original = fresh(Api(), Store(order), handle)
+        runCurrent(); original.bindPresentation("campus", false, 1)
+        original.openSession(LifeFeature.Laundry, order.sessionId); original.requestLaundryCancellation()
+        val restored = handle.recreated(); models.clear()
+        val api = Api(); val next = fresh(api, Store(order), restored)
+        runCurrent(); next.bindPresentation("campus", false, 20)
+        assertEquals(order.sessionId, next.state.value.cancelOrderConfirmation)
+        assertTrue(api.cancelledOrderIds.isEmpty()); assertEquals(0, api.creates); assertEquals(0, api.balancePays)
+        next.bindPresentation("other-campus", false, 21)
+        assertNull(next.state.value.cancelOrderConfirmation)
+    }
+    private fun fresh(api: Api, store: Store, handle: SavedStateHandle) = LifeDevicesViewModel(api, store, dispatcher,
+        { 100_000L }, com.mercury.yktwx.analytics.AnalyticsFixtures.from(
+            ApplicationProvider.getApplicationContext<Application>()), handle).also { models.put("fresh-${models.keys().size}", it) }
+
+    @Test fun recreatedPaymentDraftRequeriesOriginalProgramWithoutCreatingOrPaying() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        val original = fresh(Api(), Store(), handle)
+        prepare(original); original.bindPresentation("campus", false, 1); original.selectPaymentMethod("52")
+        val restored = handle.recreated(); models.clear()
+        val api = Api(); val next = fresh(api, Store(), restored)
+        runCurrent(); next.bindPresentation("campus", false, 20)
+        assertTrue(next.state.value.paymentRestorePending)
+        next.restoreDevice(LifeFeature.Laundry, device.serial, "clean"); runCurrent()
+        next.resumePresentation(true, false)
+        assertTrue(api.quotedSkus.isEmpty())
+        next.resumePresentation(true, true); runCurrent()
+        assertTrue(next.state.value.paymentVisible)
+        assertEquals(listOf("clean"), api.quotedSkus)
+        assertEquals("52", next.state.value.paymentMethod)
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays); assertTrue(api.preparedPayments.isEmpty())
+        assertNull(next.state.value.paymentLaunch)
+    }
+
+    @Test fun recreatedOrderPaymentOnlyQueriesOriginalOrderAndDismissCancelsPendingRestore() = runTest(dispatcher) {
+        val order = LaundrySession(device, "clean", "0.00", "13", orderNo = "wash-1", orderId = "wash-id",
+            phase = LaundryPhase.Paying, sessionId = "original-order")
+        val handle = SavedStateHandle()
+        val original = fresh(Api(), Store(order), handle)
+        runCurrent(); original.openSession(LifeFeature.Laundry, order.sessionId); original.showLaundryPayment(); runCurrent()
+        original.bindPresentation("campus", false, 1); original.selectPaymentMethod("13")
+        val restored = handle.recreated(); val cancelledHandle = handle.recreated(); val reloginHandle = handle.recreated(); models.clear()
+        val api = Api(); val next = fresh(api, Store(order), restored)
+        runCurrent(); next.bindPresentation("campus", false, 20)
+        next.openSession(LifeFeature.Laundry, order.sessionId); runCurrent()
+        next.resumePresentation(true, true); runCurrent()
+        assertTrue(next.state.value.paymentVisible)
+        assertTrue(api.readOrders.isNotEmpty()); assertTrue(api.readOrders.all { it == "wash-1" })
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays); assertTrue(api.preparedPayments.isEmpty())
+        assertNull(next.state.value.paymentLaunch)
+        next.bindPresentation("campus", false, 21)
+        assertFalse(next.state.value.paymentRestorePending); assertFalse(next.state.value.paymentVisible)
+        val cancelled = fresh(Api(), Store(order), cancelledHandle)
+        runCurrent(); cancelled.bindPresentation("campus", false, 30)
+        assertTrue(cancelled.state.value.paymentRestorePending)
+        cancelled.dismissLaundryPayment()
+        cancelled.openSession(LifeFeature.Laundry, order.sessionId); cancelled.resumePresentation(true, true); runCurrent()
+        assertFalse(cancelled.state.value.paymentRestorePending); assertFalse(cancelled.state.value.paymentVisible)
+        val relogin = fresh(Api(), Store(order), reloginHandle)
+        runCurrent(); relogin.bindPresentation("campus", false, 40)
+        assertTrue(relogin.state.value.paymentRestorePending)
+        relogin.manageLogin(change = true); relogin.phoneChanged("13800000000"); relogin.codeChanged("123456")
+        relogin.login(); runCurrent()
+        assertFalse(relogin.state.value.paymentRestorePending); assertNull(relogin.state.value.paymentMethod)
+    }
     private val dispatcher = StandardTestDispatcher()
     private val models = ViewModelStore()
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
@@ -71,6 +154,7 @@ class LaundryViewModelTest {
         var deviceGate: CompletableDeferred<Unit>? = null
         var quoteGate: CompletableDeferred<Unit>? = null
         var quoteFailure: Exception? = null
+        var channelsGate: CompletableDeferred<Unit>? = null
         val quotedSkus = mutableListOf<String>()
         var createdAt: Long? = null
         val cancelledOrderIds = mutableListOf<String>()
@@ -142,7 +226,10 @@ class LaundryViewModelTest {
                 orders[orderNo]?.first ?: device.id, readSku, orderStatus, price, "桶自洁", 5,
                 100_000L.takeIf { orderStatus in setOf(2, 3) }, 400_000L.takeIf { orderStatus == 2 }, 521_000L.takeIf { orderStatus == 3 }, createdAt)
         }
-        override suspend fun laundryChannels(session: LaundrySession, token: String) = channels
+        override suspend fun laundryChannels(session: LaundrySession, token: String): List<LifePayChannel> {
+            channelsGate?.await()
+            return channels
+        }
         override suspend fun payLaundryBalance(orderNo: String, token: String) {
             balancePays++
             balanceFailure?.let { throw it }

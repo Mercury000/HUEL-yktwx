@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextRange
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.activity.enableEdgeToEdge
@@ -141,6 +143,62 @@ class CardServiceUiTest {
         compose.onNodeWithText("校园卡查询密码").assertExists()
         compose.onNodeWithText("确认解挂").assertExists()
         screenshot("campus-card-unlost-inline-error-dialog")
+    }
+    @Test fun recipientStudentNumberKeepsCursorDuringTypingFilteringAndMiddleEdits() {
+        compose.setContent {
+            AppTheme { Scaffold {
+                CardServiceDialog(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge),
+                    {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {})
+            } }
+        }
+        val field = compose.onNode(hasSetTextAction() and hasText("学工号"))
+        for ((index, character) in "2026".withIndex()) {
+            field.performTextInput(character.toString())
+            assertEquals(TextRange(index + 1), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        }
+        field.assertTextContains("2026")
+        field.performTextInputSelection(TextRange(2))
+        field.performTextInput("a3X ")
+        field.assertTextContains("20326")
+        assertEquals(TextRange(3), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        field.performTextInputSelection(TextRange(2, 3))
+        field.performTextInput("")
+        field.assertTextContains("2026")
+        assertEquals(TextRange(2), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        field.performTextReplacement(" 12X-34 " + "5".repeat(40))
+        field.assertTextContains("1234" + "5".repeat(28))
+        assertEquals(TextRange(32), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+    }
+    @Test fun recipientIdentityKeepsCursorWithSavedDraftEchoAndClearsWhenSwitchingType() {
+        var draft by mutableStateOf(com.mercury.yktwx.state.RecipientFormDraft())
+        var state by mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
+            error = "请检查收款人信息"))
+        compose.setContent {
+            AppTheme { Scaffold {
+                CardServiceDialog(state, {}, {}, {}, {}, { state = state.copy(error = null) }, { _, _, _ -> }, {}, {},
+                    savedDraft = draft, onDraftChanged = { draft = it })
+            } }
+        }
+        compose.onNodeWithText("证件号").performClick()
+        val field = compose.onNode(hasSetTextAction() and hasText("证件号"))
+        for ((index, character) in "123x".withIndex()) {
+            field.performTextInput(character.toString())
+            assertEquals(TextRange(index + 1), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        }
+        assertEquals("123x", draft.identifier)
+        field.performTextInputSelection(TextRange(2))
+        compose.runOnIdle { state = state.copy(error = "新的提示") }
+        assertEquals(TextRange(2), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        field.performTextInput(" aX9- ")
+        assertEquals("12X93x", draft.identifier)
+        assertEquals(TextRange(4), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        compose.onNodeWithText("学工号").performClick()
+        val student = compose.onNode(hasSetTextAction() and hasText("学工号"))
+        assertEquals("", draft.identifier)
+        assertEquals(TextRange.Zero, student.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        student.performTextInput("7x8")
+        assertEquals("78", draft.identifier)
+        assertEquals(TextRange(2), student.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
     }
     @Test fun recipientAmountPageShowsSelectedAccountAboveAmountWithoutExtraStep() {
         val recipient = RechargeRecipient("recipient-card", "recipient-target", "示例同学", "202600000002", "统一账户")
@@ -316,6 +374,27 @@ class CardServiceUiTest {
         compose.onNodeWithText("操作成功").assertDoesNotExist()
         compose.onNodeWithText("完成").assertDoesNotExist()
     }
+    @Test fun recipientRestoreFailureOffersRetryWithoutRefreshingCaptchaOrQuerying() {
+        val current = mutableStateOf(CardServiceUiState(visible = true, action = CampusCardAction.OthersRecharge,
+            error = "暂时无法读取收款账户", restorationFailed = true))
+        var retries = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme { Scaffold { CardServiceDialog(current.value, {}, {}, {},
+                    { error("Retry must not refresh captcha") }, {}, { _, _, _ -> error("Retry must not query a recipient") }, {}, {},
+                    onRetryRestore = {
+                        retries++
+                        current.value = current.value.copy(loading = true, restorationFailed = false)
+                    }) } }
+            }
+        }
+        compose.onNodeWithText("暂时无法读取收款账户").assertIsDisplayed()
+        compose.onNodeWithText("重试").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(1, retries)
+        compose.onNodeWithText("重试").assertDoesNotExist()
+        compose.onNodeWithText("查询").assertIsNotEnabled()
+    }
+
     @Test fun captchaImageIsClickableBesideInputAndRefreshClearsCode() {
         val image = java.io.ByteArrayOutputStream().also {
             Bitmap.createBitmap(120, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.LTGRAY) }

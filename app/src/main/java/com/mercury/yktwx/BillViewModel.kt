@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -46,6 +48,7 @@ data class BillStatsState(
 enum class BillListUpdate { Initial, Restore, Refresh, Append, Query }
 
 data class BillUiState(
+    val restoringSelection: Boolean = false,
     val preview: Boolean = false,
     val needsLogin: Boolean = false,
     val dateFilter: BillDateFilter = BillDateFilter.currentMonth(),
@@ -66,6 +69,9 @@ data class BillUiState(
     val error: String? = null,
     val loaded: Boolean = false,
     val detail: BillRecord? = null,
+    val detailLoading: Boolean = false,
+    val detailError: String? = null,
+    val detailMissing: Boolean = false,
     val statsVisible: Boolean = false,
     val stats: BillStatsState = BillStatsState(),
     val listLoaded: Boolean = loaded,
@@ -102,9 +108,12 @@ class BillViewModel internal constructor(
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Bill),
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics)
-    private val mutable = MutableStateFlow(BillUiState())
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics, savedState = savedState)
+    private val mutable = MutableStateFlow(BillUiState(restoringSelection = true))
+    private val saved = RestorableState(savedState, "bill-query", BillSavedState.serializer(), { it.valid }) { BillSavedState.from(mutable.value) }
     val state = mutable.asStateFlow()
     private var initialized = false
     private var preview = false
@@ -127,6 +136,9 @@ class BillViewModel internal constructor(
     private val listCache = RecentReadCache<String, CachedList>()
     private var listUpdateId = 0L
     private var pageVisible = false
+    private var detailJob: Job? = null
+    private var detailGeneration = 0L
+    private var detailReference: BillReference? = null
     private val reads = ReadController(viewModelScope, setOf(ReadPage.Bill), initialEnvironment, ::onActivate)
     private val networkReadAllowed get() = reads.canRead
     private val pendingStatsTypes = mutableSetOf<Int>()
@@ -229,7 +241,10 @@ class BillViewModel internal constructor(
         initialized = true
         preview = UiPreview.enabled && uiPreview
         if (UiPreview.enabled && preview) {
-            mutable.value = PreviewData.billState()
+            val restored = saved.bind("preview", preview = true)?.restore()
+            mutable.value = restored?.let { PreviewData.billState(it.dateFilter, it.stats.type).copy(typeId = it.typeId,
+                amountFromCents = it.amountFromCents, amountToCents = it.amountToCents, info = it.info, statsVisible = it.statsVisible,
+                stats = PreviewData.billStats(it.stats.period, it.stats.type)) } ?: PreviewData.billState()
             lastLoadedAt = now()
             rememberStats(lastLoadedAt)
             return
@@ -241,12 +256,13 @@ class BillViewModel internal constructor(
 
     /** Authentication owns the cache lifetime, including logging back into the same ID. */
     fun accountChanged(username: String?, renewed: Boolean = false) {
-        if (!renewed && accountOwner == username && mutable.value.needsLogin == (username == null)) return
+        val restored = saved.bind(if (preview && username != null) "preview" else username, preview, renewed)
+        if (!renewed && accountOwner == username && mutable.value.needsLogin == (username == null) && restored == null) return
         // A first read can restore the identity itself; binding it must not cancel that read.
-        if (!renewed && accountOwner == null && username != null && loadJob?.isActive == true) {
+        if (!renewed && restored == null && accountOwner == null && username != null && loadJob?.isActive == true) {
             ledgerVersion = 0L
             accountOwner = username
-            mutable.value = mutable.value.copy(needsLogin = false)
+            mutable.value = mutable.value.copy(needsLogin = false, restoringSelection = false)
             return
         }
         initializationJob?.cancel()
@@ -254,6 +270,7 @@ class BillViewModel internal constructor(
         statsDisplayJob?.cancel()
         cancelListJobs()
         statsJob?.cancel(); statsJob = null
+        detailGeneration++; detailJob?.cancel(); detailJob = null; detailReference = null
         ledgerVersion = 0L
         accountOwner = username
         preparedDisplayKey = null
@@ -263,7 +280,7 @@ class BillViewModel internal constructor(
         statsCache.clear(); listCache.clear()
         listRefresh.clear(); statsRefresh.clear(); pendingStatsTypes.clear()
         mutable.value = if (UiPreview.enabled && preview && username != null) PreviewData.billState()
-            else BillUiState(needsLogin = username == null)
+            else restored?.restore() ?: BillUiState(needsLogin = username == null)
         if (!preview && username != null) {
             val snapshot = mutable.value
             displayJobKey = listKey(snapshot)
@@ -511,7 +528,62 @@ class BillViewModel internal constructor(
     }
 
     fun openDetail(record: BillRecord) {
-        mutable.value = mutable.value.copy(detail = record)
+        detailGeneration++; detailJob?.cancel(); detailJob = null
+        detailReference = reference(record)
+        mutable.value = mutable.value.copy(detail = record, detailLoading = false, detailError = null, detailMissing = false)
+    }
+
+    internal fun reference(record: BillRecord) = BillReference(record.stableId,
+        BillPeriod.from(if (mutable.value.statsVisible) mutable.value.stats.period else mutable.value.dateFilter))
+
+    /** Resolve a route from repository data; never serialize a transaction's complete display record. */
+    internal fun restoreDetail(reference: BillReference, active: Boolean, online: Boolean?, retry: Boolean = false) {
+        if (!active) {
+            if (detailReference == reference) { detailGeneration++; detailJob?.cancel(); detailJob = null; mutable.value = mutable.value.copy(detailLoading = false) }
+            return
+        }
+        if (mutable.value.restoringSelection) return
+        if (reference != detailReference) {
+            detailGeneration++; detailJob?.cancel(); detailJob = null; detailReference = reference
+            mutable.value = mutable.value.copy(detail = null, detailLoading = false, detailError = null, detailMissing = false)
+        }
+        if (!reference.valid) { mutable.value = mutable.value.copy(detailMissing = true); return }
+        if (mutable.value.detail?.stableId == reference.id || mutable.value.detailMissing && !retry) return
+        val cached = (mutable.value.items + mutable.value.stats.ranking).firstOrNull { it.stableId == reference.id }
+        if (cached != null) { mutable.value = mutable.value.copy(detail = cached, detailError = null); return }
+        if (preview) { mutable.value = mutable.value.copy(detailMissing = true); return }
+        val owner = accountOwner ?: return
+        if (online != true) {
+            detailGeneration++; detailJob?.cancel(); detailJob = null
+            mutable.value = mutable.value.copy(detailLoading = false, detailError = "联网后可恢复账单详情")
+            return
+        }
+        if (detailJob?.isActive == true) return
+        val request = ++detailGeneration
+        mutable.value = mutable.value.copy(detailLoading = true, detailError = null, detailMissing = false)
+        val identity = repository.identity(owner)
+        detailJob = viewModelScope.launch {
+            try {
+                val period = reference.period.resolve()!!
+                var page = 1
+                while (true) {
+                    val result = repository.bills(page, 50, period.timeFrom, period.timeTo, null, null, null, null, username = owner)
+                    if (request != detailGeneration || detailReference != reference || accountOwner != owner || repository.identity(owner) != identity) return@launch
+                    val record = result.items.firstOrNull { it.stableId == reference.id }
+                    if (record != null) { mutable.value = mutable.value.copy(detail = record); break }
+                    if (result.current >= result.pages || result.items.isEmpty()) {
+                        mutable.value = mutable.value.copy(detailMissing = true); break
+                    }
+                    if (result.current != page) throw YktException("账单分页已变化，请重试")
+                    page++
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                if (request == detailGeneration && detailReference == reference && accountOwner == owner) mutable.value = mutable.value.copy(detailError = "暂时无法恢复账单详情，请重试")
+            } finally {
+                if (request == detailGeneration && detailReference == reference && accountOwner == owner) mutable.value = mutable.value.copy(detailLoading = false)
+            }
+        }
     }
 
     private fun statsKey(period: BillDateFilter, type: Int) = DisplayKeys.stats(period, type, "complete")

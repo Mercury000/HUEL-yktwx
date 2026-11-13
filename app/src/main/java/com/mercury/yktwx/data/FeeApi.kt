@@ -86,6 +86,16 @@ class FeeApi(client: Call.Factory) : FeeService {
         if (!RechargeProtocol.validId(id)) throw YktException("订单创建响应异常")
         val pending = PendingRecharge(username, target, config.project.id, amountCents, id)
         val info = orderInfo(token, pending)
+        return FeeOrder(pending, supportedMethods(info))
+    }
+
+    override suspend fun restoreFeeOrder(token: String, order: PendingRecharge): FeeOrder {
+        val info = orderInfo(token, order)
+        requireUnpaid(info.objectValue("order"))
+        return FeeOrder(order, supportedMethods(info))
+    }
+
+    private fun supportedMethods(info: JsonObject): List<FeeMethod> {
         val methods = info.arrayOrNull("payList") ?: throw YktException("没有可用的支付方式")
         val supported = (0 until methods.size).map { methods.objectValue(it) }.filter {
             it.rechargeText("code") in setOf("ACCOUNTTSM", "TSM") && !it.booleanOrDefault("chooseAccount", false)
@@ -94,7 +104,7 @@ class FeeApi(client: Call.Factory) : FeeService {
                 it.booleanOrDefault("chooseAccount", false), it.intOrDefault("nopassword", 0))
         }.filter { it.id.matches(Regex("[0-9]{1,12}")) }
         if (supported.isEmpty()) throw YktException("没有受支持的支付方式，请在官网处理订单")
-        return FeeOrder(pending, supported)
+        return supported
     }
 
     private suspend fun orderInfo(token: String, order: PendingRecharge): JsonObject {
@@ -196,7 +206,10 @@ class FeeApi(client: Call.Factory) : FeeService {
     private fun verifyOrder(o: JsonObject, order: PendingRecharge, strict: Boolean, verifyPayId: Boolean) {
         if (o.rechargeText("orderid") != order.orderId) throw YktException("缴费订单不匹配")
         val target = o.rechargeText("third_party")
-        val targetMatches = if (!strict && target.isBlank()) true else runCatching { parseObject(target).jsonTargetEquals(parseObject(order.targetId)) }.getOrDefault(false)
+        val targetMatches = if (!strict && target.isBlank()) true else runCatching {
+            if (order.targetFingerprint != null) feeTargetFingerprint(target) == order.targetFingerprint
+            else parseObject(target).jsonTargetEquals(parseObject(order.targetId))
+        }.getOrDefault(false)
         val amount = o.rechargeText("tranamt")
         val amountMatches = (!strict && amount.isBlank()) || RechargeMoney.responseCents(o.scalarOrElement("tranamt")) == order.amountCents
         val fees = o.arrayOrNull("feeitemlist")

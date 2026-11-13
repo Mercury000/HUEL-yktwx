@@ -15,7 +15,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** The same full-width location field in fee pages and hall sheets. */
@@ -31,9 +30,9 @@ internal fun FeeLocationDropdown(
         { index -> if (index > 0) currentOnSelectedIndexChange(index - 1) }
     }
     FeeLocationField {
-        OverlayDropdownPreference(
+        RestorableDropdownPreference(
             title = title, items = choices, selectedIndex = selectedIndex,
-            enabled = enabled && items.isNotEmpty(), renderInRootScaffold = true,
+            enabled = enabled && items.isNotEmpty(),
             maxHeight = 320.dp,
             onSelectedIndexChange = select,
         )

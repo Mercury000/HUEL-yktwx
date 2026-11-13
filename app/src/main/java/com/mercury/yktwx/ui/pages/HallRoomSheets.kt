@@ -6,6 +6,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -16,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.DormRoom
 import com.mercury.yktwx.data.FeeProject
+import com.mercury.yktwx.state.HallRoomReference
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
@@ -49,8 +52,16 @@ internal fun HallNeutralTabsPlaceholder() {
 
 private enum class RoomSheetPage { Rooms, Temporary, Add }
 
-private class RoomSheetSession(val initialPage: RoomSheetPage) {
+private class RoomSheetSession(val initialPage: RoomSheetPage, val id: String = java.util.UUID.randomUUID().toString()) {
     var page by mutableStateOf(initialPage)
+    companion object {
+        val Saver = listSaver<RoomSheetSession, String>(
+            save = { listOf(it.initialPage.name, it.page.name, it.id) },
+            restore = { runCatching {
+                RoomSheetSession(RoomSheetPage.valueOf(it[0]), it[2]).apply { page = RoomSheetPage.valueOf(it[1]) }
+            }.getOrNull() },
+        )
+    }
 }
 
 @Composable
@@ -63,19 +74,25 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
         initialTab == 1 -> RoomSheetPage.Temporary
         else -> RoomSheetPage.Rooms
     }
-    var wasVisible by remember { mutableStateOf(false) }
-    var session by remember { mutableStateOf(RoomSheetSession(initialPage)) }
+    var wasVisible by rememberSaveable { mutableStateOf(false) }
+    var session by rememberSaveable(stateSaver = RoomSheetSession.Saver) { mutableStateOf(RoomSheetSession(initialPage)) }
     // Initialize before the first visible frame; retain the page throughout dismissal.
     if (visible && (!wasVisible || initialPage != session.initialPage)) session = RoomSheetSession(initialPage)
     wasVisible = visible
-    var removal by remember(visible) { mutableStateOf<DormRoom?>(null) }
+    var removalId by rememberSaveable(session.id) { mutableStateOf<String?>(null) }
+    val removalReference = remember(removalId) { HallRoomReference.decode(removalId) }
+    val removal = state.rooms.firstOrNull { removalReference?.matches(it) == true }
+    LaunchedEffect(visible, state.rooms, state.roomsLoaded, state.loading, removalId) {
+        // Wait for the repository, then discard an ID that is no longer present. Never keep a stale room object.
+        if (!visible || state.roomsLoaded && !state.loading && removal == null) removalId = null
+    }
     val busy = state.managing
     OverlayBottomSheet(show = visible, onDismissRequest = onDismiss,
         startAction = {
-            key(session) { SheetTitle(if (session.page == RoomSheetPage.Add) "新增绑定" else "切换房间 / 临时缴费") }
+            key(session.id) { SheetTitle(if (session.page == RoomSheetPage.Add) "新增绑定" else "切换房间 / 临时缴费") }
         },
         renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
-        key(session) { SheetPageContent(
+        key(session.id) { SheetPageContent(
             targetPage = session.page,
             modifier = Modifier.fillMaxWidth().testTag("hall-room-content").bottomSheetSafeArea(),
         ) { page, interactive ->
@@ -102,7 +119,7 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             UpdatedText(room.hallLabel, Modifier.weight(1f), numeric = false, fontSize = 16.sp,
                                                 fontWeight = FontWeight.SemiBold, color = contentColor)
-                                            DashboardLink("解绑", { removal = room }, enabled = enabled && !state.loading, arrow = false,
+                                            DashboardLink("解绑", { removalId = HallRoomReference.from(room).encode() }, enabled = enabled && !state.loading, arrow = false,
                                                 color = if (isSystemInDarkTheme()) contentColor else contentColor.copy(alpha = .82f))
                                         }
                                     }
@@ -132,10 +149,10 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
     val removing = visible && removal != null
     val removalLabel = rememberWhileShown(removing, removal?.hallLabel)
     OverlayDialog(show = removing, title = "解绑房间", summary = removalLabel,
-        onDismissRequest = { removal = null }, renderInRootScaffold = true) {
+        onDismissRequest = { removalId = null }, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { removal = null }, enabled = removing, modifier = Modifier.weight(1f)) { Text("取消") }
-            Button(onClick = { removal?.let(onRemove); removal = null }, enabled = removing && !state.loading && !state.managing, modifier = Modifier.weight(1f),
+            Button(onClick = { removalId = null }, enabled = removing, modifier = Modifier.weight(1f)) { Text("取消") }
+            Button(onClick = { removal?.let(onRemove); removalId = null }, enabled = removing && !state.loading && !state.managing, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("解绑") }
         }
     }

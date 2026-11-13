@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -33,6 +35,7 @@ data class CardServiceUiState(
     val completed: Boolean = false,
     val preview: Boolean = false,
     val errorFields: Set<FormField> = emptySet(),
+    val restorationFailed: Boolean = false,
 ) {
     val operation get() = if (action == CampusCardAction.Unlost || selectedCard?.lost == true) CampusCardAction.Unlost else CampusCardAction.Lost
     val needsPassword get() = if (operation == CampusCardAction.Unlost) unlostNeedsPassword else lostNeedsPassword
@@ -44,9 +47,22 @@ class RecipientRechargeRequest(val username: String, val config: RechargeConfigu
 }
 
 @HiltViewModel
-class CardServiceViewModel @Inject constructor(private val repository: AccountRepository) : ViewModel() {
+class CardServiceViewModel @Inject constructor(private val repository: AccountRepository,
+    savedState: SavedStateHandle = SavedStateHandle()) : ViewModel() {
     private val mutable = MutableStateFlow(CardServiceUiState())
     val state = mutable.asStateFlow()
+    private val formMutable = MutableStateFlow(RecipientFormDraft())
+    internal val form = formMutable.asStateFlow()
+    internal fun updateForm(value: RecipientFormDraft) { if (value.valid) formMutable.value = value }
+    private var binding: Pair<String?, Boolean>? = null
+    private var restoring: CardOverlaySavedState? = null
+    private var restoreAllowed = false
+    private var writing = false
+    private val saved = RestorableState(savedState, "card-services", CardOverlaySavedState.serializer(), { it.valid }) {
+        restoring ?: CardOverlaySavedState(state.value.visible || state.value.loading, state.value.action,
+            state.value.selectedCard?.account, paymentAccount, form.value,
+            state.value.recipients.map(RecipientReference::from), state.value.selectedRecipient?.targetId, writing)
+    }
     private val ready = Channel<RecipientRechargeRequest>(Channel.BUFFERED)
     val rechargeRequests = ready.receiveAsFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
@@ -58,7 +74,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
     private val recipientConfigs = mutableMapOf<RechargeRecipient, RechargeConfiguration>()
     init {
         repository.observeAccount(viewModelScope) { username, renewed ->
-            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+            if (binding != null && binding?.second != true) accountChanged(username.orEmpty(), renewed = renewed)
         }
         viewModelScope.launch { repository.cardReads.revision.collect { syncCards() } }
     }
@@ -75,6 +91,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
 
     fun open(action: CampusCardAction, username: String, preview: Boolean) {
         if (task?.isActive == true) return
+        accountChanged(username, preview)
         dismiss()
         owner = username
         mutable.value = CardServiceUiState(visible = action == CampusCardAction.OthersRecharge, action = action, preview = UiPreview.enabled && preview)
@@ -82,6 +99,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
     }
     fun openUnlost(username: String, account: String, preview: Boolean) {
         if (task?.isActive == true || account.isBlank()) return
+        accountChanged(username, preview)
         dismiss()
         owner = username
         paymentAccount = account
@@ -140,6 +158,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
         val current = attempt
         val username = owner
         val operation = s.operation
+        writing = true
         mutable.value = s.copy(loading = true, error = null, errorFields = emptySet())
         task = viewModelScope.launch {
             try {
@@ -150,6 +169,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
             catch (e: Exception) {
                 if (attempt != current) return@launch
                 if (e !is CardOperationUnconfirmed) {
+                    writing = false
                     // Preflight failures and explicit server rejections stay in the dialog
                     // with their original message. Do not query or claim a write was submitted.
                     mutable.value = mutable.value.copy(loading = false, error = safeError(e), errorFields = inputErrorFields(e))
@@ -170,24 +190,29 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
         }
     }
     private suspend fun completeCardChange(cards: List<CampusCard>, operation: CampusCardAction) {
+        writing = false
         // Do not call dismiss(): it would cancel this task and drain the result events.
         mutable.value = mutable.value.copy(visible = false, loading = false, cards = cards, selectedCard = null, completed = true, error = null, errorFields = emptySet())
         notifications.send(operation.label + "成功")
     }
     fun clearRecipient() {
         if (mutable.value.loading) return
+        restoring = null
         recipientConfigs.clear()
         mutable.value = mutable.value.copy(recipients = emptyList(), selectedRecipient = null, rechargeConfig = null,
+            restorationFailed = false,
             error = mutable.value.error.takeUnless { FormField.Recipient in mutable.value.errorFields },
             errorFields = mutable.value.errorFields.takeUnless { FormField.Recipient in it } ?: emptySet())
     }
     fun refreshCaptcha() {
         if (!mutable.value.visible || mutable.value.action != CampusCardAction.OthersRecharge || task?.isActive == true) return
+        restoring = null
         val current = attempt
         val username = owner
         val preview = mutable.value.preview
         recipientConfigs.clear()
-        mutable.value = mutable.value.copy(loading = true, captcha = null, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null, error = null, errorFields = emptySet())
+        mutable.value = mutable.value.copy(loading = true, captcha = null, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null,
+            error = null, errorFields = emptySet(), restorationFailed = false)
         task = viewModelScope.launch {
             try {
                 val captcha = if (UiPreview.enabled && preview) null else repository.recipientCaptcha(username)
@@ -201,10 +226,12 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
         if (!s.visible || s.loading || task?.isActive == true || s.action != CampusCardAction.OthersRecharge) return
         if (value.isBlank() || (!s.preview && code.isBlank())) { mutable.value = s.copy(error = "请输入收款人信息和验证码", errorFields = setOf(FormField.Recipient, FormField.Captcha)); return }
         if (!s.preview && s.captcha == null) { refreshCaptcha(); return }
+        restoring = null
         val current = attempt
         val username = owner
         recipientConfigs.clear()
-        mutable.value = s.copy(loading = true, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null, error = null, errorFields = emptySet())
+        mutable.value = s.copy(loading = true, recipients = emptyList(), selectedRecipient = null, rechargeConfig = null,
+            error = null, errorFields = emptySet(), restorationFailed = false)
         launchTask {
             try {
                 val recipients = if (UiPreview.enabled && s.preview) PreviewData.recipients()
@@ -278,8 +305,65 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
     fun accepts(request: RecipientRechargeRequest) = request.attempt == attempt && request.username == owner &&
         repository.ownsAccount(owner) && mutable.value.visible && mutable.value.loading &&
         mutable.value.rechargeConfig === request.config && mutable.value.selectedRecipient === request.config.recipient
-    fun accountChanged(username: String) { if (owner.isNotEmpty() && owner != username) dismiss() }
+    fun accountChanged(username: String, preview: Boolean = false, renewed: Boolean = false) {
+        val next = username.takeIf(String::isNotBlank) to (UiPreview.enabled && preview)
+        if (binding == next && !renewed) return
+        val restored = saved.bind(next.first, next.second, renewed)
+        dismiss(); binding = next
+        if (restored?.visible == true) {
+            owner = username; restoring = restored; paymentAccount = restored.fixedCard
+            formMutable.value = restored.form
+            mutable.value = CardServiceUiState(visible = true, action = restored.action, loading = true, preview = next.second)
+        }
+    }
+    internal fun restoreIfNeeded(active: Boolean, online: Boolean) {
+        restoreAllowed = active && online
+        val restored = restoring ?: return
+        if (!restoreAllowed) { if (task?.isActive == true) { attempt++; task?.cancel(); task = null }; return }
+        if (mutable.value.restorationFailed || task?.isActive == true) return
+        val current = attempt
+        val username = owner
+        mutable.value = mutable.value.copy(loading = true, error = null)
+        launchTask {
+            try {
+                if (restored.action == CampusCardAction.OthersRecharge) {
+                    val recipients = restored.recipients.map { it.recipient() }
+                    val selected = recipients.singleOrNull { it.targetId == restored.selectedTarget }
+                    val config = selected?.let { if (binding?.second == true) PreviewData.recipientConfiguration(it)
+                        else repository.recipientRechargeConfiguration(username, it) }
+                    val captcha = if (recipients.isEmpty() && binding?.second != true) repository.recipientCaptcha(username) else null
+                    if (attempt != current) return@launchTask
+                    if (config != null && (config.recipient !== selected || config.targetId != selected?.targetId))
+                        throw YktException("原充值账户已变更，请重新查询")
+                    restoring = null
+                    if (selected != null && config != null) recipientConfigs[selected] = config
+                    mutable.value = CardServiceUiState(visible = true, action = restored.action, recipients = recipients,
+                        selectedRecipient = selected, rechargeConfig = config, captcha = captcha, preview = binding?.second == true)
+                } else {
+                    val config = if (binding?.second == true) PreviewData.cardConfiguration(restored.fixedCard)
+                        else repository.cardConfiguration(username)
+                    if (attempt != current) return@launchTask
+                    restoring = null
+                    val cards = config.cards.filter { restored.fixedCard == null || it.account == restored.fixedCard }
+                    val selected = cards.singleOrNull { it.account == restored.card && !it.frozen && it.status == 0 }
+                    mutable.value = CardServiceUiState(visible = true, action = restored.action, cards = cards,
+                        selectedCard = selected.takeUnless { restored.interrupted },
+                        lostNeedsPassword = config.lostNeedsPassword, unlostNeedsPassword = config.unlostNeedsPassword,
+                        preview = binding?.second == true,
+                        error = if (restored.interrupted) "操作已中断，已重新读取卡状态，请核实后重新选择" else
+                            "原校园卡已变更，请重新选择".takeIf { restored.card != null && selected == null })
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (current == attempt) {
+                mutable.value = mutable.value.copy(loading = false, error = safeError(e), restorationFailed = true) } }
+        }
+    }
+    internal fun retryRestore() {
+        mutable.value = mutable.value.copy(restorationFailed = false)
+        restoreIfNeeded(restoreAllowed, restoreAllowed)
+    }
     fun dismiss() {
+        restoring = null; writing = false; formMutable.value = RecipientFormDraft()
         attempt++
         task?.cancel(); task = null; owner = ""; paymentAccount = null
         recipientConfigs.clear()
