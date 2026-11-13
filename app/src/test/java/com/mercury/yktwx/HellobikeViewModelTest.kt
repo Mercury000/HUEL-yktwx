@@ -1,6 +1,7 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.ui.nav.*
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.analytics.AnalyticsFixtures
@@ -81,6 +82,100 @@ class HellobikeViewModelTest {
         assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls); assertEquals(0, api.payCalls)
     }
 
+    @Test fun recreatedLoginRestoresOnlyPhoneAndRejectsAnotherCampusOwner() = bikeTest {
+        val handle = SavedStateHandle()
+        val records = BikeRecords()
+        val original = model(FakeHellobikeService(), records.store(), savedState = handle)
+        runCurrent(); original.bindPresentation("campus", false, 1)
+        original.manageLogin(); original.phoneChanged("12345678901"); original.codeChanged("123456")
+        val restored = handle.recreated(); models.clear()
+        val api = FakeHellobikeService()
+        val next = model(api, records.store(), savedState = restored)
+        next.bindPresentation("campus", false, 8)
+        assertFalse(next.state.value.loginVisible)
+        runCurrent(); next.bindPresentation("campus", false, 8)
+        assertTrue(next.state.value.loginVisible)
+        assertEquals("12345678901", next.state.value.phone)
+        assertEquals("", next.state.value.code)
+        assertNull(next.state.value.slider)
+        assertEquals(0, api.smsCalls); assertEquals(0, api.payCalls); assertEquals(0, api.createCalls)
+        next.bindPresentation("another-campus", false, 9)
+        assertFalse(next.state.value.loginVisible)
+    }
+    @Test fun recreatedPaymentRestoresOriginalRideAndMethodWithoutSubmitting() = bikeTest {
+        val handle = SavedStateHandle()
+        val records = BikeRecords()
+        val original = model(FakeHellobikeService(), records.store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))),
+            savedState = handle)
+        ended(original); original.bindPresentation("campus", false, 1)
+        original.selectPaymentMethod("1201")
+        val restored = handle.recreated(); models.clear()
+        val api = FakeHellobikeService()
+        val next = model(api, HellobikeAccountStore(records), savedState = restored)
+        ready(next); next.bindPresentation("campus", false, 10)
+        assertTrue(next.state.value.paymentRestorePending)
+        assertFalse(next.state.value.paymentVisible)
+        next.openSession(fixtureBikeSession.sessionId); runCurrent()
+        next.resumePresentation(true, false, true)
+        assertFalse(next.state.value.paymentVisible)
+        next.resumePresentation(true, true, true); runCurrent()
+        assertTrue(next.state.value.paymentVisible)
+        assertEquals("1201", next.state.value.paymentMethod)
+        assertEquals(fixtureBikeSession.sessionId, next.state.value.selectedSessionId)
+        assertEquals(0, api.payCalls); assertEquals(0, api.createCalls); assertEquals(0, api.smsCalls)
+        assertNull(next.state.value.paymentLaunch)
+        next.bindPresentation("campus", false, 11)
+        assertFalse(next.state.value.paymentRestorePending)
+        assertFalse(next.state.value.paymentVisible)
+    }
+
+    @Test fun recreatedSliderGetsFreshImageWithoutSendingSmsAndDismissCancelsPendingImage() = bikeTest {
+        val handle = SavedStateHandle()
+        val records = BikeRecords()
+        val firstApi = FakeHellobikeService().apply { sms = HellobikeSmsResult(true, "old-challenge") }
+        val first = model(firstApi, records.store(account = null), savedState = handle)
+        ready(first); first.bindPresentation("campus", false, 1)
+        first.manageLogin(); first.phoneChanged(fixtureBikeAccount.phone); first.sendCode(); runCurrent()
+        assertTrue(first.state.value.sliderVerification)
+        val restored = handle.recreated(); val cancelledHandle = handle.recreated(); models.clear()
+        val api = FakeHellobikeService()
+        val next = model(api, HellobikeAccountStore(records), savedState = restored)
+        ready(next); next.bindPresentation("campus", false, 10)
+        assertNull(next.state.value.slider)
+        next.resumePresentation(true, false, false); runCurrent()
+        assertEquals(0, api.sliderCalls)
+        next.resumePresentation(true, true, false); runCurrent()
+        assertEquals(1, api.sliderCalls); assertNotNull(next.state.value.slider)
+        assertEquals(0, api.smsCalls); assertEquals(0, api.createCalls); assertEquals(0, api.payCalls)
+        val cancelApi = FakeHellobikeService()
+        val cancelled = model(cancelApi, HellobikeAccountStore(records), savedState = cancelledHandle)
+        ready(cancelled); cancelled.bindPresentation("campus", false, 30); cancelled.dismissLogin()
+        cancelled.resumePresentation(true, true, false); runCurrent()
+        assertEquals(0, cancelApi.sliderCalls); assertFalse(cancelled.state.value.loginVisible)
+    }
+
+    @Test fun restoredRouteWaitsForAccountAndSelectsTheSavedRideWithoutCommands() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding() }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession))
+        val original = model(api, store); runCurrent()
+        val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
+        nav.bind("campus", false, 1)
+        nav.showLife(AppRoute.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = fixtureBikeSession.sessionId,
+            account = original.restorationOwner))
+        val restoredHandle = handle.recreated(); models.clear()
+        val next = model(api, store)
+        val restoredNav = AppNavigationViewModel(restoredHandle).apply { bind("campus", false, 1) }
+        val route = restoredNav.backStack.last() as AppRoute.LifeDevice
+        assertEquals(LifeRouteRestore.WaitingForAccount, restoreLifeRoute(route, false, next))
+        runCurrent()
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, false, next))
+        assertEquals(fixtureBikeSession.sessionId, next.state.value.selectedSessionId)
+        assertEquals(LifeRouteRestore.AccountChanged, restoreLifeRoute(route.copy(account = "another-account"), true, next))
+        assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(route.copy(sessionId = "missing-session"), true, next))
+        val deviceRoute = route.copy(sessionId = null, deviceId = fixtureBikeSession.bikeNo)
+        assertEquals(LifeRouteRestore.WaitingForNetwork, restoreLifeRoute(deviceRoute, false, next))
+        assertEquals(0, api.smsCalls); assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls); assertEquals(0, api.payCalls)
+    }
     @Test fun startCommitsItsRecordBeforeOneCreateAndRequiresAQueriedRideToShowRunning() = bikeTest {
         val records = BikeRecords(); val store = records.store(); val api = FakeHellobikeService(); val model = model(api, store)
         vehicle(model)

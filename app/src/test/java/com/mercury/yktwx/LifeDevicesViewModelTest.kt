@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import android.app.Application
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.ui.nav.*
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.life.*
@@ -18,6 +20,27 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class LifeDevicesViewModelTest {
+    @Test fun recreatedLoginRestoresPhoneWithoutCodeOrBusinessCalls() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        fun fresh(api: Api, state: SavedStateHandle) = LifeDevicesViewModel(api, Store(), dispatcher, { 100_000L },
+            com.mercury.yktwx.analytics.AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()), state)
+        val firstApi = Api()
+        val first = fresh(firstApi, handle).also { viewModels.put("first", it) }
+        runCurrent(); first.bindPresentation("campus", false, 1)
+        first.manageLogin(); first.phoneChanged("12345678901"); first.codeChanged("123456")
+        val restored = handle.recreated(); viewModels.clear()
+        val api = Api()
+        val next = fresh(api, restored).also { viewModels.put("next", it) }
+        next.bindPresentation("campus", false, 20)
+        assertFalse(next.state.value.loginVisible)
+        runCurrent(); next.bindPresentation("campus", false, 20)
+        assertTrue(next.state.value.loginVisible)
+        assertEquals("12345678901", next.state.value.phone)
+        assertEquals("", next.state.value.code)
+        assertEquals(0, api.loginCalls); assertEquals(0, api.deviceCalls); assertEquals(0, api.unlockCalls)
+        next.bindPresentation("campus", false, 21)
+        assertFalse(next.state.value.loginVisible)
+    }
     private val dispatcher = StandardTestDispatcher()
     private val viewModels = ViewModelStore()
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
@@ -104,6 +127,41 @@ class LifeDevicesViewModelTest {
         ApplicationProvider.getApplicationContext<Application>(), api, store, dispatcher, { 100_000L }
     ).also { viewModels.put("model", it) }
 
+    @Test fun restoredRouteRequeriesTheSelectedOutletWithoutUnlocking() = runTest(dispatcher) {
+        val api = Api().apply { returnedDevice = device.copy(skus = listOf(LifeSku("first", "一号", true), LifeSku("saved", "二号", true))) }
+        val store = Store(LifeAccount("13800000000", "test-token"))
+        val before = model(api, store); runCurrent()
+        val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
+        nav.bind("campus", false, 1)
+        nav.showLife(AppRoute.LifeDevice(deviceId = device.serial, account = before.restorationOwner, skuId = "saved"))
+        val nextHandle = handle.recreated(); viewModels.clear()
+        val after = model(api, store); runCurrent()
+        val restoredNav = AppNavigationViewModel(nextHandle).apply { bind("campus", false, 1) }
+        val route = restoredNav.backStack.last() as AppRoute.LifeDevice
+        assertEquals(LifeRouteRestore.WaitingForNetwork, restoreLifeRoute(route, false, after))
+        assertEquals(0, api.deviceCalls)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, true, after)); runCurrent()
+        assertEquals("saved", after.state.value.selectedSkuId); assertEquals(1, api.deviceCalls)
+        assertFalse(after.state.value.scanning)
+        assertEquals(LifeRouteRestore.AccountChanged, restoreLifeRoute(route.copy(account = "other"), true, after))
+        assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls); assertEquals(0, api.createCalls)
+    }
+    @Test fun restoredRouteSelectsTheMatchingWaterOrLaundrySession() = runTest(dispatcher) {
+        val water = savedRunning()
+        val laundry = LaundrySession(device.copy(category = "00"), "wash", "1", "2", LaundryPhase.Running, sessionId = "saved-laundry")
+        val api = Api(); val store = Store(LifeAccount("13800000000", "test-token"), water).apply { savedLaundry = listOf(laundry) }
+        model(api, store); runCurrent(); viewModels.clear()
+        val after = model(api, store); runCurrent()
+        val waterRoute = AppRoute.LifeDevice(sessionId = water.sessionId, account = after.restorationOwner)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(waterRoute, false, after))
+        assertEquals(water.sessionId, after.state.value.water?.sessionId)
+        val laundryRoute = waterRoute.copy(feature = LifeFeature.Laundry, sessionId = laundry.sessionId)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(laundryRoute, false, after))
+        assertEquals(LifeFeature.Laundry, after.state.value.feature)
+        assertEquals(laundry.sessionId, after.state.value.laundry?.sessionId)
+        assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(laundryRoute.copy(sessionId = "missing"), false, after))
+        assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls); assertEquals(0, api.createCalls)
+    }
     @Test fun explicitlyRejectedWaterStartClearsProgressAndAnotherClickReachesTheServer() = runTest(dispatcher) {
         val api = Api().apply { unlockFailure = LifeDeviceException("设备拒绝启动", businessRejected = true) }
         val store = Store(LifeAccount("13800000000", "test-token")); val model = model(api, store)

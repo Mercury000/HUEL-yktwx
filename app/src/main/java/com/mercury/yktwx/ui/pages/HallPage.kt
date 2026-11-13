@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -62,9 +63,9 @@ fun HallPage(
     updateNotice: @Composable () -> Unit = {},
 ) {
     val dorm = if (LocalReadOffline.current) dorm.offlineDisplay() else dorm
-    var targets by remember { mutableStateOf(false) }
-    var targetTab by remember { mutableIntStateOf(0) }
-    var targetAdding by remember { mutableStateOf(false) }
+    var targets by rememberSaveable { mutableStateOf(false) }
+    var targetTab by rememberSaveable { mutableIntStateOf(0) }
+    var targetAdding by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(isActive) { if (!isActive) targets = false }
     val hasContent = dorm.rooms.isNotEmpty() || dorm.roomsAvailable || dorm.network != null
     val initialError = rememberInitialReadError(hasContent,

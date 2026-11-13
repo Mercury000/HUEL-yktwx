@@ -3,6 +3,8 @@ package com.mercury.yktwx
 import android.app.Activity
 import android.os.Build
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -40,8 +42,11 @@ internal class AppUpdateViewModel internal constructor(
     private val installer: AppUpdateInstaller,
     private val now: () -> Long = System::currentTimeMillis,
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(store: UpdateCheckStore, api: AppUpdateApi, installer: AppUpdateInstaller, analytics: AppAnalytics) : this(store, { api.check(deviceRequest().copy(channel = store.channel), store) }, installer, analytics = analytics)
+    @Inject internal constructor(store: UpdateCheckStore, api: AppUpdateApi, installer: AppUpdateInstaller, analytics: AppAnalytics,
+        savedState: SavedStateHandle) : this(store, { api.check(deviceRequest().copy(channel = store.channel), store) }, installer,
+            analytics = analytics, savedState = savedState)
 
     private fun restoredState(): AppUpdateUiState {
         if (store.repository.readyOrNull() == null) return AppUpdateUiState()
@@ -50,6 +55,18 @@ internal class AppUpdateViewModel internal constructor(
     }
     private val mutable = MutableStateFlow(restoredState())
     val state = mutable.asStateFlow()
+    private var restoredDetails: UpdateOverlaySavedState? = null
+    private val overlays = RestorableState(savedState, "update-details", UpdateOverlaySavedState.serializer(), { it.valid }) {
+        restoredDetails ?: UpdateOverlaySavedState(state.value.visible || state.value.detailsPending,
+            activeChannel ?: "stable", state.value.release?.versionCode ?: 0, state.value.release?.sha256.orEmpty(),
+            state.value.download.phase != UpdateDownloadPhase.Idle)
+    }
+    private fun restoreDetails() {
+        if (!state.value.ready) return
+        val restored = overlays.bind("${BuildConfig.APPLICATION_ID}:${BuildConfig.VERSION_CODE}") ?: return
+        if (!restored.visible || restored.channel != store.channel) return
+        restoredDetails = restored
+    }
     private val feedback = MutableSharedFlow<UpdateFeedback>(extraBufferCapacity = 1)
     val messages = feedback.asSharedFlow()
     private var job: Job? = null
@@ -67,6 +84,7 @@ internal class AppUpdateViewModel internal constructor(
     private var knownPolicies = store.repository.readyOrNull()?.policies
 
     init {
+        restoreDetails()
         viewModelScope.launch {
             store.repository.state.collect { value ->
                 when (value) {
@@ -83,6 +101,7 @@ internal class AppUpdateViewModel internal constructor(
                         if (firstReady) {
                             mutable.value = restoredState()
                             activeChannel = store.channel
+                            restoreDetails()
                         } else if (knownPolicies != value.preferences.policies) {
                             store.cachedRelease()?.takeIf { it.required(BuildConfig.VERSION_CODE) }?.let {
                                 mutable.value = state.value.copy(release = it, required = true)
@@ -107,6 +126,7 @@ internal class AppUpdateViewModel internal constructor(
         val channel = store.channel
         val channelChanged = activeChannel != channel
         if (channelChanged) {
+            restoredDetails = null
             generation++
             job?.cancel(); job = null
             manualRequest = false
@@ -148,7 +168,16 @@ internal class AppUpdateViewModel internal constructor(
             pendingInstallLauncher = null
             downloadAndInstall(launch)
         }
-        if (allowed && inForeground && channelChanged) check(manual = true)
+        if (allowed && inForeground && restoredDetails != null) {
+            val restored = restoredDetails!!
+            restoredDetails = null
+            val release = state.value.release
+            if (release != null && release.versionCode == restored.version && release.sha256 == restored.digest) {
+                mutable.value = state.value.copy(detailsPending = true,
+                    download = if (restored.interrupted) UpdateDownloadState(UpdateDownloadPhase.Failed,
+                        error = "更新操作已中断，请重新下载") else UpdateDownloadState())
+            } else check(manual = true)
+        } else if (allowed && inForeground && channelChanged) check(manual = true)
         else if (allowed && inForeground && job == null && store.automaticDue(now())) check(manual = false)
     }
 

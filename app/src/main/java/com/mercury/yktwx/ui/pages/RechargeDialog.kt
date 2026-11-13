@@ -12,6 +12,7 @@ import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.RechargeUiState
 import com.mercury.yktwx.RechargePhase
+import com.mercury.yktwx.state.RechargeFormDraft
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetTitle
 import com.mercury.yktwx.ui.components.SheetPageContent
@@ -27,13 +28,16 @@ private data class RechargeResultDisplay(
 )
 
 @Composable
-fun RechargeDialog(
+internal fun RechargeDialog(
     state: RechargeUiState,
     onDismiss: () -> Unit,
     onSubmit: (Long) -> Unit,
     onFinish: () -> Unit,
     onCheck: (() -> Unit)? = null,
     onInputEdited: (FormField) -> Unit = {},
+    savedDraft: RechargeFormDraft? = null,
+    onDraftChanged: ((RechargeFormDraft) -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
 ) {
     val hasAttempt = state.pending != null
     // Keep the amount page mounted while the cashier request is in flight. The
@@ -43,8 +47,9 @@ fun RechargeDialog(
     val loadingConfig = state.loading && !hasAttempt && state.config == null
     val show = state.visible || loadingConfig
     val session = rememberOverlaySession(show)
-    var amount by remember(session, state.config) { mutableStateOf("") }
-    var recipientSelected by remember(session, state.config) { mutableStateOf(true) }
+    var localDraft by remember(session, state.config) { mutableStateOf(RechargeFormDraft()) }
+    val draft = savedDraft ?: localDraft
+    fun change(value: RechargeFormDraft) { if (onDraftChanged != null) onDraftChanged(value) else localDraft = value }
     val targetPage = rememberWhileShown(show, if (isResult) RechargeSheetPage.Result else RechargeSheetPage.Amount)
     val title = rememberWhileShown(show,
         if (isResult) null else if (state.config?.recipient != null) "代人充值" else "卡片充值")
@@ -81,11 +86,14 @@ fun RechargeDialog(
                 if (config != null) {
                     if (UiPreview.enabled && preview) PreviewNotes.Recharge()
                     config.recipient?.let { recipient ->
-                        RecipientSelectionCard(recipient, recipientSelected, { recipientSelected = !recipientSelected }, enabled && !loading)
+                        RecipientSelectionCard(recipient, draft.selected, { change(draft.copy(selected = !draft.selected)) }, enabled && !loading)
                     }
-                    PaymentAmountForm(config, amount, { amount = it }, listOf("微信"), 0, {}, loading,
-                        !preview && recipientSelected, error, onSubmit, enabled = enabled, onInputEdited = onInputEdited,
+                    PaymentAmountForm(config, draft.amount, { change(draft.copy(amount = it)) }, listOf("微信"), 0, {}, loading,
+                        !preview && draft.selected, error, onSubmit, enabled = enabled, onInputEdited = onInputEdited,
                         submitting = state.pending != null && state.phase == RechargePhase.Creating)
+                } else if (!loading && error != null) {
+                    com.mercury.yktwx.ui.components.AnimatedInlineError(error)
+                    if (onRetry != null) TextButton("重试", onRetry, enabled = enabled)
                 }
                 }
             }
