@@ -92,8 +92,8 @@ interface LifeLaundryService {
 val LifePayChannel.laundrySupported: Boolean get() = method in setOf("2", "13", "52")
 
 fun LifePayChannel.laundryUnavailableReason(): String? = when {
-    available == false -> remark ?: "暂不可用"
-    needsOpen == true -> "请先在胖乖生活开通"
+    available == false -> remark ?: "余额不足"
+    needsOpen == true -> remark ?: "当前应用尚未接入该支付渠道的开通流程"
     !laundrySupported -> "暂未接入，请在胖乖生活使用"
     else -> null
 }
