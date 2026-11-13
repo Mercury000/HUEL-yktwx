@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -69,10 +71,25 @@ class FeeViewModel internal constructor(
     private val checkDelayMillis: Long = 5000,
     private val checkTimeoutMillis: Long = 15_000,
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, checkDelayMillis = 5000, analytics = analytics)
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(repository, checkDelayMillis = 5000, analytics = analytics, savedState = savedState)
     private val mutable = MutableStateFlow(FeeUiState())
     val state = mutable.asStateFlow()
+    private val entryMutable = MutableStateFlow<FeeEntry?>(null)
+    internal val entry = entryMutable.asStateFlow()
+    private val formMutable = MutableStateFlow(FeeFormDraft())
+    internal val form = formMutable.asStateFlow()
+    internal fun updateForm(value: FeeFormDraft) { if (value.valid && entry.value != null) formMutable.value = value }
+    private var pendingRestore: FeeSavedState? = null
+    private var retryRestore: FeeSavedState? = null
+    private var paymentPromptRetry: FeeSavedState? = null
+    private var restoreAllowed = false
+    private var identityBinding: Pair<String?, Boolean>? = null
+    private val saved = RestorableState(savedState, "fee-page", FeeSavedState.serializer(), { it.valid }) {
+        pendingRestore ?: snapshot()
+    }
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
     val events = launches.receiveAsFlow()
     private var operationIdentity: AccountIdentity? = null
@@ -88,15 +105,132 @@ class FeeViewModel internal constructor(
 
     init {
         repository.observeAccount(viewModelScope) { username, renewed ->
-            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+            if (identityBinding != null && identityBinding?.second != true) accountChanged(username.orEmpty(), renewed = renewed)
         }
     }
 
-    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null) {
+    private fun snapshot(): FeeSavedState {
+        paymentPromptRetry?.let { return it.copy(form = form.value) }
+        retryRestore?.let { return it.copy(form = form.value) }
+        val s = mutable.value
+        val entry = entry.value?.let { it.copy(project = s.config?.project ?: it.project) }
+        if (s.canContinuePayment) {
+            val retry = checkNotNull(s.paymentRetry)
+            val selected = retry.methods.firstOrNull { it.id == form.value.retryMethodId && it.code == form.value.retryMethodCode }
+                ?: retry.methods.first()
+            // A confirmed rejection ended that attempt. Re-read the original target
+            // and restore its editable amount; never infer an unknown submission.
+            return FeeSavedState(entry, s.selections, form.value.copy(amount = RechargeMoney.yuan(retry.amountCents),
+                amountStep = true, bindingPending = false, methodCode = selected.code))
+        }
+        return FeeSavedState(entry, s.selections, form.value, s.roomDialog?.action, s.roomDialog?.previous?.selections,
+            s.order?.pending?.let { order -> entry?.let { FeeOrderReference.from(order, it.project) } },
+            interruptedPayment = s.order != null || s.stage != FeeStage.Query,
+            paymentPrompt = s.stage.takeIf { !s.loading && it in setOf(FeeStage.Password, FeeStage.Methods) })
+    }
+
+    fun accountChanged(username: String, preview: Boolean = false, renewed: Boolean = false) {
+        val binding = username.takeIf(String::isNotBlank) to (UiPreview.enabled && preview)
+        if (!renewed && identityBinding == binding) return
+        val restored = saved.bind(binding.first, binding.second, renewed)
+        dismiss()
+        identityBinding = binding
+        if (restored?.entry != null) {
+            owner = username
+            operationIdentity = repository.identity(username)
+            entryMutable.value = restored.entry
+            formMutable.value = restored.form.copy(bindingPending = restored.confirmation != null && restored.form.bindingPending)
+            fixedHallTarget = restored.entry.fixed != null
+            pendingRestore = restored
+            mutable.value = FeeUiState(loading = true, preview = binding.second)
+        }
+    }
+
+    /** Reads may wait for the foreground/network; no command is ever resumed. */
+    internal fun restoreIfNeeded(active: Boolean, online: Boolean) {
+        restoreAllowed = active && online
+        val restored = pendingRestore ?: return
+        if (!active || !online) {
+            if (task?.isActive == true) {
+                attempt++; task?.cancel(); task = null
+                mutable.value = FeeUiState(loading = true, preview = identityBinding?.second == true)
+            }
+            return
+        }
+        if (task?.isActive == true) return
+        val entry = restored.entry ?: return
+        if (restored.order != null || restored.interruptedPayment) {
+            if (restored.paymentPrompt == null) pendingRestore = null
+            mutable.value = FeeUiState(preview = identityBinding?.second == true, stage = FeeStage.Result,
+                selections = restored.selections,
+                order = restored.order?.let { FeeOrder(it.pending(owner), emptyList()) },
+                resultPhase = RechargePhase.Checking,
+                error = if (restored.order == null) "操作已中断，未取得订单号，请先在官网核实本笔结果" else null)
+            if (restored.order != null && restored.paymentPrompt != null) restorePaymentPrompt(restored)
+            else if (restored.order != null) checkResult()
+        } else load(entry.project, owner, identityBinding?.second == true, restore = restored)
+    }
+
+    private fun restorePaymentPrompt(restored: FeeSavedState) {
+        val pending = restored.order?.pending(owner) ?: return
+        val generation = attempt
+        paymentPromptRetry = restored
+        mutable.value = copy(mutable.value, loading = true)
+        launchTask {
+            try {
+                val outcome = repository.feeResult(pending)
+                if (generation != attempt) return@launchTask
+                if (outcome.paid) { paymentPromptRetry = null; result(RechargePhase.Paid); return@launchTask }
+                val order = repository.restoreFeeOrder(pending)
+                if (generation != attempt) return@launchTask
+                val selected = order.methods.singleOrNull { it.id == pending.payId && it.code == "ACCOUNTTSM" && !it.chooseAccount }
+                val next = copy(mutable.value, loading = false, order = order, stage = FeeStage.Methods, error = null)
+                if (restored.paymentPrompt == FeeStage.Password && selected != null) {
+                    // This restoration step only reads a new keyboard. Its failures must keep
+                    // the original order available, rather than reset to a new-payment form.
+                    mutable.value = copy(next, loading = true, method = selected)
+                    val preparation = repository.prepareFeeAccount(order.pending, selected)
+                    if (generation != attempt) return@launchTask
+                    showPassword(preparation)
+                } else mutable.value = next
+                paymentPromptRetry = null
+            } catch (e: CancellationException) { throw e }
+            catch (e: FeeOrderAlreadyPaid) { if (generation == attempt) { paymentPromptRetry = null; startCheck() } }
+            catch (e: FeeOrderExpired) { if (generation == attempt) { paymentPromptRetry = null; result(RechargePhase.TimedOut, e.message) } }
+            catch (e: FeePaymentRejected) {
+                if (generation == attempt) {
+                    paymentPromptRetry = null
+                    result(RechargePhase.Failed, e.message)
+                    retryRestore = editableRestoration(restored)
+                }
+            }
+            catch (e: Exception) { if (generation == attempt) queryError(message(e)) }
+            finally { if (generation == attempt) pendingRestore = null }
+        }
+    }
+
+    internal fun retry() {
+        if (task?.isActive == true) return
+        if (entry.value == null) return
+        if (paymentPromptRetry != null) { checkResult(); return }
+        val restored = snapshot()
+        load(restored.entry!!.project, owner, mutable.value.preview, restore = restored)
+    }
+
+    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
+        accountChanged(username, preview)
         dismiss()
         fixedHallTarget = requestedRoom != null
         owner = username
         operationIdentity = repository.identity(username)
+        entryMutable.value = FeeEntry(project, requestedRoom?.selections, saveOnly)
+        formMutable.value = FeeFormDraft(amountStep = !saveOnly && (requestedRoom != null || project.network))
+        load(project, username, preview, requestedRoom)
+    }
+
+    private fun load(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null,
+        restore: FeeSavedState? = null) {
+        retryRestore = null
         mutable.value = FeeUiState(loading = true, preview = UiPreview.enabled && preview)
         val generation = attempt
         launchTask {
@@ -127,6 +261,9 @@ class FeeViewModel internal constructor(
                             selections = requestedRoom.selections, names = requestedRoom.names,
                             options = initial.levels.associate { it.number to listOf(FeeOption(requestedRoom.selections.getValue(it.key), requestedRoom.names.getValue(it.key))) },
                             query = PreviewData.feeQuery(project, true, initial.levels.last().number, requestedRoom.selections), preview = true)
+                    } else if (restore != null && (restore.entry?.fixed != null || restore.selections.isNotEmpty())) {
+                        restoreSelections(entrance, restore.entry?.fixed ?: restore.selections, generation,
+                            fixed = restore.entry?.fixed != null)
                     } else if (target != null) {
                         restoreRoom(entrance, target, generation)
                     } else if (initial.options.size == 1 && first.key in setOf("campus", "xiaoqu_id")) {
@@ -136,11 +273,58 @@ class FeeViewModel internal constructor(
                     if (config.invalidRoomBinding) mutable.value = copy(mutable.value,
                         roomBindingKnown = false, error = "已保存的房间信息无法识别，请先在官网解绑或更正")
                 }
+                if (generation == attempt && restore?.confirmation != null) {
+                    val current = mutable.value
+                    // Restoring a confirmation must not silently authorize a different replacement.
+                    if (current.roomActionEnabled && current.selections == restore.selections &&
+                        current.roomBinding?.selections == restore.previous && current.roomAction == restore.confirmation) {
+                        mutable.value = copy(current, roomDialog = FeeRoomDialog(current.roomAction, current.currentRoom!!, current.roomBinding))
+                    } else formMutable.value = form.value.copy(bindingPending = false)
+                }
+                val expectedSelections = restore?.entry?.fixed ?: restore?.selections.orEmpty()
+                val changedSelection = expectedSelections.isNotEmpty() && expectedSelections != mutable.value.selections
+                if (generation == attempt && restore != null && (mutable.value.query == null || changedSelection)) {
+                    // A missing option must leave an editable target form, including former fixed targets.
+                    fixedHallTarget = false
+                    entryMutable.value = entry.value?.copy(fixed = null)
+                    formMutable.value = form.value.copy(amountStep = false, saveCommon = false, bindingPending = false)
+                    if (changedSelection) mutable.value = copy(mutable.value, query = null,
+                        error = mutable.value.error ?: "原房间选项已失效，请重新选择")
+                }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (attempt == generation) mutable.value = FeeUiState(error = message(e), preview = UiPreview.enabled && preview)
+                if (attempt == generation) {
+                    retryRestore = restore
+                    mutable.value = FeeUiState(error = message(e), preview = UiPreview.enabled && preview)
+                }
+            } finally {
+                if (attempt == generation) pendingRestore = null
             }
         }
+    }
+
+    /** Rebuild even a partial selection using current option IDs; never trust stored labels. */
+    private suspend fun restoreSelections(entrance: FeeUiState, selections: Map<String, String>, generation: Long, fixed: Boolean) {
+        val unavailable = "原房间选项已失效，请重新选择"
+        var current = copy(entrance, loading = true)
+        if (selections.keys.any { key -> entrance.levels.none { it.key == key } } ||
+            fixed && selections.keys != entrance.levels.map { it.key }.toSet()) {
+            mutable.value = copy(entrance, error = unavailable)
+            return
+        }
+        for (level in entrance.levels) {
+            val id = selections[level.key] ?: break
+            val option = current.options[level.number]?.singleOrNull { it.id == id }
+            if (option == null) {
+                mutable.value = copy(current, loading = false, error = unavailable)
+                return
+            }
+            current = selectedState(current, level, option)
+            current = resolveSelection(current, level, generation, continueLoading = true) ?: return
+            if (current.error != null) break
+        }
+        if (generation == attempt) mutable.value = copy(current, loading = false,
+            error = current.error ?: unavailable.takeIf { current.selections != selections })
     }
 
     /** Keep the household while resolving the other service's own live option IDs. */
@@ -197,6 +381,8 @@ class FeeViewModel internal constructor(
                     },
                     roomBinding = config.roomBinding, roomBindingKnown = !config.invalidRoomBinding,
                     switchingProject = null, switchingMeterKind = null)
+                entryMutable.value = entry.value?.copy(project = project)
+                formMutable.value = FeeFormDraft(amountStep = form.value.amountStep)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == attempt) mutable.value = copy(mutable.value, loading = false, selecting = false,
@@ -236,6 +422,7 @@ class FeeViewModel internal constructor(
                     selections = resolved.binding.selections, names = resolved.binding.names,
                     query = detail, selecting = false, error = null, switchingProject = null,
                     switchingMeterKind = null)
+                formMutable.value = form.value.copy(saveCommon = false, targetSelected = true)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == attempt) mutable.value = copy(mutable.value, query = state.query,
@@ -250,6 +437,7 @@ class FeeViewModel internal constructor(
             state.switchingProject != null || state.switchingMeterKind != null ||
             state.options[level.number]?.none { it.id == option.id } != false) return
         val generation = attempt
+        formMutable.value = form.value.copy(saveCommon = false, targetSelected = true)
         mutable.value = copy(state, selecting = true, error = null)
         launchTask {
             try { loadSelection(state, level, option, generation) }
@@ -274,7 +462,7 @@ class FeeViewModel internal constructor(
         continueLoading: Boolean = false): FeeUiState? {
         val config = state.config ?: return null
         val next = state.levels.firstOrNull { it.number > level.number }
-        val query = if (UiPreview.enabled && state.preview) PreviewData.feeQuery(config.project, next == null, level.number, mutable.value.selections)
+        val query = if (UiPreview.enabled && state.preview) PreviewData.feeQuery(config.project, next == null, level.number, state.selections)
             else repository.feeQuery(owner, config.project, level.number, state.selections, next == null)
         if (generation != attempt) return null
         return copy(state, loading = continueLoading, selecting = false, error = query.tip,
@@ -444,11 +632,22 @@ class FeeViewModel internal constructor(
     /** Dismissing an unpaid UI ends only this attempt; it does not pop the fee page. */
     fun cancelPayment() {
         if (mutable.value.stage !in setOf(FeeStage.Methods, FeeStage.Password, FeeStage.Result)) return
+        val target = editableRestoration(pendingRestore ?: snapshot())
+        val needsTarget = mutable.value.config == null
         endPaymentAttempt()
+        pendingRestore = null; retryRestore = null; paymentPromptRetry = null
         mutable.value = copy(mutable.value, loading = false, error = null,
             order = null, method = null, preparation = null, paymentRetry = null, stage = FeeStage.Query,
             resultPhase = RechargePhase.Amount)
+        if (needsTarget && target.entry != null) {
+            pendingRestore = target
+            mutable.value = copy(mutable.value, loading = true)
+            restoreIfNeeded(restoreAllowed, restoreAllowed)
+        }
     }
+    private fun editableRestoration(restored: FeeSavedState) = restored.copy(
+        form = form.value.copy(bindingPending = false), confirmation = null, previous = null,
+        order = null, interruptedPayment = false, paymentPrompt = null)
     private fun endPaymentAttempt() {
         attempt++
         task?.cancel()
@@ -561,8 +760,7 @@ class FeeViewModel internal constructor(
                 if (paymentReturn.canLaunch) launches.send(launch) else requestError("未能打开微信")
             } else {
                 val preparation = repository.prepareFeeAccount(pending, method)
-                if (generation == attempt) mutable.value = copy(mutable.value, loading = false,
-                    stage = FeeStage.Password, preparation = preparation)
+                if (generation == attempt) showPassword(preparation)
             }
         } catch (e: CancellationException) { throw e }
         catch (e: FeeOrderExpired) { if (generation == attempt) result(RechargePhase.TimedOut, e.message) }
@@ -575,6 +773,10 @@ class FeeViewModel internal constructor(
                 requestError(message(e), AnalyticsError.from(e))
             }
         }
+    }
+    private fun showPassword(preparation: FeeAccountPreparation) {
+        formMutable.value = form.value.copy(accountType = form.value.accountType ?: preparation.accounts.firstOrNull()?.type)
+        mutable.value = copy(mutable.value, loading = false, stage = FeeStage.Password, preparation = preparation)
     }
     fun payAccount(type: String, password: String) {
         val s = mutable.value
@@ -623,6 +825,10 @@ class FeeViewModel internal constructor(
         }
     }
     fun checkResult() {
+        paymentPromptRetry?.let { restored ->
+            if (task?.isActive != true && restoreAllowed) { pendingRestore = restored; restoreIfNeeded(true, true) }
+            return
+        }
         val pending = mutable.value.order?.pending ?: return
         if (pending.orderId == null || task?.isActive == true || mutable.value.preview ||
             mutable.value.resultPhase == RechargePhase.Paid) return
@@ -649,12 +855,12 @@ class FeeViewModel internal constructor(
     fun canLaunchWechat()=paymentReturn.canLaunch && repository.ownsAccount(owner) && mutable.value.resultPhase==RechargePhase.AwaitingPayment
     fun wechatLaunched()=paymentReturn.launched()
     fun launchFailed(){analyticsFailure(AnalyticsError.External);paymentReturn.consume();result(RechargePhase.Failed,"无法打开微信，请确认已安装微信",retryable=true)}
-    fun accountChanged(username:String){if(owner.isNotEmpty() && username!=owner)dismiss()}
     fun dismiss() {
         attempt++
         task?.cancel(); task = null
         resultPoller.reset(); paymentReturn.reset()
         owner = ""; accountPaymentSubmitted = false
+        pendingRestore = null; retryRestore = null; paymentPromptRetry = null; entryMutable.value = null; formMutable.value = FeeFormDraft()
         while (launches.tryReceive().isSuccess) { }
         mutable.value = FeeUiState()
     }
@@ -677,7 +883,8 @@ class FeeViewModel internal constructor(
             order = if (retry != null) null else s.order,
             method = if (retry != null) null else s.method, paymentRetry = retry)
         if (phase == RechargePhase.Paid && s.resultPhase != RechargePhase.Paid && !s.preview && repository.ownsAccount(owner))
-            repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code == "ACCOUNTTSM", hall = true, project = s.config?.project, income = false))
+            repository.dataChanges.transaction(operationIdentity, TransactionUpdate(owner, balance = s.method?.code != "TSM", hall = true,
+                project = s.config?.project ?: entry.value?.project, income = false))
     }
     private var analyticsAttempt: AnalyticsAttempt? = null
     private var analyticsFeature = AnalyticsFeature.Electricity

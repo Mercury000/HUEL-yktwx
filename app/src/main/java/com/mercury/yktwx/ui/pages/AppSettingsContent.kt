@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -26,10 +27,14 @@ internal fun AppSettingsContent(
     onCheckAccount: (LifeProvider) -> Unit, onLoginAccount: (LifeProvider) -> Unit,
     onRemoveAccount: (LifeProvider) -> Unit, scrollBehavior: ScrollBehavior? = null,
 ) {
-    var selected by remember { mutableStateOf<LifeProvider?>(null) }
+    var selected by rememberSaveable { mutableStateOf<LifeProvider?>(null) }
+    var selectedOwner by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedAccount = accounts.firstOrNull { it.provider == selected }
-    LaunchedEffect(active, selectedAccount?.connection?.hasAccount) {
-        if (!active || selectedAccount?.connection?.hasAccount == false) selected = null
+    LaunchedEffect(active, selectedAccount?.restoring, selectedAccount?.connection?.hasAccount, selectedAccount?.owner) {
+        if (!active || selectedAccount?.restoring == false &&
+            (selectedAccount.connection.hasAccount == false || selectedAccount.owner != selectedOwner)) {
+            selected = null; selectedOwner = null
+        }
     }
     DashboardPullToRefresh(loading = accounts.any { it.connection.status == LifeAccountStatus.Checking },
         onRefresh = {
@@ -45,7 +50,7 @@ internal fun AppSettingsContent(
                 LifeAccountsSettingsCard(accounts, active) { account ->
                     if (!account.connection.hasAccount || account.connection.status == LifeAccountStatus.Expired)
                         onLoginAccount(account.provider)
-                    else selected = account.provider
+                    else { selected = account.provider; selectedOwner = account.owner }
                 }
             }
         }
@@ -78,5 +83,6 @@ internal fun AppSettingsContent(
         }
     }
     }
-    LifeAccountLogoutDialog(selectedAccount, active, { selected = null }, onRemoveAccount)
+    LifeAccountLogoutDialog(selectedAccount?.takeIf { !it.restoring && it.owner == selectedOwner }, active,
+        { selected = null; selectedOwner = null }, onRemoveAccount)
 }

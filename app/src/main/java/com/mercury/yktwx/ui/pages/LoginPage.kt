@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.ui.components.ActionSurface
 import com.mercury.yktwx.ui.components.InlineErrorGroup
-import com.mercury.yktwx.ui.components.trackInputFocus
+import com.mercury.yktwx.ui.components.DigitTextField
+import com.mercury.yktwx.ui.components.StableTextField
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import com.mercury.yktwx.data.UsageNotice
 import com.mercury.yktwx.ui.UsageConsent
@@ -59,7 +60,7 @@ fun LoginPage(state: PaymentUiState, onLogin: (String, String) -> Unit) {
 fun LoginPage(state: PaymentUiState, consent: UsageConsent?, onInputEdited: (FormField) -> Unit = {},
     updateNotice: @Composable () -> Unit = {}, updateDialog: @Composable () -> Unit = {},
     onLogin: (String, String) -> Unit) {
-    var noticeVisible by remember(consent) { mutableStateOf(false) }
+    var noticeVisible by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var hintShown by rememberSaveable(UsageNotice.hash) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var consentError by remember { mutableStateOf<String?>(null) }
@@ -139,7 +140,7 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
 private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
     updateNotice: @Composable () -> Unit,
     consentRow: (@Composable () -> Unit)? = null) {
-    var username by remember { mutableStateOf(state.username) }
+    var username by rememberSaveable { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
@@ -162,13 +163,12 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
         Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         Column(Modifier.fillMaxWidth()) {
             updateNotice()
-            TextField(value = username, onValueChange = {
-                val next = it.filter { c -> c in '0'..'9' }.take(24)
+            DigitTextField(value = username, onValueChange = { next ->
                 if (next != username) { username = next; onInputEdited(FormField.Username) }
-            }, label = "学号 / 工号", singleLine = true, enabled = !state.busy,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Username })
+            }, label = "学号 / 工号", maxDigits = 24, useLabelAsPlaceholder = false, enabled = !state.busy,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Username })
         }
-        TextField(value = password, onValueChange = { if (it != password) { password = it; onInputEdited(FormField.Password) } }, label = "密码", singleLine = true, enabled = !state.busy,
+        StableTextField(value = password, onValueChange = { if (it != password) { password = it; onInputEdited(FormField.Password) } }, label = "密码", useLabelAsPlaceholder = false, enabled = !state.busy,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onDone = { submit() }),
@@ -178,7 +178,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
                         contentDescription = if (visible) "隐藏密码" else "显示密码",
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions)
                 }
-            }, modifier = Modifier.fillMaxWidth().trackInputFocus(!state.busy).semantics { contentType = ContentType.Password })
+            }, modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password })
         InlineErrorGroup(state.error, 18.dp) {
             consentRow?.invoke()
             Button(onClick = { submit() }, enabled = agreed && !state.busy && !state.restoringLogin && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {

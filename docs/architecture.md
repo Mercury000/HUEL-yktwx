@@ -2,30 +2,36 @@
 
 ## 模块与目录
 
-项目在 `app` 模块内分层组织。
+项目采用应用模块内分层的组织方式，`app` 包含客户端功能，`benchmark` 独立负责性能测量与编译资料生成。
 
 | 目录 | 职责 |
 | --- | --- |
-| `app/src/main/` | 应用代码、资源和清单 |
-| `app/src/test/` | 单元与界面测试 |
-| `gradle/` | Gradle Wrapper |
-| `docs/` | 项目说明 |
-| `.github/workflows/` | 自动构建与发版 |
-| `app/src/uiPreview/、app/src/production/` | 预览样本与正式实现隔离 |
-| `updates/、.github/scripts/` | 签名清单配置与发布工具 |
-| `benchmark/` | 性能测量与编译资料生成 |
+| `app/src/main/` | 共用应用代码、资源和清单 |
+| `app/src/production/` | 正式构建的统计后端与预览禁用实现 |
+| `app/src/uiPreview/` | 调试、预览及性能构建的样本数据 |
+| `app/src/test/`、`app/src/androidTest/` | 单元测试、界面测试和设备测试 |
+| `benchmark/` | 性能基准与 Baseline / Startup Profile 生成 |
+| `.github/workflows/` | 构建、发版和更新清单工作流 |
+| `.github/scripts/` | 工作流配套工具及测试 |
+| `gradle/` | 依赖版本目录与 Gradle Wrapper |
+| `updates/` | 更新公钥、策略、来源配置和签名清单 |
+| `docs/` | 使用、架构、开发和发布说明 |
 
-`ui/pages/` 与 `ui/components/` 负责界面，ViewModel 负责页面状态，`data/` 提供接口、账户仓库与加密存储。
+应用主包为 `com.mercury.yktwx`：
 
-`data/life/` 按平台组织服务、模型与账户记录。
+| 包或文件 | 职责 |
+| --- | --- |
+| `ui/pages/` | 页面内容与用户操作入口 |
+| `ui/components/` | 共用界面组件、扫码和视觉效果 |
+| `ui/nav/` | 页面路由、导航与转场 |
+| `*ViewModel.kt`、业务控制器 | 页面状态、操作调度与业务流程 |
+| `data/` | 一卡通仓库、接口、共享读取、更新与存储 |
+| `data/life/` | 胖乖、798、哈啰的平台服务、模型与账户存储 |
+| `state/` | 页面与弹层的可恢复状态 DTO |
+| `di/` | Hilt 依赖绑定与作用域配置 |
+| `analytics/` | 统计事件与授权控制 |
 
-Version Catalog 集中管理插件和依赖版本。
-
-业务 JSON 使用 kotlinx.serialization。
-
-`di/` 使用 Hilt 管理应用依赖与 ViewModel 作用域。
-
-`analytics/` 管理统计事件与授权。
+Version Catalog 集中管理依赖版本，Hilt 提供应用、仓库、服务和 ViewModel 的依赖注入，业务 JSON 使用 kotlinx.serialization。
 
 ## 依赖关系
 
@@ -63,7 +69,9 @@ OkHttp 共用连接池，支持 HTTP/2、gzip 和取消。校园卡请求限制�
 
 ## 状态恢复
 
-配置变化保留页面栈和滚动状态，侧栏展开偏好保存在本机。
+SavedStateHandle 保存带版本、账户和预览标记的 DTO，单份 UTF-8 上限 64 KiB。身份恢复前等待，换号、重新登录或预览身份不符时丢弃。
+
+页面栈、查询条件、草稿和弹层意图可以恢复。设备与订单只保存标识并重新核对，密码、验证码、付款载荷、图片字节和授权不保存。恢复不重放短信、下单、启停、付款、下载或安装，结果未知的原订单保持可查询。
 
 ## 界面与主题
 
