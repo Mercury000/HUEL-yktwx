@@ -15,6 +15,65 @@ import java.net.URL
 import java.net.URLDecoder
 
 class LifeDeviceApiTest {
+    @Test fun officialMessagesSurviveExpiryHealthEndAndHttpErrorsWithoutTruncation() = runBlocking {
+        val message = "官方原因：https://h5.qiekj.com/skip?SN=867369079842630\n" + "详细说明".repeat(100)
+        for (code in listOf(10, 126, 200)) {
+            val service = api(mapOf("/user/info" to """{"code":$code,"msg":"原始提示","data":null}"""), mutableListOf())
+            try { service.profile("test-token"); fail("Only code zero is successful") }
+            catch (e: LifeDeviceException) { assertEquals("原始提示", e.message); assertEquals(code != 200, e.loginExpired) }
+        }
+        val health = com.mercury.yktwx.data.jsonObjectOf("code" to 0, "msg" to "外层提示", "data" to
+            com.mercury.yktwx.data.jsonObjectOf("health" to false, "faultDesc" to message)).toString()
+        try { api(mapOf("/trade/check_device_status" to health), mutableListOf()).checkLaundryDevice("77", "test-token"); fail() }
+        catch (e: LifeDeviceException) { assertEquals(message, e.message) }
+        val end = com.mercury.yktwx.data.jsonObjectOf("code" to 0, "msg" to message, "data" to false).toString()
+        try { api(mapOf("/goods/endWater" to end), mutableListOf()).endWater("77", "test-token"); fail() }
+        catch (e: LifeDeviceException) { assertEquals(message, e.message) }
+        val error = com.mercury.yktwx.data.jsonObjectOf("code" to 7, "msg" to message).toString()
+        try { fixtureLifeDeviceApi("test-secret", { url -> Response(url, error, 403) }).profile("test-token"); fail() }
+        catch (e: LifeDeviceException) { assertEquals(message, e.message); assertFalse(e.loginExpired) }
+    }
+    @Test fun deviceFaultPrecedesFurtherQueriesAndOwnCapabilityMessages() = runBlocking {
+        val calls = mutableListOf<Response>()
+        val responses = showerResponses().toMutableMap()
+        responses["/goods/normal/details"] = responses.getValue("/goods/normal/details")
+            .replace("\"isBluetooth\":0", "\"isBluetooth\":1,\"deviceErrorCode\":\"7\",\"deviceErrorMsg\":\"官方设备提示\\n请核对设备\"")
+        try { api(responses, calls).device("test-shower-sn", "test-token"); fail() }
+        catch (e: LifeDeviceException) { assertEquals("官方设备提示\n请核对设备", e.message) }
+        assertEquals(listOf("/goods/scan/v2", "/goods/normal/details"), calls.map { it.url.path })
+    }
+    @Test fun channelUsesOfficialCanCheckedAndRemarkWithoutInventingALegacyWaterOpeningGate() = runBlocking {
+        val responses = showerResponses().toMutableMap()
+        responses["/payChannelRoute/afterPay"] = """{"code":0,"data":[{"method":"15","methodName":"支付宝","canChecked":false,"useStatus":true,"remark":"官方渠道说明","needOpenFlag":true}]}"""
+        val device = api(responses, mutableListOf()).device("test-shower-sn", "test-token")
+        assertEquals(false, device.alipay?.available); assertNull(device.startError)
+        assertEquals("官方渠道说明", device.alipay?.remark)
+        assertEquals("官方渠道说明", device.alipay?.laundryUnavailableReason())
+        responses["/payChannelRoute/afterPay"] = responses.getValue("/payChannelRoute/afterPay")
+            .replace("\"canChecked\":false", "\"canChecked\":true").replace("\"useStatus\":true", "\"useStatus\":false")
+        assertEquals(true, api(responses, mutableListOf()).device("test-shower-sn", "test-token").alipay?.available)
+    }
+    @Test fun waterOutletDoesNotUseWasherAvailabilityAndStockStateDoesNotRejectPrograms() = runBlocking {
+        val responses = showerResponses().toMutableMap()
+        responses["/goods/normal/skus"] = responses.getValue("/goods/normal/skus")
+            .replace("\"scanAvailable\":true", "\"scanAvailable\":false").replace("\"stockState\":1", "\"stockState\":0")
+        assertNull(api(responses, mutableListOf()).device("test-shower-sn", "test-token").skus.single().available)
+        responses["/goods/scan/v2"] = responses.getValue("/goods/scan/v2").replace("\"08\"", "\"00\"")
+        responses["/goods/normal/details"] = responses.getValue("/goods/normal/details").replace("\"08\"", "\"00\"").replace("\"after\"", "\"before\"")
+        responses["/goods/normal/skus"] = responses.getValue("/goods/normal/skus").replace("\"scanAvailable\":false", "\"scanAvailable\":true")
+        assertEquals(true, api(responses, mutableListOf()).laundryDevice("nqt", "test-token").skus.single().available)
+    }
+    @Test fun orderSyncNonzeroRemainsPendingWithOriginalTextOrCodeDiagnostic() = runBlocking {
+        for (reason in listOf("官方订单尚在处理中", null)) {
+            val field = reason?.let { ",\"message\":\"$it\"" }.orEmpty()
+            val service = api(mapOf("/order/sync" to """{"code":0,"data":{"code":"05"$field}}"""), mutableListOf())
+            try { service.syncOrder("order-1", "test-token"); fail() }
+            catch (e: LifeDeviceException) {
+                assertFalse(e.businessRejected)
+                assertEquals(reason ?: "/order/sync：订单尚未确认（code=05），服务端未提供原因", e.message)
+            }
+        }
+    }
     @Test fun accountProfileUsesAuthenticatedReadWithoutScanningDevices() = runBlocking {
         val calls = mutableListOf<Response>()
         val service = api(mapOf("/user/info" to """{"code":0,"data":{"id":"fixture-user","phone":"13800000000","userName":"示例","balance":"0.00","unCompleteOrders":null}}"""), calls)
@@ -217,7 +276,7 @@ class LifeDeviceApiTest {
         val calls = mutableListOf<Response>(); val service = api(showerResponses(), calls)
         val device = service.device("test-shower-sn", "test-token")
         assertEquals("08", device.category); assertEquals("淋浴", device.waterAction); assertNull(device.startError)
-        assertEquals(LifeSku("outlet-1", "01", true, "0.00", "1号出水口"), device.skus.single())
+        assertEquals(LifeSku("outlet-1", "01", null, "0.00", "1号出水口"), device.skus.single())
         assertEquals(mapOf("SN" to "test-shower-sn", "token" to "test-token"), calls.first().form())
         assertEquals("08", calls.last().form()["goodsCategory"]); assertEquals("22", calls.last().form()["shopId"])
         assertEquals("15", device.alipay?.method)
@@ -227,7 +286,7 @@ class LifeDeviceApiTest {
     }
 
     @Test fun showerScanRejectsUnknownCategoryAndMismatchedDetailsWithoutCommands() = runBlocking {
-        for ((category, detailCategory, message) in listOf(Triple("99", "99", "未知设备"),
+        for ((category, detailCategory, message) in listOf(Triple("99", "99", "当前应用尚未接入此设备类别（categoryCode=99）"),
             Triple("08", "04", "设备信息不匹配，请重新扫码"))) {
             val calls = mutableListOf<Response>(); val service = api(showerResponses(category, detailCategory), calls)
             try { service.device("test-shower-sn", "test-token"); fail("Must reject unrelated device") }
@@ -261,7 +320,7 @@ class LifeDeviceApiTest {
         for (data in listOf("null", "false")) {
             val service = api(mapOf("/shower/goods/remoteEnd" to """{"code":0,"data":$data}"""), mutableListOf())
             try { service.endShower("shower-device", "shower-order", "test-token"); fail("End must be acknowledged") }
-            catch (e: LifeDeviceException) { assertEquals("结束淋浴失败，请重试", e.message) }
+            catch (e: LifeDeviceException) { assertEquals("/shower/goods/remoteEnd：data=$data，服务端未提供原因", e.message) }
         }
     }
 

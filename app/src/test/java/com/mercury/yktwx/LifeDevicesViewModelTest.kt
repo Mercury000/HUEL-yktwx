@@ -68,6 +68,7 @@ class LifeDevicesViewModelTest {
         var lostUnlock = false
         var unlockFailure: Exception? = null
         var messageGate: CompletableDeferred<Unit>? = null
+        var messageResult = WaterMessage("OK", "0")
         var stopGate: CompletableDeferred<Unit>? = null
         var createGate: CompletableDeferred<Unit>? = null
         var reading = WaterReading(1, 2, "order-1")
@@ -91,7 +92,7 @@ class LifeDevicesViewModelTest {
             if (lostUnlock) throw java.io.IOException("lost response")
             return WaterUnlock("message-1", "order-1")
         }
-        override suspend fun message(messageId: String, token: String): WaterMessage? { messageGate?.await(); return WaterMessage("OK", "0") }
+        override suspend fun message(messageId: String, token: String): WaterMessage? { messageGate?.await(); return messageResult }
         override suspend fun unlockShower(skuId: String, token: String): WaterUnlock {
             showerUnlockCalls++
             if (lostUnlock) throw java.io.IOException("lost response")
@@ -243,6 +244,25 @@ class LifeDevicesViewModelTest {
     private fun TestScope.prepare(model: LifeDevicesViewModel) {
         runCurrent(); model.open(LifeFeature.Water); model.pageVisible(true)
         model.scanned("https://h5.qiekj.com/skip?SN=867369079842630"); runCurrent()
+    }
+
+    @Test fun officialMessageSuccessUsesOkOr05AndOtherCodesKeepPollingWithoutInventingAFault() = runTest(dispatcher) {
+        for (message in listOf(WaterMessage("ok", "7"), WaterMessage("WAIT", "05"))) {
+            val api = Api().apply { messageResult = message }
+            val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+            prepare(model); model.startWater(); runCurrent()
+            assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+            assertNull(model.state.value.water?.fault); assertEquals(1, api.unlockCalls)
+            viewModels.clear()
+        }
+        val api = Api().apply { messageResult = WaterMessage("WAIT", "7") }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent()
+        assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
+        assertNull(model.state.value.water?.fault); assertEquals(0, api.waterReads)
+        api.messageResult = WaterMessage("WAIT", "05"); advanceTimeBy(1500); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        assertEquals(1, api.unlockCalls); assertEquals(0, api.createCalls)
     }
 
     @Test fun unifiedScanWaitsForRecoveryWithoutSelectingRecoveredWaterOrReplayingCommands() = runTest(dispatcher) {

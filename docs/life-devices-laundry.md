@@ -40,7 +40,7 @@ SHA256(appSecret={secret}&channel=android_app&timestamp={ms}&token={token}&versi
 | 大物洗 | 5.00 元 | 45 |
 | 标准洗 | 3.50 元 | 35 |
 
-用户已确认洗衣 SKU 的 `unit` 单位为分钟，程序列表按扫码后返回的该字段展示预计时长。桶自洁订单进一步返回 `markMinutes=5`、`markUnit=m`；以 skuId 逐项核对后，77 号机快洗的历史订单也对应 `markMinutes=25`，与这两个 SKU 的 unit 一致。其他程序的分钟含义按用户确认使用，不要求选中程序或逐个读取订单后才显示。`stockState=1`、`scanAvailable=true` 是可用性依据，不能单凭价格认定可启动。
+用户已确认洗衣 SKU 的 `unit` 单位为分钟，程序列表按扫码后返回的该字段展示预计时长。桶自洁订单进一步返回 `markMinutes=5`、`markUnit=m`；以 skuId 逐项核对后，77 号机快洗的历史订单也对应 `markMinutes=25`，与这两个 SKU 的 unit 一致。其他程序的分钟含义按用户确认使用，不要求选中程序或逐个读取订单后才显示。官方1.145.0客户端按 `scanAvailable` 判断程序选择，不再附加 `stockState=1` 限制，也不单凭价格认定可启动。健康检查失败展示原始faultDesc；详细依据见[云端判断与原文提示核验](life-cloud-authority-audit.md)。
 
 扫码后还出现 `/machine/jumpAlipayMp`（imei、orgId），返回 true；扫码响应中的 `jumpToAlipayFlag`、`jumpToAlipayFlag2` 均为 false。true 本身不是跳转地址，不据此生成支付宝小程序跳转行为。
 
@@ -233,7 +233,7 @@ againPay → check_device_status → machine/sync(false → true) → pay/unify/
 - 支付准备共用 `/pay/unify/prePay`，传入当前 orderNo 和实际选中的 payType（支付宝13或银联52）。银联的 prepayParam 是交易号 TN，原样调用 `UPPayAssistEx.startPay(activity, null, null, tn, "00")`，不转换成网页链接，也不在客户端签名。
 - SDK 由独立 Activity 接收 requestCode=10 的 pay_result，再通过 Activity Result API 带回原始请求 ID。请求编号使用每个 ViewModel 的随机起点，避免进程重建后复用旧编号。每次请求只能认领一次，Activity 重建不重新提交 TN；SDK 未调起付款页面时有限等待后返回，已结束 Activity 拒绝迟到的唤起。
 - success、fail、cancel 和缺失结果都查询同一订单的服务端状态。SDK success 不是到账证明，缺失结果使用现有有界只读轮询；确认付款后分别确认设备启动。取消或失败后的再次付款继续使用原订单，刷新 againPay 渠道和设备检查，不重复创建订单。
-- 支付表单与重试列表按实际返回的52及其 useStatus、needOpenFlag 生成；等待反馈使用银联名称。银联无感53及其他银行独立渠道保持未接入。
+- 支付表单与重试列表按实际返回的52及官方1.145.0确认的canChecked、needOpenFlag生成，优先显示原始remark；不再用旧响应useStatus追加限制。等待反馈使用银联名称。银联无感53及其他银行独立渠道保持未接入。
 - 用户确认捕获的优惠实际是广告，当前空优惠集合是预期行为，不作为支付接入问题，也不为本次银联接入修改该参数。
 - 验证只使用虚构接口和 Android 本地回归，不发送真实预支付、扣款或设备请求；真实银联 App 回跳和付款仍需真机确认。
 
