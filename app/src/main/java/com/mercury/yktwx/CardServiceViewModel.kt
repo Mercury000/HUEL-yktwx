@@ -333,7 +333,7 @@ class CardServiceViewModel @Inject constructor(private val repository: AccountRe
                         else repository.recipientRechargeConfiguration(username, it) }
                     val captcha = if (recipients.isEmpty() && binding?.second != true) repository.recipientCaptcha(username) else null
                     if (attempt != current) return@launchTask
-                    if (config != null && (config.recipient !== selected || config.targetId != selected?.targetId))
+                    if (config != null && (config.recipient !== selected || config.targetId != selected.targetId))
                         throw YktException("原充值账户已变更，请重新查询")
                     restoring = null
                     if (selected != null && config != null) recipientConfigs[selected] = config
