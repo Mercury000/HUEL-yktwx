@@ -8,6 +8,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.SessionConfiguration
 import android.os.Handler
 import android.os.Looper
 import android.util.Range
@@ -53,6 +54,8 @@ class DeviceCameraThreadingTest {
         private var deviceClosed = CountDownLatch(1)
         private var queryLooper: Looper? = null
         private var configureLooper: Looper? = null
+        private var sessionCallbackLooper: Looper? = null
+        private var sessionConfiguration: SessionConfiguration? = null
         private var closeLooper: Looper? = null
         private var openLooper: Looper? = null
         private val idQueries = AtomicInteger()
@@ -104,13 +107,24 @@ class DeviceCameraThreadingTest {
 
     @Implements(className = "android.hardware.camera2.impl.CameraDeviceImpl", isInAndroidSdk = false)
     class RecordingDevice : ShadowCameraDeviceImpl() {
-        @Implementation public override fun createCaptureSession(outputs: List<Surface>,
-            callback: CameraCaptureSession.StateCallback, handler: Handler) {
+        @Implementation public override fun createCaptureSession(config: SessionConfiguration) {
             configureLooper = Looper.myLooper()
+            sessionConfiguration = config
             configureCalls.incrementAndGet()
             configureEntered.countDown()
             check(configureGate.await(5, TimeUnit.SECONDS))
-            super.createCaptureSession(outputs, callback, handler)
+            val callback = object : CameraCaptureSession.StateCallback() {
+                override fun onConfigured(session: CameraCaptureSession) {
+                    sessionCallbackLooper = Looper.myLooper()
+                    config.stateCallback.onConfigured(session)
+                }
+                override fun onConfigureFailed(session: CameraCaptureSession) {
+                    sessionCallbackLooper = Looper.myLooper()
+                    config.stateCallback.onConfigureFailed(session)
+                }
+            }
+            super.createCaptureSession(SessionConfiguration(config.sessionType, config.outputConfigurations,
+                config.executor, callback))
         }
 
         @Implementation public override fun close() {
@@ -148,6 +162,7 @@ class DeviceCameraThreadingTest {
         configureEntered = CountDownLatch(1); configureGate = CountDownLatch(0)
         deviceClosed = CountDownLatch(1)
         queryLooper = null; configureLooper = null; closeLooper = null; openLooper = null
+        sessionCallbackLooper = null; sessionConfiguration = null
         requests.clear()
         openCalls.set(0); configureCalls.set(0); holdOpened = false; holdClosed = false
         openedCallbacks.clear(); closedCallbacks.clear()
@@ -292,6 +307,12 @@ class DeviceCameraThreadingTest {
         assertNotSame(Looper.getMainLooper(), looper)
         assertSame(looper, queryLooper)
         assertSame(looper, configureLooper)
+        assertSame(looper, sessionCallbackLooper)
+        val config = requireNotNull(sessionConfiguration)
+        assertEquals(SessionConfiguration.SESSION_REGULAR, config.sessionType)
+        assertEquals(listOf(ReflectionHelpers.getField<Surface>(camera, "preview"),
+            ReflectionHelpers.getField<android.media.ImageReader>(camera, "images").surface),
+            config.outputConfigurations.map { it.surface })
         assertEquals(1, idQueries.get())
         // Robolectric also queries once internally when it constructs the fake opened device.
         assertEquals(listOf("0", "0"), characteristicsQueries.toList())
