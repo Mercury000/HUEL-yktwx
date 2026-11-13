@@ -561,7 +561,7 @@ private fun BillSummaryCard(state: BillUiState) {
 
 @Composable
 private fun BillRow(record: BillRecord, onClick: () -> Unit) {
-    ActionSurface(onClick = onClick, shape = RectangleShape, modifier = Modifier.fillMaxWidth()) {
+    ActionSurface(onClick = onClick, shape = RectangleShape, modifier = Modifier.fillMaxWidth().testTag("bill-record")) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
