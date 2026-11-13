@@ -241,7 +241,8 @@ class AccountRepository internal constructor(private val service: YktService, pr
         amountFromCents: Long?,
         amountToCents: Long?,
         info: String?,
-    ): BillPageData = withSession {
+        username: String? = null,
+    ): BillPageData = withSession(expectedUsername = username) {
         service.bills(it, current, size, timeFrom, timeTo, typeId, amountFromCents, amountToCents, info)
     }
     internal data class BillOverview(
@@ -302,10 +303,13 @@ class AccountRepository internal constructor(private val service: YktService, pr
     suspend fun billRanking(type: Int, timeFrom: String, timeTo: String, limit: Int): List<BillRecord> = withSession {
         service.billRanking(it, type, timeFrom, timeTo, limit)
     }
-    suspend fun rechargeConfiguration(preferredTarget: String?): RechargeConfiguration = withSession { rechargeService.rechargeConfiguration(it, preferredTarget) }
+    suspend fun rechargeConfiguration(preferredTarget: String?, username: String? = null): RechargeConfiguration =
+        withSession(expectedUsername = username) { rechargeService.rechargeConfiguration(it, preferredTarget) }
     suspend fun createRecharge(username: String, config: RechargeConfiguration, amountCents: Long): RechargeOrder = withSession(retryAuthentication = false, expectedUsername = username) { rechargeService.createRecharge(it, config, amountCents) }
     suspend fun launchRecharge(pending: PendingRecharge): WechatRechargeLaunch = withSession(retryAuthentication = false, expectedUsername = pending.username) { rechargeService.launchRecharge(it, pending) }
     suspend fun rechargeResult(pending: PendingRecharge): RechargeResult = withSession(expectedUsername = pending.username) { rechargeService.rechargeResult(it, pending) }
+    suspend fun restoreFeeOrder(pending: PendingRecharge): FeeOrder =
+        withSession(expectedUsername = pending.username) { feeService.restoreFeeOrder(it, pending) }
     suspend fun feeConfiguration(username: String, project: FeeProject) = withSession(expectedUsername = username) { feeService.feeConfiguration(it, project) }
     suspend fun feeQuery(username: String, project: FeeProject, level: Int, selections: Map<String, String>, detail: Boolean) =
         withSession(expectedUsername = username) { feeService.feeQuery(it, project, level, selections, detail) }

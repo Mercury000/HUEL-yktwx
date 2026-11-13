@@ -2,6 +2,8 @@ package com.mercury.yktwx
 
 import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -38,10 +40,27 @@ class Hui798ViewModel internal constructor(
     private val api: Hui798Service, private val store: Hui798Store,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(api: Hui798Service, store: Hui798Store, analytics: AppAnalytics) : this(api, store, io = Dispatchers.IO, analytics = analytics)
+    @Inject internal constructor(api: Hui798Service, store: Hui798Store, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(api, store, io = Dispatchers.IO, analytics = analytics, savedState = savedState)
     private val mutable = MutableStateFlow(Hui798UiState())
     val state = mutable.asStateFlow()
+    private var restoreCaptcha = false
+    private val overlays = LifeOverlayRestoration(savedState) {
+        LifeOverlaySavedState(state.value.loginVisible, state.value.changingAccount, state.value.phone)
+    }
+    internal fun bindPresentation(campus: String, preview: Boolean, generation: Long) {
+        if (state.value.restoring) return
+        val restored = overlays.bind(campus, restorationOwner, preview, generation) { restoreCaptcha = false; dismissLogin() } ?: return
+        captchaKey = ""
+        mutable.update { it.copy(loginVisible = restored.login, changingAccount = restored.changing, phone = restored.phone,
+            code = "", imageCode = "", captcha = null) }
+        restoreCaptcha = restored.login
+    }
+    internal fun resumePresentation(active: Boolean, online: Boolean) {
+        if (restoreCaptcha && active && online && !state.value.restoring) { restoreCaptcha = false; refreshCaptcha() }
+    }
     private var account: Hui798Account? = null
     private var ownerPhone = ""
     private var generation = 0L
@@ -134,6 +153,7 @@ class Hui798ViewModel internal constructor(
         refreshCaptcha()
     }
     fun dismissLogin() {
+        restoreCaptcha = false
         authTask?.cancel(); captchaTask?.cancel(); captchaKey = ""
         mutable.update { it.copy(loginVisible = false, sendingCode = false, loggingIn = false,
             captchaLoading = false, captcha = null, code = "", imageCode = "", loginError = null) }
@@ -219,7 +239,7 @@ class Hui798ViewModel internal constructor(
                 persistence.withLock {
                     withContext(io) { store.saveAccount(next) }
                     ensureActive()
-                    account = next; ownerPhone = next.phone
+                    account = next; ownerPhone = next.phone; restoreCaptcha = false
                 }
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Hui798)
                 val candidates = withContext(io) { store.sessions().filter { it.active } }
@@ -254,6 +274,7 @@ class Hui798ViewModel internal constructor(
             loadingDevice = false, selectedSessionId = null, error = null) }
         if (!mutable.value.restoring && account != null) loadDevice(id)
     }
+    internal val restorationOwner: String? get() = ownerPhone.takeIf(String::isNotBlank)
     fun refreshDevice() { if (!mutable.value.busy && !mutable.value.loadingDevice) pendingDeviceId?.let(::loadDevice) }
     private fun loadDevice(id: String) {
         if (mutable.value.restoring) return

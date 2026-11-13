@@ -5,6 +5,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,7 +26,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -203,7 +204,7 @@ internal fun BillDateSelector(
     isActive: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    var showSheet by remember(isActive) { mutableStateOf(false) }
+    var showSheet by rememberSaveable(isActive) { mutableStateOf(false) }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).heightIn(min = 44.dp),
@@ -247,6 +248,8 @@ internal fun BillDateSelector(
     )
 }
 
+private val BillDateSaver = Saver<LocalDate, Long>(save = { it.toEpochDay() }, restore = { runCatching { LocalDate.ofEpochDay(it) }.getOrNull() })
+
 @Composable
 private fun BillDatePickerDialog(
     show: Boolean,
@@ -257,10 +260,10 @@ private fun BillDatePickerDialog(
 ) {
     val today = LocalDate.now()
     val session = rememberOverlaySession(show)
-    var mode by remember(session) { mutableStateOf(filter.mode) }
-    var rangeStart by remember(session) { mutableStateOf(filter.start.coerceIn(minimumDate, today)) }
-    var rangeEnd by remember(session) { mutableStateOf(filter.end.coerceIn(rangeStart, today)) }
-    var activeStart by remember(session) { mutableStateOf(true) }
+    var mode by rememberSaveable(session) { mutableStateOf(filter.mode) }
+    var rangeStart by rememberSaveable(session, stateSaver = BillDateSaver) { mutableStateOf(filter.start.coerceIn(minimumDate, today)) }
+    var rangeEnd by rememberSaveable(session, stateSaver = BillDateSaver) { mutableStateOf(filter.end.coerceIn(rangeStart, today)) }
+    var activeStart by rememberSaveable(session) { mutableStateOf(true) }
     val modes = remember { listOf(BillDateMode.Day, BillDateMode.Month, BillDateMode.Year, BillDateMode.Range) }
 
     fun dateForMode(nextMode: BillDateMode, start: LocalDate, end: LocalDate): LocalDate = when (nextMode) {
@@ -270,7 +273,7 @@ private fun BillDatePickerDialog(
         BillDateMode.Range -> (if (activeStart) start else end).coerceIn(minimumDate, today)
     }
 
-    var pickerDate by remember(session) { mutableStateOf(dateForMode(mode, rangeStart, rangeEnd)) }
+    var pickerDate by rememberSaveable(session, stateSaver = BillDateSaver) { mutableStateOf(dateForMode(mode, rangeStart, rangeEnd)) }
 
     fun selectedFilter(): BillDateFilter = when (mode) {
         BillDateMode.Day -> BillDateFilter.day(pickerDate)
@@ -316,7 +319,7 @@ private fun BillDatePickerDialog(
             Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            OverlayDropdownPreference(
+            RestorableDropdownPreference(
                 title = "日期范围",
                 items = listOf("按日", "按月", "按年", "自定义时间段"),
                 selectedIndex = modes.indexOf(mode),
