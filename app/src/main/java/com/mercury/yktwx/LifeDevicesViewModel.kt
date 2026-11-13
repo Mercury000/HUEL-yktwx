@@ -17,8 +17,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** Foreground payment feedback is separate from the persisted device progress. */
-data class LaundryPaymentFeedback(val sessionId: String, val phase: RechargePhase,
+data class LifePaymentFeedback(val sessionId: String, val phase: RechargePhase,
     val loading: Boolean = false, val detail: String? = null)
+typealias LaundryPaymentFeedback = LifePaymentFeedback
 private class LaundryOrderClosed : Exception()
 
 data class LifeDevicesUiState(

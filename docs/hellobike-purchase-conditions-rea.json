@@ -1,0 +1,1220 @@
+{
+  "scope": "static purchase conditions, signing request and cashier close; no online payment performed",
+  "native_methods": [
+    {
+      "evidence_id": "ev_5fd4c5a19b0c6bece9cf47440c11bc0ec4c49f86caebc52c6c601c8123f6f962",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.HBPayCore",
+        "method_name": "b",
+        "overload_index": 0
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.HBPayCore",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(android.app.Activity, com.hellobike.allpay.paycomponent.model.entity.PayWithSignModelV2, com.hellobike.allpay.paycomponent.listener.AggregateResultListener): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Lcom/hellobike/allpay/paycomponent/model/entity/PayWithSignModelV2;Lcom/hellobike/allpay/paycomponent/listener/AggregateResultListener;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX WARN: Code duplicated, block: B:27:0x0050  */\r\n    @JvmStatic\r\n    public static final void b(@NotNull Activity context, @NotNull PayWithSignModelV2 payWithSignModel, @NotNull final AggregateResultListener listener) {\r\n        boolean z;\r\n        IAllPayLocationInfo locationInfo;\r\n        IAllPayLocationInfo locationInfo2;\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(payWithSignModel, \"payWithSignModel\");\r\n        Intrinsics.checkNotNullParameter(listener, \"listener\");\r\n        String signChannel = payWithSignModel.getSignChannel();\r\n        String channel = payWithSignModel.getChannel();\r\n        if (signChannel == null || signChannel.length() == 0) {\r\n            if (channel == null || channel.length() == 0) {\r\n                listener.onFail(PayErrorTypes.PARAMS_ERROR.getErrorCode(), \"暂不支持该签约渠道\");\r\n                return;\r\n            }\r\n        }\r\n        if (signChannel == null) {\r\n            z = false;\r\n        } else {\r\n            if (signChannel.length() > 0) {\r\n                z = true;\r\n            } else {\r\n                z = false;\r\n            }\r\n        }\r\n        if (z) {\r\n            channel = PayAndSignTransfer.a(signChannel);\r\n        }\r\n        if (channel == null || channel.length() == 0) {\r\n            listener.onFail(PayErrorTypes.PARAMS_ERROR.getErrorCode(), \"暂不支持该签约渠道\");\r\n            return;\r\n        }\r\n        final AggregateData aggregateData = new AggregateData();\r\n        aggregateData.setBusinessType(payWithSignModel.getBusinessType());\r\n        aggregateData.setCreditModel(payWithSignModel.getCreditModel());\r\n        String amount = payWithSignModel.getAmount();\r\n        aggregateData.setAmount(amount != null ? Double.parseDouble(amount) : 0.0d);\r\n        aggregateData.setChannel(channel);\r\n        aggregateData.setOrdersData(payWithSignModel.getOrders());\r\n        aggregateData.setPayAndGranted(true);\r\n        aggregateData.setActionOrigin(payWithSignModel.getActionOrigin());\r\n        InitDataHolder initDataHolder = InitDataHolder.a;\r\n        AllPayConfig allPayConfigA = initDataHolder.a();\r\n        aggregateData.setAdCode((allPayConfigA == null || (locationInfo2 = allPayConfigA.getLocationInfo()) == null) ? null : locationInfo2.getAdcode());\r\n        AllPayConfig allPayConfigA2 = initDataHolder.a();\r\n        aggregateData.setCityCode((allPayConfigA2 == null || (locationInfo = allPayConfigA2.getLocationInfo()) == null) ? null : locationInfo.getCityCode());\r\n        aggregateData.setPeriodRuleParams(payWithSignModel.getPeriodRuleParams());\r\n        aggregateData.setChannelOperationInfoExt(payWithSignModel.getChannelOperationInfoExt());\r\n        Map<String, Object> extension = payWithSignModel.getExtension();\r\n        if (extension == null) {\r\n            aggregateData.setExtension(null);\r\n        } else {\r\n            aggregateData.setExtension(new HashMap<>(extension));\r\n        }\r\n        HBPayTrack.payAndSignCall(aggregateData);\r\n        HBAllPayManagerKt hBAllPayManagerKt = new HBAllPayManagerKt(context);\r\n        hBAllPayManagerKt.m(aggregateData);\r\n        hBAllPayManagerKt.n(new AggregateResultListener() { // from class: com.hellobike.allpay.agentpay.HBPayCore$payWithSign$4\r\n            @Override // com.hellobike.allpay.paycomponent.listener.AggregateResultListener\r\n            public void onFail(int code, @Nullable String result) {\r\n                listener.onFail(code, result);\r\n                AggregateData aggregateData2 = aggregateData;\r\n                HBPayTrack.ResultTrackBean resultTrackBean = new HBPayTrack.ResultTrackBean();\r\n                resultTrackBean.setErrorCode(Integer.valueOf(code));\r\n                resultTrackBean.setErrorMsg(result);\r\n                HBPayTrack.payAndSignResult(aggregateData2, resultTrackBean);\r\n            }\r\n\r\n            @Override // com.hellobike.allpay.paycomponent.listener.AggregateResultListener\r\n            public void onSuccess() {\r\n                listener.onSuccess();\r\n                HBPayTrack.payAndSignResult(aggregateData, new HBPayTrack.ResultTrackBean());\r\n            }\r\n        });\r\n        hBAllPayManagerKt.q();\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_effb07090c740a0b256cfcec91215cd2b25cdee0dc2360b2ac6e246d48cc3a0a",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.manager.CashierDialogManager",
+        "method_name": "b",
+        "overload_index": 0
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.manager.CashierDialogManager",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(com.hellobike.allpay.paycomponent.model.entity.CloseCashierModel, com.hellobike.allpay.paycomponent.listener.CloseCashierDeskCallback): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/model/entity/CloseCashierModel;Lcom/hellobike/allpay/paycomponent/listener/CloseCashierDeskCallback;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final void b(@NotNull final CloseCashierModel model, @Nullable final CloseCashierDeskCallback callback) {\r\n        ArrayList arrayList;\r\n        boolean z;\r\n        StandardCashierDialogHelper standardCashierDialogHelper;\r\n        Intrinsics.checkNotNullParameter(model, \"model\");\r\n        List<OrderInfoBean> orders = model.getOrders();\r\n        boolean z2 = false;\r\n        if (orders != null) {\r\n            ArrayList arrayList2 = new ArrayList();\r\n            for (Object obj : orders) {\r\n                if (((OrderInfoBean) obj).getGuid().length() > 0) {\r\n                    arrayList2.add(obj);\r\n                }\r\n            }\r\n            arrayList = new ArrayList(CollectionsKt.collectionSizeOrDefault(arrayList2, 10));\r\n            Iterator it = arrayList2.iterator();\r\n            while (it.hasNext()) {\r\n                arrayList.add(((OrderInfoBean) it.next()).getGuid());\r\n            }\r\n        } else {\r\n            arrayList = null;\r\n        }\r\n        if (arrayList == null || arrayList.isEmpty()) {\r\n            AllPayLogger.i(AllPayLogger.a, \"CashierManager 关闭收银台-订单入参无效 targetGuidList=\" + arrayList, null, 2, null);\r\n            if (callback != null) {\r\n                CashierCloseError cashierCloseError = CashierCloseError.PARAMS_ERROR;\r\n                callback.a(cashierCloseError.getErrorCode(), cashierCloseError.getErrorMsg());\r\n                return;\r\n            }\r\n            return;\r\n        }\r\n        final ArrayList<StandardCashierDialogHelper> arrayList3 = new ArrayList();\r\n        for (String str : dialogMap.keySet()) {\r\n            List<String> listD = a.d(str);\r\n            List<String> list = listD;\r\n            if (!(list == null || list.isEmpty()) && listD.size() == arrayList.size() && listD.containsAll(arrayList) && arrayList.containsAll(listD) && (standardCashierDialogHelper = dialogMap.get(str)) != null) {\r\n                arrayList3.add(standardCashierDialogHelper);\r\n            }\r\n        }\r\n        if (arrayList3.isEmpty()) {\r\n            AllPayLogger.i(AllPayLogger.a, \"CashierManager 关闭收银台-没有匹配到收银台 targetGuidList=\" + arrayList, null, 2, null);\r\n            if (callback != null) {\r\n                CashierCloseError cashierCloseError2 = CashierCloseError.NOT_FOUND;\r\n                callback.a(cashierCloseError2.getErrorCode(), cashierCloseError2.getErrorMsg());\r\n                return;\r\n            }\r\n            return;\r\n        }\r\n        ArrayList arrayList4 = new ArrayList();\r\n        for (StandardCashierDialogHelper standardCashierDialogHelper2 : arrayList3) {\r\n            boolean Z = standardCashierDialogHelper2.Z();\r\n            AllPayLogger.b(AllPayLogger.a, \"CashierManager 关闭收银台-能否关闭 targetGuidList=\" + arrayList + \" canClose=\" + Z + \" helper=\" + standardCashierDialogHelper2, null, 2, null);\r\n            arrayList4.add(Boolean.valueOf(Z));\r\n        }\r\n        if (!arrayList4.isEmpty()) {\r\n            if (arrayList4.isEmpty()) {\r\n                z = true;\r\n                break;\r\n            }\r\n            Iterator it2 = arrayList4.iterator();\r\n            while (true) {\r\n                if (it2.hasNext()) {\r\n                    if (!((Boolean) it2.next()).booleanValue()) {\r\n                        z = false;\r\n                        break;\r\n                    }\r\n                } else {\r\n                    z = true;\r\n                    break;\r\n                }\r\n            }\r\n            if (z) {\r\n                z2 = true;\r\n            }\r\n        }\r\n        if (!z2) {\r\n            AllPayLogger.i(AllPayLogger.a, \"CashierManager 关闭收银台-不能关闭  failed\", null, 2, null);\r\n            if (callback != null) {\r\n                CashierCloseError cashierCloseError3 = CashierCloseError.STATUS_ERROR;\r\n                callback.a(cashierCloseError3.getErrorCode(), cashierCloseError3.getErrorMsg());\r\n                return;\r\n            }\r\n            return;\r\n        }\r\n        final LinkedHashMap linkedHashMap = new LinkedHashMap();\r\n        final Function0<Unit> function0 = new Function0<Unit>() { // from class: com.hellobike.allpay.paycomponent.manager.CashierDialogManager$closeDialog$checkDoneBlock$1\r\n            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n            {\r\n                super(0);\r\n            }\r\n\r\n            public /* bridge */ /* synthetic */ Object invoke() {\r\n                m600invoke();\r\n                return Unit.INSTANCE;\r\n            }\r\n\r\n            /* JADX INFO: renamed from: invoke, reason: collision with other method in class */\r\n            public final void m600invoke() {\r\n                boolean z3;\r\n                AllPayLogger.b(AllPayLogger.a, \"CashierManager 关闭收银台-检查是否全部回调完毕 目标数量=\" + arrayList3.size() + \" 当前回调=\" + linkedHashMap.values() + ' ', null, 2, null);\r\n                if (linkedHashMap.size() == arrayList3.size()) {\r\n                    Collection<Boolean> collectionValues = linkedHashMap.values();\r\n                    Intrinsics.checkNotNullExpressionValue(collectionValues, \"hasCallbackMap.values\");\r\n                    Collection<Boolean> collection = collectionValues;\r\n                    if (!collection.isEmpty()) {\r\n                        Iterator<T> it3 = collection.iterator();\r\n                        while (true) {\r\n                            if (!it3.hasNext()) {\r\n                                z3 = true;\r\n                                break;\r\n                            }\r\n                            Boolean bool = (Boolean) it3.next();\r\n                            Intrinsics.checkNotNullExpressionValue(bool, \"it\");\r\n                            if (!bool.booleanValue()) {\r\n                                z3 = false;\r\n                                break;\r\n                            }\r\n                        }\r\n                    } else {\r\n                        z3 = true;\r\n                        break;\r\n                    }\r\n                    if (z3) {\r\n                        AllPayLogger.b(AllPayLogger.a, \"CashierManager 关闭收银台-结果  success\", null, 2, null);\r\n                        CloseCashierDeskCallback closeCashierDeskCallback = callback;\r\n                        if (closeCashierDeskCallback != null) {\r\n                            closeCashierDeskCallback.b();\r\n                        }\r\n                        StandardCashierTrack.INSTANCE.trackCloseCashier(model, true, null, null);\r\n                        return;\r\n                    }\r\n                    AllPayLogger.i(AllPayLogger.a, \"CashierManager 关闭收银台-结果  failed\", null, 2, null);\r\n                    CloseCashierDeskCallback closeCashierDeskCallback2 = callback;\r\n                    if (closeCashierDeskCallback2 != null) {\r\n                        CashierCloseError cashierCloseError4 = CashierCloseError.STATUS_ERROR;\r\n                        closeCashierDeskCallback2.a(cashierCloseError4.getErrorCode(), cashierCloseError4.getErrorMsg());\r\n                    }\r\n                    StandardCashierTrack standardCashierTrack = StandardCashierTrack.INSTANCE;\r\n                    CloseCashierModel closeCashierModel = model;\r\n                    CashierCloseError cashierCloseError5 = CashierCloseError.STATUS_ERROR;\r\n                    standardCashierTrack.trackCloseCashier(closeCashierModel, false, Integer.valueOf(cashierCloseError5.getErrorCode()), cashierCloseError5.getErrorMsg());\r\n                }\r\n            }\r\n        };\r\n        for (final StandardCashierDialogHelper standardCashierDialogHelper3 : arrayList3) {\r\n            standardCashierDialogHelper3.e0(new CloseCashierDeskCallback() { // from class: com.hellobike.allpay.paycomponent.manager.CashierDialogManager$closeDialog$3$1\r\n                @Override // com.hellobike.allpay.paycomponent.listener.CloseCashierDeskCallback\r\n                public void a(int errorCode, @NotNull String errorMsg) {\r\n                    Intrinsics.checkNotNullParameter(errorMsg, \"errorMsg\");\r\n                    linkedHashMap.put(standardCashierDialogHelper3, Boolean.FALSE);\r\n                    function0.invoke();\r\n                }\r\n\r\n                @Override // com.hellobike.allpay.paycomponent.listener.CloseCashierDeskCallback\r\n                public void b() {\r\n                    linkedHashMap.put(standardCashierDialogHelper3, Boolean.TRUE);\r\n                    function0.invoke();\r\n                }\r\n            });\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_44d6d4180487a49b95d6b38ace4128afdfa19656e853552a702b11bdcdc8d081",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.utils.PayAndSignTransfer",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.utils.PayAndSignTransfer",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(java.lang.String): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;)Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX WARN: Can't fix incorrect switch cases order, some code will duplicate */\r\n    /* JADX WARN: Failed to restore switch over string. Please report as a decompilation issue */\r\n    @JvmStatic\r\n    @Nullable\r\n    public static final String a(@Nullable String payAndSignChannel) {\r\n        if (payAndSignChannel != null) {\r\n            switch (payAndSignChannel.hashCode()) {\r\n                case -1414960566:\r\n                    if (payAndSignChannel.equals(\"alipay\")) {\r\n                        return PayTypeEnum.ALI_NO_PWD_PAY.getChannelCode();\r\n                    }\r\n                    break;\r\n                case -1325936172:\r\n                    if (payAndSignChannel.equals(\"douyin\")) {\r\n                        return PayTypeEnum.DY_PAY_AND_SIGN.getChannelCode();\r\n                    }\r\n                    break;\r\n                case -146945326:\r\n                    if (payAndSignChannel.equals(\"wechatTrust\")) {\r\n                        return PayTypeEnum.WX_PAY_AND_SIGN.getChannelCode();\r\n                    }\r\n                    break;\r\n                case 1692106980:\r\n                    if (payAndSignChannel.equals(\"douyinTrust\")) {\r\n                        return PayTypeEnum.DY_SIGN_IN_PAY.getChannelCode();\r\n                    }\r\n                    break;\r\n            }\r\n        }\r\n        return null;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_be41ea1ec009f310e4f70ad1f0e36ee3087fbb8b79891c60e3b7f5846c23338c",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method_name": "a",
+        "overload_index": 0
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(android.app.Activity, com.hellobike.allpay.paycomponent.model.entity.AggregateData): com.hellobike.allpay.paycomponent.model.api.CCbPayConfigRequest",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Lcom/hellobike/allpay/paycomponent/model/entity/AggregateData;)Lcom/hellobike/allpay/paycomponent/model/api/CCbPayConfigRequest;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    @NotNull\r\n    public static final CCbPayConfigRequest a(@NotNull Activity context, @NotNull AggregateData aggregateData) {\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(aggregateData, \"aggregateData\");\r\n        CCbPayConfigRequest cCbPayConfigRequest = new CCbPayConfigRequest();\r\n        cCbPayConfigRequest.setAmount(aggregateData.getAmount());\r\n        cCbPayConfigRequest.setAdCode(aggregateData.getAdCode());\r\n        cCbPayConfigRequest.setCityCode(aggregateData.getCityCode());\r\n        cCbPayConfigRequest.setChannel(aggregateData.getChannel());\r\n        cCbPayConfigRequest.setBusinessType(aggregateData.getBusinessType());\r\n        cCbPayConfigRequest.setOrders(JsonUtils.d(aggregateData.getOrdersData()));\r\n        cCbPayConfigRequest.setCombinedWith(JsonUtils.d(aggregateData.getCombinedWithData()));\r\n        cCbPayConfigRequest.setClientIP(IPUtils.a(context));\r\n        cCbPayConfigRequest.setMarketingActivityId(aggregateData.getMarketId());\r\n        cCbPayConfigRequest.setMarketingType(aggregateData.getMarketingType());\r\n        cCbPayConfigRequest.setPromoType(aggregateData.getPromoType());\r\n        cCbPayConfigRequest.setLocale(aggregateData.getLocale());\r\n        if (!TextUtils.isEmpty(aggregateData.getPayProjectGuid())) {\r\n            cCbPayConfigRequest.setPayProjectGuid(aggregateData.getPayProjectGuid());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getFrontPageId())) {\r\n            cCbPayConfigRequest.setFrontPageId(aggregateData.getFrontPageId());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getHasBundleSaleInfo())) {\r\n            cCbPayConfigRequest.setHasBundleSaleInfo(aggregateData.getHasBundleSaleInfo());\r\n        }\r\n        PayCoreConfirmPayHelper payCoreConfirmPayHelper = a;\r\n        String channel = aggregateData.getChannel();\r\n        Intrinsics.checkNotNullExpressionValue(channel, \"aggregateData.channel\");\r\n        cCbPayConfigRequest.setReturnUrl(payCoreConfirmPayHelper.c(channel, aggregateData.isPayAndGranted()));\r\n        String channel2 = aggregateData.getChannel();\r\n        Intrinsics.checkNotNullExpressionValue(channel2, \"aggregateData.channel\");\r\n        cCbPayConfigRequest.setRequestFromUrl(payCoreConfirmPayHelper.b(channel2, aggregateData.isPayAndGranted()));\r\n        if (!TextUtils.isEmpty(aggregateData.getFqNum())) {\r\n            cCbPayConfigRequest.setFqNum(aggregateData.getFqNum());\r\n            cCbPayConfigRequest.setFqSellerPercent(aggregateData.getFqSellerPercent());\r\n        }\r\n        if (!EmptyUtils.c(aggregateData.getActionOrigin())) {\r\n            cCbPayConfigRequest.setActionOrigin(aggregateData.getActionOrigin());\r\n        }\r\n        if (!EmptyUtils.c(aggregateData.getCreditModel())) {\r\n            cCbPayConfigRequest.setCreditModel(aggregateData.getCreditModel());\r\n        }\r\n        HashMap<String, Object> extension = aggregateData.getExtension();\r\n        if (!(extension == null || extension.isEmpty())) {\r\n            cCbPayConfigRequest.setExtension(aggregateData.getExtension());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getAlipayOperationInfo())) {\r\n            cCbPayConfigRequest.setAlipayOperationInfo(aggregateData.getAlipayOperationInfo());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getPreConsultId())) {\r\n            cCbPayConfigRequest.setPreConsultId(aggregateData.getPreConsultId());\r\n        }\r\n        cCbPayConfigRequest.setChannelComposeInfo(aggregateData.getChannelComposeInfo());\r\n        cCbPayConfigRequest.setComposeInfo(aggregateData.getComposeInfo());\r\n        if (!TextUtils.isEmpty(aggregateData.getBusinessLineCode())) {\r\n            cCbPayConfigRequest.setBusinessLineCode(aggregateData.getBusinessLineCode());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getPeriodRuleParams())) {\r\n            cCbPayConfigRequest.setPeriodRuleParams(aggregateData.getPeriodRuleParams());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getChannelOperationInfoExt())) {\r\n            cCbPayConfigRequest.setChannelOperationInfoExt(aggregateData.getChannelOperationInfoExt());\r\n        }\r\n        return cCbPayConfigRequest;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_1ec4f730777c1b53c27f2cf7265a49044c85b1978535ce5c1b58322f0edaca08",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.model.entity.PayTypeEnum",
+        "method_name": "<clinit>"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.model.entity.PayTypeEnum",
+        "method": {
+          "name": "<clinit>",
+          "reported_signature": "<clinit>(): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()V"
+        },
+        "overload_count": 1,
+        "representation": "smali",
+        "body_status": "available",
+        "fell_back": true,
+        "markers": [
+          "static_initializer_disassembly"
+        ],
+        "source": {
+          "status": "complete",
+          "text": ".method public static constructor <clinit>()V\n    .registers 23\n\n    .line 1\n    new-instance v6, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 2\n    .line 3\n    const-string v1, \"ALI_PAY\"\n\n    .line 4\n    .line 5\n    const/4 v2, 0x0\n\n    .line 6\n    const-string v3, \"\\u652f\\u4ed8\\u5b9d\"\n\n    .line 7\n    .line 8\n    const-string v4, \"001\"\n\n    .line 9\n    .line 10\n    const/4 v5, 0x1\n\n    .line 11\n    move-object v0, v6\n\n    .line 12\n    invoke-direct/range {v0 .. v5}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 13\n    .line 14\n    .line 15\n    sput-object v6, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 16\n    .line 17\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 18\n    .line 19\n    const-string v8, \"ALI_NO_PWD_PAY\"\n\n    .line 20\n    .line 21\n    const/4 v9, 0x1\n\n    .line 22\n    const-string v10, \"\\u652f\\u4ed8\\u5e76\\u514d\\u5bc6\"\n\n    .line 23\n    .line 24\n    const-string v11, \"102\"\n\n    .line 25\n    .line 26\n    const/4 v12, 0x1\n\n    .line 27\n    move-object v7, v0\n\n    .line 28\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 29\n    .line 30\n    .line 31\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_NO_PWD_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 32\n    .line 33\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 34\n    .line 35\n    const-string v2, \"ALI_DIRECT_SIGN_AND_WITHHOLD\"\n\n    .line 36\n    .line 37\n    const/4 v3, 0x2\n\n    .line 38\n    const-string v4, \"\\u652f\\u4ed8\\u5b9d\\u7b7e\\u7ea6\\u5e76\\u4ee3\\u6263\"\n\n    .line 39\n    .line 40\n    const-string v5, \"301\"\n\n    .line 41\n    .line 42\n    const/4 v6, 0x1\n\n    .line 43\n    move-object v1, v0\n\n    .line 44\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 45\n    .line 46\n    .line 47\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_DIRECT_SIGN_AND_WITHHOLD:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 48\n    .line 49\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 50\n    .line 51\n    const-string v8, \"ALI_MINI_PROGRAM\"\n\n    .line 52\n    .line 53\n    const/4 v9, 0x3\n\n    .line 54\n    const-string v10, \"\\u652f\\u4ed8\\u5b9d\\u5c0f\\u7a0b\\u5e8f\"\n\n    .line 55\n    .line 56\n    const-string v11, \"aliMiniProgram\"\n\n    .line 57\n    .line 58\n    const/4 v12, 0x0\n\n    .line 59\n    const/4 v13, 0x4\n\n    .line 60\n    const/4 v14, 0x0\n\n    .line 61\n    move-object v7, v0\n\n    .line 62\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 63\n    .line 64\n    .line 65\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_MINI_PROGRAM:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 66\n    .line 67\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 68\n    .line 69\n    const-string v2, \"UMS_PP_PAY_ALI_MINI_PROGRAM\"\n\n    .line 70\n    .line 71\n    const/4 v3, 0x4\n\n    .line 72\n    const-string v4, \"\\u94f6\\u8054\\u5168\\u6c11\\u4ed8\\u652f\\u4ed8\\u5b9d\\u5c0f\\u7a0b\\u5e8f\"\n\n    .line 73\n    .line 74\n    const-string v5, \"109\"\n\n    .line 75\n    .line 76\n    move-object v1, v0\n\n    .line 77\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 78\n    .line 79\n    .line 80\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->UMS_PP_PAY_ALI_MINI_PROGRAM:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 81\n    .line 82\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 83\n    .line 84\n    const-string v8, \"ALI_PAY_WITH_NBCB\"\n\n    .line 85\n    .line 86\n    const/4 v9, 0x5\n\n    .line 87\n    const-string v10, \"\\u5b81\\u6ce2\\u94f6\\u884c\\u4fe1\\u7528\\u8d2d\"\n\n    .line 88\n    .line 89\n    const-string v11, \"2401\"\n\n    .line 90\n    .line 91\n    const/4 v12, 0x1\n\n    .line 92\n    move-object v7, v0\n\n    .line 93\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 94\n    .line 95\n    .line 96\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_PAY_WITH_NBCB:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 97\n    .line 98\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 99\n    .line 100\n    const-string v2, \"ZHIMA_APSO\"\n\n    .line 101\n    .line 102\n    const/4 v3, 0x6\n\n    .line 103\n    const-string v4, \"\\u829d\\u9ebb\\u5148\\u4eab\\u540e\\u4ed8\"\n\n    .line 104\n    .line 105\n    const-string v5, \"107\"\n\n    .line 106\n    .line 107\n    const/4 v6, 0x0\n\n    .line 108\n    move-object v1, v0\n\n    .line 109\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 110\n    .line 111\n    .line 112\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ZHIMA_APSO:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 113\n    .line 114\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 115\n    .line 116\n    const-string v8, \"HUABEI_PAY\"\n\n    .line 117\n    .line 118\n    const/4 v9, 0x7\n\n    .line 119\n    const-string v10, \"\\u82b1\\u5457\\u5206\\u671f\\u652f\\u4ed8\"\n\n    .line 120\n    .line 121\n    const-string v11, \"103\"\n\n    .line 122\n    .line 123\n    const/4 v12, 0x0\n\n    .line 124\n    move-object v7, v0\n\n    .line 125\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 126\n    .line 127\n    .line 128\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HUABEI_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 129\n    .line 130\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 131\n    .line 132\n    const-string v2, \"HUABEIPRE_PAY\"\n\n    .line 133\n    .line 134\n    const/16 v3, 0x8\n\n    .line 135\n    .line 136\n    const-string v4, \"\\u82b1\\u5457\\u652f\\u4ed8\"\n\n    .line 137\n    .line 138\n    const-string v5, \"104\"\n\n    .line 139\n    .line 140\n    const/4 v6, 0x1\n\n    .line 141\n    move-object v1, v0\n\n    .line 142\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 143\n    .line 144\n    .line 145\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HUABEIPRE_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 146\n    .line 147\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 148\n    .line 149\n    const-string v8, \"HUABEI_AUTO_PAY\"\n\n    .line 150\n    .line 151\n    const/16 v9, 0x9\n\n    .line 152\n    .line 153\n    const-string v10, \"\\u82b1\\u5457\\u514d\\u5bc6\\u652f\\u4ed8\"\n\n    .line 154\n    .line 155\n    const-string v11, \"105\"\n\n    .line 156\n    .line 157\n    move-object v7, v0\n\n    .line 158\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 159\n    .line 160\n    .line 161\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HUABEI_AUTO_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 162\n    .line 163\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 164\n    .line 165\n    const-string v16, \"HUABEI_MONTH_PAY\"\n\n    .line 166\n    .line 167\n    const/16 v17, 0xa\n\n    .line 168\n    .line 169\n    const-string v18, \"\\u82b1\\u5457\\u6708\\u6708\\u4ed8\"\n\n    .line 170\n    .line 171\n    const-string v19, \"701\"\n\n    .line 172\n    .line 173\n    const/16 v20, 0x0\n\n    .line 174\n    .line 175\n    const/16 v21, 0x4\n\n    .line 176\n    .line 177\n    const/16 v22, 0x0\n\n    .line 178\n    .line 179\n    move-object v15, v0\n\n    .line 180\n    invoke-direct/range {v15 .. v22}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 181\n    .line 182\n    .line 183\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HUABEI_MONTH_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 184\n    .line 185\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 186\n    .line 187\n    const-string v2, \"HUABEI_PAY_AND_SIGN\"\n\n    .line 188\n    .line 189\n    const/16 v3, 0xb\n\n    .line 190\n    .line 191\n    const-string v4, \"\\u652f\\u4ed8\\u5b9d\\u82b1\\u5457\\u652f\\u4ed8\\u5e76\\u7b7e\\u7ea6\"\n\n    .line 192\n    .line 193\n    const-string v5, \"112\"\n\n    .line 194\n    .line 195\n    move-object v1, v0\n\n    .line 196\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 197\n    .line 198\n    .line 199\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HUABEI_PAY_AND_SIGN:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 200\n    .line 201\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 202\n    .line 203\n    const-string v8, \"HELLO_MONTH\"\n\n    .line 204\n    .line 205\n    const/16 v9, 0xc\n\n    .line 206\n    .line 207\n    const-string v10, \"\\u54c8\\u5570\\u6708\\u4ed8x\\u82b1\\u5457\"\n\n    .line 208\n    .line 209\n    const-string v11, \"1040\"\n\n    .line 210\n    .line 211\n    const/4 v12, 0x1\n\n    .line 212\n    move-object v7, v0\n\n    .line 213\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 214\n    .line 215\n    .line 216\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HELLO_MONTH:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 217\n    .line 218\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 219\n    .line 220\n    const-string v2, \"HELLO_MONTH_PAY_AND_SIGN\"\n\n    .line 221\n    .line 222\n    const/16 v3, 0xd\n\n    .line 223\n    .line 224\n    const-string v4, \"\\u54c8\\u5570\\u6708\\u4ed8x\\u82b1\\u5457\\u652f\\u4ed8\\u5e76\\u7b7e\\u7ea6\"\n\n    .line 225\n    .line 226\n    const-string v5, \"1120\"\n\n    .line 227\n    .line 228\n    move-object v1, v0\n\n    .line 229\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 230\n    .line 231\n    .line 232\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HELLO_MONTH_PAY_AND_SIGN:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 233\n    .line 234\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 235\n    .line 236\n    const-string v8, \"ALI_PRE_AUTH\"\n\n    .line 237\n    .line 238\n    const/16 v9, 0xe\n\n    .line 239\n    .line 240\n    const-string v10, \"\\u652f\\u4ed8\\u5b9d\\u9884\\u6388\\u6743\"\n\n    .line 241\n    .line 242\n    const-string v11, \"106\"\n\n    .line 243\n    .line 244\n    const/4 v12, 0x0\n\n    .line 245\n    move-object v7, v0\n\n    .line 246\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 247\n    .line 248\n    .line 249\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALI_PRE_AUTH:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 250\n    .line 251\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 252\n    .line 253\n    const-string v2, \"WECHAT_PAY\"\n\n    .line 254\n    .line 255\n    const/16 v3, 0xf\n\n    .line 256\n    .line 257\n    const-string v4, \"\\u5fae\\u4fe1\"\n\n    .line 258\n    .line 259\n    const-string v5, \"002\"\n\n    .line 260\n    .line 261\n    move-object v1, v0\n\n    .line 262\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 263\n    .line 264\n    .line 265\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WECHAT_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 266\n    .line 267\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 268\n    .line 269\n    const-string v8, \"WECHAT_NO_PWD_PAY\"\n\n    .line 270\n    .line 271\n    const/16 v9, 0x10\n\n    .line 272\n    .line 273\n    const-string v10, \"\\u5fae\\u4fe1\\u514d\\u5bc6\\u5e76\\u652f\\u4ed8\"\n\n    .line 274\n    .line 275\n    const-string v11, \"204\"\n\n    .line 276\n    .line 277\n    move-object v7, v0\n\n    .line 278\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 279\n    .line 280\n    .line 281\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WECHAT_NO_PWD_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 282\n    .line 283\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 284\n    .line 285\n    const-string v16, \"WECHAT_MINI_PROGRAM\"\n\n    .line 286\n    .line 287\n    const/16 v17, 0x11\n\n    .line 288\n    .line 289\n    const-string v18, \"\\u5fae\\u4fe1\\u514d\\u5bc6\\u5e76\\u652f\\u4ed8\"\n\n    .line 290\n    .line 291\n    const-string v19, \"205\"\n\n    .line 292\n    .line 293\n    move-object v15, v0\n\n    .line 294\n    invoke-direct/range {v15 .. v22}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 295\n    .line 296\n    .line 297\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WECHAT_MINI_PROGRAM:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 298\n    .line 299\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 300\n    .line 301\n    const-string v2, \"WECHAT_BAOFU_PAY\"\n\n    .line 302\n    .line 303\n    const/16 v3, 0x12\n\n    .line 304\n    .line 305\n    const-string v4, \"\\u5fae\\u4fe1\\u5b9d\\u4ed8\"\n\n    .line 306\n    .line 307\n    const-string v5, \"206\"\n\n    .line 308\n    .line 309\n    const/4 v6, 0x0\n\n    .line 310\n    const/4 v7, 0x4\n\n    .line 311\n    const/4 v8, 0x0\n\n    .line 312\n    move-object v1, v0\n\n    .line 313\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 314\n    .line 315\n    .line 316\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WECHAT_BAOFU_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 317\n    .line 318\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 319\n    .line 320\n    const-string v10, \"WX_MINI_PROGRAM\"\n\n    .line 321\n    .line 322\n    const/16 v11, 0x13\n\n    .line 323\n    .line 324\n    const-string v12, \"\\u5fae\\u4fe1\\u5c0f\\u7a0b\\u5e8f\"\n\n    .line 325\n    .line 326\n    const-string v13, \"wxMiniProgram\"\n\n    .line 327\n    .line 328\n    const/4 v14, 0x0\n\n    .line 329\n    const/4 v15, 0x4\n\n    .line 330\n    const/16 v16, 0x0\n\n    .line 331\n    .line 332\n    move-object v9, v0\n\n    .line 333\n    invoke-direct/range {v9 .. v16}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 334\n    .line 335\n    .line 336\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WX_MINI_PROGRAM:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 337\n    .line 338\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 339\n    .line 340\n    const-string v2, \"WX_MINI_PROGRAM_LKL\"\n\n    .line 341\n    .line 342\n    const/16 v3, 0x14\n\n    .line 343\n    .line 344\n    const-string v4, \"\\u5fae\\u4fe1\\u5c0f\\u7a0b\\u5e8f\\u62c9\\u5361\\u62c9\\u901a\\u9053\"\n\n    .line 345\n    .line 346\n    const-string v5, \"211\"\n\n    .line 347\n    .line 348\n    const/4 v6, 0x1\n\n    .line 349\n    move-object v1, v0\n\n    .line 350\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 351\n    .line 352\n    .line 353\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WX_MINI_PROGRAM_LKL:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 354\n    .line 355\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 356\n    .line 357\n    const-string v8, \"WX_PAY_AND_SIGN\"\n\n    .line 358\n    .line 359\n    const/16 v9, 0x15\n\n    .line 360\n    .line 361\n    const-string v10, \"\\u5fae\\u4fe1\\u652f\\u4ed8\\u5e76\\u7b7e\\u7ea6\"\n\n    .line 362\n    .line 363\n    const-string v11, \"306\"\n\n    .line 364\n    .line 365\n    const/4 v12, 0x1\n\n    .line 366\n    move-object v7, v0\n\n    .line 367\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 368\n    .line 369\n    .line 370\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->WX_PAY_AND_SIGN:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 371\n    .line 372\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 373\n    .line 374\n    const-string v14, \"BALANCE_PAY_020\"\n\n    .line 375\n    .line 376\n    const/16 v15, 0x16\n\n    .line 377\n    .line 378\n    const-string v16, \"\\u60e0\\u9009\\u50a8\\u503c\\u4f59\\u989d\"\n\n    .line 379\n    .line 380\n    const-string v17, \"020\"\n\n    .line 381\n    .line 382\n    const/16 v18, 0x0\n\n    .line 383\n    .line 384\n    const/16 v19, 0x4\n\n    .line 385\n    .line 386\n    const/16 v20, 0x0\n\n    .line 387\n    .line 388\n    move-object v13, v0\n\n    .line 389\n    invoke-direct/range {v13 .. v20}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 390\n    .line 391\n    .line 392\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BALANCE_PAY_020:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 393\n    .line 394\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 395\n    .line 396\n    const-string v2, \"BALANCE_PAY\"\n\n    .line 397\n    .line 398\n    const/16 v3, 0x17\n\n    .line 399\n    .line 400\n    const-string v4, \"\\u4f59\\u989d\"\n\n    .line 401\n    .line 402\n    const-string v5, \"003\"\n\n    .line 403\n    .line 404\n    const/4 v6, 0x0\n\n    .line 405\n    const/4 v7, 0x4\n\n    .line 406\n    const/4 v8, 0x0\n\n    .line 407\n    move-object v1, v0\n\n    .line 408\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 409\n    .line 410\n    .line 411\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BALANCE_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 412\n    .line 413\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 414\n    .line 415\n    const-string v10, \"BALANCE_PAY_1601\"\n\n    .line 416\n    .line 417\n    const/16 v11, 0x18\n\n    .line 418\n    .line 419\n    const-string v12, \"\\u5546\\u6237\\u4f59\\u989d\"\n\n    .line 420\n    .line 421\n    const-string v13, \"1601\"\n\n    .line 422\n    .line 423\n    const/4 v14, 0x0\n\n    .line 424\n    const/4 v15, 0x4\n\n    .line 425\n    const/16 v16, 0x0\n\n    .line 426\n    .line 427\n    move-object v9, v0\n\n    .line 428\n    invoke-direct/range {v9 .. v16}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 429\n    .line 430\n    .line 431\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BALANCE_PAY_1601:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 432\n    .line 433\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 434\n    .line 435\n    const-string v2, \"ALL_BALANCE_PAY\"\n\n    .line 436\n    .line 437\n    const/16 v3, 0x19\n\n    .line 438\n    .line 439\n    const-string v4, \"\\u4f59\\u989d\"\n\n    .line 440\n    .line 441\n    const-string v5, \"013\"\n\n    .line 442\n    .line 443\n    move-object v1, v0\n\n    .line 444\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 445\n    .line 446\n    .line 447\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALL_BALANCE_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 448\n    .line 449\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 450\n    .line 451\n    const-string v10, \"HELLO_STORED_VALUE_CARD_PAY\"\n\n    .line 452\n    .line 453\n    const/16 v11, 0x1a\n\n    .line 454\n    .line 455\n    const-string v12, \"\\u54c8\\u5570\\u50a8\\u503c\\u5361\"\n\n    .line 456\n    .line 457\n    const-string v13, \"3001\"\n\n    .line 458\n    .line 459\n    move-object v9, v0\n\n    .line 460\n    invoke-direct/range {v9 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 461\n    .line 462\n    .line 463\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->HELLO_STORED_VALUE_CARD_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 464\n    .line 465\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 466\n    .line 467\n    const-string v2, \"DC_WALLET_PAY\"\n\n    .line 468\n    .line 469\n    const/16 v3, 0x1b\n\n    .line 470\n    .line 471\n    const-string v4, \"\\u6570\\u5b57\\u4eba\\u6c11\\u5e01\"\n\n    .line 472\n    .line 473\n    const-string v5, \"DCWALLET\"\n\n    .line 474\n    .line 475\n    move-object v1, v0\n\n    .line 476\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 477\n    .line 478\n    .line 479\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->DC_WALLET_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 480\n    .line 481\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 482\n    .line 483\n    const-string v10, \"CCB_BANK_PAY\"\n\n    .line 484\n    .line 485\n    const/16 v11, 0x1c\n\n    .line 486\n    .line 487\n    const-string v12, \"\\u5efa\\u8bbe\\u94f6\\u884c\"\n\n    .line 488\n    .line 489\n    const-string v13, \"004\"\n\n    .line 490\n    .line 491\n    const/4 v14, 0x1\n\n    .line 492\n    move-object v9, v0\n\n    .line 493\n    invoke-direct/range {v9 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 494\n    .line 495\n    .line 496\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CCB_BANK_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 497\n    .line 498\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 499\n    .line 500\n    const-string v2, \"CMBC_BANK_PAY\"\n\n    .line 501\n    .line 502\n    const/16 v3, 0x1d\n\n    .line 503\n    .line 504\n    const-string v4, \"\\u6c11\\u751f\\u94f6\\u884c\"\n\n    .line 505\n    .line 506\n    const-string v5, \"005\"\n\n    .line 507\n    .line 508\n    move-object v1, v0\n\n    .line 509\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 510\n    .line 511\n    .line 512\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CMBC_BANK_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 513\n    .line 514\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 515\n    .line 516\n    const-string v10, \"CMBC_BANK_INSTALLMENT_PAY\"\n\n    .line 517\n    .line 518\n    const/16 v11, 0x1e\n\n    .line 519\n    .line 520\n    const-string v12, \"\\u6c11\\u751f\\u94f6\\u884c\"\n\n    .line 521\n    .line 522\n    const-string v13, \"009\"\n\n    .line 523\n    .line 524\n    const/4 v14, 0x0\n\n    .line 525\n    move-object v9, v0\n\n    .line 526\n    invoke-direct/range {v9 .. v16}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 527\n    .line 528\n    .line 529\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CMBC_BANK_INSTALLMENT_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 530\n    .line 531\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 532\n    .line 533\n    const-string v2, \"BOC_BANK_PAY\"\n\n    .line 534\n    .line 535\n    const/16 v3, 0x1f\n\n    .line 536\n    .line 537\n    const-string v4, \"\\u4e2d\\u56fd\\u94f6\\u884c\"\n\n    .line 538\n    .line 539\n    const-string v5, \"006\"\n\n    .line 540\n    .line 541\n    move-object v1, v0\n\n    .line 542\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 543\n    .line 544\n    .line 545\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BOC_BANK_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 546\n    .line 547\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 548\n    .line 549\n    const-string v10, \"CMB_PAY\"\n\n    .line 550\n    .line 551\n    const/16 v11, 0x20\n\n    .line 552\n    .line 553\n    const-string v12, \"\\u62db\\u5546\\u94f6\\u884c\"\n\n    .line 554\n    .line 555\n    const-string v13, \"007\"\n\n    .line 556\n    .line 557\n    const/4 v14, 0x1\n\n    .line 558\n    move-object v9, v0\n\n    .line 559\n    invoke-direct/range {v9 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 560\n    .line 561\n    .line 562\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CMB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 563\n    .line 564\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 565\n    .line 566\n    const-string v2, \"ABC_BANK_PAY\"\n\n    .line 567\n    .line 568\n    const/16 v3, 0x21\n\n    .line 569\n    .line 570\n    const-string v4, \"\\u519c\\u4e1a\\u94f6\\u884c\"\n\n    .line 571\n    .line 572\n    const-string v5, \"1301\"\n\n    .line 573\n    .line 574\n    move-object v1, v0\n\n    .line 575\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 576\n    .line 577\n    .line 578\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ABC_BANK_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 579\n    .line 580\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 581\n    .line 582\n    const-string v10, \"ABC_RMB_PAY\"\n\n    .line 583\n    .line 584\n    const/16 v11, 0x22\n\n    .line 585\n    .line 586\n    const-string v12, \"\\u519c\\u884c\\u6570\\u5e01\\u652f\\u4ed8\"\n\n    .line 587\n    .line 588\n    const-string v13, \"1302\"\n\n    .line 589\n    .line 590\n    const/4 v14, 0x0\n\n    .line 591\n    move-object v9, v0\n\n    .line 592\n    invoke-direct/range {v9 .. v16}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 593\n    .line 594\n    .line 595\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ABC_RMB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 596\n    .line 597\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 598\n    .line 599\n    const-string v2, \"CUQ_PAY\"\n\n    .line 600\n    .line 601\n    const/16 v3, 0x23\n\n    .line 602\n    .line 603\n    const-string v4, \"\\u94f6\\u8054\"\n\n    .line 604\n    .line 605\n    const-string v5, \"1201\"\n\n    .line 606\n    .line 607\n    const/4 v6, 0x1\n\n    .line 608\n    move-object v1, v0\n\n    .line 609\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 610\n    .line 611\n    .line 612\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CUQ_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 613\n    .line 614\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 615\n    .line 616\n    const-string v8, \"UPCQP_PAY\"\n\n    .line 617\n    .line 618\n    const/16 v9, 0x24\n\n    .line 619\n    .line 620\n    const-string v10, \"\\u4e91\\u95ea\\u4ed8\"\n\n    .line 621\n    .line 622\n    const-string v11, \"1207\"\n\n    .line 623\n    .line 624\n    const/4 v12, 0x1\n\n    .line 625\n    move-object v7, v0\n\n    .line 626\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 627\n    .line 628\n    .line 629\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->UPCQP_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 630\n    .line 631\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 632\n    .line 633\n    const-string v2, \"CUQ_NO_PWD_PAY\"\n\n    .line 634\n    .line 635\n    const/16 v3, 0x25\n\n    .line 636\n    .line 637\n    const-string v4, \"\\u4e91\\u95ea\\u4ed8\\u652f\\u4ed8\\u5e76\\u7b7e\\u7ea6\"\n\n    .line 638\n    .line 639\n    const-string v5, \"1205\"\n\n    .line 640\n    .line 641\n    move-object v1, v0\n\n    .line 642\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 643\n    .line 644\n    .line 645\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CUQ_NO_PWD_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 646\n    .line 647\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 648\n    .line 649\n    const-string v8, \"CCB_RMB_PAY\"\n\n    .line 650\n    .line 651\n    const/16 v9, 0x26\n\n    .line 652\n    .line 653\n    const-string v10, \"\\u5efa\\u884c\\u6570\\u5b57\\u4eba\\u6c11\\u5e01\"\n\n    .line 654\n    .line 655\n    const-string v11, \"1501\"\n\n    .line 656\n    .line 657\n    const/4 v12, 0x0\n\n    .line 658\n    const/4 v13, 0x4\n\n    .line 659\n    const/4 v14, 0x0\n\n    .line 660\n    move-object v7, v0\n\n    .line 661\n    invoke-direct/range {v7 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 662\n    .line 663\n    .line 664\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CCB_RMB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 665\n    .line 666\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 667\n    .line 668\n    const-string v16, \"CCB_DC_PAY\"\n\n    .line 669\n    .line 670\n    const/16 v17, 0x27\n\n    .line 671\n    .line 672\n    const-string v18, \"\\u5efa\\u884c\\u6570\\u5b57\\u4eba\\u6c11\\u5e01\"\n\n    .line 673\n    .line 674\n    const-string v19, \"1502\"\n\n    .line 675\n    .line 676\n    const/16 v20, 0x0\n\n    .line 677\n    .line 678\n    move-object v15, v0\n\n    .line 679\n    invoke-direct/range {v15 .. v22}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 680\n    .line 681\n    .line 682\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->CCB_DC_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 683\n    .line 684\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 685\n    .line 686\n    const-string v2, \"SPDB_PAY\"\n\n    .line 687\n    .line 688\n    const/16 v3, 0x28\n\n    .line 689\n    .line 690\n    const-string v4, \"\\u6d66\\u53d1\\u94f6\\u884c\"\n\n    .line 691\n    .line 692\n    const-string v5, \"1401\"\n\n    .line 693\n    .line 694\n    const/4 v6, 0x0\n\n    .line 695\n    const/4 v7, 0x4\n\n    .line 696\n    const/4 v8, 0x0\n\n    .line 697\n    move-object v1, v0\n\n    .line 698\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 699\n    .line 700\n    .line 701\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->SPDB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 702\n    .line 703\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 704\n    .line 705\n    const-string v10, \"BCM_RMB_PAY\"\n\n    .line 706\n    .line 707\n    const/16 v11, 0x29\n\n    .line 708\n    .line 709\n    const-string v12, \"\\u4ea4\\u901a\\u94f6\\u884c\\u6570\\u5b57\\u4eba\\u6c11\\u5e01\"\n\n    .line 710\n    .line 711\n    const-string v13, \"1801\"\n\n    .line 712\n    .line 713\n    const/4 v14, 0x0\n\n    .line 714\n    const/4 v15, 0x4\n\n    .line 715\n    const/16 v16, 0x0\n\n    .line 716\n    .line 717\n    move-object v9, v0\n\n    .line 718\n    invoke-direct/range {v9 .. v16}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 719\n    .line 720\n    .line 721\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BCM_RMB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 722\n    .line 723\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 724\n    .line 725\n    const-string v2, \"PSBC_PAY\"\n\n    .line 726\n    .line 727\n    const/16 v3, 0x2a\n\n    .line 728\n    .line 729\n    const-string v4, \"\\u90ae\\u653f\"\n\n    .line 730\n    .line 731\n    const-string v5, \"1901\"\n\n    .line 732\n    .line 733\n    move-object v1, v0\n\n    .line 734\n    invoke-direct/range {v1 .. v8}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V\n\n    .line 735\n    .line 736\n    .line 737\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->PSBC_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 738\n    .line 739\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 740\n    .line 741\n    const-string v10, \"BOB_PAY\"\n\n    .line 742\n    .line 743\n    const/16 v11, 0x2b\n\n    .line 744\n    .line 745\n    const-string v12, \"\\u5317\\u4eac\\u94f6\\u884c\"\n\n    .line 746\n    .line 747\n    const-string v13, \"2101\"\n\n    .line 748\n    .line 749\n    const/4 v14, 0x1\n\n    .line 750\n    move-object v9, v0\n\n    .line 751\n    invoke-direct/range {v9 .. v14}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 752\n    .line 753\n    .line 754\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BOB_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 755\n    .line 756\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 757\n    .line 758\n    const-string v2, \"JD_PAY\"\n\n    .line 759\n    .line 760\n    const/16 v3, 0x2c\n\n    .line 761\n    .line 762\n    const-string v4, \"\\u4eac\\u4e1c\\u652f\\u4ed8\"\n\n    .line 763\n    .line 764\n    const-string v5, \"2201\"\n\n    .line 765\n    .line 766\n    const/4 v6, 0x1\n\n    .line 767\n    move-object v1, v0\n\n    .line 768\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 769\n    .line 770\n    .line 771\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->JD_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 772\n    .line 773\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 774\n    .line 775\n    const-string v8, \"DY_PAY\"\n\n    .line 776\n    .line 777\n    const/16 v9, 0x2d\n\n    .line 778\n    .line 779\n    const-string v10, \"\\u6296\\u97f3\\u652f\\u4ed8\"\n\n    .line 780\n    .line 781\n    const-string v11, \"2302\"\n\n    .line 782\n    .line 783\n    const/4 v12, 0x1\n\n    .line 784\n    move-object v7, v0\n\n    .line 785\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 786\n    .line 787\n    .line 788\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->DY_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 789\n    .line 790\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 791\n    .line 792\n    const-string v2, \"DY_PAY_AND_SIGN\"\n\n    .line 793\n    .line 794\n    const/16 v3, 0x2e\n\n    .line 795\n    .line 796\n    const-string v4, \"\\u6296\\u97f3\\u5148\\u4e58\\u540e\\u4ed8\"\n\n    .line 797\n    .line 798\n    const-string v5, \"2304\"\n\n    .line 799\n    .line 800\n    move-object v1, v0\n\n    .line 801\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 802\n    .line 803\n    .line 804\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->DY_PAY_AND_SIGN:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 805\n    .line 806\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 807\n    .line 808\n    const-string v8, \"DY_SIGN_IN_PAY\"\n\n    .line 809\n    .line 810\n    const/16 v9, 0x2f\n\n    .line 811\n    .line 812\n    const-string v10, \"\\u6296\\u97f3\\u652f\\u4ed8\\u4e2d\\u7b7e\\u7ea6\"\n\n    .line 813\n    .line 814\n    const-string v11, \"2306\"\n\n    .line 815\n    .line 816\n    move-object v7, v0\n\n    .line 817\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 818\n    .line 819\n    .line 820\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->DY_SIGN_IN_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 821\n    .line 822\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 823\n    .line 824\n    const-string v2, \"DY_SIGN_MIX\"\n\n    .line 825\n    .line 826\n    const/16 v3, 0x30\n\n    .line 827\n    .line 828\n    const-string v4, \"\\u6296\\u97f3\\u590d\\u5408\\u7b7e\\u7ea6\"\n\n    .line 829\n    .line 830\n    const-string v5, \"2309\"\n\n    .line 831\n    .line 832\n    move-object v1, v0\n\n    .line 833\n    invoke-direct/range {v1 .. v6}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 834\n    .line 835\n    .line 836\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->DY_SIGN_MIX:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 837\n    .line 838\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 839\n    .line 840\n    const-string v8, \"BCM_PAY\"\n\n    .line 841\n    .line 842\n    const/16 v9, 0x31\n\n    .line 843\n    .line 844\n    const-string v10, \"\\u4ea4\\u901a\\u94f6\\u884c\"\n\n    .line 845\n    .line 846\n    const-string v11, \"2601\"\n\n    .line 847\n    .line 848\n    move-object v7, v0\n\n    .line 849\n    invoke-direct/range {v7 .. v12}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;-><init>(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Z)V\n\n    .line 850\n    .line 851\n    .line 852\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->BCM_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 853\n    .line 854\n    invoke-static {}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->$values()[Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 855\n    .line 856\n    .line 857\n    move-result-object v0\n\n    .line 858\n    sput-object v0, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->$VALUES:[Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 859\n    .line 860\n    return-void\n.end method",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_5738094828683aa742f232f3ad54539293c4ca987da51f0ff6918fb0c371cdad",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method_name": "b"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(java.lang.String, boolean): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;Z)Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final String b(String channelCode, boolean payAndSign) {\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_NO_PWD_PAY.getChannelCode()) && payAndSign) {\r\n            return SignConfigHelper.a();\r\n        }\r\n        return null;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_34061034c8a4adc66b8281416218764f5bf04d1d34ce77ffe4622a354bc0e7b1",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method_name": "c"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method": {
+          "name": "c",
+          "reported_signature": "c(java.lang.String, boolean): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;Z)Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final String c(String channelCode, boolean payAndSign) {\r\n        Bundle bundle;\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_NO_PWD_PAY.getChannelCode()) && payAndSign) {\r\n            return SignConfigHelper.b();\r\n        }\r\n        if (!Intrinsics.areEqual(channelCode, PayTypeEnum.BCM_PAY.getChannelCode()) && !Intrinsics.areEqual(channelCode, PayTypeEnum.UMS_PP_PAY_ALI_MINI_PROGRAM.getChannelCode())) {\r\n            return null;\r\n        }\r\n        PayPlatformConfig payPlatformConfig = InitPlatformConfigHolder.INSTANCE.getConfigMap().get(PayPlatformTypeTransfer.b(channelCode));\r\n        if (payPlatformConfig == null || (bundle = payPlatformConfig.getBundle()) == null) {\r\n            return null;\r\n        }\r\n        return bundle.getString(\"returnUrl\");\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_0d77d4bacb75d312a291830cfa103f5ca7ae11d120f3ce912516e0637209de31",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "/* JADX INFO: loaded from: classes18.dex */\r\npublic class SignConfigHelper {\r\n    public static String a() {\r\n        return c() + \"/paysign/fail\";\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_7ff5e992512a1d500928bc3d235bc20c5fa2ea079ac0d8dc824f4257c4c769f5",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method_name": "b"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public static String b() {\r\n        return c() + \"/paysign/success\";\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_1a9685c3be2c046ec706cdb3f778ba70d82b7947ae5ab0f05cf6cdcc5a62038c",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method_name": "c"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.base.helper.SignConfigHelper",
+        "method": {
+          "name": "c",
+          "reported_signature": "c(): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public static String c() {\r\n        SchemePayConfig schemePayConfig;\r\n        AllPayConfig allPayConfigA = InitDataHolder.a.a();\r\n        return (allPayConfigA == null || (schemePayConfig = allPayConfigA.getSchemePayConfig()) == null) ? \"\" : schemePayConfig.getSchemePath();\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_f87f3e0adf9b64f2e9866334eeb91fb7ee197a265140e9513b5d176ac46cb842",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.payali.HBAliIPayModule",
+        "method_name": "F"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.payali.HBAliIPayModule",
+        "method": {
+          "name": "F",
+          "reported_signature": "F(android.os.Bundle): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/os/Bundle;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @Override // com.hellobike.allpay.agentpay.base.BasePayModule\r\n    public void F(Bundle bundle) {\r\n        CredentialData credential;\r\n        if (bundle != null) {\r\n            this.componentData = (ComponentData) bundle.getSerializable(\"preOrderInfo\");\r\n        }\r\n        ComponentData componentData = this.componentData;\r\n        String params = (componentData == null || (credential = componentData.getCredential()) == null) ? \"\" : credential.getParams();\r\n        if (!TextUtils.isEmpty(params)) {\r\n            I(params);\r\n        } else {\r\n            PayErrorTypes payErrorTypes = PayErrorTypes.UNKNOWN_ERROR;\r\n            d(FLResultInfo.simpleLocalFailedExit(payErrorTypes.getErrorCode(), payErrorTypes.getErrorMsg()));\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_94cab04af05320880722de1c0ea1f4c26b394839c0e07d7459faa90fa5d1b95d",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.payali.HBAliIPayModule",
+        "method_name": "I"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.payali.HBAliIPayModule",
+        "method": {
+          "name": "I",
+          "reported_signature": "I(java.lang.String): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final void I(final String str) {\r\n        HashMap map = new HashMap();\r\n        map.put(HBSessionConstants.KEY_params, str);\r\n        s(map);\r\n        this.o = new PayHandler();\r\n        new Thread(new Runnable() { // from class: com.hellobike.allpay.agentpay.payali.HBAliIPayModule.1\r\n            @Override // java.lang.Runnable\r\n            public void run() {\r\n                Map mapPayV2 = new PayTask(HBAliIPayModule.this.mActivity).payV2(str, true);\r\n                Message message = new Message();\r\n                message.what = 1;\r\n                message.obj = mapPayV2;\r\n                HBAliIPayModule.this.o.sendMessage(message);\r\n            }\r\n        }).start();\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_de96cad4c210c50d7f53bb68d749cb261f005888aa4bf047e90dc1c194d61721",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.HBAllPayModuleFactoryKt",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.HBAllPayModuleFactoryKt",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(android.app.Activity, java.lang.String): com.hellobike.allpay.agentpay.base.BasePayModule",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Ljava/lang/String;)Lcom/hellobike/allpay/agentpay/base/BasePayModule;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    @Nullable\r\n    public static final BasePayModule a(@NotNull Activity mActivity, @Nullable String channelCode) {\r\n        Intrinsics.checkNotNullParameter(mActivity, \"mActivity\");\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_PAY_WITH_NBCB.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HUABEI_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HUABEIPRE_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_NO_PWD_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HUABEI_MONTH_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HUABEI_AUTO_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HUABEI_PAY_AND_SIGN.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HELLO_MONTH.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HELLO_MONTH_PAY_AND_SIGN.getChannelCode())) {\r\n            return new HBAliIPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.WECHAT_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.WECHAT_NO_PWD_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.WX_PAY_AND_SIGN.getChannelCode())) {\r\n            return new HBWXPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.WECHAT_MINI_PROGRAM.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.WECHAT_BAOFU_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.WX_MINI_PROGRAM.getChannelCode())) {\r\n            return new HBWxMiniProgramPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.CMBC_BANK_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.CMBC_BANK_INSTALLMENT_PAY.getChannelCode())) {\r\n            return new HBCMBCPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.CCB_RMB_PAY.getChannelCode())) {\r\n            return new HBCCBRMBPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.BCM_RMB_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.CCB_DC_PAY.getChannelCode())) {\r\n            return new HbCommonDCEPPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.BALANCE_PAY_020.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.ALL_BALANCE_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.BALANCE_PAY_1601.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.BALANCE_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.HELLO_STORED_VALUE_CARD_PAY.getChannelCode())) {\r\n            return new HBBalancePayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.BOC_BANK_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.CCB_BANK_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.ABC_BANK_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.ABC_RMB_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.SPDB_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.CUQ_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.CUQ_NO_PWD_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.PSBC_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.BOB_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.UPCQP_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.BCM_PAY.getChannelCode())) {\r\n            return new HBCommonPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.ALI_MINI_PROGRAM.getChannelCode())) {\r\n            return new HBAliMiniProgramPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.CMB_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.UMS_PP_PAY_ALI_MINI_PROGRAM.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.JD_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.DY_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.DY_PAY_AND_SIGN.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.DY_SIGN_IN_PAY.getChannelCode()) ? true : Intrinsics.areEqual(channelCode, PayTypeEnum.DY_SIGN_MIX.getChannelCode())) {\r\n            return new HBCommonExtraPayModule(mActivity);\r\n        }\r\n        if (Intrinsics.areEqual(channelCode, PayTypeEnum.WX_MINI_PROGRAM_LKL.getChannelCode())) {\r\n            return new TPWxMiniProgramPayUrlModule(mActivity);\r\n        }\r\n        return null;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_f26e9428f4a8665f1fc3829e6178c2e7df7e67a96d8edb74e064c058f99fcc9b",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "f"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "f",
+          "reported_signature": "f(android.content.Context, com.hellobike.allpay.base.locale.PayLocale, com.hellobike.allpay.paycomponent.model.entity.PayTypeData, java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.lang.String, boolean, com.hellobike.allpay.paycomponent.model.entity.PayTypeBean): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/content/Context;Lcom/hellobike/allpay/base/locale/PayLocale;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeData;Ljava/util/List;Ljava/util/List;Ljava/lang/String;ZLcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    public static final void f(@NotNull Context context, @NotNull PayLocale payLocale, @NotNull PayTypeData data, @NotNull List<PayTypeBean> showPayType, @NotNull List<PayTypeBean> foldPayTypeList, @NotNull String payMoney, boolean isForceExpandAllChannel, @Nullable PayTypeBean curSelectType) {\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(payLocale, \"payLocale\");\r\n        Intrinsics.checkNotNullParameter(data, SecretHelper.KEY_DATA);\r\n        Intrinsics.checkNotNullParameter(showPayType, \"showPayType\");\r\n        Intrinsics.checkNotNullParameter(foldPayTypeList, \"foldPayTypeList\");\r\n        Intrinsics.checkNotNullParameter(payMoney, \"payMoney\");\r\n        Pair<String, String> pairM = m(data.getExtraInfos());\r\n        String str = (String) pairM.component1();\r\n        String str2 = (String) pairM.component2();\r\n        List<PayTypeBean> channelList = data.getChannelList();\r\n        List<PayTypeBean> list = channelList;\r\n        if (list == null || list.isEmpty()) {\r\n            k(context, payLocale, showPayType, foldPayTypeList);\r\n        } else {\r\n            a.e(context, channelList);\r\n            p(channelList, showPayType, foldPayTypeList, payMoney, str, str2, isForceExpandAllChannel, curSelectType);\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_2ed9c80d94db679736dbe5784db00f04ccdadb87dceb7a945e976436fa4bcbc8",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "m"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "m",
+          "reported_signature": "m(java.util.Map<java.lang.String, java.lang.String>): kotlin.Pair<java.lang.String, java.lang.String>",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/util/Map;)Lkotlin/Pair;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX WARN: Code duplicated, block: B:20:0x0045  */\r\n    @JvmStatic\r\n    @NotNull\r\n    public static final Pair<String, String> m(@Nullable Map<String, String> extraInfo) {\r\n        String str;\r\n        String strOptString;\r\n        String str2 = \"\";\r\n        if (extraInfo != null) {\r\n            try {\r\n                String str3 = extraInfo.get(\"defaultChannelSetting\");\r\n                if (str3 == null || str3.length() == 0) {\r\n                    strOptString = \"\";\r\n                } else {\r\n                    JSONObject jSONObject = new JSONObject(str3);\r\n                    String strOptString2 = jSONObject.optString(\"defaultChannel\");\r\n                    Intrinsics.checkNotNullExpressionValue(strOptString2, \"defaultChannelJsObj.optString(\\\"defaultChannel\\\")\");\r\n                    try {\r\n                        strOptString = jSONObject.optString(\"defaultScheme\");\r\n                        Intrinsics.checkNotNullExpressionValue(strOptString, \"defaultChannelJsObj.optString(\\\"defaultScheme\\\")\");\r\n                        str2 = strOptString2;\r\n                    } catch (Exception e) {\r\n                        str = strOptString2;\r\n                        e = e;\r\n                        e.printStackTrace();\r\n                        String str4 = str;\r\n                        strOptString = \"\";\r\n                        str2 = str4;\r\n                    }\r\n                }\r\n            } catch (Exception e3) {\r\n                e = e3;\r\n                str = \"\";\r\n            }\r\n        } else {\r\n            strOptString = \"\";\r\n        }\r\n        return new Pair<>(str2, strOptString);\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_d47ed6af462f9945235dd9c5a3c5da7c89caf3994516312f36599aeb314b41a9",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "p"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "p",
+          "reported_signature": "p(java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.lang.String, java.lang.String, java.lang.String, boolean, com.hellobike.allpay.paycomponent.model.entity.PayTypeBean): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX WARN: Code duplicated, block: B:50:0x00be  */\r\n    @JvmStatic\r\n    public static final void p(@NotNull List<PayTypeBean> payTypeList, @NotNull List<PayTypeBean> showPayTypeList, @NotNull List<PayTypeBean> foldPayTypeList, @NotNull String payMoney, @Nullable String defaultChannel, @Nullable String defaultScheme, boolean isForceExpandAllChannel, @Nullable PayTypeBean curSelectType) {\r\n        String fqNum;\r\n        List<HuaBeiInfoBean> fqInfos;\r\n        Object next;\r\n        Intrinsics.checkNotNullParameter(payTypeList, \"payTypeList\");\r\n        Intrinsics.checkNotNullParameter(showPayTypeList, \"showPayTypeList\");\r\n        Intrinsics.checkNotNullParameter(foldPayTypeList, \"foldPayTypeList\");\r\n        Intrinsics.checkNotNullParameter(payMoney, \"payMoney\");\r\n        ArrayList arrayList = new ArrayList();\r\n        arrayList.addAll(payTypeList);\r\n        if (EmptyUtils.d(arrayList)) {\r\n            return;\r\n        }\r\n        PayTypeBean payTypeBeanU = u(arrayList, curSelectType, payMoney);\r\n        if (payTypeBeanU == null && (payTypeBeanU = v(arrayList, defaultChannel, defaultScheme, payMoney)) == null) {\r\n            PayChannelDataTransfer payChannelDataTransfer = a;\r\n            PayTypeBean payTypeBeanW = payChannelDataTransfer.w(arrayList, payMoney);\r\n            payTypeBeanU = payTypeBeanW == null ? payChannelDataTransfer.d(arrayList, payMoney) : payTypeBeanW;\r\n        }\r\n        PayTypeBean payTypeBeanJ = a.j(arrayList, payTypeBeanU);\r\n        PayTypeBean payTypeBean = payTypeBeanJ == null ? payTypeBeanU : payTypeBeanJ;\r\n        boolean z = (payTypeBean != null && payTypeBean.getCheckFold()) || isForceExpandAllChannel;\r\n        AllPayLogger allPayLogger = AllPayLogger.a;\r\n        StringBuilder sb2 = new StringBuilder();\r\n        sb2.append(\"默认选中渠道: \");\r\n        sb2.append(payTypeBeanU != null ? payTypeBeanU.getPayChannel() : null);\r\n        sb2.append('(');\r\n        sb2.append(payTypeBeanU != null ? payTypeBeanU.getChannelCode() : null);\r\n        sb2.append(\");分期:\");\r\n        if (payTypeBeanU == null || (fqInfos = payTypeBeanU.getFqInfos()) == null) {\r\n            fqNum = null;\r\n        } else {\r\n            Iterator<T> it = fqInfos.iterator();\r\n            do {\r\n                if (!it.hasNext()) {\r\n                    next = null;\r\n                    break;\r\n                }\r\n                next = it.next();\r\n            } while (!Intrinsics.areEqual(((HuaBeiInfoBean) next).getSelected(), Boolean.TRUE));\r\n            HuaBeiInfoBean huaBeiInfoBean = (HuaBeiInfoBean) next;\r\n            if (huaBeiInfoBean != null) {\r\n                fqNum = huaBeiInfoBean.getFqNum();\r\n            } else {\r\n                fqNum = null;\r\n            }\r\n        }\r\n        sb2.append(fqNum);\r\n        sb2.append(\";checkFold=\");\r\n        if (payTypeBeanJ != null) {\r\n            payTypeBeanU = payTypeBeanJ;\r\n        }\r\n        sb2.append(payTypeBeanU != null && payTypeBeanU.getCheckFold());\r\n        AllPayLogger.b(allPayLogger, sb2.toString(), null, 2, null);\r\n        g(arrayList, showPayTypeList, foldPayTypeList, z);\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_8f8e784b22677ef48e9694a7b699d1664cbfd0b30cc4590614891decca717264",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "v"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "v",
+          "reported_signature": "v(java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.lang.String, java.lang.String, java.lang.String): com.hellobike.allpay.paycomponent.model.entity.PayTypeBean",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    public static final PayTypeBean v(List<PayTypeBean> channelList, String defaultChannel, String defaultScheme, String payMoney) {\r\n        Object next;\r\n        PayTypeBean next2;\r\n        PayTypeBean payTypeBean;\r\n        Object next3;\r\n        boolean z = false;\r\n        HuaBeiInfoBean huaBeiInfoBean = null;\r\n        Object obj = null;\r\n        if (defaultChannel == null || StringsKt.isBlank(defaultChannel)) {\r\n            return null;\r\n        }\r\n        Iterator<T> it = channelList.iterator();\r\n        do {\r\n            if (!it.hasNext()) {\r\n                next = null;\r\n                break;\r\n            }\r\n            next = it.next();\r\n        } while (!a.s(((PayTypeBean) next).getChannelCode(), defaultChannel));\r\n        PayTypeBean payTypeBean2 = (PayTypeBean) next;\r\n        if (payTypeBean2 != null) {\r\n            next2 = null;\r\n            break;\r\n        }\r\n        Iterator<PayTypeBean> it2 = channelList.iterator();\r\n        while (true) {\r\n            if (!it2.hasNext()) {\r\n                next2 = null;\r\n                break;\r\n            }\r\n            next2 = it2.next();\r\n            List<PayTypeBean> subChannelList = next2.getSubChannelList();\r\n            if (subChannelList != null) {\r\n                Iterator<T> it3 = subChannelList.iterator();\r\n                do {\r\n                    if (!it3.hasNext()) {\r\n                        next3 = null;\r\n                        break;\r\n                    }\r\n                    next3 = it3.next();\r\n                } while (!a.s(((PayTypeBean) next3).getChannelCode(), defaultChannel));\r\n                payTypeBean = (PayTypeBean) next3;\r\n            } else {\r\n                payTypeBean = null;\r\n            }\r\n            if (payTypeBean != null) {\r\n                payTypeBean2 = payTypeBean;\r\n                break;\r\n            }\r\n        }\r\n        if (payTypeBean2 == null) {\r\n            return null;\r\n        }\r\n        if (payTypeBean2.shouldCheckBalanceEnough() && !payTypeBean2.isBalanceEnough(payMoney)) {\r\n            return null;\r\n        }\r\n        if (next2 != null) {\r\n            next2.setSubChannelShow(true);\r\n            next2.setCheck(false);\r\n        }\r\n        payTypeBean2.setCheck(true);\r\n        List<HuaBeiInfoBean> fqInfos = payTypeBean2.getFqInfos();\r\n        if (fqInfos != null && (fqInfos.isEmpty() ^ true)) {\r\n            if (defaultScheme != null) {\r\n                if (defaultScheme.length() > 0) {\r\n                    z = true;\r\n                }\r\n            }\r\n            if (z) {\r\n                for (Object obj2 : fqInfos) {\r\n                    if (Intrinsics.areEqual(((HuaBeiInfoBean) obj2).getFqNum(), defaultScheme)) {\r\n                        obj = obj2;\r\n                        break;\r\n                    }\r\n                }\r\n                huaBeiInfoBean = (HuaBeiInfoBean) obj;\r\n            }\r\n            if (huaBeiInfoBean == null) {\r\n                huaBeiInfoBean = (HuaBeiInfoBean) CollectionsKt.first(fqInfos);\r\n            }\r\n            huaBeiInfoBean.setSelected(Boolean.TRUE);\r\n        }\r\n        return payTypeBean2;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_f00a737d51cd523179b3bfa7ffc858351c0ede5fc2ab3958cd04ec10b636bfb4",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "d"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "d",
+          "reported_signature": "d(java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.lang.String): com.hellobike.allpay.paycomponent.model.entity.PayTypeBean",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/util/List;Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final PayTypeBean d(List<PayTypeBean> channelList, String payMoney) {\r\n        Object next;\r\n        PayTypeBean payTypeBean;\r\n        if (channelList.isEmpty()) {\r\n            return null;\r\n        }\r\n        Iterator<T> it = channelList.iterator();\r\n        do {\r\n            if (!it.hasNext()) {\r\n                next = null;\r\n                break;\r\n            }\r\n            next = it.next();\r\n            payTypeBean = (PayTypeBean) next;\r\n        } while (!(!payTypeBean.shouldCheckBalanceEnough() || payTypeBean.isBalanceEnough(payMoney)));\r\n        PayTypeBean payTypeBean2 = (PayTypeBean) next;\r\n        if (payTypeBean2 == null) {\r\n            return null;\r\n        }\r\n        List<PayTypeBean> subChannelList = payTypeBean2.getSubChannelList();\r\n        if (subChannelList != null && (subChannelList.isEmpty() ^ true)) {\r\n            payTypeBean2.setSubChannelShow(true);\r\n            payTypeBean2.setCheck(false);\r\n            List<PayTypeBean> subChannelList2 = payTypeBean2.getSubChannelList();\r\n            PayTypeBean payTypeBean3 = subChannelList2 != null ? subChannelList2.get(0) : null;\r\n            if (payTypeBean3 != null) {\r\n                payTypeBean3.setCheck(true);\r\n            }\r\n            return payTypeBean3;\r\n        }\r\n        payTypeBean2.setCheck(true);\r\n        List<HuaBeiInfoBean> fqInfos = payTypeBean2.getFqInfos();\r\n        if (fqInfos != null && (fqInfos.isEmpty() ^ true)) {\r\n            List<HuaBeiInfoBean> fqInfos2 = payTypeBean2.getFqInfos();\r\n            HuaBeiInfoBean huaBeiInfoBean = fqInfos2 != null ? fqInfos2.get(0) : null;\r\n            if (huaBeiInfoBean != null) {\r\n                huaBeiInfoBean.setSelected(Boolean.TRUE);\r\n            }\r\n        }\r\n        return payTypeBean2;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    },
+    {
+      "evidence_id": "ev_d8b4cb6acb7aecb4d851b4dcc9d85ee5c50d19cd40087f59f8ff89ddda94d12b",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "s"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "s",
+          "reported_signature": "s(java.lang.String, java.lang.String): boolean",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;Ljava/lang/String;)Z"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final boolean s(String channelListChannelCode, String matchChannelCode) {\r\n        if (!(channelListChannelCode == null || channelListChannelCode.length() == 0)) {\r\n            if (!(matchChannelCode == null || matchChannelCode.length() == 0)) {\r\n                if (Intrinsics.areEqual(channelListChannelCode, matchChannelCode)) {\r\n                    return true;\r\n                }\r\n                return ChannelCodeExtKt.a(matchChannelCode) && ChannelCodeExtKt.a(channelListChannelCode);\r\n            }\r\n        }\r\n        return false;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "confidence": "derived",
+      "authority": "shipped-artifact"
+    }
+  ],
+  "campus_h5": {
+    "archive": "official-operation-h5.zip",
+    "entry": "pro/7.0.65/js/index-364a8384.js",
+    "sha256": "f5940f89032c0f5838bf162c06f678b67680bd6a8b2ba5d7d1dcec9dd08eea01",
+    "source": "import{r as e,j as s,h as a,i,T as n}from\"./react-16cff169.js\";import{r as t,s as c,i as d,g as l,j as o,b as r,L as _}from\"./request-1c244069.js\";import{i as u,c as m}from\"./url-68f9ee97.js\";import{u as x}from\"./index-7248d423.js\";import{j as h}from\"./jump-be4a71c2.js\";import{t as p}from\"./tianqi-06c82e25.js\";import\"./utils-278ece65.js\";import\"./lottie-cdd30586.js\";import\"./index-4db4c47f.js\";import\"./redux-4bca16c7.js\";import\"./const-51881b0a.js\";const j=\"index-module__container___-eyHi\",g=\"index-module__container___3Xe01\",N=\"index-module__cardsWrapper___8BUQm\",v=\"index-module__cardItem___rokRR\",y=\"index-module__leftCardWrap___vV-h6\",C=\"index-module__title___g58zh\",f=\"index-module__discountPriceWrap___2kRPn\",P=\"index-module__discountPrice___VqeD2\",b=\"index-module__marketingWords___S-dUC\",k=\"index-module__dynamicTagContainer___OlOrb\",T=\"index-module__dynamicTag___O16ps\",S=\"index-module__dynamicTagDesc___VckA-\",w=\"index-module__cardTagsContainer___4CM84\",D=\"index-module__marketingWord___1p6S-\",M=\"index-module__rightCardWrap___OmW2B\",W=\"index-module__wholePrice___tRnma\",F=\"index-module__originalPriceWrap___laJKs\",I=\"index-module__originalPrice___nG7gY\",R=\"index-module__currentPrice___XwsSU\",O=\"index-module__unit___x7ASZ\",B=\"index-module__dailyPrice___2nn7w\",L=\"index-module__bonusDeductTag___X8dMx\",U=\"index-module__bonusDeductIcon___lCdvY\",V=\"index-module__bonusDeductText___aPbrb\",A=\"index-module__bonusDeductNumber___Mh8Wr\",G=\"index-module__buyButton___KhsQK\",Q=({detailData:a,onBuy:i})=>{var n,t,c;const[d,l]=e.useState({showName:\"\",originPrice:\"\",actualPrice:{finalPrice:\"\"},purchasePrice:\"\",cardText:\"\",marketingWords:[],batchUseRules:[]});null==(n=d.batchUseRules)||n.includes(14);const o=null==(t=d.marketingWords)?void 0:t.find((e=>8===e.wordsType)),r=(null==(c=d.marketingWords)?void 0:c.filter((e=>8!==e.wordsType)))||[],_=e.useMemo((()=>{var e;const s=(null==(e=d.actualPrice)?void 0:e.optPromoList)||[];if(0===s.length)return null;const a=s[0],i=Number(null==a?void 0:a.deductAmount);return!i||i<=0?null:a}),[d.actualPrice]),u=e.useMemo((()=>_&&_.defaultSelected&&Number(_.deductAmount)||0),[_]),m=e.useMemo((()=>{const e=parseFloat(d.actualPrice.finalPrice)||0,s=Math.max(0,e-u);return s%1==0?s.toString():s.toFixed(2)}),[d.actualPrice.finalPrice,u]),x=e.useMemo((()=>{const e=parseFloat(d.originPrice)||0,s=parseFloat(m)||0,a=Math.max(0,e-s);return a%1==0?a.toString():a.toFixed(2)}),[d.originPrice,m]),h=e.useMemo((()=>{const e=parseFloat(m)||0,s=parseFloat(d.cardText)||0;if(0===s)return\"0\";const a=e/s;return a%1==0?a.toString():a.toFixed(2)}),[m,d.cardText]),p=!!_&&u>0;return e.useEffect((()=>{a&&l(a)}),[a]),s.jsxs(\"div\",{className:v,children:[s.jsxs(\"div\",{className:y,children:[s.jsx(\"span\",{className:C,children:d.showName}),s.jsx(\"div\",{className:f,children:s.jsxs(\"div\",{className:P,children:[\"已优惠\",s.jsx(\"span\",{children:x}),\"元\"]})}),s.jsxs(\"div\",{className:b,children:[o&&s.jsxs(\"div\",{className:k,children:[s.jsx(\"span\",{className:T,children:o.wordsValue}),s.jsxs(\"span\",{className:S,children:[\"，\",o.wordsDesc]})]}),r.length>0&&s.jsx(\"div\",{className:w,children:r.map(((e,a)=>s.jsxs(\"span\",{className:D,children:[e.wordsValue,a<r.length-1&&\"｜\"]},a)))})]})]}),s.jsxs(\"div\",{className:M,children:[s.jsxs(\"div\",{className:W,children:[s.jsxs(\"div\",{className:F,children:[s.jsxs(\"span\",{className:I,children:[d.originPrice,\"元\"]}),s.jsx(\"span\",{className:R,children:m}),s.jsx(\"span\",{className:O,children:\"元\"})]}),p?s.jsxs(\"div\",{className:L,children:[s.jsx(\"img\",{className:U,src:\"https://oho-image-cdn.51downapp.cn/common/0f101716e0624790af6512fd5ac719fc_jianglijin.png\",alt:\"\"}),s.jsxs(\"span\",{className:V,children:[\"奖励金已抵\",s.jsx(\"span\",{className:A,children:u}),\"元\"]})]}):s.jsxs(\"div\",{className:B,children:[\"低至\",h,\"元/天\"]})]}),s.jsx(\"button\",{className:G,onClick:i,children:\"购买\"})]})]})},H=({cardList:a,onPurchase:i})=>{const[n,t]=e.useState([]);return e.useEffect((()=>{if(null==a?void 0:a.packages){const{packages:e}=a;t(e)}}),[a]),s.jsx(\"div\",{className:g,children:s.jsx(\"div\",{className:N,children:n.length>0&&n.map((e=>s.jsx(Q,{detailData:e,onBuy:()=>{return s=e,void(null==i||i(s));var s}},e.packageGuid)))})})},X=\"index-module__detailWrapper___jQRhW\",Y=\"index-module__externalCloseButton___76mof\",z=\"index-module__closeIcon___moT-Y\",E=\"index-module__detailHeader___JGFDX\",K=\"index-module__headerTitle___vWko7\",J=\"index-module__headerPrices___3TPJR\",q=\"index-module__originalPrice___N30Pb\",Z=\"index-module__currentPriceContainer___Q375w\",$=\"index-module__currentPrice___QgP3e\",ee=\"index-module__currentPriceUnit___323Gk\",se=\"index-module__detailBody___KQzKY\",ae=\"index-module__detailFooter___mk8MN\",ie=\"index-module__couponDetailItem___WnEiK\",ne=\"index-module__ruleInfosContainer___gRO-7\",te=\"index-module__rule___RXQU1\",ce=\"index-module__ruleTitle___54cZT\",de=\"index-module__cutOff___Je-6F\",le=\"index-module__ruleDescription___dYVJI\",oe=()=>s.jsx(s.Fragment,{children:s.jsxs(\"div\",{className:ie,children:[s.jsx(\"div\",{className:ne,children:s.jsxs(\"div\",{className:te,children:[s.jsx(\"span\",{className:ce,children:\"单车全国通\"}),s.jsx(\"span\",{className:de,children:\"/\"}),s.jsx(\"span\",{className:le,children:s.jsx(\"span\",{children:\"不包括景区等特殊区域\"})})]})}),s.jsx(\"div\",{className:ne,children:s.jsxs(\"div\",{className:te,children:[s.jsx(\"span\",{className:ce,children:\"单笔抵扣30分钟\"}),s.jsx(\"span\",{className:de,children:\"/\"}),s.jsx(\"span\",{className:le,children:s.jsx(\"span\",{children:\"仅能抵扣骑行费用,超出部分则需要支付差额\"})})]})})]})}),re=\"index-module__buyBar___gUUm2\",_e=\"index-module__bar___hxL7i\",ue=\"index-module__leftPriceContent___YhX-G\",me=\"index-module__currentPrice___aVF1k\",xe=\"index-module__unit___n-evw\",he=\"index-module__discount___VelMj\",pe=\"index-module__discountNum___axH3N\",je=\"index-module__arrowIcon___MaHRA\",ge=\"index-module__right___XWMZB\",Ne=\"index-module__buyBtn___o0QYA\",ve=({handlePurchase:e,tiktokPrice:a=0,discountText:i=\"\",isShowDisableText:n=!1,showRestriction:t=!1,isShowDiscountList:c=!1,card:d={},getDisableText:l=()=>\"\",changeDiscountList:o,prePay:r})=>s.jsx(\"div\",{className:re,children:s.jsxs(\"div\",{className:_e,children:[s.jsxs(\"div\",{className:ue,children:[s.jsxs(\"div\",{className:me,children:[\"3.9\",s.jsx(\"span\",{className:xe,children:\"元\"})]}),s.jsxs(\"div\",{className:he,children:[s.jsx(\"span\",{className:pe,children:\"已优惠16元\"}),s.jsx(\"span\",{className:je})]})]}),s.jsx(\"div\",{className:ge,onClick:r,children:s.jsx(\"button\",{className:Ne,children:\"购买\"})})]})}),ye=({show:e=!1,packageTitle:i=\"单车7天校园卡\",packagePrice:n={original:12.9,current:3.9},packageCoupons:t=[],currentCoupon:c=null,onClose:d,onPurchase:l})=>s.jsx(s.Fragment,{children:s.jsx(a,{visible:e,position:\"bottom\",closeOnOverlayClick:!1,style:{minHeight:\"60px\"},children:s.jsxs(\"div\",{className:X,children:[s.jsx(\"button\",{className:Y,onClick:()=>{null==d||d()},children:s.jsx(\"span\",{className:z,children:\"×\"})}),s.jsxs(\"div\",{className:E,children:[s.jsx(\"div\",{className:K,children:i}),s.jsxs(\"div\",{className:J,children:[s.jsxs(\"span\",{className:q,children:[(null==n?void 0:n.original)||\"0\",\"元\"]}),s.jsxs(\"div\",{className:Z,children:[s.jsx(\"span\",{className:$,children:(null==n?void 0:n.current)||\"0\"}),s.jsx(\"span\",{className:ee,children:\"元\"})]})]})]}),s.jsx(\"div\",{className:se,children:s.jsx(oe,{})}),s.jsx(\"div\",{className:ae,children:s.jsx(ve,{})})]})})}),Ce=()=>{const[a,g]=e.useState(0),[N,v]=e.useState(\"\"),[y,C]=e.useState(!1),[f,P]=e.useState({}),[b,k]=e.useState({list:[],cardTitle:\"\",cardType:0}),T=e.useRef(null),S=e.useRef(!1),w=e.useMemo((()=>{const{cityCode:e=\"\",citycode:s=\"\",longitude:a=\"\",latitude:i=\"\",accurateLongitude:n=\"\",accurateLatitude:t=\"\",center:c=[\"\",\"\"],adCode:d=\"\",adcode:l=\"\"}=f;return{citycode:e||s||\"\",location_status:a&&i?\"1\":\"0\",StuCard_count:b.list.reduce(((e,s)=>{var a;return e+((null==(a=s.packages)?void 0:a.length)||0)}),0),StuCard_list:b.list.flatMap((e=>e.packages||[])).map((e=>{const{commodityGuid:s=\"\",showName:a=\"\",price:i=\"\",businessType:n=\"\"}=e||{};return\"\".concat(s,\"-\").concat(a,\"-\").concat(i,\"-\").concat(n)})).filter((e=>\"---\"!==e)).join(\"|\")}}),[f,b.list]),{handlePay:D,orderNo:M}=x({bizType:a,channelCode:0===a?101088:102088,onPaySuccess:()=>{const e=T.current;e&&((e,s)=>{n.show({content:\"支付成功\",icon:\"success\"});const{showName:a,packageGuid:i,cardBatchInfo:t={},mobilePhone:c=\"\",businessType:d=1,supportDirectStart:o}=s,{usePlatform:_}=t,u=l(),x=\"\".concat(m.MAIN_H5_HOST,\"card-charge-success\"),p=s.commodityDetailUrl||\"\",j=s.commodityGuid||\"\",g=r(x,{mobilePhone:c,showName:a,businessType:d,usePlatform:_,platform:u,packageGuid:i,cityCode:f.cityCode||f.citycode||\"\",adCode:f.adCode||f.adcode||\"\",bizId:e||\"\",supportDirectStart:o,tyingCardShowName:\"\",tyingCardUrl:p,tyingCardCode:j,insuranceCode:null,from:\"newStudentCenter\"});h(g,{},{hideNavBar:!0})})(M,e)}}),W=(e,s)=>{var a;const i=s.find((s=>s.location===e));if(Array.isArray(null==i?void 0:i.packages)&&(null==(a=null==i?void 0:i.packages)?void 0:a.length)>0){const e=i.packages[0].businessType-1;g(e)}else g(0)},F=async()=>{try{n.show({content:\"加载中...\",icon:\"loading\"});const{cityCode:e=\"\",citycode:s=\"\",longitude:a=\"\",latitude:i=\"\",accurateLongitude:r=\"\",accurateLatitude:_=\"\",center:m=[\"\",\"\"],adCode:x=\"\",adcode:h=\"\"}=f,p={cityCode:e||s,adCode:h||x,platform:l(),envFrom:o(),lng:a||r||m[0],lat:i||_||m[1],needOptPromo:!0},j=await(async e=>{const s=await u();return t.post({action:\"student.card.get.v3\",...e,...s?{systemCode:c}:{}},{apiServer:d.bike})})(p);n.clear();const{moduleStyle:g=0,moduleTitle:y,cardInfoList:C=[]}=j||{};y&&(document.title=\"校园限定卡\"),k({cardType:g,cardTitle:y,list:C}),C.length>0&&!N&&(v(C[0].location),W(C[0].location,C))}catch(e){k({list:[],cardTitle:\"\",cardType:0})}},I=()=>{C(!1)},R=e=>{T.current=e,D({commodityInfo:{...e,category:1}}),I()},O=async()=>{await(async()=>{try{const e=await _.getCityInfo();P(e||{})}catch(e){P({})}})()};return e.useEffect((()=>(document.title=\"校园限定卡\",O(),()=>{var e;e=w,p.sendPageViewOut(\"bike_StuCard_list\",{citycode:e.citycode||\"\",location_status:e.location_status||\"0\",StuCard_count:e.StuCard_count||0,StuCard_list:e.StuCard_list||\"\"},\"bike\")})),[]),e.useEffect((()=>{Object.keys(f).length>0&&F()}),[f]),e.useEffect((()=>{var e;S.current||Object.keys(f).length>0&&b.list.length>0&&b.cardTitle&&(S.current=!0,e=w,p.sendPageView(\"bike_StuCard_list\",{citycode:e.citycode||\"\",location_status:e.location_status||\"0\",StuCard_count:e.StuCard_count||0,StuCard_list:e.StuCard_list||\"\"},\"bike\"))}),[f,b.list,b.cardTitle,w]),s.jsxs(\"div\",{className:j,children:[b&&0===b.cardType?s.jsx(i,{value:N,style:{position:\"relative\",zIndex:11},tabStyle:{position:\"sticky\",top:\"0px\",zIndex:11},onChange:e=>{v(e),W(e,b.list)},children:b.list.map((e=>s.jsx(i.TabPane,{title:e.tabTitle,value:e.location,children:s.jsx(H,{cardList:e,onPurchase:R},e.location)},e.location)))}):null,y&&s.jsx(ye,{show:y,packageCoupons:[],onClose:I,onPurchase:R})]})};export{Ce as default};\n//# sourceMappingURL=index-364a8384.js.map\n",
+    "observations": [
+      "Q purchase button has no canClick or appLimit guard",
+      "H maps every packages item to Q",
+      "R calls handlePay with original commodityInfo",
+      "W chooses businessType minus one; campus supports both vehicle types"
+    ]
+  },
+  "ordinary_h5": {
+    "archive": "card-h5.zip",
+    "entry": "pro/7.0.65/js/chunk-7615ee2a.c3745dc1.js",
+    "sha256": "1741b440cd526f29f0ad20affcc4188a6e36831490abbb57eb3c242ea90d9a16",
+    "excerpts": [
+      {
+        "token": "isShowDisableText:function",
+        "start_utf16": 397410,
+        "excerpt": "isShowDisableText:function(){return this.canBuy>1},isJointCardShowOriginPirce:function(){var t=this.selectedJointCard,e=t.actualPrice,i=void 0===e?{}:e,r=t.originPrice,n=void 0===r?0:r,a=i.finalPrice,s=void 0===a?0:a;return n-0>s-0},showRestriction:function(){return this.agreementInfo.gray||!1},showText:function(){var t=this.agreementInfo.title,e=void 0===t?\"\":t;return e.length>16?\"\".concat(e.slice(0,16),\"...\"):e}},watch:{showPopup:{handler:function(t){this.isPopup=t,t&&be({isUnionCard:!0,card:this.card,query:this.$route,themeId:this.card.themeInfo?this.card.themeInfo.basicConfig.themeGuid:\"\",isNewCardPopUp:!0,insureInfo:this.insureInfo,isNewCardList:this.isNewCardList})},immediated:!0},curSelectedJointCard:{handler:function(t){if(this.selectedJointCard=t,t.otherRightInfo){this.thirdRightInfo=t.otherRightInfo;var e=t.notLimitTags;this.tags=(e||[]).slice(0,3)}},deep:!0,immediate:!0}},created:function(){var t=this.$route.query||{},e=t.platform,i=void 0===e?\"\":e;this.systemCode=Object(o[\"c\"])(i),\"2005\"===this.systemCode&&this.getUnionConfig()},mounted:function(){var t=this;\"2005\"===this.systemCode&&window.addEventListener(\"hashchange\",ni(ii().mark((function e(){var i,r,n,a;return ii().wrap((function(e){while(1)switch(e.prev=e.next){case 0:if(i=t.$route.query,r=void 0===i?{}:i,n=r.userAuthCode,a=void 0===n?\"\":n,t.userAuthCode=a,!a){e.next=6;break}return e.next=6,t.handlePreOrder();case 6:case\"end\":return e.stop()}}),e)}))))},methods:{scroll:function(t){t.target.scrollTop>this.themeCardHeaderHeight?this.ceiling||(this.ceiling=!0):this.ceiling&&(this.ceiling=!1)},getUnionConfig:function(){var t=ni(ii().mark((function t(){var e,i;return ii().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=window.location.href,t.prev=1,t.next=4,H[\"a\"].getUnionConfig({url:e});case 4:i=t.sent,this.unionConfig=i,t.next=11;break;case 8:t.prev=8,t.t0=t[\"catch\"](1),console.error(t.t0);case 11:case\"end\":return t.stop()}}),t,this,[[1,8]])})));function e(){return t.apply(this,arguments)}return e}(),getSendAccount:function(t){this.sendAccount=t,this.handlePreOrder()},getCustomCardPopup:function(t){this.isShowCustomCardPopup=t},getDisableText:function(){var t=this.card.businessType;if(1===t){if(3===this.canBuy)return\"你的单车卡已达上限\";if(2===this.canBuy)return\"你的驾照分过低\"}return 2===t&&3===this.canBuy?\"你的助力车卡已达上限\":\"\"},handleJumpToContract:function(){this.agreementInfo.clickUrl&&Object($["
+      },
+      {
+        "token": "isShowDisableText:function",
+        "start_utf16": 451082,
+        "excerpt": "isShowDisableText:function(){if(\"joint\"!==this.tabActive)return this.canBuy>1;var t=this.jointCanBuy||{},e=t.bikeCanBuy,i=void 0===e?0:e,r=t.evbikeCanBuy,n=void 0===r?0:r,a=this.card.businessType;return 1===a?i>1:2===a&&n>1},displayActualFinalPrice:function(){var t=0;if(\"joint\"!==this.tabActive){var e=this.card,i=e.actualPrice,r=void 0===i?{}:i,n=e.purchasePrice,a=void 0===n?0:n,s=r.finalPrice,o=void 0===s?0:s;return t=o||a,(this.card.tyingCardList||[]).forEach((function(e){var i=e||{},r=i.purchasePrice,n=i.selected;t=n?Object(et[\"c\"])(t,r):t})),t}return\"\"},tiktokPrice:function(){var t,e,i,r=this.displayActualFinalPrice;null!==(t=this.card)&&void 0!==t&&null!==(e=t.payChannelDiscountInfo)&&void 0!==e&&e.payChannelDiscountAmount&&(r=Object(et[\"b\"])(r,null===(i=this.card.payChannelDiscountInfo)||void 0===i?void 0:i.payChannelDiscountAmount));return r<=.01?.01:r},displayPrice:function(){var t,e=this.tiktokPrice;return this.bonusChecked&&null!==(t=this.card)&&void 0!==t&&t.bonusDeduct&&(e=Object(et[\"b\"])(e,this.card.bonusDeduct.deductAmount)),this.showSubsidy&&(e=Object(et[\"b\"])(e,Number((this.bestSubsidyInfo||{}).subsidyAmount)||0)),e<=.01?.01:e},discountText:function(){var t=this;if(\"joint\"!==this.tabActive&&this.card.showName){var e,i,r,n,a=this.card,s=a.actualPrice,o=void 0===s?{}:s,c=a.originPrice,l=void 0===c?0:c,h=o.finalPrice,u=void 0===h?0:h,d=Object(et[\"b\"])(l-0,u);if((this.card.tyingCardList||[]).filter((function(e,i){return i<t.maxTyingCount})).forEach((function(t){var e=t.selected,i=t.discountAmount,r=void 0===i?\"\":i;e&&(d=Object(et[\"c\"])(r-0,d))})),null!==(e=this.card)&&void 0!==e&&null!==(i=e.payChannelDiscountInfo)&&void 0!==i&&i.payChannelDiscountAmount)d=Object(et[\"c\"])(d,null===(n=this.card.payChannelDiscountInfo)||void 0===n?void 0:n.payChannelDiscountAmount);return this.bonusChecked&&null!==(r=this.card)&&void 0!==r&&r.bonusDeduct&&(d=Object(et[\"c\"])(d,this.card.bonusDeduct.deductAmount)),this.showSubsidy&&(d=Object(et[\"c\"])(d,Number((this.bestSubsidyInfo||{}).subsidyAmount)||0)),d&&d>0?\"已优惠\".concat(d,\"元\"):\"\"}return\"\"},showRestriction:function(){return this.agreementInfo.gray||!1},showText:function(){var t=this.agreementInfo.title,e=void 0===t?\"\":t;return e.length>16?\"\".concat(e.slice(0,16),\"...\"):e},notEasyBikeApp:function(){return!c[\"a\"].isEasyBikeApp},bestSubsidyInfo:function(){return this.card&&this.card.bestSubsidyInfo||null},showSubsid"
+      },
+      {
+        "token": "getDisableText:function",
+        "start_utf16": 399556,
+        "excerpt": "getDisableText:function(){var t=this.card.businessType;if(1===t){if(3===this.canBuy)return\"你的单车卡已达上限\";if(2===this.canBuy)return\"你的驾照分过低\"}return 2===t&&3===this.canBuy?\"你的助力车卡已达上限\":\"\"},handleJumpToContract:function(){this.agreementInfo.clickUrl&&Object($[\"b\"])(this.agreementInfo.clickUrl)},displayActualFinalPrice:function(){var t=this.selectedJointCard.actualPrice,e=void 0===t?{}:t,i=e.finalPrice,r=void 0===i?0:i;return r||\"\"},discountText:function(){if(this.card.otherRightInfo&&this.selectedJointCard&&this.selectedJointCard.showName){var t=this.selectedJointCard,e=t.originPrice,i=void 0===e?0:e,r=t.actualPrice,n=void 0===r?{}:r,a=n.finalPrice,s=void 0===a?0:a,o=Object(et[\"b\"])(i-0,s);return o&&o>0?\"已优惠\".concat(o,\"元\"):\"\"}return\"\"},handleClosePopup:function(){this.$emit(\"close\",this.card)},handleSelectJointCard:function(t,e){e.jointCards.forEach((function(e){e.select=!1,e.commodityGuid===t.commodityGuid&&(e.select=!0)})),this.selectedJointCard=t,this.$forceUpdate()},formatOrderParams:function(){var t=this.selectedJointCard,e=t.packageGuid,i=t.channelCode,r=t.businessType,n=t.actualPrice,a=void 0===n?{}:n,s=t.pendingInfos,o=void 0===s?[]:s,c=t.tyingCard,l=void 0===c?{}:c,h=t.otherRightInfo,u=void 0===h?{}:h,d=l.selected,p=void 0!==d&&d,f=this.$route.query,m=void 0===f?{}:f,y=m.platform,g=m.adsource,v=void 0===g?\"\":g,b=m.adSource,C=void 0===b?\"\":b,w=[],x=u.sendAccountCategory?this.sendAccount:\"\";w.push({packageGuid:e,pendingInfos:o,category:1,actualPrice:a,sendAccount:x}),p?(w.push({packageGuid:l.packageGuid,category:2,actualPrice:l.actualPrice,sendAccount:x}),this.tyingCardShowName=l.showName,this.tyingCardUrl=l.commodityDetailUrl,this.tyingCardCode=l.commodityGuid):(this.tyingCardShowName=\"\",this.tyingCardUrl=\"\",this.tyingCardCode=\"\");var P=this.city,_=P.cityCode,S=P.adCode,k=P.lat,E=P.lng,T={bizContent:{channelCode:i,businessType:r,totalPrice:this.displayActualFinalPrice(),packageList:w},cityCode:_,adCode:S,location:{lat:k,lng:E},packagePlatform:y||\"3\",systemCode:this.systemCode,adSource:C||v};return T},paySuccess:function(){this.handleClosePopup();var t=this.$route.query;ne({orderInfo:this.orderInfo,payResult:\"success\",query:t,selectedCard:this.card,orderFrom:\"\"});var e=this.formatBuyCard(),i=e.mobilePhone,r=e.showName,n=e.businessType,a=e.usePlatform,o=e.platform,l=e.packageGuid,h=e.supportDirectStart;if(c[\"a\"].isAliMP||c[\"a\"].isAliMPMonitor||c[\"a\"].isEasyB"
+      },
+      {
+        "token": "getDisableText:function",
+        "start_utf16": 454484,
+        "excerpt": "getDisableText:function(){if(\"joint\"!==this.tabActive){var t=\"\";if(\"bike\"===this.tabActive?t=\"单车\":\"evbike\"===this.tabActive&&(t=\"助力车\"),3===this.canBuy)return\"你的\".concat(t,\"卡已达上限\");if(2===this.canBuy)return\"你的驾照分过低\"}var e=this.jointCanBuy||{},i=e.bikeCanBuy,r=void 0===i?0:i,n=e.evbikeCanBuy,a=void 0===n?0:n,s=this.card.businessType;if(1===s){if(3===r)return\"你的单车卡已达上限\";if(2===r)return\"你的驾照分过低\"}return 2===s&&3===a?\"你的助力车卡已达上限\":\"\"},showCustomCardPopup:function(){var t=\"joint\"===this.tabActive?this.selectedJointCard:this.card,e=t.otherRightInfo,i=void 0===e?{}:e,r=i.sendAccountCategory;this.isShowCustomCardPopup=!!r},prePay:function(){var t=rn(tn().mark((function t(){var e;return tn().wrap((function(t){while(1)switch(t.prev=t.next){case 0:if(this.showCustomCardPopup(),!this.isShowCustomCardPopup){t.next=3;break}return t.abrupt(\"return\");case 3:if(!this.isShowDisableText){t.next=5;break}return t.abrupt(\"return\");case 5:if(this.systemCode!==E[\"b\"].YUNSHANFU){t.next=10;break}return this.userAuthCode&&(this.userAuthCode=\"\",S[\"a\"].remove(\"userAuthCode\")),e=encodeURIComponent(window.location.href),window.location.replace(\"\".concat(j[\"c\"]).concat(e)),t.abrupt(\"return\");case 10:this.isShowCustomCardPopup=!1,this.isDiscountListShow=!1,this.handlePurchaseNotice();case 13:case\"end\":return t.stop()}}),t,this)})));function e(){return t.apply(this,arguments)}return e}(),handleJumpToContract:function(){this.agreementInfo.clickUrl&&Object($[\"b\"])(this.agreementInfo.clickUrl)},handlePurchaseNotice:function(){var t=this.purchaseNotice||{},e=t.abResult,i=void 0!==e&&e,r=t.hasEffectCard,n=void 0!==r&&r,a=t.effectCard,s=void 0===a?{}:a,o=this.card.cardBatchInfo,c=void 0===o?{}:o,l=c.usePlatform,h=n&&s&&1===s.cardType;i&&(h||0===l)?(de({hasEffectAppCard:h}),this.handleClosePopup(),this.isShowAppCardPopup=!0):this.handlePreOrder()},handlePreOrder:function(){var t=rn(tn().mark((function t(){var e,i,r,n,s,o,l,h,u,d,p,f,m;return tn().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=this.formatOrderParams(),this.payLoadding=!0,t.prev=2,t.next=5,H[\"a\"].preOrder(e);case 5:if(i=t.sent,r=i.orderGoPayList[0]||{},r.businessType=i.businessType,r.businessScene=i.businessScene,this.orderInfo=r,n=this.$route.query,ae({query:n,orderInfo:r,selectedCard:this.card,orderFrom:\"\",isNewCardPopUp:!0,insuranceCode:this.insureInfo&&this.insureInfo.productId,ischooserewards:this.bonusChecked?1:0}"
+      },
+      {
+        "token": "formatSignParams:function",
+        "start_utf16": 408162,
+        "excerpt": "formatSignParams:function(t,e){var i=t.payNo,r=t.paymentId,n=t.businessType,a=t.businessScene,s=t.payPrice,o=e||{},l=o.paySignType,h=o.periodType,u=o.periodNum,d=o.maxDeductAmount,p=\"\";1===l&&h&&u&&d&&(p=JSON.stringify({period_type:h,period:String(u),single_amount:d}));var f={};return f=c[\"a\"].isAliMP?{guid:i,amount:\"\".concat(s),businessType:n,businessScene:a,signChannel:\"alipay\",creditModel:\"normal\",orderId:r,periodRuleParams:p,actionOrigin:\"RidecardBuying\"}:{amount:s,businessType:n,signChannel:\"alipay\",creditModel:\"normal\",periodRuleParams:p,actionOrigin:\"RidecardBuying\",orders:[{guid:i,amount:s,orderId:r,businessType:n}]},f},reportPayResultError:function(){var t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{},e=this.$route.query;ne(Ze({orderInfo:this.orderInfo,payResult:\"fail\",query:e,selectedCard:this.card},t))}}},si=ai,oi=(i(\"c946\"),Object(L[\"a\"])(si,W,J,!1,null,\"45fe1df0\",null)),ci=oi.exports,li=function(){var t=this,e=t.$createElement,i=t._self._c||e;return i(\"div\",{staticClass:\"cards-list-view\"},[i(\"div\",{staticClass:\"cards-list\"},[i(\"div\",{staticClass:\"city-block\"},[t.bizCity&&t.bizCity.bizCityCode?i(\"div\",{staticClass:\"city-info\"},[i(\"img\",{staticClass:\"city-icon\",attrs:{src:\"https://oho-image-cdn.51downapp.cn/common/be58efe8787344418c10f0cefb7b9c66_ride-card-49.png\"}}),i(\"span\",[t._v(t._s(\"86\"===t.bizCity.bizCityCode?\"全国\":t.bizCity.bizCityName))])]):t._e()]),\"joint\"!==t.tabActive&&t.promotionInfo.needReceive&&!t.isNewEveryDayPopUp?i(\"div\",{staticClass:\"everyday-coupon-block\"},[i(\"everyday-coupon\",{attrs:{\"locate-type\":\"list\",\"promotion-info\":t.promotionInfo},on:{couponClick:t.handleCouponClick}})],1):t._e(),t._l(t.cardsList,(function(e,r){return i(\"div\",{directives:[{name:\"hammer\",rawName:\"v-hammer:tap\",value:t.handleOnTap(r),expression:\"handleOnTap(index)\",arg:\"tap\"}],key:e.commodityGuid,staticClass:\"card-wrap\",on:{click:function(i){return t.handlePopupShow(e)}}},[i(\"div\",{staticClass:\"top-one-bg\",style:e.themeInfo?\"background-color: transparent;\":\"\"},[0===r&&t.countDownTime(e)&&\"joint\"!==t.tabActive&&0===t.canBuy&&!e.themeInfo?i(\"div\",{staticClass:\"count-down\"},[i(\"div\",{staticClass:\"count-down-text\"},[i(\"div\",{staticClass:\"count-down-first-text\"},[t._v(\"\\n              限时优惠\\n            \")]),i(\"van-count-down\",{attrs:{time:t.countDownTime(e)},on:{finish:function(i){return t.handleCountDownFinish(e)}},scopedSlots:t._u([{key:\"default\",f"
+      },
+      {
+        "token": "formatSignParams:function",
+        "start_utf16": 470281,
+        "excerpt": "formatSignParams:function(t,e){var i=t.payNo,r=t.paymentId,n=t.businessType,a=t.businessScene,s=t.payPrice,o=e||{},l=o.paySignType,h=o.periodType,u=o.periodNum,d=o.maxDeductAmount,p=\"\";1===l&&h&&u&&d&&(p=JSON.stringify({period_type:h,period:String(u),single_amount:d}));var f={};return f=c[\"a\"].isAliMP?{guid:i,amount:\"\".concat(s),businessType:n,businessScene:a,signChannel:\"alipay\",creditModel:\"normal\",orderId:r,actionOrigin:\"RidecardBuying\",periodRuleParams:p}:{amount:s,businessType:n,signChannel:\"alipay\",creditModel:\"normal\",actionOrigin:\"RidecardBuying\",periodRuleParams:p,orders:[{guid:i,amount:s,orderId:r,businessType:n}]},f},reportPayResultError:function(){var t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{},e=this.$route.query;ne(Xr({orderInfo:this.orderInfo,payResult:\"fail\",query:e,selectedCard:this.card},t))},paySuccess:function(){this.handleClosePopup();var t=this.$route.query;ne({orderInfo:this.orderInfo,payResult:\"success\",query:t,selectedCard:this.card,orderFrom:\"\"});var e=this.formatBuyCard(),i=e.mobilePhone,r=e.showName,n=e.businessType,a=e.usePlatform,o=e.platform,l=e.packageGuid,h=e.supportDirectStart;if(c[\"a\"].isAliMP||c[\"a\"].isAliMPMonitor||c[\"a\"].isEasyBikeApp){var u=1===n?\"HLcard_bike\":\"HLcard_evbike\",d=this.city,p=d.cityCode,f=d.adCode,m=this.orderInfo.orderNo,y=this.card.themeInfo,g=\"\".concat(tt[\"a\"].MAIN_H5_HOST,\"card-charge-success\"),v=S[\"a\"].addParams(g,{mobilePhone:i,showName:encodeURIComponent(r),businessType:n,usePlatform:a,platform:o,packageGuid:l,adsource:u,cityCode:p,adCode:f,bizId:m,tyingCardShowName:encodeURIComponent(this.tyingCardShowName),tyingCardUrl:encodeURIComponent(this.tyingCardUrl),tyingCardCode:this.tyingCardCode,insuranceCode:this.insuranceCode,supportDirectStart:h});if(y&&y.buyCardConfig&&y.basicConfig){var b=y.buyCardConfig,C=b.purchaseSuccessBg,w=b.cardButton,x=y.basicConfig.themeGuid;v+=\"&purchaseSuccessBg=\".concat(encodeURIComponent(C),\"&cardButton=\").concat(encodeURIComponent(w),\"&themeGuid=\").concat(x)}c[\"a\"].isEasyBikeApp?Object($[\"b\"])(v):_[\"a\"].mpRedirectTo(\"/pages/activity/web-view/web-view?url=\".concat(encodeURIComponent(v)))}else\"8\"!==o&&\"14\"!==o&&\"16\"!==o&&s[\"a\"].alert({title:\"支付成功\",confirmButtonText:\"知道了\",confirmButtonColor:\"#0081f1\"})},formatBuyCard:function(){var t=this.card,e=t.showName,i=t.packageGuid,r=t.cardBatchInfo,n=void 0===r?{}:r,a=t.mobilePhone,s=void 0===a?\"\":a,o=t.businessType"
+      },
+      {
+        "token": "formatSignParams:function",
+        "start_utf16": 536922,
+        "excerpt": "formatSignParams:function(t,e){var i=t.payNo,r=t.paymentId,n=t.businessType,a=t.businessScene,s=t.payPrice,o=e||{},l=o.paySignType,h=o.periodType,u=o.periodNum,d=o.maxDeductAmount,p=\"\";1===l&&h&&u&&d&&(p=JSON.stringify({period_type:h,period:String(u),single_amount:d}));var f={};return f=c[\"a\"].isAliMP?{guid:i,amount:\"\".concat(s),businessType:n,businessScene:a,signChannel:\"alipay\",creditModel:\"normal\",orderId:r,actionOrigin:\"RidecardBuying\",periodRuleParams:p}:{amount:s,businessType:n,signChannel:\"alipay\",creditModel:\"normal\",actionOrigin:\"RidecardBuying\",periodRuleParams:p,orders:[{guid:i,amount:s,orderId:r,businessType:n}]},f},payWithSign:function(){var t=Sa(Pa().mark((function t(e,i){var r;return Pa().wrap((function(t){while(1)switch(t.prev=t.next){case 0:if(!(c[\"a\"].isAliMP||c[\"a\"].isEasyBikeApp||c[\"a\"].isAliMPMonitor)){t.next=13;break}return r=this.formatSignParams(e,i),t.prev=2,t.next=5,_[\"a\"].payWithSign(r);case 5:this.paySuccess(),t.next=11;break;case 8:t.prev=8,t.t0=t[\"catch\"](2),this.reportPayResultError({errMsg:(null===t.t0||void 0===t.t0?void 0:t.t0.msg)||(null===t.t0||void 0===t.t0?void 0:t.t0.message),errorCode:t.t0&&t.t0.errorCode});case 11:t.next=14;break;case 13:if(c[\"a\"].isWxMP||c[\"a\"].isWeixin)try{Object(Nt[\"o\"])(ba(ba({},e),{},{planId:this.selectedCard.wechatSignTempId}))}catch(n){this.reportPayResultError({errMsg:n.msg||n.message,errorCode:n&&n.errorCode})}else Object(a[\"a\"])(\"自动续费卡只支持端内支付\");case 14:case\"end\":return t.stop()}}),t,this,[[2,8]])})));function e(e,i){return t.apply(this,arguments)}return e}(),handlePreOrder:function(){var t=Sa(Pa().mark((function t(){var e,i,r,n,s,o,l,h,u,d=arguments;return Pa().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=d.length>0&&void 0!==d[0]&&d[0],i=d.length>1&&void 0!==d[1]&&d[1],r=this.formatOrderParams(this.selectedCard,e),this.payLoadding=!0,t.prev=4,t.next=7,H[\"a\"].preOrder(r);case 7:if(n=t.sent,s=n.orderGoPayList[0]||{},s.businessType=n.businessType,s.businessScene=n.businessScene,this.orderInfo=s,o=this.$route.query,ae({query:o,orderInfo:s,isUnionCard:!!this.selectedCard.otherRightInfo,selectedCard:this.selectedCard,orderFrom:\"\",isNewCardList:!0}),l=this.selectedCard&&this.selectedCard.thirdPaySubsidyInfo,!c[\"a\"].isWxMP&&!c[\"a\"].isWeixin||!Object(P[\"i\"])(l)){t.next=19;break}return t.next=18,this.paySubsidyByDouyinH5(s,l);case 18:return t.abrupt(\"return\");case 19:if(h=this.sele"
+      },
+      {
+        "token": "handlePreOrder:function",
+        "start_utf16": 404411,
+        "excerpt": "handlePreOrder:function(){var t=ni(ii().mark((function t(){var e,i,r,n,s,o;return ii().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=this.formatOrderParams(),this.payLoadding=!0,t.prev=2,t.next=5,H[\"a\"].preOrder(e);case 5:if(i=t.sent,r=i.orderGoPayList[0]||{},r.businessType=i.businessType,r.businessScene=i.businessScene,this.orderInfo=r,n=this.$route.query,ae({isUnionCard:!0,query:n,orderInfo:r,selectedCard:this.card,orderFrom:\"\",isNewCardPopUp:!1,isNewCardList:this.isNewCardList}),s=this.card.paymentLimit,1!==s){t.next=16;break}return this.payWithSign(r,i),t.abrupt(\"return\");case 16:this.purchase(r),t.next=24;break;case 19:t.prev=19,t.t0=t[\"catch\"](2),t.t0&&t.t0.msg?(console.log(t.t0,\"123\"),Object(a[\"a\"])(t.t0.msg)):Object(a[\"a\"])(\"支付失败了，请稍后重试\"),o=this.$route.query,ae({isUnionCard:!0,query:o,errorCode:t.t0&&t.t0.errorCode,errMsg:t.t0&&t.t0.msg||\"支付失败了，请稍后重试\",selectedCard:this.card,city:this.city,orderFrom:\"\",isNewCardPopUp:!1,isNewCardList:this.isNewCardList});case 24:return t.prev=24,this.payLoadding=!1,t.finish(24);case 27:case\"end\":return t.stop()}}),t,this,[[2,19,24,27]])})));function e(){return t.apply(this,arguments)}return e}(),purchase:function(){var t=ni(ii().mark((function t(e){var i,r,n,s,o,l,h,u,d,p,f,m,y,g,v,b,C,w,x,P,S,T,A;return ii().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return t.prev=0,t.next=3,_[\"a\"].getTokenAndKey();case 3:if(i=t.sent,r=i.token,n=e.businessType,s=e.businessScene,o=e.payNo,l=e.paymentId,h=e.payPrice,u=this.city,d=u.cityCode,p=u.adCode,f=\"\".concat(window.location.href,\"&payResult=1\"),\"2005\"===this.systemCode&&(f=it[\"a\"].unibikeHome({systemCode:this.systemCode,token:r})),m=this.$route.query,y=void 0===m?{}:m,g={payParams:{businessType:n,businessScene:s,adCode:p,cityCode:d,payList:[{guid:o,orderId:l,amount:h,type:\"1\"}],failCb:function(t){console.log(t),Object(a[\"a\"])(t.msg||t.message)}},token:r,showChannel:[\"101\"],returnUrl:f,extra:{wxMini:{returnUrl:f,miniPayPath:y.wxMiniVersion?\"/pages/pay-plateform/cashier/index\":void 0},isCCBUseHelloWebview:k[\"a\"].getItem(\"IS_HELLOBIKE_SDK\")}},\"2005\"===this.systemCode&&(v=this.unionConfig,b=v.appId,C=v.timestamp,w=v.nonceStr,x=v.signature,g.extra.unionScan={userAuthCode:this.userAuthCode,appId:b,timestamp:C,nonceStr:w,signature:x}),P=new K.a({env:c[\"a\"].codeEnv,ubt:\"\",hbridge:Z,token:r,systemCode:Object(E[\"c\"])(this.systemCode)}),\"Aa3\"!==this.systemCode){"
+      },
+      {
+        "token": "handlePreOrder:function",
+        "start_utf16": 456320,
+        "excerpt": "handlePreOrder:function(){var t=rn(tn().mark((function t(){var e,i,r,n,s,o,l,h,u,d,p,f,m;return tn().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=this.formatOrderParams(),this.payLoadding=!0,t.prev=2,t.next=5,H[\"a\"].preOrder(e);case 5:if(i=t.sent,r=i.orderGoPayList[0]||{},r.businessType=i.businessType,r.businessScene=i.businessScene,this.orderInfo=r,n=this.$route.query,ae({query:n,orderInfo:r,selectedCard:this.card,orderFrom:\"\",isNewCardPopUp:!0,insuranceCode:this.insureInfo&&this.insureInfo.productId,ischooserewards:this.bonusChecked?1:0}),s=this.bestSubsidyInfo,!c[\"a\"].isWxMP&&!c[\"a\"].isWeixin||!Object(P[\"i\"])(s)){t.next=17;break}return t.next=16,this.paySubsidyByDouyinH5(r,s);case 16:return t.abrupt(\"return\");case 17:if(o=this.card,l=o.paymentLimit,h=o.renewPayWay,1!==l){t.next=24;break}if(3!==h){t.next=22;break}return this.payWithSignDouyin(r),t.abrupt(\"return\");case 22:return this.payWithSign(r,i),t.abrupt(\"return\");case 24:if(5!==l){t.next=31;break}if(d=(null===(u=this.card)||void 0===u?void 0:u.payChannelDiscountInfo)||{},p=d.hasDiscount,f=void 0!==p&&p,this.hasDiscount=f,!f){t.next=31;break}return t.next=30,this.payWithSignUnionPay(r);case 30:return t.abrupt(\"return\");case 31:this.purchase(r),t.next=40;break;case 34:t.prev=34,t.t0=t[\"catch\"](2),t.t0&&t.t0.msg?Object(a[\"a\"])(t.t0.msg):Object(a[\"a\"])(\"支付失败了，请稍后重试\"),t.t0&&Number(t.t0.code)===nn&&setTimeout((function(){window.location.reload()}),an),m=this.$route.query,ae({query:m,errorCode:t.t0&&t.t0.errorCode,errMsg:t.t0&&t.t0.msg||\"支付失败了，请稍后重试\",selectedCard:this.card,city:this.city,orderFrom:\"\",isNewCardPopUp:!0,insuranceCode:this.insureInfo&&this.insureInfo.productId,ischooserewards:this.bonusChecked?1:0});case 40:return t.prev=40,this.payLoadding=!1,t.finish(40);case 43:case\"end\":return t.stop()}}),t,this,[[2,34,40,43]])})));function e(){return t.apply(this,arguments)}return e}(),buildBuyCardReturnUrl:function(){var t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{},e=arguments.length>1?arguments[1]:void 0,i=t.businessType,r=this.city,n=r.cityCode,a=r.adCode,s=\"\".concat(window.location.href,\"&payResult=1\");if(c[\"a\"].isWxMP){var o,l,h=this.formatBuyCard(),u=h.mobilePhone,d=h.showName,p=h.usePlatform,f=h.platform,m=h.packageGuid,y=h.supportDirectStart,g=1===h.businessType?\"HLcard_bike\":\"HLcard_evbike\",v=this.orderInfo||{},b=v.orderNo,C=this.card||{},w=C.themeInfo,x=\"\".conca"
+      },
+      {
+        "token": "handlePreOrder:function",
+        "start_utf16": 538473,
+        "excerpt": "handlePreOrder:function(){var t=Sa(Pa().mark((function t(){var e,i,r,n,s,o,l,h,u,d=arguments;return Pa().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return e=d.length>0&&void 0!==d[0]&&d[0],i=d.length>1&&void 0!==d[1]&&d[1],r=this.formatOrderParams(this.selectedCard,e),this.payLoadding=!0,t.prev=4,t.next=7,H[\"a\"].preOrder(r);case 7:if(n=t.sent,s=n.orderGoPayList[0]||{},s.businessType=n.businessType,s.businessScene=n.businessScene,this.orderInfo=s,o=this.$route.query,ae({query:o,orderInfo:s,isUnionCard:!!this.selectedCard.otherRightInfo,selectedCard:this.selectedCard,orderFrom:\"\",isNewCardList:!0}),l=this.selectedCard&&this.selectedCard.thirdPaySubsidyInfo,!c[\"a\"].isWxMP&&!c[\"a\"].isWeixin||!Object(P[\"i\"])(l)){t.next=19;break}return t.next=18,this.paySubsidyByDouyinH5(s,l);case 18:return t.abrupt(\"return\");case 19:if(h=this.selectedCard.paymentLimit,1!==h){t.next=23;break}return this.payWithSign(s,n),t.abrupt(\"return\");case 23:this.purchase(s),t.next=33;break;case 26:t.prev=26,t.t0=t[\"catch\"](4),console.log(t.t0),t.t0&&t.t0.msg?Object(a[\"a\"])(t.t0.msg):Object(a[\"a\"])(\"支付失败了，请稍后重试\"),i&&t.t0&&Number(t.t0.code)===Oa&&setTimeout((function(){window.location.reload()}),Ra),u=this.$route.query,ae({query:u,isUnionCard:!!this.selectedCard.otherRightInfo,errorCode:t.t0&&t.t0.errorCode,errMsg:t.t0&&t.t0.msg||\"支付失败了，请稍后重试\",selectedCard:this.selectedCard,city:this.city,orderFrom:\"\",isNewCardPopUp:!0,insuranceCode:this.insuranceCode});case 33:return t.prev=33,this.payLoadding=!1,t.finish(33);case 36:case\"end\":return t.stop()}}),t,this,[[4,26,33,36]])})));function e(){return t.apply(this,arguments)}return e}(),buildSubsidyUbtParams:function(){var t=this.selectedCard&&this.selectedCard.thirdPaySubsidyInfo||{},e=this.selectedCard&&this.selectedCard.businessType;return{businessLine:1===e?\"单车\":\"助力车\",channelId:1===e?\"101000\":\"102000\",orderType:\"购卡\",subsidyAmount:t.subsidyAmount,subsidyType:Object(P[\"h\"])(t),productId:t.commodityGuid||\"\",productTagForDySign:t.productTagForDySign||\"\",signMustPay:String(!!t.signMustPay)}},paySubsidyByDouyinH5:function(){var t=Sa(Pa().mark((function t(e,i){var r,n,s,l,h,u,d,p,f,m,y,g,v,b,C,w,x,S,k,T;return Pa().wrap((function(t){while(1)switch(t.prev=t.next){case 0:return r=this.buildSubsidyUbtParams(),Te(r),t.prev=2,n=Object(o[\"c\"])(this.platform),t.next=6,_[\"a\"].getTokenAndKey();case 6:return s=t.sent,l=s.token,h=e.businessType,u=e.busin"
+      }
+    ],
+    "limitation": "Excerpts may end before the function ends; native exact method outputs are separate."
+  }
+}

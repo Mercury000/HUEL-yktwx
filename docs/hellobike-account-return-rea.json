@@ -1,0 +1,1111 @@
+{
+  "description": "REA 方法证据摘要；保留完整 normalized source、方法原型、表示形式、fallback、证据ID和原APK切片哈希。完整provider响应保存在build/hellobike-rea。",
+  "apk_executed": false,
+  "business_requests_sent": false,
+  "original_apk_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+  "records": [
+    {
+      "evidence_id": "ev_6b04cc9bc6031b4b1a166fa5e4828caef48378cd1b2ce6f4027620af3e2599d2",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "s0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "s0",
+          "reported_signature": "s0(): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n    public final void s0() throws NoWhenBranchMatchedException {\r\n        final HelloPayTypeAdapter helloPayTypeAdapter = new HelloPayTypeAdapter(this.mShowPayChannelList, CashierType.STANDARD_CASHIER, this.composeChannel);\r\n        helloPayTypeAdapter.r(l0());\r\n        final StandardCashierView standardCashierView = this.standardCashierView;\r\n        if (standardCashierView != null) {\r\n            CashierCustomUIModel customUI = this.request.getCustomUI();\r\n            String title = this.request.getTitle();\r\n            String subTitle = this.request.getSubTitle();\r\n            PayTypeData payTypeData = this.mPayChannelData;\r\n            String title2 = payTypeData != null ? payTypeData.getTitle() : null;\r\n            PayTypeData payTypeData2 = this.mPayChannelData;\r\n            standardCashierView.initCashierHead(customUI, new CashierTitleConfig(title, subTitle, title2, payTypeData2 != null ? payTypeData2.getSubTitle() : null));\r\n            standardCashierView.setListAdapter(helloPayTypeAdapter);\r\n            String payMoney = this.request.getPayMoney();\r\n            PayTypeData payTypeData3 = this.mPayChannelData;\r\n            boolean z = payTypeData3 != null && payTypeData3.getSupportMultiSign();\r\n            PayTypeData payTypeData4 = this.mPayChannelData;\r\n            standardCashierView.setAdapterExtraData(payMoney, z, payTypeData4 != null && payTypeData4.getSignState());\r\n            helloPayTypeAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() { // from class: com.hellobike.allpay.paycomponent.e\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void onItemClick(BaseQuickAdapter baseQuickAdapter, View view, int i) throws NoWhenBranchMatchedException {\r\n                    StandardCashierDialogHelper.t0(this.b, helloPayTypeAdapter, baseQuickAdapter, view, i);\r\n                }\r\n            });\r\n            helloPayTypeAdapter.q(new Function2<PayTypeBean, Integer, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$2\r\n                /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n                {\r\n                    super(2);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) throws NoWhenBranchMatchedException {\r\n                    invoke((PayTypeBean) obj, ((Number) obj2).intValue());\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(@Nullable PayTypeBean payTypeBean, int i) throws NoWhenBranchMatchedException {\r\n                    this.this$0.D0(helloPayTypeAdapter, i);\r\n                }\r\n            });\r\n            helloPayTypeAdapter.o(new Function1<Integer, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$3\r\n                /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n                {\r\n                    super(1);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj) throws NoWhenBranchMatchedException {\r\n                    invoke(((Number) obj).intValue());\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(int i) throws NoWhenBranchMatchedException {\r\n                    this.this$0.y0(helloPayTypeAdapter, i);\r\n                }\r\n            });\r\n            helloPayTypeAdapter.p(new Function2<Boolean, PayTypeBean, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$4\r\n                /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n                {\r\n                    super(2);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) throws NoWhenBranchMatchedException {\r\n                    invoke(((Boolean) obj).booleanValue(), (PayTypeBean) obj2);\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(boolean z2, @NotNull PayTypeBean payTypeBean) throws NoWhenBranchMatchedException {\r\n                    Intrinsics.checkNotNullParameter(payTypeBean, \"channel\");\r\n                    StandardCashierTrack.trackPromptTagExposeOrClick(z2, this.this$0.request, payTypeBean, this.this$0.mPayChannelData, this.this$0.mShowPayChannelList, this.this$0.mFoldPayChannelList, this.this$0.composeChannel, standardCashierView.getMoreChannelInfo());\r\n                }\r\n            });\r\n            standardCashierView.setOnPayBtnClickListener(new Function2<PayTypeBean, MarketingInfo, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$5\r\n                {\r\n                    super(2);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) throws NoWhenBranchMatchedException {\r\n                    invoke((PayTypeBean) obj, (MarketingInfo) obj2);\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(@NotNull PayTypeBean payTypeBean, @Nullable MarketingInfo marketingInfo) throws NoWhenBranchMatchedException {\r\n                    Intrinsics.checkNotNullParameter(payTypeBean, \"channel\");\r\n                    this.this$0.A0(payTypeBean, marketingInfo);\r\n                }\r\n            });\r\n            standardCashierView.setOnSignBtnClickListener(new Function2<PayTypeBean, MarketingInfo, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$6\r\n                {\r\n                    super(2);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) throws NoWhenBranchMatchedException {\r\n                    invoke((PayTypeBean) obj, (MarketingInfo) obj2);\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(@NotNull PayTypeBean payTypeBean, @Nullable MarketingInfo marketingInfo) throws NoWhenBranchMatchedException {\r\n                    Intrinsics.checkNotNullParameter(payTypeBean, \"channel\");\r\n                    this.this$0.C0(payTypeBean, marketingInfo);\r\n                }\r\n            });\r\n            standardCashierView.setOnCancelListener(new Function0<Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$7\r\n                {\r\n                    super(0);\r\n                }\r\n\r\n                public /* bridge */ /* synthetic */ Object invoke() {\r\n                    m594invoke();\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: renamed from: invoke, reason: collision with other method in class */\r\n                public final void m594invoke() {\r\n                    this.this$0.i0();\r\n                }\r\n            });\r\n            standardCashierView.setComposePaySwitchListener(new Function2<HelloPayTypeAdapter, Boolean, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$8\r\n                {\r\n                    super(2);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) throws NoWhenBranchMatchedException {\r\n                    invoke((HelloPayTypeAdapter) obj, ((Boolean) obj2).booleanValue());\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(@NotNull HelloPayTypeAdapter helloPayTypeAdapter2, boolean z2) throws NoWhenBranchMatchedException {\r\n                    Intrinsics.checkNotNullParameter(helloPayTypeAdapter2, \"adapter\");\r\n                    this.this$0.U0(false, PayChannelDataTransfer.l(this.this$0.mShowPayChannelList, this.this$0.mFoldPayChannelList), true, (24 & 8) != 0 ? false : false, (24 & 16) != 0 ? false : false);\r\n                    this.this$0.L0(false);\r\n                }\r\n            });\r\n            standardCashierView.setOnSignSwitchListener(new Function1<Boolean, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$initStandardCashierView$1$9\r\n                {\r\n                    super(1);\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public /* bridge */ /* synthetic */ Object invoke(Object obj) throws NoWhenBranchMatchedException {\r\n                    invoke(((Boolean) obj).booleanValue());\r\n                    return Unit.INSTANCE;\r\n                }\r\n\r\n                /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n                public final void invoke(boolean z2) throws NoWhenBranchMatchedException {\r\n                    this.this$0.U0(false, PayChannelDataTransfer.l(this.this$0.mShowPayChannelList, this.this$0.mFoldPayChannelList), false, (24 & 8) != 0 ? false : false, (24 & 16) != 0 ? false : false);\r\n                }\r\n            });\r\n            this.lastCheckIndex = PayChannelDataTransfer.h(this.mShowPayChannelList);\r\n            PayTypeBean payTypeBean = this.composeChannel;\r\n            PayTypeData payTypeData5 = this.mPayChannelData;\r\n            standardCashierView.load(payTypeBean, payTypeData5 != null ? payTypeData5.getComposeSwitch() : false);\r\n            L0(true);\r\n            u0(false, true, true);\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_07c8d4ddebf3dce8544b148ff084a131fdd0e87b19fe81c1913d6015174d2827",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "t0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "t0",
+          "reported_signature": "t0(com.hellobike.allpay.paycomponent.StandardCashierDialogHelper, com.hellobike.allpay.paycomponent.adapter.HelloPayTypeAdapter, com.chad.library.adapter.base.BaseQuickAdapter, android.view.View, int): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/StandardCashierDialogHelper;Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;Lcom/chad/library/adapter/base/BaseQuickAdapter;Landroid/view/View;I)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n    public static final void t0(StandardCashierDialogHelper standardCashierDialogHelper, HelloPayTypeAdapter helloPayTypeAdapter, BaseQuickAdapter baseQuickAdapter, View view, int i) throws NoWhenBranchMatchedException {\r\n        Intrinsics.checkNotNullParameter(standardCashierDialogHelper, \"this$0\");\r\n        Intrinsics.checkNotNullParameter(helloPayTypeAdapter, \"$adapter\");\r\n        standardCashierDialogHelper.B0(helloPayTypeAdapter, i);\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_670907e6908e1193f3196924543fe59709c6d3e241b8814d728bc8b28db498c4",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "A0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "A0",
+          "reported_signature": "A0(com.hellobike.allpay.paycomponent.model.entity.PayTypeBean, com.hellobike.allpay.base.model.entity.MarketingInfo): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Lcom/hellobike/allpay/base/model/entity/MarketingInfo;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n    public final void A0(PayTypeBean channelData, MarketingInfo marketingInfo) throws NoWhenBranchMatchedException {\r\n        String channelCode = channelData.getChannelCode();\r\n        if (channelCode == null || StringsKt.isBlank(channelCode)) {\r\n            return;\r\n        }\r\n        Boolean bool = Boolean.TRUE;\r\n        Activity activity = this.context;\r\n        StandardCashierRequest standardCashierRequest = this.request;\r\n        PayTypeData payTypeData = this.mPayChannelData;\r\n        List<PayTypeBean> list = this.mShowPayChannelList;\r\n        List<PayTypeBean> list2 = this.mFoldPayChannelList;\r\n        PayTypeBean payTypeBean = this.composeChannel;\r\n        StandardCashierView standardCashierView = this.standardCashierView;\r\n        StandardCashierTrack.trackSignPayExposeOrClick(false, bool, activity, standardCashierRequest, channelData, payTypeData, list, list2, payTypeBean, standardCashierView != null ? standardCashierView.getMoreChannelInfo() : null);\r\n        HBStandardCashierFLTrack hBStandardCashierFLTrack = HBStandardCashierFLTrack.INSTANCE;\r\n        StandardCashierRequest standardCashierRequest2 = this.request;\r\n        PayTypeData payTypeData2 = this.mPayChannelData;\r\n        List<PayTypeBean> list3 = this.mShowPayChannelList;\r\n        List<PayTypeBean> list4 = this.mFoldPayChannelList;\r\n        PayTypeBean payTypeBean2 = this.composeChannel;\r\n        StandardCashierView standardCashierView2 = this.standardCashierView;\r\n        hBStandardCashierFLTrack.standardCashierPayClick(standardCashierRequest2, payTypeData2, list3, list4, payTypeBean2, standardCashierView2 != null ? standardCashierView2.getMoreChannelInfo() : null, channelData);\r\n        Q0(channelData, marketingInfo);\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_ffd7bdb3849bc0d9e30feba38c8537789a2820278a02a112da9a8b6f7cbe3f02",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "D0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "D0",
+          "reported_signature": "D0(com.hellobike.allpay.paycomponent.adapter.HelloPayTypeAdapter, int): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;I)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n    public final void D0(HelloPayTypeAdapter adapter, int parentIndex) throws NoWhenBranchMatchedException {\r\n        int i = this.lastCheckIndex;\r\n        if (i >= 0 && i <= adapter.getData().size() - 1) {\r\n            PayTypeBean payTypeBean = (PayTypeBean) adapter.getData().get(this.lastCheckIndex);\r\n            payTypeBean.setCheck(false);\r\n            List<HuaBeiInfoBean> fqInfos = payTypeBean.getFqInfos();\r\n            if (fqInfos != null) {\r\n                Iterator<T> it = fqInfos.iterator();\r\n                while (it.hasNext()) {\r\n                    ((HuaBeiInfoBean) it.next()).setSelected(Boolean.FALSE);\r\n                }\r\n            }\r\n        }\r\n        this.lastCheckIndex = parentIndex;\r\n        v0(this, true, true, false, 4, null);\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_494fd42a0a4105eab1995a069c4d4f37116dc34ac192b0867763d62f0ab23882",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "B0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "B0",
+          "reported_signature": "B0(com.hellobike.allpay.paycomponent.adapter.HelloPayTypeAdapter, int): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;I)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX INFO: Thrown type has an unknown type hierarchy: kotlin.NoWhenBranchMatchedException */\r\n    public final void B0(HelloPayTypeAdapter adapter, int position) throws NoWhenBranchMatchedException {\r\n        Object obj;\r\n        Object next;\r\n        List<PayTypeBean> subChannelList;\r\n        List<PayTypeBean> subChannelList2;\r\n        PayTypeBean payTypeBean = (PayTypeBean) adapter.getData().get(position);\r\n        if (!payTypeBean.shouldCheckBalanceEnough() || payTypeBean.isBalanceEnough(this.request.getPayMoney())) {\r\n            List data = adapter.getData();\r\n            Intrinsics.checkNotNullExpressionValue(data, \"adapter.data\");\r\n            Iterator it = data.iterator();\r\n            do {\r\n                obj = null;\r\n                if (!it.hasNext()) {\r\n                    next = null;\r\n                    break;\r\n                } else {\r\n                    next = it.next();\r\n                    subChannelList2 = ((PayTypeBean) next).getSubChannelList();\r\n                }\r\n            } while (!(!(subChannelList2 == null || subChannelList2.isEmpty())));\r\n            PayTypeBean payTypeBean2 = (PayTypeBean) next;\r\n            if (payTypeBean2 != null && position == adapter.getData().indexOf(payTypeBean2)) {\r\n                List<PayTypeBean> subChannelList3 = payTypeBean2.getSubChannelList();\r\n                Intrinsics.checkNotNull(subChannelList3);\r\n                for (Object obj2 : subChannelList3) {\r\n                    if (((PayTypeBean) obj2).getIsCheck()) {\r\n                        obj = obj2;\r\n                        break;\r\n                    }\r\n                }\r\n                if (obj == null) {\r\n                    ((PayTypeBean) adapter.getData().get(position)).setSubChannelShow(!((PayTypeBean) adapter.getData().get(position)).getIsSubChannelShow());\r\n                    adapter.notifyItemChanged(position);\r\n                    return;\r\n                }\r\n                return;\r\n            }\r\n            List<HuaBeiInfoBean> fqInfos = payTypeBean.getFqInfos();\r\n            if ((fqInfos != null && (fqInfos.isEmpty() ^ true)) || this.lastCheckIndex == position) {\r\n                return;\r\n            }\r\n            ((PayTypeBean) adapter.getData().get(position)).setCheck(true);\r\n            if (PayChannelDataTransfer.q(this.lastCheckIndex)) {\r\n                ((PayTypeBean) adapter.getData().get(this.lastCheckIndex)).setCheck(false);\r\n                List<HuaBeiInfoBean> fqInfos2 = ((PayTypeBean) adapter.getData().get(this.lastCheckIndex)).getFqInfos();\r\n                if (fqInfos2 != null) {\r\n                    Iterator<T> it2 = fqInfos2.iterator();\r\n                    while (it2.hasNext()) {\r\n                        ((HuaBeiInfoBean) it2.next()).setSelected(Boolean.FALSE);\r\n                    }\r\n                }\r\n            } else {\r\n                PayChannelDataTransfer.t(adapter, this.mFoldPayChannelList);\r\n            }\r\n            if (payTypeBean2 != null && (subChannelList = payTypeBean2.getSubChannelList()) != null) {\r\n                Iterator<T> it3 = subChannelList.iterator();\r\n                while (it3.hasNext()) {\r\n                    ((PayTypeBean) it3.next()).setCheck(false);\r\n                }\r\n            }\r\n            this.lastCheckIndex = position;\r\n            v0(this, true, true, false, 4, null);\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_64f4cb07feec3eedfad6aa6aa49619e55df2db3cc27f6d817ee5e36a1993a015",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "Q0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "Q0",
+          "reported_signature": "Q0(com.hellobike.allpay.paycomponent.model.entity.PayTypeBean, com.hellobike.allpay.base.model.entity.MarketingInfo): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Lcom/hellobike/allpay/base/model/entity/MarketingInfo;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final void Q0(PayTypeBean channelData, MarketingInfo marketingInfo) {\r\n        PayTypeData payTypeData = this.mPayChannelData;\r\n        boolean z = payTypeData != null && payTypeData.getSupportMultiSign();\r\n        PayTypeData payTypeData2 = this.mPayChannelData;\r\n        boolean z2 = payTypeData2 != null && payTypeData2.getSignState();\r\n        if (c0(channelData)) {\r\n            return;\r\n        }\r\n        if (Intrinsics.areEqual(channelData.getSupportOpenHelloHuabeiMonthly(), Boolean.TRUE)) {\r\n            E0(channelData, marketingInfo);\r\n            return;\r\n        }\r\n        if (channelData.isZhiMaAPSOChannel()) {\r\n            h0();\r\n        } else if (PayTypeBeanExtKt.i(channelData, z, z2)) {\r\n            n0(channelData, marketingInfo);\r\n        } else {\r\n            F0(channelData, marketingInfo);\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_1e149f13491df7b0752df9097efee18b9eeb549cec0a0d4b767b467fc05378a3",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.adapter.HelloPayTypeAdapter",
+        "method_name": "e"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.adapter.HelloPayTypeAdapter",
+        "method": {
+          "name": "e",
+          "reported_signature": "e(com.chad.library.adapter.base.BaseViewHolder, com.hellobike.allpay.paycomponent.model.entity.PayTypeBean): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/chad/library/adapter/base/BaseViewHolder;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V"
+        },
+        "overload_count": 1,
+        "representation": "smali",
+        "body_status": "available",
+        "fell_back": true,
+        "markers": [
+          "java_body_unavailable"
+        ],
+        "source": {
+          "status": "complete",
+          "text": ".method public e(Lcom/chad/library/adapter/base/BaseViewHolder;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V\n    .registers 28\n    .param p1    # Lcom/chad/library/adapter/base/BaseViewHolder;\n        .annotation build Lorg/jetbrains/annotations/NotNull;\n        .end annotation\n    .end param\n    .param p2    # Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;\n        .annotation build Lorg/jetbrains/annotations/NotNull;\n        .end annotation\n    .end param\n    .annotation build Landroid/annotation/SuppressLint;\n        value = {\n            \"SetTextI18n\"\n        }\n    .end annotation\n\n    .line 1\n    move-object/from16 v6, p0\n\n    .line 2\n    .line 3\n    move-object/from16 v0, p1\n\n    .line 4\n    .line 5\n    move-object/from16 v7, p2\n\n    .line 6\n    .line 7\n    const-string v1, \"helper\"\n\n    .line 8\n    .line 9\n    invoke-static {v0, v1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 10\n    .line 11\n    .line 12\n    const-string v1, \"item\"\n\n    .line 13\n    .line 14\n    invoke-static {v7, v1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 15\n    .line 16\n    .line 17\n    const v1, 0x7f0a22b6\n\n    .line 18\n    .line 19\n    .line 20\n    invoke-virtual {v0, v1}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 21\n    .line 22\n    .line 23\n    move-result-object v8\n\n    .line 24\n    const v1, 0x7f0a22b9\n\n    .line 25\n    .line 26\n    .line 27\n    invoke-virtual {v0, v1}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 28\n    .line 29\n    .line 30\n    move-result-object v1\n\n    .line 31\n    check-cast v1, Landroid/widget/TextView;\n\n    .line 32\n    .line 33\n    const v2, 0x7f0a02a7\n\n    .line 34\n    .line 35\n    .line 36\n    invoke-virtual {v0, v2}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 37\n    .line 38\n    .line 39\n    move-result-object v2\n\n    .line 40\n    check-cast v2, Lcom/hellobike/allpay/base/view/PayScrollTextView;\n\n    .line 41\n    .line 42\n    const v3, 0x7f0a0182\n\n    .line 43\n    .line 44\n    .line 45\n    invoke-virtual {v0, v3}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 46\n    .line 47\n    .line 48\n    move-result-object v3\n\n    .line 49\n    check-cast v3, Landroid/widget/TextView;\n\n    .line 50\n    .line 51\n    const v4, 0x7f0a065e\n\n    .line 52\n    .line 53\n    .line 54\n    invoke-virtual {v0, v4}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 55\n    .line 56\n    .line 57\n    move-result-object v4\n\n    .line 58\n    check-cast v4, Landroid/widget/TextView;\n\n    .line 59\n    .line 60\n    const v5, 0x7f0a02a9\n\n    .line 61\n    .line 62\n    .line 63\n    invoke-virtual {v0, v5}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 64\n    .line 65\n    .line 66\n    move-result-object v5\n\n    .line 67\n    check-cast v5, Landroid/widget/TextView;\n\n    .line 68\n    .line 69\n    const v9, 0x7f0a066e\n\n    .line 70\n    .line 71\n    .line 72\n    invoke-virtual {v0, v9}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 73\n    .line 74\n    .line 75\n    move-result-object v9\n\n    .line 76\n    check-cast v9, Landroid/widget/ImageView;\n\n    .line 77\n    .line 78\n    const v10, 0x7f0a118f\n\n    .line 79\n    .line 80\n    .line 81\n    invoke-virtual {v0, v10}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 82\n    .line 83\n    .line 84\n    move-result-object v10\n\n    .line 85\n    check-cast v10, Landroidx/recyclerview/widget/RecyclerView;\n\n    .line 86\n    .line 87\n    const v11, 0x7f0a22b5\n\n    .line 88\n    .line 89\n    .line 90\n    invoke-virtual {v0, v11}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 91\n    .line 92\n    .line 93\n    move-result-object v11\n\n    .line 94\n    check-cast v11, Landroid/widget/ImageView;\n\n    .line 95\n    .line 96\n    const v12, 0x7f0a22c2\n\n    .line 97\n    .line 98\n    .line 99\n    invoke-virtual {v0, v12}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 100\n    .line 101\n    .line 102\n    move-result-object v12\n\n    .line 103\n    check-cast v12, Landroid/widget/TextView;\n\n    .line 104\n    .line 105\n    const v13, 0x7f0a0ac0\n\n    .line 106\n    .line 107\n    .line 108\n    invoke-virtual {v0, v13}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 109\n    .line 110\n    .line 111\n    move-result-object v13\n\n    .line 112\n    const v14, 0x7f0a1e53\n\n    .line 113\n    .line 114\n    .line 115\n    invoke-virtual {v0, v14}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 116\n    .line 117\n    .line 118\n    move-result-object v14\n\n    .line 119\n    check-cast v14, Landroidx/recyclerview/widget/RecyclerView;\n\n    .line 120\n    .line 121\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getChannelCode()Ljava/lang/String;\n\n    .line 122\n    .line 123\n    .line 124\n    move-result-object v15\n\n    .line 125\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getPayChannel()Ljava/lang/String;\n\n    .line 126\n    .line 127\n    .line 128\n    move-result-object v16\n\n    .line 129\n    move-object/from16 v17, v8\n\n    .line 130\n    .line 131\n    invoke-static/range {v16 .. v16}, Lcom/hellobike/allpay/utils/EmptyUtils;->a(Ljava/lang/String;)Ljava/lang/String;\n\n    .line 132\n    .line 133\n    .line 134\n    move-result-object v8\n\n    .line 135\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getPhoneNum()Ljava/lang/String;\n\n    .line 136\n    .line 137\n    .line 138\n    move-result-object v16\n\n    .line 139\n    move-object/from16 v18, v13\n\n    .line 140\n    .line 141\n    if-eqz v16, :cond_98\n\n    .line 142\n    .line 143\n    invoke-interface/range {v16 .. v16}, Ljava/lang/CharSequence;->length()I\n\n    .line 144\n    .line 145\n    .line 146\n    move-result v16\n\n    .line 147\n    if-nez v16, :cond_95\n\n    .line 148\n    .line 149\n    goto :goto_98\n\n    .line 150\n    :cond_95\n    const/16 v16, 0x0\n\n    .line 151\n    .line 152\n    goto :goto_9a\n\n    .line 153\n    :cond_98\n    :goto_98\n    const/16 v16, 0x1\n\n    .line 154\n    .line 155\n    :goto_9a\n    if-nez v16, :cond_b9\n\n    .line 156\n    .line 157\n    new-instance v13, Ljava/lang/StringBuilder;\n\n    .line 158\n    .line 159\n    invoke-direct {v13}, Ljava/lang/StringBuilder;-><init>()V\n\n    .line 160\n    .line 161\n    .line 162\n    invoke-virtual {v13, v8}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n\n    .line 163\n    .line 164\n    .line 165\n    const/16 v8, 0x28\n\n    .line 166\n    .line 167\n    invoke-virtual {v13, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;\n\n    .line 168\n    .line 169\n    .line 170\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getPhoneNum()Ljava/lang/String;\n\n    .line 171\n    .line 172\n    .line 173\n    move-result-object v8\n\n    .line 174\n    invoke-virtual {v13, v8}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n\n    .line 175\n    .line 176\n    .line 177\n    const/16 v8, 0x29\n\n    .line 178\n    .line 179\n    invoke-virtual {v13, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;\n\n    .line 180\n    .line 181\n    .line 182\n    invoke-virtual {v13}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;\n\n    .line 183\n    .line 184\n    .line 185\n    move-result-object v8\n\n    .line 186\n    :cond_b9\n    invoke-virtual {v1, v8}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V\n\n    .line 187\n    .line 188\n    .line 189\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->shouldCheckBalanceEnough()Z\n\n    .line 190\n    .line 191\n    .line 192\n    move-result v1\n\n    .line 193\n    if-nez v1, :cond_d1\n\n    .line 194\n    .line 195\n    sget-object v1, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->ALL_BALANCE_PAY:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;\n\n    .line 196\n    .line 197\n    invoke-virtual {v1}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeEnum;->getChannelCode()Ljava/lang/String;\n\n    .line 198\n    .line 199\n    .line 200\n    move-result-object v1\n\n    .line 201\n    invoke-static {v15, v1}, Lkotlin/jvm/internal/Intrinsics;->areEqual(Ljava/lang/Object;Ljava/lang/Object;)Z\n\n    .line 202\n    .line 203\n    .line 204\n    move-result v1\n\n    .line 205\n    if-eqz v1, :cond_cf\n\n    .line 206\n    .line 207\n    goto :goto_d1\n\n    .line 208\n    :cond_cf\n    const/4 v1, 0x0\n\n    .line 209\n    goto :goto_d2\n\n    .line 210\n    :cond_d1\n    :goto_d1\n    const/4 v1, 0x1\n\n    .line 211\n    :goto_d2\n    const-string v13, \"iconIv\"\n\n    .line 212\n    .line 213\n    if-eqz v1, :cond_182\n\n    .line 214\n    .line 215\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getAccountBalance()Ljava/lang/String;\n\n    .line 216\n    .line 217\n    .line 218\n    move-result-object v1\n\n    .line 219\n    if-eqz v1, :cond_e5\n\n    .line 220\n    .line 221\n    invoke-static {v1}, Lkotlin/text/StringsKt;->isBlank(Ljava/lang/CharSequence;)Z\n\n    .line 222\n    .line 223\n    .line 224\n    move-result v1\n\n    .line 225\n    if-eqz v1, :cond_e3\n\n    .line 226\n    .line 227\n    goto :goto_e5\n\n    .line 228\n    :cond_e3\n    const/4 v1, 0x0\n\n    .line 229\n    goto :goto_e6\n\n    .line 230\n    :cond_e5\n    :goto_e5\n    const/4 v1, 0x1\n\n    .line 231\n    :goto_e6\n    if-eqz v1, :cond_eb\n\n    .line 232\n    .line 233\n    const-string v1, \"0\"\n\n    .line 234\n    .line 235\n    goto :goto_ef\n\n    .line 236\n    :cond_eb\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getAccountBalance()Ljava/lang/String;\n\n    .line 237\n    .line 238\n    .line 239\n    move-result-object v1\n\n    .line 240\n    :goto_ef\n    const/4 v15, 0x0\n\n    .line 241\n    invoke-virtual {v2, v15}, Landroid/view/View;->setVisibility(I)V\n\n    .line 242\n    .line 243\n    .line 244\n    invoke-virtual {v2}, Lcom/hellobike/allpay/base/view/PayScrollTextView;->getTextView()Landroid/widget/TextView;\n\n    .line 245\n    .line 246\n    .line 247\n    move-result-object v15\n\n    .line 248\n    const/high16 v8, 0x41400000    # 12.0f\n\n    .line 249\n    .line 250\n    invoke-virtual {v15, v8}, Landroid/widget/TextView;->setTextSize(F)V\n\n    .line 251\n    .line 252\n    .line 253\n    invoke-virtual {v2}, Lcom/hellobike/allpay/base/view/PayScrollTextView;->getTextView()Landroid/widget/TextView;\n\n    .line 254\n    .line 255\n    .line 256\n    move-result-object v8\n\n    .line 257\n    const-string v15, \"#879099\"\n\n    .line 258\n    .line 259\n    invoke-static {v15}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I\n\n    .line 260\n    .line 261\n    .line 262\n    move-result v15\n\n    .line 263\n    invoke-virtual {v8, v15}, Landroid/widget/TextView;->setTextColor(I)V\n\n    .line 264\n    .line 265\n    .line 266\n    new-instance v8, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$1;\n\n    .line 267\n    .line 268\n    invoke-direct {v8, v0}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$1;-><init>(Lcom/chad/library/adapter/base/BaseViewHolder;)V\n\n    .line 269\n    .line 270\n    .line 271\n    invoke-virtual {v2, v8}, Lcom/hellobike/allpay/base/view/PayScrollTextView;->setOnTap(Lkotlin/jvm/functions/Function0;)V\n\n    .line 272\n    .line 273\n    .line 274\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getBalanceText()Ljava/lang/String;\n\n    .line 275\n    .line 276\n    .line 277\n    move-result-object v8\n\n    .line 278\n    if-eqz v8, :cond_120\n\n    .line 279\n    .line 280\n    invoke-interface {v8}, Ljava/lang/CharSequence;->length()I\n\n    .line 281\n    .line 282\n    .line 283\n    move-result v8\n\n    .line 284\n    if-nez v8, :cond_11e\n\n    .line 285\n    .line 286\n    goto :goto_120\n\n    .line 287\n    :cond_11e\n    const/4 v8, 0x0\n\n    .line 288\n    goto :goto_121\n\n    .line 289\n    :cond_120\n    :goto_120\n    const/4 v8, 0x1\n\n    .line 290\n    :goto_121\n    if-nez v8, :cond_128\n\n    .line 291\n    .line 292\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getBalanceText()Ljava/lang/String;\n\n    .line 293\n    .line 294\n    .line 295\n    move-result-object v1\n\n    .line 296\n    goto :goto_139\n\n    .line 297\n    :cond_128\n    new-instance v8, Ljava/lang/StringBuilder;\n\n    .line 298\n    .line 299\n    invoke-direct {v8}, Ljava/lang/StringBuilder;-><init>()V\n\n    .line 300\n    .line 301\n    .line 302\n    const-string v15, \"\\u53ef\\u7528\\u00a5\"\n\n    .line 303\n    .line 304\n    invoke-virtual {v8, v15}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n\n    .line 305\n    .line 306\n    .line 307\n    invoke-virtual {v8, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n\n    .line 308\n    .line 309\n    .line 310\n    invoke-virtual {v8}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;\n\n    .line 311\n    .line 312\n    .line 313\n    move-result-object v1\n\n    .line 314\n    :goto_139\n    invoke-virtual {v2, v1}, Lcom/hellobike/allpay/base/view/PayScrollTextView;->setText(Ljava/lang/CharSequence;)V\n\n    .line 315\n    .line 316\n    .line 317\n    iget-object v1, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->i:Ljava/lang/String;\n\n    .line 318\n    .line 319\n    invoke-virtual {v7, v1}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->isBalanceEnough(Ljava/lang/String;)Z\n\n    .line 320\n    .line 321\n    .line 322\n    move-result v1\n\n    .line 323\n    if-eqz v1, :cond_15b\n\n    .line 324\n    .line 325\n    iget-object v1, v0, Landroidx/recyclerview/widget/RecyclerView$ViewHolder;->itemView:Landroid/view/View;\n\n    .line 326\n    .line 327\n    const/high16 v2, 0x3f800000    # 1.0f\n\n    .line 328\n    .line 329\n    invoke-virtual {v1, v2}, Landroid/view/View;->setAlpha(F)V\n\n    .line 330\n    .line 331\n    .line 332\n    const/16 v1, 0x8\n\n    .line 333\n    .line 334\n    invoke-virtual {v5, v1}, Landroid/view/View;->setVisibility(I)V\n\n    .line 335\n    .line 336\n    .line 337\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getIcon()Ljava/lang/String;\n\n    .line 338\n    .line 339\n    .line 340\n    move-result-object v1\n\n    .line 341\n    invoke-static {v11, v13}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 342\n    .line 343\n    .line 344\n    invoke-virtual {v6, v1, v11}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j(Ljava/lang/String;Landroid/widget/ImageView;)V\n\n    .line 345\n    .line 346\n    .line 347\n    goto :goto_19b\n\n    .line 348\n    :cond_15b\n    iget-object v1, v0, Landroidx/recyclerview/widget/RecyclerView$ViewHolder;->itemView:Landroid/view/View;\n\n    .line 349\n    .line 350\n    const v2, 0x3ecccccd    # 0.4f\n\n    .line 351\n    .line 352\n    .line 353\n    invoke-virtual {v1, v2}, Landroid/view/View;->setAlpha(F)V\n\n    .line 354\n    .line 355\n    .line 356\n    const/4 v1, 0x0\n\n    .line 357\n    invoke-virtual {v5, v1}, Landroid/view/View;->setVisibility(I)V\n\n    .line 358\n    .line 359\n    .line 360\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getBalanceEnough()Ljava/lang/Boolean;\n\n    .line 361\n    .line 362\n    .line 363\n    move-result-object v1\n\n    .line 364\n    if-nez v1, :cond_176\n\n    .line 365\n    .line 366\n    invoke-static {v11, v13}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 367\n    .line 368\n    .line 369\n    const-string v1, \"https://resource.51downapp.cn/channel_003_unable.png\"\n\n    .line 370\n    .line 371\n    invoke-virtual {v6, v1, v11}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j(Ljava/lang/String;Landroid/widget/ImageView;)V\n\n    .line 372\n    .line 373\n    .line 374\n    goto :goto_180\n\n    .line 375\n    :cond_176\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getIcon()Ljava/lang/String;\n\n    .line 376\n    .line 377\n    .line 378\n    move-result-object v1\n\n    .line 379\n    invoke-static {v11, v13}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 380\n    .line 381\n    .line 382\n    invoke-virtual {v6, v1, v11}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j(Ljava/lang/String;Landroid/widget/ImageView;)V\n\n    .line 383\n    .line 384\n    .line 385\n    :goto_180\n    const/4 v1, 0x0\n\n    .line 386\n    goto :goto_19c\n\n    .line 387\n    :cond_182\n    iget-object v1, v0, Landroidx/recyclerview/widget/RecyclerView$ViewHolder;->itemView:Landroid/view/View;\n\n    .line 388\n    .line 389\n    const/high16 v8, 0x3f800000    # 1.0f\n\n    .line 390\n    .line 391\n    invoke-virtual {v1, v8}, Landroid/view/View;->setAlpha(F)V\n\n    .line 392\n    .line 393\n    .line 394\n    const/16 v1, 0x8\n\n    .line 395\n    .line 396\n    invoke-virtual {v2, v1}, Landroid/view/View;->setVisibility(I)V\n\n    .line 397\n    .line 398\n    .line 399\n    invoke-virtual {v5, v1}, Landroid/view/View;->setVisibility(I)V\n\n    .line 400\n    .line 401\n    .line 402\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getIcon()Ljava/lang/String;\n\n    .line 403\n    .line 404\n    .line 405\n    move-result-object v1\n\n    .line 406\n    invoke-static {v11, v13}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 407\n    .line 408\n    .line 409\n    invoke-virtual {v6, v1, v11}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j(Ljava/lang/String;Landroid/widget/ImageView;)V\n\n    .line 410\n    .line 411\n    .line 412\n    :goto_19b\n    const/4 v1, 0x1\n\n    .line 413\n    :goto_19c\n    iget-object v2, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 414\n    .line 415\n    const-string v8, \"mContext\"\n\n    .line 416\n    .line 417\n    invoke-static {v2, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 418\n    .line 419\n    .line 420\n    iget-object v5, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->l:Lcom/hellobike/allpay/base/locale/PayLocale;\n\n    .line 421\n    .line 422\n    const v11, 0x7f121db9\n\n    .line 423\n    .line 424\n    .line 425\n    invoke-static {v2, v5, v11}, Lcom/hellobike/allpay/base/locale/PayLocaleExtKt;->b(Landroid/content/Context;Lcom/hellobike/allpay/base/locale/PayLocale;I)Ljava/lang/String;\n\n    .line 426\n    .line 427\n    .line 428\n    move-result-object v2\n\n    .line 429\n    invoke-virtual {v3, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V\n\n    .line 430\n    .line 431\n    .line 432\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->isRecommendChannel()Z\n\n    .line 433\n    .line 434\n    .line 435\n    move-result v2\n\n    .line 436\n    if-eqz v2, :cond_1b7\n\n    .line 437\n    .line 438\n    const/4 v2, 0x0\n\n    .line 439\n    goto :goto_1b9\n\n    .line 440\n    :cond_1b7\n    const/16 v2, 0x8\n\n    .line 441\n    .line 442\n    :goto_1b9\n    invoke-virtual {v3, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 443\n    .line 444\n    .line 445\n    iget-object v2, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 446\n    .line 447\n    invoke-static {v2, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 448\n    .line 449\n    .line 450\n    const-string v5, \"#FFEFEF\"\n\n    .line 451\n    .line 452\n    invoke-static {v5}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I\n\n    .line 453\n    .line 454\n    .line 455\n    move-result v5\n\n    .line 456\n    const-string v11, \"#FFCACA\"\n\n    .line 457\n    .line 458\n    invoke-static {v11}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I\n\n    .line 459\n    .line 460\n    .line 461\n    move-result v11\n\n    .line 462\n    const/4 v13, 0x4\n\n    .line 463\n    const/high16 v15, 0x3f000000    # 0.5f\n\n    .line 464\n    .line 465\n    invoke-static {v2, v5, v13, v15, v11}, Lcom/hellobike/allpay/utils/ShapeUtilsKt;->c(Landroid/content/Context;IIFI)Landroid/graphics/drawable/Drawable;\n\n    .line 466\n    .line 467\n    .line 468\n    move-result-object v2\n\n    .line 469\n    invoke-virtual {v3, v2}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V\n\n    .line 470\n    .line 471\n    .line 472\n    const v2, 0x7f0a22b7\n\n    .line 473\n    .line 474\n    .line 475\n    invoke-virtual {v0, v2}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 476\n    .line 477\n    .line 478\n    move-result-object v2\n\n    .line 479\n    check-cast v2, Landroid/widget/ImageView;\n\n    .line 480\n    .line 481\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getSubIconUrl()Ljava/lang/String;\n\n    .line 482\n    .line 483\n    .line 484\n    move-result-object v3\n\n    .line 485\n    if-eqz v3, :cond_1ef\n\n    .line 486\n    .line 487\n    invoke-static {v3}, Lkotlin/text/StringsKt;->isBlank(Ljava/lang/CharSequence;)Z\n\n    .line 488\n    .line 489\n    .line 490\n    move-result v3\n\n    .line 491\n    if-eqz v3, :cond_1ed\n\n    .line 492\n    .line 493\n    goto :goto_1ef\n\n    .line 494\n    :cond_1ed\n    const/4 v3, 0x0\n\n    .line 495\n    goto :goto_1f0\n\n    .line 496\n    :cond_1ef\n    :goto_1ef\n    const/4 v3, 0x1\n\n    .line 497\n    :goto_1f0\n    if-nez v3, :cond_202\n\n    .line 498\n    .line 499\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getSubIconUrl()Ljava/lang/String;\n\n    .line 500\n    .line 501\n    .line 502\n    move-result-object v3\n\n    .line 503\n    invoke-static {v3}, Lkotlin/jvm/internal/Intrinsics;->checkNotNull(Ljava/lang/Object;)V\n\n    .line 504\n    .line 505\n    .line 506\n    const-string v5, \"subIconIv\"\n\n    .line 507\n    .line 508\n    invoke-static {v2, v5}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 509\n    .line 510\n    .line 511\n    invoke-virtual {v6, v3, v2}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j(Ljava/lang/String;Landroid/widget/ImageView;)V\n\n    .line 512\n    .line 513\n    .line 514\n    goto :goto_207\n\n    .line 515\n    :cond_202\n    const/16 v3, 0x8\n\n    .line 516\n    .line 517\n    invoke-virtual {v2, v3}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 518\n    .line 519\n    .line 520\n    :goto_207\n    const-string v2, \"tipsTv\"\n\n    .line 521\n    .line 522\n    invoke-static {v12, v2}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 523\n    .line 524\n    .line 525\n    invoke-virtual {v6, v7, v12}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->t(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Landroid/widget/TextView;)V\n\n    .line 526\n    .line 527\n    .line 528\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getPayChannelTag()Ljava/lang/String;\n\n    .line 529\n    .line 530\n    .line 531\n    move-result-object v2\n\n    .line 532\n    if-eqz v2, :cond_21e\n\n    .line 533\n    .line 534\n    invoke-interface {v2}, Ljava/lang/CharSequence;->length()I\n\n    .line 535\n    .line 536\n    .line 537\n    move-result v2\n\n    .line 538\n    if-nez v2, :cond_21c\n\n    .line 539\n    .line 540\n    goto :goto_21e\n\n    .line 541\n    :cond_21c\n    const/4 v2, 0x0\n\n    .line 542\n    goto :goto_21f\n\n    .line 543\n    :cond_21e\n    :goto_21e\n    const/4 v2, 0x1\n\n    .line 544\n    :goto_21f\n    if-eqz v2, :cond_227\n\n    .line 545\n    .line 546\n    const/16 v2, 0x8\n\n    .line 547\n    .line 548\n    invoke-virtual {v4, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 549\n    .line 550\n    .line 551\n    goto :goto_258\n\n    .line 552\n    :cond_227\n    const/4 v2, 0x0\n\n    .line 553\n    invoke-virtual {v4, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 554\n    .line 555\n    .line 556\n    iget-object v2, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 557\n    .line 558\n    invoke-static {v2, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 559\n    .line 560\n    .line 561\n    const-string v3, \"#FFEFF2\"\n\n    .line 562\n    .line 563\n    invoke-static {v3}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I\n\n    .line 564\n    .line 565\n    .line 566\n    move-result v3\n\n    .line 567\n    const-string v5, \"#FFC0C0\"\n\n    .line 568\n    .line 569\n    invoke-static {v5}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I\n\n    .line 570\n    .line 571\n    .line 572\n    move-result v5\n\n    .line 573\n    invoke-static {v2, v3, v13, v15, v5}, Lcom/hellobike/allpay/utils/ShapeUtilsKt;->c(Landroid/content/Context;IIFI)Landroid/graphics/drawable/Drawable;\n\n    .line 574\n    .line 575\n    .line 576\n    move-result-object v2\n\n    .line 577\n    invoke-virtual {v4, v2}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V\n\n    .line 578\n    .line 579\n    .line 580\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getPayChannelTag()Ljava/lang/String;\n\n    .line 581\n    .line 582\n    .line 583\n    move-result-object v2\n\n    .line 584\n    if-eqz v2, :cond_253\n\n    .line 585\n    .line 586\n    const/4 v3, 0x0\n\n    .line 587\n    const/4 v5, 0x1\n\n    .line 588\n    const/4 v11, 0x0\n\n    .line 589\n    invoke-static {v2, v11, v5, v3}, Lcom/hellobike/allpay/utils/StringExtKt;->e(Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/String;\n\n    .line 590\n    .line 591\n    .line 592\n    move-result-object v2\n\n    .line 593\n    if-eqz v2, :cond_253\n\n    .line 594\n    .line 595\n    goto :goto_255\n\n    .line 596\n    :cond_253\n    const-string v2, \"\"\n\n    .line 597\n    .line 598\n    :goto_255\n    invoke-virtual {v4, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V\n\n    .line 599\n    .line 600\n    .line 601\n    :goto_258\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getFqInfos()Ljava/util/List;\n\n    .line 602\n    .line 603\n    .line 604\n    move-result-object v2\n\n    .line 605\n    check-cast v2, Ljava/util/Collection;\n\n    .line 606\n    .line 607\n    if-eqz v2, :cond_269\n\n    .line 608\n    .line 609\n    invoke-interface {v2}, Ljava/util/Collection;->isEmpty()Z\n\n    .line 610\n    .line 611\n    .line 612\n    move-result v2\n\n    .line 613\n    if-eqz v2, :cond_267\n\n    .line 614\n    .line 615\n    goto :goto_269\n\n    .line 616\n    :cond_267\n    const/4 v2, 0x0\n\n    .line 617\n    goto :goto_26a\n\n    .line 618\n    :cond_269\n    :goto_269\n    const/4 v2, 0x1\n\n    .line 619\n    :goto_26a\n    if-nez v2, :cond_29b\n\n    .line 620\n    .line 621\n    const/4 v2, 0x0\n\n    .line 622\n    invoke-virtual {v10, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 623\n    .line 624\n    .line 625\n    new-instance v1, Lcom/hellobike/allpay/paycomponent/adapter/HuabeiListAdapter;\n\n    .line 626\n    .line 627\n    iget-object v3, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 628\n    .line 629\n    invoke-static {v3, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 630\n    .line 631\n    .line 632\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getFqInfos()Ljava/util/List;\n\n    .line 633\n    .line 634\n    .line 635\n    move-result-object v4\n\n    .line 636\n    invoke-static {v4}, Lkotlin/jvm/internal/Intrinsics;->checkNotNull(Ljava/lang/Object;)V\n\n    .line 637\n    .line 638\n    .line 639\n    invoke-direct {v1, v3, v4}, Lcom/hellobike/allpay/paycomponent/adapter/HuabeiListAdapter;-><init>(Landroid/content/Context;Ljava/util/List;)V\n\n    .line 640\n    .line 641\n    .line 642\n    new-instance v3, Landroidx/recyclerview/widget/LinearLayoutManager;\n\n    .line 643\n    .line 644\n    iget-object v4, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 645\n    .line 646\n    invoke-direct {v3, v4}, Landroidx/recyclerview/widget/LinearLayoutManager;-><init>(Landroid/content/Context;)V\n\n    .line 647\n    .line 648\n    .line 649\n    invoke-virtual {v3, v2}, Landroidx/recyclerview/widget/LinearLayoutManager;->setOrientation(I)V\n\n    .line 650\n    .line 651\n    .line 652\n    invoke-virtual {v10, v3}, Landroidx/recyclerview/widget/RecyclerView;->setLayoutManager(Landroidx/recyclerview/widget/RecyclerView$LayoutManager;)V\n\n    .line 653\n    .line 654\n    .line 655\n    invoke-virtual {v10, v1}, Landroidx/recyclerview/widget/RecyclerView;->setAdapter(Landroidx/recyclerview/widget/RecyclerView$Adapter;)V\n\n    .line 656\n    .line 657\n    .line 658\n    new-instance v2, Lcom/hellobike/allpay/paycomponent/adapter/a;\n\n    .line 659\n    .line 660\n    invoke-direct {v2, v6, v7}, Lcom/hellobike/allpay/paycomponent/adapter/a;-><init>(Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V\n\n    .line 661\n    .line 662\n    .line 663\n    invoke-virtual {v1, v2}, Lcom/chad/library/adapter/base/BaseQuickAdapter;->setOnItemClickListener(Lcom/chad/library/adapter/base/BaseQuickAdapter$OnItemClickListener;)V\n\n    .line 664\n    .line 665\n    .line 666\n    const/4 v15, 0x0\n\n    .line 667\n    goto :goto_2a1\n\n    .line 668\n    :cond_29b\n    const/16 v2, 0x8\n\n    .line 669\n    .line 670\n    invoke-virtual {v10, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 671\n    .line 672\n    .line 673\n    move v15, v1\n\n    .line 674\n    :goto_2a1\n    const v1, 0x7f0a09a9\n\n    .line 675\n    .line 676\n    .line 677\n    invoke-virtual {v0, v1}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 678\n    .line 679\n    .line 680\n    move-result-object v1\n\n    .line 681\n    check-cast v1, Landroidx/recyclerview/widget/RecyclerView;\n\n    .line 682\n    .line 683\n    const v2, 0x7f0a1fa7\n\n    .line 684\n    .line 685\n    .line 686\n    invoke-virtual {v0, v2}, Lcom/chad/library/adapter/base/BaseViewHolder;->getView(I)Landroid/view/View;\n\n    .line 687\n    .line 688\n    .line 689\n    move-result-object v0\n\n    .line 690\n    check-cast v0, Landroid/widget/ImageView;\n\n    .line 691\n    .line 692\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getHasSubChannel()Ljava/lang/String;\n\n    .line 693\n    .line 694\n    .line 695\n    move-result-object v2\n\n    .line 696\n    if-eqz v2, :cond_2c2\n\n    .line 697\n    .line 698\n    invoke-interface {v2}, Ljava/lang/CharSequence;->length()I\n\n    .line 699\n    .line 700\n    .line 701\n    move-result v2\n\n    .line 702\n    if-nez v2, :cond_2c0\n\n    .line 703\n    .line 704\n    goto :goto_2c2\n\n    .line 705\n    :cond_2c0\n    const/4 v2, 0x0\n\n    .line 706\n    goto :goto_2c3\n\n    .line 707\n    :cond_2c2\n    :goto_2c2\n    const/4 v2, 0x1\n\n    .line 708\n    :goto_2c3\n    if-nez v2, :cond_35e\n\n    .line 709\n    .line 710\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getHasSubChannel()Ljava/lang/String;\n\n    .line 711\n    .line 712\n    .line 713\n    move-result-object v2\n\n    .line 714\n    const-string v3, \"Y\"\n\n    .line 715\n    .line 716\n    invoke-static {v2, v3}, Lkotlin/jvm/internal/Intrinsics;->areEqual(Ljava/lang/Object;Ljava/lang/Object;)Z\n\n    .line 717\n    .line 718\n    .line 719\n    move-result v2\n\n    .line 720\n    if-eqz v2, :cond_35e\n\n    .line 721\n    .line 722\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getSubChannelList()Ljava/util/List;\n\n    .line 723\n    .line 724\n    .line 725\n    move-result-object v2\n\n    .line 726\n    check-cast v2, Ljava/util/Collection;\n\n    .line 727\n    .line 728\n    if-eqz v2, :cond_2e2\n\n    .line 729\n    .line 730\n    invoke-interface {v2}, Ljava/util/Collection;->isEmpty()Z\n\n    .line 731\n    .line 732\n    .line 733\n    move-result v2\n\n    .line 734\n    if-eqz v2, :cond_2e0\n\n    .line 735\n    .line 736\n    goto :goto_2e2\n\n    .line 737\n    :cond_2e0\n    const/4 v2, 0x0\n\n    .line 738\n    goto :goto_2e3\n\n    .line 739\n    :cond_2e2\n    :goto_2e2\n    const/4 v2, 0x1\n\n    .line 740\n    :goto_2e3\n    if-nez v2, :cond_35e\n\n    .line 741\n    .line 742\n    const/4 v2, 0x0\n\n    .line 743\n    invoke-virtual {v0, v2}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 744\n    .line 745\n    .line 746\n    new-instance v2, Lcom/hellobike/allpay/paycomponent/adapter/SubChannelListAdapter;\n\n    .line 747\n    .line 748\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getSubChannelList()Ljava/util/List;\n\n    .line 749\n    .line 750\n    .line 751\n    move-result-object v20\n\n    .line 752\n    iget-object v3, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->g:Ljava/lang/String;\n\n    .line 753\n    .line 754\n    iget-object v4, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->h:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;\n\n    .line 755\n    .line 756\n    iget-boolean v5, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->j:Z\n\n    .line 757\n    .line 758\n    iget-boolean v10, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->k:Z\n\n    .line 759\n    .line 760\n    move-object/from16 v19, v2\n\n    .line 761\n    .line 762\n    move-object/from16 v21, v3\n\n    .line 763\n    .line 764\n    move-object/from16 v22, v4\n\n    .line 765\n    .line 766\n    move/from16 v23, v5\n\n    .line 767\n    .line 768\n    move/from16 v24, v10\n\n    .line 769\n    .line 770\n    invoke-direct/range {v19 .. v24}, Lcom/hellobike/allpay/paycomponent/adapter/SubChannelListAdapter;-><init>(Ljava/util/List;Ljava/lang/String;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;ZZ)V\n\n    .line 771\n    .line 772\n    .line 773\n    new-instance v3, Landroidx/recyclerview/widget/LinearLayoutManager;\n\n    .line 774\n    .line 775\n    iget-object v4, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 776\n    .line 777\n    invoke-direct {v3, v4}, Landroidx/recyclerview/widget/LinearLayoutManager;-><init>(Landroid/content/Context;)V\n\n    .line 778\n    .line 779\n    .line 780\n    const/4 v4, 0x1\n\n    .line 781\n    invoke-virtual {v3, v4}, Landroidx/recyclerview/widget/LinearLayoutManager;->setOrientation(I)V\n\n    .line 782\n    .line 783\n    .line 784\n    invoke-virtual {v1, v3}, Landroidx/recyclerview/widget/RecyclerView;->setLayoutManager(Landroidx/recyclerview/widget/RecyclerView$LayoutManager;)V\n\n    .line 785\n    .line 786\n    .line 787\n    invoke-virtual {v1, v2}, Landroidx/recyclerview/widget/RecyclerView;->setAdapter(Landroidx/recyclerview/widget/RecyclerView$Adapter;)V\n\n    .line 788\n    .line 789\n    .line 790\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->isSubChannelShow()Z\n\n    .line 791\n    .line 792\n    .line 793\n    move-result v3\n\n    .line 794\n    if-eqz v3, :cond_31d\n\n    .line 795\n    .line 796\n    const/4 v3, 0x0\n\n    .line 797\n    goto :goto_31f\n\n    .line 798\n    :cond_31d\n    const/16 v3, 0x8\n\n    .line 799\n    .line 800\n    :goto_31f\n    invoke-virtual {v1, v3}, Landroid/view/View;->setVisibility(I)V\n\n    .line 801\n    .line 802\n    .line 803\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->isSubChannelShow()Z\n\n    .line 804\n    .line 805\n    .line 806\n    move-result v1\n\n    .line 807\n    if-eqz v1, :cond_340\n\n    .line 808\n    .line 809\n    invoke-virtual {v6, v7}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->i(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)Z\n\n    .line 810\n    .line 811\n    .line 812\n    move-result v1\n\n    .line 813\n    if-eqz v1, :cond_335\n\n    .line 814\n    .line 815\n    const/16 v1, 0x8\n\n    .line 816\n    .line 817\n    invoke-virtual {v0, v1}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 818\n    .line 819\n    .line 820\n    const/4 v10, 0x0\n\n    .line 821\n    goto :goto_34a\n\n    .line 822\n    :cond_335\n    const/4 v10, 0x0\n\n    .line 823\n    invoke-virtual {v0, v10}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 824\n    .line 825\n    .line 826\n    const v1, 0x7f08017a\n\n    .line 827\n    .line 828\n    .line 829\n    invoke-virtual {v0, v1}, Landroid/widget/ImageView;->setImageResource(I)V\n\n    .line 830\n    .line 831\n    .line 832\n    goto :goto_34a\n\n    .line 833\n    :cond_340\n    const/4 v10, 0x0\n\n    .line 834\n    invoke-virtual {v0, v10}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 835\n    .line 836\n    .line 837\n    const v1, 0x7f080179\n\n    .line 838\n    .line 839\n    .line 840\n    invoke-virtual {v0, v1}, Landroid/widget/ImageView;->setImageResource(I)V\n\n    .line 841\n    .line 842\n    .line 843\n    :goto_34a\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$4;\n\n    .line 844\n    .line 845\n    invoke-direct {v0, v6, v7}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$4;-><init>(Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V\n\n    .line 846\n    .line 847\n    .line 848\n    invoke-virtual {v2, v0}, Lcom/hellobike/allpay/paycomponent/adapter/SubChannelListAdapter;->h(Lkotlin/jvm/functions/Function2;)V\n\n    .line 849\n    .line 850\n    .line 851\n    new-instance v0, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$5;\n\n    .line 852\n    .line 853\n    invoke-direct {v0, v6}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter$convert$5;-><init>(Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;)V\n\n    .line 854\n    .line 855\n    .line 856\n    invoke-virtual {v2, v0}, Lcom/hellobike/allpay/paycomponent/adapter/SubChannelListAdapter;->g(Lkotlin/jvm/functions/Function2;)V\n\n    .line 857\n    .line 858\n    .line 859\n    const/16 v2, 0x8\n\n    .line 860\n    .line 861\n    const/4 v15, 0x0\n\n    .line 862\n    goto :goto_367\n\n    .line 863\n    :cond_35e\n    const/4 v10, 0x0\n\n    .line 864\n    const/16 v2, 0x8\n\n    .line 865\n    .line 866\n    invoke-virtual {v0, v2}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 867\n    .line 868\n    .line 869\n    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V\n\n    .line 870\n    .line 871\n    .line 872\n    :goto_367\n    if-eqz v15, :cond_36b\n\n    .line 873\n    .line 874\n    const/4 v15, 0x0\n\n    .line 875\n    goto :goto_36d\n\n    .line 876\n    :cond_36b\n    const/16 v15, 0x8\n\n    .line 877\n    .line 878\n    :goto_36d\n    invoke-virtual {v9, v15}, Landroid/widget/ImageView;->setVisibility(I)V\n\n    .line 879\n    .line 880\n    .line 881\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->isCheck()Z\n\n    .line 882\n    .line 883\n    .line 884\n    move-result v0\n\n    .line 885\n    if-eqz v0, :cond_37a\n\n    .line 886\n    .line 887\n    const v0, 0x7f081586\n\n    .line 888\n    .line 889\n    .line 890\n    goto :goto_37d\n\n    .line 891\n    :cond_37a\n    const v0, 0x7f081585\n\n    .line 892\n    .line 893\n    .line 894\n    :goto_37d\n    invoke-virtual {v9, v0}, Landroid/widget/ImageView;->setImageResource(I)V\n\n    .line 895\n    .line 896\n    .line 897\n    const-string v0, \"marketingTagRV\"\n\n    .line 898\n    .line 899\n    invoke-static {v14, v0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 900\n    .line 901\n    .line 902\n    invoke-virtual {v6, v7, v14}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->s(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Landroidx/recyclerview/widget/RecyclerView;)V\n\n    .line 903\n    .line 904\n    .line 905\n    iget-object v1, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 906\n    .line 907\n    invoke-static {v1, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 908\n    .line 909\n    .line 910\n    const-string v0, \"dividerLine\"\n\n    .line 911\n    .line 912\n    move-object/from16 v2, v18\n\n    .line 913\n    .line 914\n    invoke-static {v2, v0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 915\n    .line 916\n    .line 917\n    iget-object v4, v6, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->h:Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;\n\n    .line 918\n    .line 919\n    invoke-virtual/range {p0 .. p0}, Lcom/chad/library/adapter/base/BaseQuickAdapter;->getData()Ljava/util/List;\n\n    .line 920\n    .line 921\n    .line 922\n    move-result-object v5\n\n    .line 923\n    move-object/from16 v0, p0\n\n    .line 924\n    .line 925\n    move-object/from16 v3, p2\n\n    .line 926\n    .line 927\n    invoke-virtual/range {v0 .. v5}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->k(Landroid/content/Context;Landroid/view/View;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Ljava/util/List;)V\n\n    .line 928\n    .line 929\n    .line 930\n    iget-object v0, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 931\n    .line 932\n    invoke-static {v0, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 933\n    .line 934\n    .line 935\n    const-string v1, \"contentLayer\"\n\n    .line 936\n    .line 937\n    move-object/from16 v2, v17\n\n    .line 938\n    .line 939\n    invoke-static {v2, v1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 940\n    .line 941\n    .line 942\n    invoke-virtual {v6, v0, v2, v7}, Lcom/hellobike/allpay/paycomponent/adapter/HelloPayTypeAdapter;->m(Landroid/content/Context;Landroid/view/View;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;)V\n\n    .line 943\n    .line 944\n    .line 945\n    invoke-virtual {v2}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup$LayoutParams;\n\n    .line 946\n    .line 947\n    .line 948\n    move-result-object v0\n\n    .line 949\n    if-nez v0, :cond_3b7\n\n    .line 950\n    .line 951\n    goto :goto_3e4\n\n    .line 952\n    :cond_3b7\n    sget-object v1, Lcom/hellobike/allpay/utils/SizeUtil;->a:Lcom/hellobike/allpay/utils/SizeUtil;\n\n    .line 953\n    .line 954\n    iget-object v2, v6, Lcom/chad/library/adapter/base/BaseQuickAdapter;->mContext:Landroid/content/Context;\n\n    .line 955\n    .line 956\n    invoke-static {v2, v8}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V\n\n    .line 957\n    .line 958\n    .line 959\n    invoke-virtual/range {p2 .. p2}, Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;->getFqInfos()Ljava/util/List;\n\n    .line 960\n    .line 961\n    .line 962\n    move-result-object v3\n\n    .line 963\n    if-eqz v3, :cond_3d0\n\n    .line 964\n    .line 965\n    check-cast v3, Ljava/util/Collection;\n\n    .line 966\n    .line 967\n    invoke-interface {v3}, Ljava/util/Collection;->isEmpty()Z\n\n    .line 968\n    .line 969\n    .line 970\n    move-result v3\n\n    .line 971\n    const/4 v4, 0x1\n\n    .line 972\n    xor-int/2addr v3, v4\n\n    .line 973\n    if-ne v3, v4, :cond_3d0\n\n    .line 974\n    .line 975\n    const/4 v13, 0x1\n\n    .line 976\n    goto :goto_3d1\n\n    .line 977\n    :cond_3d0\n    const/4 v13, 0x0\n\n    .line 978\n    :goto_3d1\n    if-eqz v13, :cond_3dc\n\n    .line 979\n    .line 980\n    invoke-virtual {v14}, Landroid/view/View;->getVisibility()I\n\n    .line 981\n    .line 982\n    .line 983\n    move-result v3\n\n    .line 984\n    if-eqz v3, :cond_3dc\n\n    .line 985\n    .line 986\n    const/high16 v3, 0x422c0000    # 43.0f\n\n    .line 987\n    .line 988\n    goto :goto_3de\n\n    .line 989\n    :cond_3dc\n    const/high16 v3, 0x42580000    # 54.0f\n\n    .line 990\n    .line 991\n    :goto_3de\n    invoke-virtual {v1, v2, v3}, Lcom/hellobike/allpay/utils/SizeUtil;->a(Landroid/content/Context;F)I\n\n    .line 992\n    .line 993\n    .line 994\n    move-result v1\n\n    .line 995\n    iput v1, v0, Landroid/view/ViewGroup$LayoutParams;->height:I\n\n    .line 996\n    .line 997\n    :goto_3e4\n    return-void\n.end method",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_e457526d0ea8b571e19ce833b5e21b6a41c76965adb852467490db976090117c",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.helper.PayTypeListRequestHelper",
+        "method_name": "b"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.helper.PayTypeListRequestHelper",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(android.app.Activity, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.util.List<com.hellobike.allpay.paycomponent.model.entity.OrderInfoBean>, java.lang.String, java.util.Map<java.lang.String, ? extends java.lang.Object>, java.lang.String, java.lang.String): com.hellobike.allpay.paycomponent.model.api.NewPayTypeListRequest",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/api/NewPayTypeListRequest;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    @NotNull\r\n    public static final NewPayTypeListRequest b(@NotNull Activity context, @Nullable String businessType, @Nullable String adCode, @Nullable String cityCode, @Nullable String businessScene, @NotNull List<OrderInfoBean> payList, @Nullable String defaultChannelSetting, @Nullable Map<String, ? extends Object> extension, @Nullable String tenantId, @Nullable String locale) {\r\n        AllPayConfig allPayConfigA;\r\n        IAllPayLocationInfo locationInfo;\r\n        AllPayConfig allPayConfigA2;\r\n        IAllPayLocationInfo locationInfo2;\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(payList, \"payList\");\r\n        NewPayTypeListRequest newPayTypeListRequest = new NewPayTypeListRequest();\r\n        newPayTypeListRequest.setBusinessType(businessType);\r\n        boolean z = true;\r\n        if ((adCode == null || StringsKt.isBlank(adCode)) && ((allPayConfigA2 = InitDataHolder.a.a()) == null || (locationInfo2 = allPayConfigA2.getLocationInfo()) == null || (adCode = locationInfo2.getAdcode()) == null)) {\r\n            adCode = \"\";\r\n        }\r\n        newPayTypeListRequest.setAdCode(adCode);\r\n        if ((cityCode == null || StringsKt.isBlank(cityCode)) && ((allPayConfigA = InitDataHolder.a.a()) == null || (locationInfo = allPayConfigA.getLocationInfo()) == null || (cityCode = locationInfo.getCityCode()) == null)) {\r\n            cityCode = \"\";\r\n        }\r\n        newPayTypeListRequest.setCityCode(cityCode);\r\n        newPayTypeListRequest.setScene(businessScene);\r\n        newPayTypeListRequest.setCurrentSdkVersion(PayDataHolder.CURRENT_SDKVERSION);\r\n        newPayTypeListRequest.setActionOrigin(CashierType.STANDARD_CASHIER);\r\n        if (payList.size() == 1) {\r\n            newPayTypeListRequest.setWaitPayGuid(payList.get(0).getGuid());\r\n            newPayTypeListRequest.setOrderId(payList.get(0).getOrderId());\r\n        } else {\r\n            List<OrderInfoBean> list = payList;\r\n            ArrayList arrayList = new ArrayList(CollectionsKt.collectionSizeOrDefault(list, 10));\r\n            Iterator<T> it = list.iterator();\r\n            while (it.hasNext()) {\r\n                arrayList.add(((OrderInfoBean) it.next()).getGuid());\r\n            }\r\n            newPayTypeListRequest.setVoucherNos(arrayList);\r\n        }\r\n        if (defaultChannelSetting != null && !StringsKt.isBlank(defaultChannelSetting)) {\r\n            z = false;\r\n        }\r\n        if (!z) {\r\n            newPayTypeListRequest.setExtraInfos(PayChannelDataTransfer.o(defaultChannelSetting));\r\n        }\r\n        newPayTypeListRequest.setAlipayInstallFlag(SystemUtils.b(context) ? \"1\" : \"0\");\r\n        if (extension != null) {\r\n            newPayTypeListRequest.setExtension(extension);\r\n        }\r\n        newPayTypeListRequest.setTenantId(tenantId);\r\n        newPayTypeListRequest.setLocale(locale);\r\n        return newPayTypeListRequest;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_e667ee9783ae473d50882959fb22165bd31045e22a1d2f09f9545f23f4a0213e",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method_name": "w"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.PayChannelDataTransfer",
+        "method": {
+          "name": "w",
+          "reported_signature": "w(java.util.List<com.hellobike.allpay.paycomponent.model.entity.PayTypeBean>, java.lang.String): com.hellobike.allpay.paycomponent.model.entity.PayTypeBean",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/util/List;Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final PayTypeBean w(List<PayTypeBean> channelList, String payMoney) {\r\n        PayTypeBean payTypeBean;\r\n        Iterator<PayTypeBean> it = channelList.iterator();\r\n        while (true) {\r\n            payTypeBean = null;\r\n            Object obj = null;\r\n            if (!it.hasNext()) {\r\n                break;\r\n            }\r\n            PayTypeBean next = it.next();\r\n            if (!next.getEnableSelect()) {\r\n                List<PayTypeBean> subChannelList = next.getSubChannelList();\r\n                if (subChannelList != null) {\r\n                    for (Object obj2 : subChannelList) {\r\n                        if (((PayTypeBean) obj2).getEnableSelect()) {\r\n                            obj = obj2;\r\n                            break;\r\n                        }\r\n                    }\r\n                    payTypeBean = (PayTypeBean) obj;\r\n                    if (payTypeBean != null) {\r\n                        payTypeBean.setCheck(true);\r\n                        next.setCheck(false);\r\n                        next.setSubChannelShow(true);\r\n                        break;\r\n                    }\r\n                } else {\r\n                    continue;\r\n                }\r\n            } else if (!next.shouldCheckBalanceEnough() || next.isBalanceEnough(payMoney)) {\r\n                next.setCheck(true);\r\n                List<HuaBeiInfoBean> fqInfos = next.getFqInfos();\r\n                if (fqInfos != null && (fqInfos.isEmpty() ^ true)) {\r\n                    List<HuaBeiInfoBean> fqInfos2 = next.getFqInfos();\r\n                    HuaBeiInfoBean huaBeiInfoBean = fqInfos2 != null ? fqInfos2.get(0) : null;\r\n                    if (huaBeiInfoBean != null) {\r\n                        huaBeiInfoBean.setSelected(Boolean.TRUE);\r\n                    }\r\n                }\r\n                return next;\r\n            }\r\n        }\r\n        return payTypeBean;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_5854dbd9ff0c383458f5ed7e2c23a1ec1a5949901ef5bf2489448a05fbcef4bf",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.networking.http.core.aware.AutoWireImpl",
+        "method_name": "g"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.networking.http.core.aware.AutoWireImpl",
+        "method": {
+          "name": "g",
+          "reported_signature": "g(com.hellobike.networking.http.core.aware.SystemTagAware): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/networking/http/core/aware/SystemTagAware;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public void g(SystemTagAware systemTagAware) {\r\n        systemTagAware.set__sysTag(FetchProxy.a.f().get__sysTag());\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_312e6d3651ba4c514506ffe56a2aeffa64d30f92e04b743a33212b7a7acde30a",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.helper.ConfirmPayHelper",
+        "method_name": "c"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.helper.ConfirmPayHelper",
+        "method": {
+          "name": "c",
+          "reported_signature": "c(android.app.Activity, com.hellobike.allpay.paycomponent.model.api.StartConfirmPayRequest, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function2<? super java.lang.Integer, ? super java.lang.String, kotlin.Unit>, kotlin.jvm.functions.Function1<? super com.hellobike.allpay.paycomponent.model.entity.ComponentData, kotlin.Unit>): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Lcom/hellobike/allpay/paycomponent/model/api/StartConfirmPayRequest;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    public static final void c(@NotNull Activity context, @NotNull StartConfirmPayRequest request, @NotNull final Function0<Unit> onSuccess, @NotNull final Function2<? super Integer, ? super String, Unit> onFailed, @NotNull final Function1<? super ComponentData, Unit> onConfirmPaySuccess) {\r\n        String adCode;\r\n        IAllPayLocationInfo iAllPayLocationInfoD;\r\n        String cityCode;\r\n        IAllPayLocationInfo iAllPayLocationInfoD2;\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(request, \"request\");\r\n        Intrinsics.checkNotNullParameter(onSuccess, \"onSuccess\");\r\n        Intrinsics.checkNotNullParameter(onFailed, \"onFailed\");\r\n        Intrinsics.checkNotNullParameter(onConfirmPaySuccess, \"onConfirmPaySuccess\");\r\n        AggregateData aggregateData = new AggregateData();\r\n        try {\r\n            aggregateData.setAmount(Double.parseDouble(request.getPayMoney()));\r\n        } catch (Exception unused) {\r\n        }\r\n        String payProjectGuid = request.getPayProjectGuid();\r\n        String cityCode2 = \"\";\r\n        if (payProjectGuid == null) {\r\n            payProjectGuid = \"\";\r\n        }\r\n        aggregateData.setPayProjectGuid(payProjectGuid);\r\n        aggregateData.setFrontPageId(request.getFrontPageId());\r\n        aggregateData.setChannel(request.getChannelCode());\r\n        aggregateData.setOrdersData(request.getPayList());\r\n        aggregateData.setPayAndGranted(request.getIsPayAndGranted());\r\n        HuaBeiInfoBean huaBeiInfoBeanN = PayChannelDataTransfer.n(request.getChannelData().getFqInfos());\r\n        aggregateData.setFqNum(huaBeiInfoBeanN != null ? huaBeiInfoBeanN.getFqNum() : null);\r\n        aggregateData.setFqSellerPercent(huaBeiInfoBeanN != null ? huaBeiInfoBeanN.getFqSellerPercent() : null);\r\n        aggregateData.setMarketId(request.getMarketingActivityId());\r\n        aggregateData.setMarketingType(request.getMarketingType());\r\n        aggregateData.setPromoType(request.getPromoType());\r\n        String adCode2 = request.getAdCode();\r\n        if (adCode2 == null || StringsKt.isBlank(adCode2)) {\r\n            AllPayConfig allPayConfigA = InitDataHolder.a.a();\r\n            if (allPayConfigA == null || (iAllPayLocationInfoD2 = allPayConfigA.getLocationInfo()) == null || (adCode = iAllPayLocationInfoD2.getAdcode()) == null) {\r\n                adCode = \"\";\r\n            }\r\n        } else {\r\n            adCode = request.getAdCode();\r\n        }\r\n        aggregateData.setAdCode(adCode);\r\n        String cityCode3 = request.getCityCode();\r\n        if (cityCode3 == null || StringsKt.isBlank(cityCode3)) {\r\n            AllPayConfig allPayConfigA2 = InitDataHolder.a.a();\r\n            if (allPayConfigA2 != null && (iAllPayLocationInfoD = allPayConfigA2.getLocationInfo()) != null && (cityCode = iAllPayLocationInfoD.getCityCode()) != null) {\r\n                cityCode2 = cityCode;\r\n            }\r\n        } else {\r\n            cityCode2 = request.getCityCode();\r\n        }\r\n        aggregateData.setCityCode(cityCode2);\r\n        aggregateData.setCreditModel(request.getCreditModel());\r\n        aggregateData.setBusinessType(request.getBusinessType());\r\n        aggregateData.setActionOrigin(CashierType.STANDARD_CASHIER);\r\n        aggregateData.setExtension(request.getParamsExt());\r\n        aggregateData.setAlipayOperationInfo(request.getAlipayOperationInfo());\r\n        aggregateData.setPreConsultId(request.getPreConsultId());\r\n        aggregateData.setComposeInfo(request.getComposeInfo());\r\n        aggregateData.setChannelComposeInfo(request.getChannelComposeInfo());\r\n        aggregateData.setChannelOperationInfoExt(request.getChannelOperationInfoExt());\r\n        aggregateData.setSessionId(request.getSessionId());\r\n        aggregateData.setLocale(request.getLocale());\r\n        HBAllPayManagerKt hBAllPayManagerKt = new HBAllPayManagerKt(context);\r\n        hBAllPayManagerKt.m(aggregateData);\r\n        hBAllPayManagerKt.p(request.getChannelData());\r\n        hBAllPayManagerKt.n(new AggregateResultListener() { // from class: com.hellobike.allpay.paycomponent.helper.ConfirmPayHelper$startPayByPayManager$1\r\n            @Override // com.hellobike.allpay.paycomponent.listener.AggregateResultListener\r\n            public void onFail(int code, @Nullable String result) {\r\n                onFailed.invoke(Integer.valueOf(code), result);\r\n            }\r\n\r\n            @Override // com.hellobike.allpay.paycomponent.listener.AggregateResultListener\r\n            public void onSuccess() {\r\n                onSuccess.invoke();\r\n            }\r\n        });\r\n        hBAllPayManagerKt.o(new AgentArearCallBackListener() { // from class: u1.c\r\n            @Override // com.hellobike.allpay.paycomponent.listener.AgentArearCallBackListener\r\n            public final void a(ComponentData componentData) {\r\n                ConfirmPayHelper.d(onConfirmPaySuccess, componentData);\r\n            }\r\n        });\r\n        hBAllPayManagerKt.q();\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_fbe4e651a7dc5a3ce5c9d9b4df4e1fc3fae01e6a5ee6056a1efcd04441d81183",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method_name": "F0"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.StandardCashierDialogHelper",
+        "method": {
+          "name": "F0",
+          "reported_signature": "F0(com.hellobike.allpay.paycomponent.model.entity.PayTypeBean, com.hellobike.allpay.base.model.entity.MarketingInfo): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Lcom/hellobike/allpay/base/model/entity/MarketingInfo;)V"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final void F0(final PayTypeBean channelData, final MarketingInfo marketingInfo) {\r\n        String payProjectGuid;\r\n        PayTypeData payTypeData = this.mPayChannelData;\r\n        boolean z = payTypeData != null && payTypeData.getSupportMultiSign();\r\n        PayTypeData payTypeData2 = this.mPayChannelData;\r\n        Pair<Boolean, String> pairA = PayTypeBeanExtKt.a(channelData, z, payTypeData2 != null && payTypeData2.getSignState());\r\n        final String str = (String) pairA.getSecond();\r\n        boolean zBooleanValue = ((Boolean) pairA.getFirst()).booleanValue();\r\n        if (!PayNumUtils.b(this.request.getPayMoney())) {\r\n            W(this, PayErrorTypes.UNKNOWN_ERROR.getErrorCode(), PayLocaleExtKt.b(this.context, l0(), R.string.ppay_cashier_error_order_amount), false, true, 4, null);\r\n            return;\r\n        }\r\n        N0(false);\r\n        T0(CashierStatus.PAYING);\r\n        Activity activity = this.context;\r\n        String marketingActivityId = marketingInfo != null ? marketingInfo.getMarketingActivityId() : null;\r\n        String marketingType = marketingInfo != null ? marketingInfo.getMarketingType() : null;\r\n        Integer promoType = marketingInfo != null ? marketingInfo.getPromoType() : null;\r\n        PayTypeBean payTypeBean = this.composeChannel;\r\n        PayTypeData payTypeData3 = this.mPayChannelData;\r\n        if (payTypeData3 == null || (payProjectGuid = payTypeData3.getPayProjectGuid()) == null) {\r\n            payProjectGuid = \"\";\r\n        }\r\n        ConfirmPayHelper.c(activity, ConfirmPayHelper.b(str, zBooleanValue, marketingActivityId, marketingType, promoType, channelData, payTypeBean, payProjectGuid, this.request), new Function0<Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$payMaybeWithSign$1\r\n            {\r\n                super(0);\r\n            }\r\n\r\n            public /* bridge */ /* synthetic */ Object invoke() {\r\n                m596invoke();\r\n                return Unit.INSTANCE;\r\n            }\r\n\r\n            /* JADX INFO: renamed from: invoke, reason: collision with other method in class */\r\n            public final void m596invoke() {\r\n                if (this.this$0.a0()) {\r\n                    return;\r\n                }\r\n                StandardCashierDialogHelper.p0(this.this$0, null, 1, null);\r\n                this.this$0.N0(true);\r\n            }\r\n        }, new Function2<Integer, String, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$payMaybeWithSign$2\r\n            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n            {\r\n                super(2);\r\n            }\r\n\r\n            public /* bridge */ /* synthetic */ Object invoke(Object obj, Object obj2) {\r\n                invoke(((Number) obj).intValue(), (String) obj2);\r\n                return Unit.INSTANCE;\r\n            }\r\n\r\n            public final void invoke(int i, @Nullable String str2) {\r\n                if (this.this$0.a0()) {\r\n                    return;\r\n                }\r\n                if (str2 == null || str2.length() == 0) {\r\n                    str2 = PayErrorTypes.UNKNOWN_ERROR.getErrorMsg();\r\n                }\r\n                String str3 = str2;\r\n                if (((i == PayErrorTypes.CONFIRM_PAY_SERVER_ERROR.getErrorCode() || i == PayErrorTypes.ORDER_HAS_PAYED.getErrorCode()) || i == PayErrorTypes.NOT_LOGIN.getErrorCode()) || i == PayErrorTypes.ORDER_AMOUNT_VALIDATION_FAILED.getErrorCode()) {\r\n                    StandardCashierDialogHelper.W(this.this$0, i, str3, false, true, 4, null);\r\n                } else if (i == PayErrorTypes.DISCOUNT_INFO_CHANGE.getErrorCode()) {\r\n                    this.this$0.T0(CashierStatus.DISPLAY);\r\n                    PayContextExtKt.a(this.this$0.context, str3);\r\n                    this.this$0.I0();\r\n                    StandardCashierTrack.INSTANCE.trackLockDiscountFail(this.this$0.request, marketingInfo, this.this$0.mPayChannelData);\r\n                } else {\r\n                    this.this$0.T0(CashierStatus.DISPLAY);\r\n                    PayContextExtKt.a(this.this$0.context, str3);\r\n                    if (this.this$0.needRefreshIfPayFailed) {\r\n                        this.this$0.I0();\r\n                    } else {\r\n                        String str4 = str;\r\n                        final StandardCashierDialogHelper standardCashierDialogHelper = this.this$0;\r\n                        PayChannelDataTransfer.b(str4, new Function0<Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$payMaybeWithSign$2.1\r\n                            {\r\n                                super(0);\r\n                            }\r\n\r\n                            public /* bridge */ /* synthetic */ Object invoke() {\r\n                                m597invoke();\r\n                                return Unit.INSTANCE;\r\n                            }\r\n\r\n                            /* JADX INFO: renamed from: invoke, reason: collision with other method in class */\r\n                            public final void m597invoke() {\r\n                                if (standardCashierDialogHelper.a0()) {\r\n                                    return;\r\n                                }\r\n                                standardCashierDialogHelper.I0();\r\n                            }\r\n                        });\r\n                    }\r\n                }\r\n                this.this$0.N0(true);\r\n            }\r\n        }, new Function1<ComponentData, Unit>() { // from class: com.hellobike.allpay.paycomponent.StandardCashierDialogHelper$payMaybeWithSign$3\r\n            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */\r\n            {\r\n                super(1);\r\n            }\r\n\r\n            public /* bridge */ /* synthetic */ Object invoke(Object obj) {\r\n                invoke((ComponentData) obj);\r\n                return Unit.INSTANCE;\r\n            }\r\n\r\n            public final void invoke(@NotNull ComponentData componentData) {\r\n                Intrinsics.checkNotNullParameter(componentData, \"it\");\r\n                StandardCashierTrack.INSTANCE.trackGetPayMsg(this.this$0.request, str, channelData);\r\n            }\r\n        });\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_928e9ab8d732dcbab7449d897c4c8e00aeadd635418d1d1899624fbd9033e2bd",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.paycomponent.helper.ConfirmPayHelper",
+        "method_name": "b"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.paycomponent.helper.ConfirmPayHelper",
+        "method": {
+          "name": "b",
+          "reported_signature": "b(java.lang.String, boolean, java.lang.String, java.lang.String, java.lang.Integer, com.hellobike.allpay.paycomponent.model.entity.PayTypeBean, com.hellobike.allpay.paycomponent.model.entity.PayTypeBean, java.lang.String, com.hellobike.allpay.paycomponent.model.api.StandardCashierRequest): com.hellobike.allpay.paycomponent.model.api.StartConfirmPayRequest",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Lcom/hellobike/allpay/paycomponent/model/entity/PayTypeBean;Ljava/lang/String;Lcom/hellobike/allpay/paycomponent/model/api/StandardCashierRequest;)Lcom/hellobike/allpay/paycomponent/model/api/StartConfirmPayRequest;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    @NotNull\r\n    public static final StartConfirmPayRequest b(@NotNull String channelCode, boolean isPayAndGranted, @Nullable String marketingActivityId, @Nullable String marketingType, @Nullable Integer promoType, @NotNull PayTypeBean channelData, @Nullable PayTypeBean composeBalanceChannel, @Nullable String payProjectGuid, @NotNull StandardCashierRequest request) {\r\n        Intrinsics.checkNotNullParameter(channelCode, \"channelCode\");\r\n        Intrinsics.checkNotNullParameter(channelData, \"channelData\");\r\n        Intrinsics.checkNotNullParameter(request, \"request\");\r\n        StartConfirmPayRequest startConfirmPayRequest = new StartConfirmPayRequest(channelData);\r\n        startConfirmPayRequest.setChannelCode(channelCode);\r\n        startConfirmPayRequest.setPayAndGranted(isPayAndGranted);\r\n        startConfirmPayRequest.setBusinessType(request.getBusinessType());\r\n        startConfirmPayRequest.setBusinessScene(request.getBusinessScene());\r\n        startConfirmPayRequest.setPayMoney(request.getPayMoney());\r\n        startConfirmPayRequest.setPayList(request.getPayList());\r\n        startConfirmPayRequest.setAdCode(request.getAdCode());\r\n        startConfirmPayRequest.setCityCode(request.getCityCode());\r\n        startConfirmPayRequest.setCreditModel(request.getCreditModel());\r\n        startConfirmPayRequest.setParamsExt(request.getParamsExt());\r\n        String alipayOperationInfo = channelData.getAlipayOperationInfo();\r\n        boolean z = true;\r\n        if (!(alipayOperationInfo == null || StringsKt.isBlank(alipayOperationInfo))) {\r\n            startConfirmPayRequest.setAlipayOperationInfo(channelData.getAlipayOperationInfo());\r\n        }\r\n        String preConsultId = channelData.getPreConsultId();\r\n        if (preConsultId != null && preConsultId.length() != 0) {\r\n            z = false;\r\n        }\r\n        if (!z) {\r\n            startConfirmPayRequest.setPreConsultId(channelData.getPreConsultId());\r\n        }\r\n        startConfirmPayRequest.setChannelOperationInfoExt(channelData.getChannelOperationInfoExt());\r\n        startConfirmPayRequest.setMarketingActivityId(marketingActivityId);\r\n        startConfirmPayRequest.setMarketingType(marketingType);\r\n        startConfirmPayRequest.setPromoType(promoType);\r\n        startConfirmPayRequest.setPayProjectGuid(payProjectGuid);\r\n        startConfirmPayRequest.setFrontPageId(request.getFrontPageId());\r\n        startConfirmPayRequest.setSessionId(request.getSessionId());\r\n        startConfirmPayRequest.setLocale(request.getLocale());\r\n        if (composeBalanceChannel != null ? Intrinsics.areEqual(composeBalanceChannel.getComposePaySwitch(), Boolean.TRUE) : false) {\r\n            ComposeInfo composeInfo = new ComposeInfo();\r\n            composeInfo.setChannelCode(channelCode);\r\n            composeInfo.setAmount(channelData.getComposePayAmount());\r\n            startConfirmPayRequest.setChannelComposeInfo(composeInfo);\r\n            ComposeInfo composeInfo2 = new ComposeInfo();\r\n            composeInfo2.setChannelCode(composeBalanceChannel.getChannelCode());\r\n            composeInfo2.setAmount(composeBalanceChannel.getComposeRealAmount());\r\n            startConfirmPayRequest.setComposeInfo(composeInfo2);\r\n        }\r\n        return startConfirmPayRequest;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_b7b209289a2eb203fa595bc47c44ad0c4699c5549e89686c94c3295f5971df67",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.utils.IPUtils",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.utils.IPUtils",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(android.content.Context): java.lang.String",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/content/Context;)Ljava/lang/String;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "/* JADX INFO: loaded from: classes18.dex */\r\npublic class IPUtils {\r\n    public static String a(Context context) {\r\n        NetworkInfo activeNetworkInfo;\r\n        WifiInfo connectionInfo;\r\n        try {\r\n            activeNetworkInfo = ((ConnectivityManager) context.getSystemService(\"connectivity\")).getActiveNetworkInfo();\r\n        } catch (Throwable unused) {\r\n            activeNetworkInfo = null;\r\n        }\r\n        if (activeNetworkInfo == null || !activeNetworkInfo.isConnected()) {\r\n            return \"\";\r\n        }\r\n        if (activeNetworkInfo.getType() != 0) {\r\n            if (activeNetworkInfo.getType() != 1) {\r\n                return \"\";\r\n            }\r\n            try {\r\n                WifiManager wifiManager = (WifiManager) context.getSystemService(\"wifi\");\r\n                return (wifiManager == null || (connectionInfo = wifiManager.getConnectionInfo()) == null) ? \"\" : b(connectionInfo.getIpAddress());\r\n            } catch (Throwable th) {\r\n                th.printStackTrace();\r\n                return \"\";\r\n            }\r\n        }\r\n        try {\r\n            Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();\r\n            while (networkInterfaces.hasMoreElements()) {\r\n                Enumeration<InetAddress> inetAddresses = networkInterfaces.nextElement().getInetAddresses();\r\n                while (inetAddresses.hasMoreElements()) {\r\n                    InetAddress inetAddressNextElement = inetAddresses.nextElement();\r\n                    if (!inetAddressNextElement.isLoopbackAddress() && (inetAddressNextElement instanceof Inet4Address)) {\r\n                        return inetAddressNextElement.getHostAddress();\r\n                    }\r\n                }\r\n            }\r\n            return \"\";\r\n        } catch (Throwable th2) {\r\n            th2.printStackTrace();\r\n            return \"\";\r\n        }\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_32ca5c467009a1a5cfb35f1ecd72baf7df1c8c44cf585a57f92a242bd155b697",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.agentpay.helper.PayCoreConfirmPayHelper",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(android.app.Activity, com.hellobike.allpay.paycomponent.model.entity.AggregateData): com.hellobike.allpay.paycomponent.model.api.CCbPayConfigRequest",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Landroid/app/Activity;Lcom/hellobike/allpay/paycomponent/model/entity/AggregateData;)Lcom/hellobike/allpay/paycomponent/model/api/CCbPayConfigRequest;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    @JvmStatic\r\n    @NotNull\r\n    public static final CCbPayConfigRequest a(@NotNull Activity context, @NotNull AggregateData aggregateData) {\r\n        Intrinsics.checkNotNullParameter(context, BiFrostContextDataAPI.CONTEXT_API_KEY);\r\n        Intrinsics.checkNotNullParameter(aggregateData, \"aggregateData\");\r\n        CCbPayConfigRequest cCbPayConfigRequest = new CCbPayConfigRequest();\r\n        cCbPayConfigRequest.setAmount(aggregateData.getAmount());\r\n        cCbPayConfigRequest.setAdCode(aggregateData.getAdCode());\r\n        cCbPayConfigRequest.setCityCode(aggregateData.getCityCode());\r\n        cCbPayConfigRequest.setChannel(aggregateData.getChannel());\r\n        cCbPayConfigRequest.setBusinessType(aggregateData.getBusinessType());\r\n        cCbPayConfigRequest.setOrders(JsonUtils.d(aggregateData.getOrdersData()));\r\n        cCbPayConfigRequest.setCombinedWith(JsonUtils.d(aggregateData.getCombinedWithData()));\r\n        cCbPayConfigRequest.setClientIP(IPUtils.a(context));\r\n        cCbPayConfigRequest.setMarketingActivityId(aggregateData.getMarketId());\r\n        cCbPayConfigRequest.setMarketingType(aggregateData.getMarketingType());\r\n        cCbPayConfigRequest.setPromoType(aggregateData.getPromoType());\r\n        cCbPayConfigRequest.setLocale(aggregateData.getLocale());\r\n        if (!TextUtils.isEmpty(aggregateData.getPayProjectGuid())) {\r\n            cCbPayConfigRequest.setPayProjectGuid(aggregateData.getPayProjectGuid());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getFrontPageId())) {\r\n            cCbPayConfigRequest.setFrontPageId(aggregateData.getFrontPageId());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getHasBundleSaleInfo())) {\r\n            cCbPayConfigRequest.setHasBundleSaleInfo(aggregateData.getHasBundleSaleInfo());\r\n        }\r\n        PayCoreConfirmPayHelper payCoreConfirmPayHelper = a;\r\n        String channel = aggregateData.getChannel();\r\n        Intrinsics.checkNotNullExpressionValue(channel, \"aggregateData.channel\");\r\n        cCbPayConfigRequest.setReturnUrl(payCoreConfirmPayHelper.c(channel, aggregateData.isPayAndGranted()));\r\n        String channel2 = aggregateData.getChannel();\r\n        Intrinsics.checkNotNullExpressionValue(channel2, \"aggregateData.channel\");\r\n        cCbPayConfigRequest.setRequestFromUrl(payCoreConfirmPayHelper.b(channel2, aggregateData.isPayAndGranted()));\r\n        if (!TextUtils.isEmpty(aggregateData.getFqNum())) {\r\n            cCbPayConfigRequest.setFqNum(aggregateData.getFqNum());\r\n            cCbPayConfigRequest.setFqSellerPercent(aggregateData.getFqSellerPercent());\r\n        }\r\n        if (!EmptyUtils.c(aggregateData.getActionOrigin())) {\r\n            cCbPayConfigRequest.setActionOrigin(aggregateData.getActionOrigin());\r\n        }\r\n        if (!EmptyUtils.c(aggregateData.getCreditModel())) {\r\n            cCbPayConfigRequest.setCreditModel(aggregateData.getCreditModel());\r\n        }\r\n        HashMap<String, Object> extension = aggregateData.getExtension();\r\n        if (!(extension == null || extension.isEmpty())) {\r\n            cCbPayConfigRequest.setExtension(aggregateData.getExtension());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getAlipayOperationInfo())) {\r\n            cCbPayConfigRequest.setAlipayOperationInfo(aggregateData.getAlipayOperationInfo());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getPreConsultId())) {\r\n            cCbPayConfigRequest.setPreConsultId(aggregateData.getPreConsultId());\r\n        }\r\n        cCbPayConfigRequest.setChannelComposeInfo(aggregateData.getChannelComposeInfo());\r\n        cCbPayConfigRequest.setComposeInfo(aggregateData.getComposeInfo());\r\n        if (!TextUtils.isEmpty(aggregateData.getBusinessLineCode())) {\r\n            cCbPayConfigRequest.setBusinessLineCode(aggregateData.getBusinessLineCode());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getPeriodRuleParams())) {\r\n            cCbPayConfigRequest.setPeriodRuleParams(aggregateData.getPeriodRuleParams());\r\n        }\r\n        if (!TextUtils.isEmpty(aggregateData.getChannelOperationInfoExt())) {\r\n            cCbPayConfigRequest.setChannelOperationInfoExt(aggregateData.getChannelOperationInfoExt());\r\n        }\r\n        return cCbPayConfigRequest;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_2d3ca920d4eb7d2fe7c1393084baf2531f758c1e52d5f8d3cfb29f1c93f224e1",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.allpay.init.PayDataHolder",
+        "method_name": "<clinit>"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.allpay.init.PayDataHolder",
+        "method": {
+          "name": "<clinit>",
+          "reported_signature": "<clinit>(): void",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()V"
+        },
+        "overload_count": 1,
+        "representation": "smali",
+        "body_status": "available",
+        "fell_back": true,
+        "markers": [
+          "static_initializer_disassembly"
+        ],
+        "source": {
+          "status": "complete",
+          "text": ".method public static constructor <clinit>()V\n    .registers 1\n\n    .line 1\n    new-instance v0, Lcom/hellobike/allpay/init/PayDataHolder;\n\n    .line 2\n    .line 3\n    invoke-direct {v0}, Lcom/hellobike/allpay/init/PayDataHolder;-><init>()V\n\n    .line 4\n    .line 5\n    .line 6\n    sput-object v0, Lcom/hellobike/allpay/init/PayDataHolder;->a:Lcom/hellobike/allpay/init/PayDataHolder;\n\n    .line 7\n    .line 8\n    const-string v0, \"1.55.0\"\n\n    .line 9\n    .line 10\n    sput-object v0, Lcom/hellobike/allpay/init/PayDataHolder;->b:Ljava/lang/String;\n\n    .line 11\n    .line 12\n    const-string v0, \"1.5.0\"\n\n    .line 13\n    .line 14\n    sput-object v0, Lcom/hellobike/allpay/init/PayDataHolder;->c:Ljava/lang/String;\n\n    .line 15\n    .line 16\n    return-void\n.end method",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_93e5f2bb8db1fd7c119a91e29aba36760e3bb478ff097139891e7b552ba3c6cf",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.rm.ride_business_ride_status_manager.riding_order.RideOrderStatus",
+        "method_name": "getRIDE_STATUS_OVER"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.rm.ride_business_ride_status_manager.riding_order.RideOrderStatus",
+        "method": {
+          "name": "getRIDE_STATUS_OVER",
+          "reported_signature": "getRIDE_STATUS_OVER(): int",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "()I"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    public final int getRIDE_STATUS_OVER() {\r\n        return 30;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    },
+    {
+      "evidence_id": "ev_5cc45e1e5c5994c81485de4765bb90e7bcc66c6e1a837e5ddf55f6eaa89a2606",
+      "subject": {
+        "name": "hellobike-payment-slice.apk",
+        "digest": {
+          "sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+        },
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-payment-slice.apk",
+        "format": "apk",
+        "architecture": null
+      },
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk",
+        "class_name": "com.hellobike.rm.ride_status_base.order.RideStatusChecker",
+        "method_name": "a"
+      },
+      "normalized_result": {
+        "engine": {
+          "name": "jadx-headless-mcp",
+          "version": "0.7.1",
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "worker_count": 1,
+          "heap_limit_mib": 1484
+        },
+        "class_name": "com.hellobike.rm.ride_status_base.order.RideStatusChecker",
+        "method": {
+          "name": "a",
+          "reported_signature": "a(com.hellobike.rm.ride_status_base.order.config.BizTypeEnum, java.lang.String, kotlin.coroutines.Continuation<? super com.hellobike.rm.ride_status_base.order.net.model.entity.OrderCheckEntity>): java.lang.Object",
+          "overload_index": 0,
+          "is_constructor": false,
+          "dex_descriptor": "(Lcom/hellobike/rm/ride_status_base/order/config/BizTypeEnum;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "body_status": "available",
+        "fell_back": false,
+        "markers": [],
+        "source": {
+          "status": "complete",
+          "text": "    /* JADX WARN: Code duplicated, block: B:7:0x0013  */\r\n    @Nullable\r\n    public final Object a(@NotNull BizTypeEnum bizTypeEnum, @Nullable String str, @NotNull Continuation<? super OrderCheckEntity> continuation) {\r\n        RideStatusChecker$checkRidingOrder$1 rideStatusChecker$checkRidingOrder$1;\r\n        if (continuation instanceof RideStatusChecker$checkRidingOrder$1) {\r\n            rideStatusChecker$checkRidingOrder$1 = (RideStatusChecker$checkRidingOrder$1) continuation;\r\n            int i = rideStatusChecker$checkRidingOrder$1.label;\r\n            if ((i & Integer.MIN_VALUE) != 0) {\r\n                rideStatusChecker$checkRidingOrder$1.label = i - Integer.MIN_VALUE;\r\n            } else {\r\n                rideStatusChecker$checkRidingOrder$1 = new RideStatusChecker$checkRidingOrder$1(this, continuation);\r\n            }\r\n        } else {\r\n            rideStatusChecker$checkRidingOrder$1 = new RideStatusChecker$checkRidingOrder$1(this, continuation);\r\n        }\r\n        Object objC = rideStatusChecker$checkRidingOrder$1.result;\r\n        Object coroutine_suspended = IntrinsicsKt.getCOROUTINE_SUSPENDED();\r\n        int i3 = rideStatusChecker$checkRidingOrder$1.label;\r\n        if (i3 == 0) {\r\n            ResultKt.throwOnFailure(objC);\r\n            RideStatusNetService rideStatusNetService = (RideStatusNetService) RideStatusNetClient.a.a(RideStatusNetService.class, b(bizTypeEnum));\r\n            OrderCheckRequest orderCheckRequest = new OrderCheckRequest(bizTypeEnum.getValue(), str, 0, 4, null);\r\n            orderCheckRequest.setAction(actionRequest);\r\n            Call<HiResponse<OrderCheckEntity>> callA = rideStatusNetService.a(orderCheckRequest);\r\n            rideStatusChecker$checkRidingOrder$1.L$0 = bizTypeEnum;\r\n            rideStatusChecker$checkRidingOrder$1.label = 1;\r\n            objC = KotlinExtensions.c(callA, rideStatusChecker$checkRidingOrder$1);\r\n            if (objC == coroutine_suspended) {\r\n                return coroutine_suspended;\r\n            }\r\n        } else {\r\n            if (i3 != 1) {\r\n                throw new IllegalStateException(\"call to 'resume' before 'invoke' with coroutine\");\r\n            }\r\n            bizTypeEnum = (BizTypeEnum) rideStatusChecker$checkRidingOrder$1.L$0;\r\n            ResultKt.throwOnFailure(objC);\r\n        }\r\n        OrderCheckEntity orderCheckEntity = (OrderCheckEntity) ((HiResponse) objC).getData();\r\n        if (orderCheckEntity == null) {\r\n            return null;\r\n        }\r\n        orderCheckEntity.setBizType(Boxing.boxInt(bizTypeEnum.getValue()));\r\n        return orderCheckEntity;\r\n    }",
+          "reported_total_bytes": null
+        }
+      },
+      "confidence": "derived",
+      "authority": "shipped-artifact",
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ]
+    }
+  ],
+  "raw_dex_supplement": {
+    "description": "Independent raw DEX check of aliased SDK field; this is not a REA runtime observation.",
+    "dex_entry": "classes18.dex",
+    "dex_sha256": "ae9418d3e03fea7da04ba5a364474dc989b2e7b020616f02cd75b6be0ee6db2b",
+    "instructions": [
+      {
+        "method": "Lcom/hellobike/allpay/paycomponent/helper/PayTypeListRequestHelper;->b(Landroid/app/Activity; Ljava/lang/String; Ljava/lang/String; Ljava/lang/String; Ljava/lang/String; Ljava/util/List; Ljava/lang/String; Ljava/util/Map; Ljava/lang/String; Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/api/NewPayTypeListRequest;",
+        "code_unit_offset": 101,
+        "opcode": "sget-object",
+        "operand": "v6, Lcom/hellobike/allpay/init/PayDataHolder;->b Ljava/lang/String;"
+      },
+      {
+        "method": "Lcom/hellobike/allpay/paycomponent/helper/PayTypeListRequestHelper;->b(Landroid/app/Activity; Ljava/lang/String; Ljava/lang/String; Ljava/lang/String; Ljava/lang/String; Ljava/util/List; Ljava/lang/String; Ljava/util/Map; Ljava/lang/String; Ljava/lang/String;)Lcom/hellobike/allpay/paycomponent/model/api/NewPayTypeListRequest;",
+        "code_unit_offset": 103,
+        "opcode": "invoke-virtual",
+        "operand": "v0, v6, Lcom/hellobike/allpay/paycomponent/model/api/NewPayTypeListRequest;->setCurrentSdkVersion(Ljava/lang/String;)V"
+      }
+    ]
+  }
+}
