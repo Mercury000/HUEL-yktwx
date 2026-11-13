@@ -484,7 +484,7 @@ class LaundryViewModelTest {
         assertNull(model.state.value.paymentLaunch); assertEquals(0, api.alipayPrepares)
         assertTrue(api.cancelledOrderIds.isEmpty()); assertFalse(model.state.value.accountBusy)
     }
-    @Test fun dismissCannotHidePendingOrStartingOrdersThatStillHaveDetailActions() = runTest(dispatcher) {
+    @Test fun failedPendingOrStartingOrdersCanBeDeletedWithoutCancellingThem() = runTest(dispatcher) {
         for (phase in listOf(LaundryPhase.Paying, LaundryPhase.Starting)) {
             val pending = LaundrySession(device, "clean", "0.00", "13", phase, createSent = true,
                 orderNo = "wash-1", orderId = "wash-id")
@@ -493,7 +493,12 @@ class LaundryViewModelTest {
             if (phase == LaundryPhase.Starting) { advanceTimeBy(30_000); runCurrent() }
             assertNotNull(model.state.value.error)
             model.dismissSession(LifeFeature.Laundry, pending.sessionId); runCurrent()
-            assertFalse(store.laundries.single().islandDismissed); assertNotNull(model.state.value.laundry)
+            assertTrue(store.laundries.isEmpty()); assertNull(model.state.value.laundry)
+            assertNull(model.state.value.paymentLaunch); assertFalse(model.state.value.paymentVisible)
+            assertTrue(api.cancelledOrderIds.isEmpty())
+            assertFalse(model.state.value.sessionErrors.containsKey(pending.sessionId))
+            val restarted = model(api, store); runCurrent()
+            assertTrue(restarted.state.value.laundrySessions.isEmpty())
         }
     }
     @Test fun successfulHealthCheckWithoutMessageIdSkipsMachineSyncAndPaysOnce() = runTest(dispatcher) {

@@ -501,6 +501,25 @@ class LifeDevicesViewModelTest {
             restarted.environment(false)
         }
     }
+    @Test fun unknownStatusWithKnownWaterOrderCanBeDeletedWithoutSendingStop() = runTest(dispatcher) {
+        for (shower in listOf(false, true)) {
+            val session = savedRunning().let { if (shower) it.copy(device = it.device.copy(category = "08")) else it }
+            val api = Api().apply { reading = WaterReading(null, null, "order-1") }
+            val store = Store(LifeAccount("13800000000", "test-token"), session)
+            val model = model(api, store); runCurrent()
+            assertTrue(model.state.value.sessionErrors.containsKey(session.sessionId))
+            if (shower) assertTrue(api.showerReads > 0)
+            api.reading = WaterReading(1, 2, "order-1"); api.waterGate = CompletableDeferred()
+            model.environment(true); runCurrent()
+            model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
+            api.waterGate!!.complete(Unit); runCurrent()
+            assertNull(store.savedSession); assertTrue(model.state.value.waterSessions.isEmpty())
+            assertEquals(0, api.stopCalls); assertEquals(0, api.showerStopCalls); assertEquals(0, api.createCalls)
+            val restarted = model(api, store); runCurrent()
+            assertTrue(restarted.state.value.waterSessions.isEmpty())
+            model.environment(false)
+        }
+    }
 
     @Test fun verifiedSessionSurvivesNetworkFailureAndNormalBackgroundReturn() = runTest(dispatcher) {
         val api = Api()
