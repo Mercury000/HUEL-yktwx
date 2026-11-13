@@ -33,9 +33,21 @@ class LifeDeviceApiTest {
             try { service.profile("fixture-token"); fail("Incomplete account must stay unverified") }
             catch (e: LifeDeviceException) { assertFalse(e.loginExpired) }
         }
-        val service = api(mapOf("/user/info" to """{"code":401,"msg":"登录失效"}"""), mutableListOf())
-        try { service.profile("fixture-token"); fail("Expired token must be rejected") }
-        catch (e: LifeDeviceException) { assertTrue(e.loginExpired) }
+        for (code in listOf(10, 126)) {
+            val service = api(mapOf("/user/info" to """{"code":$code,"msg":"服务端提示"}"""), mutableListOf())
+            try { service.profile("fixture-token"); fail("Expired token must be rejected") }
+            catch (e: LifeDeviceException) { assertTrue(e.loginExpired); assertTrue(e.businessRejected) }
+        }
+    }
+    @Test fun expiryUsesOfficialBusinessCodesRatherThanMessageKeywordsOrHttpCodes() = runBlocking {
+        for (code in listOf(7, 401, 403)) {
+            val service = api(mapOf("/user/info" to """{"code":$code,"msg":"登录信息已失效，请重新登录"}"""), mutableListOf())
+            try { service.profile("test-token"); fail("Business rejection must fail") }
+            catch (e: LifeDeviceException) {
+                assertFalse(e.loginExpired); assertTrue(e.businessRejected)
+                assertEquals("登录信息已失效，请重新登录", e.message)
+            }
+        }
     }
     private class Response(url: URL, val body: String, val status: Int = 200) : HttpFixture(url) {
         val sent = ByteArrayOutputStream()
@@ -86,7 +98,7 @@ class LifeDeviceApiTest {
             try { service.createLaundryOrder("77", "clean", "test-token"); fail("HTTP error must fail") }
             catch (e: LifeDeviceException) {
                 assertEquals(status != 500, e.businessRejected)
-                assertEquals(status != 500, e.loginExpired)
+                assertFalse(e.loginExpired)
             }
         }
     }
