@@ -13,7 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -32,20 +36,39 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun UpdateCheckPreference(state: AppUpdateUiState, onCheck: () -> Unit) {
-    BasicComponent(title = stringResource(R.string.check_updates),
-        enabled = !state.checking, onClick = onCheck, modifier = Modifier.testTag("check-updates"),
-        endActions = {
-            Box(Modifier.width(64.dp), contentAlignment = Alignment.CenterEnd) {
-                if (state.checking) CircularProgressIndicator(size = 18.dp, strokeWidth = 2.dp)
-                else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
-                    if (state.release != null) Box(Modifier.size(6.dp).background(MiuixTheme.colorScheme.error, CircleShape).testTag("update-red-dot"))
-                    Text(BuildConfig.VERSION_NAME, modifier = Modifier.weight(1f, fill = false),
-                        fontSize = MiuixTheme.textStyles.body2.fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions)
+    val title = stringResource(R.string.check_updates)
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val measurer = rememberTextMeasurer()
+    val titleStyle = MiuixTheme.textStyles.main.copy(fontSize = MiuixTheme.textStyles.headline1.fontSize,
+        fontWeight = FontWeight.Medium)
+    val titleWidth = with(density) { measurer.measure(title, titleStyle, maxLines = 1).size.width.toDp() }
+    val versionSize = MiuixTheme.textStyles.body2.fontSize
+    val autoSize = rememberSingleLineTextAutoSize(versionSize)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val margins = BasicComponentDefaults.InsideMargin
+        // Preserve the title's single line; fit long versions horizontally within the remaining space.
+        val slotMax = (maxWidth - margins.calculateLeftPadding(direction) - margins.calculateRightPadding(direction)
+            - titleWidth - 8.dp).coerceAtLeast(64.dp)
+        BasicComponent(title = title,
+            enabled = !state.checking, onClick = onCheck, modifier = Modifier.testTag("check-updates"),
+            endActions = {
+                Box(Modifier.widthIn(min = 64.dp, max = slotMax), contentAlignment = Alignment.CenterEnd) {
+                    // Keep the text's measured geometry while checking, without exposing hidden content to accessibility.
+                    Row(Modifier.alpha(if (state.checking) 0f else 1f)
+                        .then(if (state.checking) Modifier.clearAndSetSemantics {} else Modifier),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                        Box(Modifier.size(6.dp)) {
+                            if (state.release != null) Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.error, CircleShape)
+                                .testTag("update-red-dot"))
+                        }
+                        Text(BuildConfig.VERSION_NAME, autoSize = autoSize, fontSize = versionSize, maxLines = 1, softWrap = false,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions)
+                    }
+                    if (state.checking) CircularProgressIndicator(size = 18.dp, strokeWidth = 2.dp)
                 }
-            }
-        })
+            })
+    }
 }
 
 @Composable
