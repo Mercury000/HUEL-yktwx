@@ -22,6 +22,7 @@ import com.mercury.yktwx.ui.*
 import com.mercury.yktwx.ui.pages.*
 import org.junit.Assert.*
 import org.junit.Rule
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,19 +31,62 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.File
+import androidx.lifecycle.ViewModelStore
+import com.mercury.yktwx.analytics.AnalyticsFixtures
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.fixtureHttp
+import kotlinx.coroutines.Dispatchers
+import java.io.ByteArrayInputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeAccountsUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
-    private fun settings() = themeSettingsFixture(com.mercury.yktwx.data.appPreferencesRepositoryFixture(
-        com.mercury.yktwx.data.MemoryPreferences(),
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)))
+    private val models = ViewModelStore()
+    private val preferences = com.mercury.yktwx.data.MemoryPreferences()
+    private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+    private fun settings() = themeSettingsFixture(appPreferencesRepositoryFixture(
+        preferences, preferenceScope))
+    @After fun cleanupPreferences() { models.clear(); preferenceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
     private fun capture(name: String) {
         val file = File("../tools/life-accounts-ui/$name.png").absoluteFile
         file.parentFile?.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun hellobikeWithoutARidingOrderStaysLoggedInAfterAutomaticAndManualChecks() {
+        var code = 301
+        val api = HellobikeApi(fixtureHttp { url -> object : HttpFixture(url) {
+            override fun bodyStream() = ByteArrayInputStream("""{"code":$code,"msg":"无骑行中订单","data":null}""".toByteArray())
+        } })
+        val store = BikeRecords().store()
+        val bike = HellobikeViewModel(api, store, FakeBikeLocation(), io = Dispatchers.Unconfined,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("bike", it) }
+        compose.setContent {
+            val state by bike.state.collectAsState()
+            val connection by bike.accountConnection.collectAsState()
+            LaunchedEffect(Unit) { bike.initialize(preview = false); bike.environment(true) }
+            LifeAccountsSettingsCard(listOf(ManagedLifeAccount(LifeProvider.Hellobike, connection, restoring = state.restoring)),
+                active = true, onClick = {})
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("已登录").assertIsDisplayed()
+        compose.onNodeWithText("检查失败").assertDoesNotExist()
+        compose.onNodeWithText("无骑行中订单").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(LifeAccountStatus.Verified, bike.accountConnection.value.status)
+            assertNull(bike.accountConnection.value.error)
+            assertNull(bike.state.value.error)
+            assertTrue(bike.state.value.sessions.isEmpty())
+            assertNotNull(store.load().account)
+            code = 0
+            bike.checkAccount(force = true)
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("已登录").assertIsDisplayed()
+        compose.onNodeWithText("检查失败").assertDoesNotExist()
+        compose.runOnIdle { assertNull(bike.accountConnection.value.error); assertNull(bike.state.value.error) }
     }
 
     @Test fun paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable() {
@@ -62,20 +106,45 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("payment-code-card").assertIsDisplayed()
-        assertTrue(themeSettingsFixture(compose.activity).pangguiLoginNoticeDismissed.value)
+        assertTrue(settings().pangguiLoginNoticeDismissed.value)
         capture("payment-light")
     }
 
     @Composable
     private fun SettingsFixture(accounts: List<ManagedLifeAccount>, dark: Boolean = false,
         onCheck: (LifeProvider) -> Unit = {}, onLogin: (LifeProvider) -> Unit = {},
-        onRemove: (LifeProvider) -> Unit = {}) {
+        onRemove: (LifeProvider) -> Unit = {}, onHellobike: (() -> Unit)? = null) {
         AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
             Scaffold(topBar = { DashboardTopBar("设置") }) { padding ->
                 AppSettingsContent(Modifier.fillMaxSize(), PaddingValues(top = padding.calculateTopPadding(), bottom = 28.dp),
-                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove)
+                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove,
+                    onOpenHellobikeAccount = onHellobike)
             }
         }
+    }
+
+    @Test fun hellobikeSettingsRowOpensAccountDetailInsteadOfLogoutDialog() {
+        var opened = 0
+        var detail by mutableStateOf(false)
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("bike", it) }
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection("138****0000", LifeAccountStatus.Verified))
+        compose.setContent {
+            if (!detail) SettingsFixture(listOf(account), onHellobike = { opened++; detail = true })
+            else AppTheme(ColorSchemeMode.Light) {
+                val state by bike.state.collectAsState()
+                LaunchedEffect(Unit) { bike.initialize(false) }
+                if (!state.restoring) HellobikeAccountContent(Modifier.fillMaxSize(), PaddingValues(16.dp), account,
+                    HellobikeCardsState(audit = HellobikeStudentAudit(0, 1)), bike, true, {}, {})
+            }
+        }
+        val settingsTitleStart = compose.onNodeWithText("生活服务账户").fetchSemanticsNode().boundsInRoot.left
+        compose.onNodeWithTag("hellobike-account-row").performClick()
+        assertEquals(1, opened)
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+        val cardTitleStart = compose.onNodeWithText("我的卡").fetchSemanticsNode().boundsInRoot.left
+        assertEquals(settingsTitleStart, cardTitleStart, .1f)
+        assertEquals(settingsTitleStart, compose.onNodeWithText("校园骑行卡").fetchSemanticsNode().boundsInRoot.left, .1f)
     }
 
     @Test @Config(qualifiers = "+zh-rCN")
@@ -148,7 +217,8 @@ class LifeAccountsUiTest {
             }
         }
         compose.onNodeWithText("登录失效").assertIsDisplayed()
-        compose.onNodeWithText("待验证").assertIsDisplayed()
+        compose.onNodeWithText("检查失败").assertIsDisplayed()
+        compose.onNodeWithText("网络连接失败，暂时无法确认登录状态。").assertIsDisplayed()
         compose.onNodeWithTag("settings-page-list").performTouchInput {
             swipe(start = center.copy(y = height * .3f), end = center.copy(y = height * .9f), durationMillis = 600)
         }
@@ -161,7 +231,6 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("panggui-account-row").performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("退出胖乖生活账户").assertIsDisplayed()
-        compose.onNodeWithText("网络连接失败，暂时无法确认登录状态。").assertDoesNotExist()
         compose.onNodeWithText("退出后需重新登录。").assertIsDisplayed()
         capture("account-logout-dark-large")
     }

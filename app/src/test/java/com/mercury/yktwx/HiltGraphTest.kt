@@ -6,6 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.analytics.AppAnalytics
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.data.life.*
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
@@ -26,6 +27,9 @@ class HiltGraphTest {
     @javax.inject.Inject internal lateinit var preferences: AppPreferencesRepository
     @javax.inject.Inject internal lateinit var analytics: AppAnalytics
     @javax.inject.Inject internal lateinit var http: AppHttp
+    @javax.inject.Inject internal lateinit var hellobike: HellobikeService
+    @javax.inject.Inject internal lateinit var hellobikeStore: HellobikeStore
+    @javax.inject.Inject internal lateinit var hellobikeLocation: HellobikeLocationService
     @javax.inject.Inject @com.mercury.yktwx.di.ServiceClient internal lateinit var serviceClient: okhttp3.Call.Factory
     @javax.inject.Inject @com.mercury.yktwx.di.PublicClient internal lateinit var publicClient: okhttp3.Call.Factory
     @javax.inject.Inject @com.mercury.yktwx.di.UpdateClient internal lateinit var updateClient: okhttp3.Call.Factory
@@ -56,6 +60,16 @@ class HiltGraphTest {
                 val repositoryField = PaymentViewModel::class.java.getDeclaredField("repository").apply { isAccessible = true }
                 assertSame(repository, repositoryField.get(payment))
                 assertNotSame(repository.overviewReads, repository.cardReads)
+                val bike = provider["hellobike-false", HellobikeViewModel::class.java]
+                assertSame(bike, ViewModelProvider(activity)["hellobike-false", HellobikeViewModel::class.java])
+                fun dependency(name: String) = HellobikeViewModel::class.java.getDeclaredField(name)
+                    .apply { isAccessible = true }.get(bike)
+                assertSame(hellobike, dependency("api"))
+                assertSame(hellobikeStore, dependency("store"))
+                assertSame(hellobikeLocation, dependency("location"))
+                assertSame(serviceClient, HellobikeApi::class.java.getDeclaredField("client")
+                    .apply { isAccessible = true }.get(hellobike))
+                assertTrue(bike.state.value.restoring) // Construction alone must not read account storage.
             }
         }
     }
