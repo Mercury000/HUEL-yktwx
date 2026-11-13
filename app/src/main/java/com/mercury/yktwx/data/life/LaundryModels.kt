@@ -16,6 +16,7 @@ object LifeDeviceCode {
     }.singleOrNull()
     fun parse(raw: String, feature: LifeFeature): String? {
         if (feature == LifeFeature.Water) return DeviceSerial.parse(raw)
+        if (feature != LifeFeature.Laundry) return null
         val value = raw.trim()
         if (uuid.matches(value)) return value
         return runCatching {

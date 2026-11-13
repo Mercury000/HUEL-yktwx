@@ -38,21 +38,22 @@ internal fun FeedbackTransition(showing: Boolean, modifier: Modifier = Modifier,
 
 @Composable
 internal fun AnimatedInlineError(message: String?, modifier: Modifier = Modifier,
-    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 0.dp) {
+    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 0.dp, preserveMessage: Boolean = false) {
     val showing = !message.isNullOrBlank()
     val displayed = rememberWhileShown(showing, message.orEmpty())
     FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = bottomSpacing) {
         // Only text transitions: credentials and live request objects never enter animation state.
-        ContentFade(displayed) { InlineError(it, modifier) }
+        ContentFade(displayed) { InlineError(it, modifier, preserveMessage = preserveMessage) }
     }
 }
 
 /** Use as one child of a spaced Column: hidden feedback adds no extra parent gap. */
 @Composable
 internal fun InlineErrorGroup(message: String?, spacing: Dp, modifier: Modifier = Modifier,
+    preserveMessage: Boolean = false,
     content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth()) {
-        AnimatedInlineError(message, bottomSpacing = spacing)
+        AnimatedInlineError(message, bottomSpacing = spacing, preserveMessage = preserveMessage)
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing), content = content)
     }
 }

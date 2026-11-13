@@ -51,9 +51,9 @@ internal class LifeAccountVerifier<T>(
         mutable.value = LifeAccountConnection(phone, LifeAccountStatus.Verified, now())
     }
 
-    fun expired() {
+    fun expired(error: String = "登录已失效，请重新登录") {
         reset()
-        mutable.value = mutable.value.copy(status = LifeAccountStatus.Expired, error = "登录已失效，请重新登录")
+        mutable.value = mutable.value.copy(status = LifeAccountStatus.Expired, error = error)
     }
 
     fun cleared() { reset(); mutable.value = LifeAccountConnection() }
