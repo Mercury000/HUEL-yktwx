@@ -45,7 +45,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundrySessions: List<LaundrySession>,
     onOpenSession: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit,
     settings: ThemeSettings, modifier: Modifier = Modifier, enabled: Boolean = true,
-    nowMillis: () -> Long = System::currentTimeMillis, additionalEntries: List<LifeDeviceStatusEntry> = emptyList()) {
+    nowMillis: () -> Long = System::currentTimeMillis, additionalEntries: List<LifeDeviceStatusEntry> = emptyList(),
+    sessionErrors: Map<String, String> = emptyMap()) {
     var now by remember { mutableLongStateOf(nowMillis()) }
     val latestClock by rememberUpdatedState(nowMillis)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -69,20 +70,20 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
     }
     val entries = buildList {
         waterSessions.filter { it.active }.forEach { session ->
-            add(LifeDeviceStatusEntry(LifeFeature.Water, when (session.phase) {
+            add(LifeDeviceStatusEntry(LifeFeature.Water, sessionErrors[session.sessionId]?.let { "状态异常" } ?: when (session.phase) {
                 WaterPhase.Ended -> "已完成"
                 WaterPhase.Starting -> if (session.creationUncertain) "启动结果未知" else "正在启动"
                 WaterPhase.Stopping -> "正在结束"
                 else -> "${session.device.waterAction}中"
             }.let { session.fault ?: it }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
-                session.sessionId, completed = false, dismissible = session.canDismissException))
+                session.sessionId, completed = false, dismissible = session.canDismissRecord(sessionErrors[session.sessionId])))
         }
         laundrySessions.filter { session -> !session.islandDismissed && session.phase !in setOf(LaundryPhase.Checking, LaundryPhase.Closed) &&
             session.completionReminderDeadlineMillis()?.let { now < it } != false }.forEach { session ->
             val completed = !session.active
             val end = session.expectedEndMillis?.takeIf { session.phase == LaundryPhase.Running }
             val name = session.device.name.let { if (it.isNotBlank() && it.all(Char::isDigit)) "${it}号" else it }
-            add(LifeDeviceStatusEntry(LifeFeature.Laundry, when (session.phase) {
+            add(LifeDeviceStatusEntry(LifeFeature.Laundry, sessionErrors[session.sessionId]?.let { "状态异常" } ?: when (session.phase) {
                 LaundryPhase.Ended -> "已完成"
                 LaundryPhase.Closed -> "已关闭"
                 LaundryPhase.Checking -> "正在检查"
@@ -99,7 +100,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                     end?.takeIf { it > start && it > now }?.let {
                         ((now - start).toFloat() / (it - start)).coerceIn(0f, .99f)
                     }
-                }, dismissible = completed || session.canDismissUnknownCreation))
+                }, dismissible = session.canDismissRecord(sessionErrors[session.sessionId])))
         }
         addAll(additionalEntries.filterNot { it.feature != LifeFeature.Laundry && it.completed })
     }
