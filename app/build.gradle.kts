@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.aboutlibraries)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.baselineprofile)
 }
 val machineProperties = Properties().apply {
     rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
@@ -89,6 +90,18 @@ android {
             resValue("string", "app_name", "财小通 Preview")
             matchingFallbacks += "debug"
         }
+        create("performance") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            isProfileable = true
+            applicationIdSuffix = ".performance"
+            signingConfig = signingConfigs.getByName("debug")
+            resValue("string", "app_name", "财小通 Performance")
+            matchingFallbacks += "release"
+            // The benchmark runs production UI with controlled data and no analytics SDK.
+            buildConfigField("String", "UMENG_APP_KEY", buildString(""))
+            buildConfigField("String", "UMENG_CHANNEL", buildString(""))
+        }
     }
     sourceSets {
         // These builds share UI fixtures and a disabled analytics backend.
@@ -99,6 +112,7 @@ android {
         // Shared unit sources reference this host; release keeps it in tests only.
         maybeCreate("testRelease").kotlin.directories.add("src/uiTestHost/kotlin")
         getByName("release").kotlin.directories.add("src/production/kotlin")
+        getByName("performance").kotlin.directories.add("src/uiPreview/kotlin")
         getByName("androidTest").assets.directories.add("src/test/resources/app-updates")
     }
 }
@@ -106,7 +120,7 @@ androidComponents {
     beforeVariants(selector().all()) { variant ->
         // Exercise both source-set implementations; AGP only enables debug tests by default.
         variant.hostTests.values.filter { it.type == com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE }
-            .forEach { it.enable = true }
+            .forEach { it.enable = variant.buildType in setOf("debug", "preview", "release") }
     }
     onVariants(selector().all()) { variant ->
         // Compress distributable APKs; keep local debug/preview packaging fast.
@@ -140,6 +154,7 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.tink.android)
     implementation(libs.androidx.datastore)
+    implementation(libs.profileinstaller)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     testImplementation(libs.hilt.testing)
@@ -180,3 +195,11 @@ aboutLibraries {
 }
 
 hilt { enableAggregatingTask = true }
+
+baselineProfile {
+    mergeIntoMain = true
+    saveInSrc = true
+    automaticGenerationDuringBuild = false
+    dexLayoutOptimization = true
+    variants { maybeCreate("performance").from(project(":benchmark")) }
+}

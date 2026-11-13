@@ -54,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -117,7 +119,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current,
             channel = settings.updateChannel.value)
         val activity = LocalActivity.current
-        Scaffold {
+        Scaffold(modifier = Modifier.semantics { testTagsAsResourceId = true }) {
             if (!updateState.ready) {
                 PreferencesEntry(updateState.loadFailed, updateModel::retryLoading)
             } else if (!agreed) {
@@ -675,7 +677,10 @@ private fun MainContent(
                                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                                         val bottom = padding.calculateBottomPadding() + 28.dp
                                         HorizontalPager(
-                                            state = pagerState, modifier = Modifier.fillMaxSize(),
+                                            state = pagerState, modifier = Modifier.fillMaxSize().then(
+                                                if (!pagerState.isScrollInProgress)
+                                                    Modifier.testTag("main-pager-ready-${pagerState.settledPage}")
+                                                else Modifier),
                                             verticalAlignment = Alignment.Top,
                                         ) { page ->
                                             when (page) {
