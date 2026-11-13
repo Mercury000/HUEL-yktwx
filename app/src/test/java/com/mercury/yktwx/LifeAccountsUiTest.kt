@@ -73,6 +73,7 @@ class LifeAccountsUiTest {
         val bike = HellobikeViewModel(HellobikeApi(fixtureHttp { reply(it, 103) }), bikeStore, FakeBikeLocation(),
             io = Dispatchers.Unconfined, analytics = AnalyticsFixtures.from(app)).also { models.put("bike", it) }
         val settings = settings()
+        LifeProvider.entries.forEach(settings::dismissLifeLoginNotice)
         var showSettings by mutableStateOf(false)
         var login: LifeProvider? = null
         compose.setContent {
@@ -91,8 +92,11 @@ class LifeAccountsUiTest {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
                         lifeLoginRequired = !pgState.restoring && pgState.connectedPhone.isBlank(),
+                        lifeLoginExpired = pgConnection.status == LifeAccountStatus.Expired,
                         hui798LoginRequired = !huiState.restoring && !huiState.connected,
+                        hui798LoginExpired = huiConnection.status == LifeAccountStatus.Expired,
                         hellobikeLoginRequired = !bikeState.restoring && !bikeState.connected,
+                        hellobikeLoginExpired = bikeConnection.status == LifeAccountStatus.Expired,
                         onHellobikeLogin = { login = LifeProvider.Hellobike })
                 }
             }
@@ -102,6 +106,12 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("life-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
         compose.onNodeWithTag("hellobike-login-notice").assertIsDisplayed().performClick()
+        compose.onNodeWithText("胖乖生活登录失效，请重新登录").assertIsDisplayed()
+        compose.onNodeWithText("慧生活798登录失效，请重新登录").assertIsDisplayed()
+        compose.onNodeWithText("哈啰登录失效，请重新登录").assertIsDisplayed()
+        listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice").forEach {
+            compose.onNodeWithTag("$it-dismiss").assertDoesNotExist()
+        }
         compose.runOnIdle {
             assertEquals(LifeProvider.Hellobike, login)
             assertNull(pgStore.account()); assertNull(huiStore.account()); assertNull(bikeStore.load().account)
@@ -113,6 +123,39 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("hellobike-account-row").performClick()
         compose.runOnIdle { assertEquals(LifeProvider.Hellobike, login) }
         compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+    }
+
+    @Test fun expiredBannersUpdateOnPaymentFailureAndClearWhenAccountsRecover() {
+        val settings = settings()
+        LifeProvider.entries.forEach(settings::dismissLifeLoginNotice)
+        var expired by mutableStateOf(false)
+        val logins = mutableListOf<LifeProvider>()
+        val tags = listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice")
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
+            AppTheme(ColorSchemeMode.Light) {
+                PaymentPage(PreviewData.paymentState(false).copy(code = null, account = null,
+                    error = "付款码暂不可用", busy = false), settings, 0.dp, {},
+                    lifeLoginRequired = true, hui798LoginRequired = true, hellobikeLoginRequired = true,
+                    lifeLoginExpired = expired, hui798LoginExpired = expired, hellobikeLoginExpired = expired,
+                    onLifeLogin = { logins += LifeProvider.Panggui },
+                    onHui798Login = { logins += LifeProvider.Hui798 },
+                    onHellobikeLogin = { logins += LifeProvider.Hellobike })
+            }
+        } }
+        tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
+        compose.runOnIdle { expired = true }
+        tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed().performClick() }
+        compose.runOnIdle {
+            assertEquals(listOf(LifeProvider.Panggui, LifeProvider.Hui798, LifeProvider.Hellobike), logins)
+            assertTrue(settings.pangguiLoginNoticeDismissed.value)
+            assertTrue(settings.hui798LoginNoticeDismissed.value)
+            assertTrue(settings.hellobikeLoginNoticeDismissed.value)
+            expired = false
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
+        compose.runOnIdle { expired = true }
+        tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed() }
     }
 
     @Test fun paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable() {

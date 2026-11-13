@@ -823,10 +823,13 @@ private fun MainContent(
                                                     scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&
                                                         lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight,
                                                     lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
+                                                    lifeLoginExpired = pangguiConnection.status == LifeAccountStatus.Expired,
                                                     onLifeLogin = ::connectLifeAccount,
                                                     hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
+                                                    hui798LoginExpired = hui798Connection.status == LifeAccountStatus.Expired,
                                                     onHui798Login = ::connectHui798Account,
                                                     hellobikeLoginRequired = !hellobikeState.restoring && !hellobikeState.connected,
+                                                    hellobikeLoginExpired = hellobikeConnection.status == LifeAccountStatus.Expired,
                                                     onHellobikeLogin = ::connectHellobikeAccount,
                                                     additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
                                                         hui798State.sessionErrors[session.sessionId]?.let { "状态异常" } ?: when (session.phase) {
