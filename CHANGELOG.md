@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0-beta.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0-beta...v1.5.0-beta.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ci:** 在发版任务读取草稿并传递构建输入 ([af7fbef](https://github.com/Mercury000/HUEL-yktwx/commit/af7fbef963ac6d7e64f3323b7eba9b7fe735616a))
+
 ## [1.5.0-beta](https://github.com/Mercury000/HUEL-yktwx/compare/v1.4.1...v1.5.0-beta) (2026-11-13)
 
 
