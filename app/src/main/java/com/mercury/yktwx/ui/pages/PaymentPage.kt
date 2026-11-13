@@ -60,6 +60,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList(),
     hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
     lifeSessionErrors: Map<String, String> = emptyMap(),
+    lifeLoginExpired: Boolean = false, hui798LoginExpired: Boolean = false,
     hellobikeLoginExpired: Boolean = false) {
     // Restoration can precede the shell's first read; show code loading without card verification.
     val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
@@ -122,11 +123,14 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         Toast.makeText(context, "可在设置 → 生活服务账户中登录", Toast.LENGTH_SHORT).show()
     }
     val lifeStatus: @Composable () -> Unit = {
-        InlineLifeLoginNotice(lifeLoginRequired && !settings.pangguiLoginNoticeDismissed.value, onLifeLogin, enabled = isActive,
-            onDismiss = { dismissLoginNotice(LifeProvider.Panggui) })
-        InlineLifeLoginNotice(hui798LoginRequired && !settings.hui798LoginNoticeDismissed.value, onHui798Login, enabled = isActive,
-            text = "登录慧生活798，扫码用水", tag = "hui798-login-notice",
-            onDismiss = { dismissLoginNotice(LifeProvider.Hui798) })
+        InlineLifeLoginNotice(lifeLoginExpired || lifeLoginRequired && !settings.pangguiLoginNoticeDismissed.value,
+            onLifeLogin, enabled = isActive,
+            text = if (lifeLoginExpired) "胖乖生活登录失效，请重新登录" else "登录胖乖生活，扫码接水、淋浴或洗衣",
+            onDismiss = if (lifeLoginExpired) null else ({ dismissLoginNotice(LifeProvider.Panggui) }))
+        InlineLifeLoginNotice(hui798LoginExpired || hui798LoginRequired && !settings.hui798LoginNoticeDismissed.value,
+            onHui798Login, enabled = isActive,
+            text = if (hui798LoginExpired) "慧生活798登录失效，请重新登录" else "登录慧生活798，扫码用水", tag = "hui798-login-notice",
+            onDismiss = if (hui798LoginExpired) null else ({ dismissLoginNotice(LifeProvider.Hui798) }))
         InlineLifeLoginNotice(hellobikeLoginExpired || hellobikeLoginRequired && !settings.hellobikeLoginNoticeDismissed.value,
             onHellobikeLogin, enabled = isActive,
             text = if (hellobikeLoginExpired) "哈啰登录失效，请重新登录" else "登录哈啰，扫码骑行", tag = "hellobike-login-notice",
