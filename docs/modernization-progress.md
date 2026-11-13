@@ -9,7 +9,7 @@
 | DataStore 与启动准备状态 | 完成 | 一个类型化文件与仓库；1.4.1 一次性迁移；9 个相关类中的 68 项定向验证通过，含真实文件迁移与启动阻断 |
 | Hilt 全图接入 | 完成 | debug、preview、release 的生产和测试图均编译通过；104 项定向测试通过、无跳过 |
 | Macrobenchmark 与 Profiles | 实现及本地验证完成，真机收益待验收 | 两条生成流程通过；优化性能/正式 APK 的应用 Profile 均通过解析与 DEX 匹配检查；CI 仅手动触发 |
-| Camera2 session API | 待实施 | 尚未更新重载及完成相机定向验证 |
+| Camera2 session API | 实现及主机验证完成，真机待验收 | SessionConfiguration/OutputConfiguration 已接入原管线；15 项线程与生命周期测试通过 |
 
 以上迁移验证后，按新增要求完整迁移页面状态恢复：SavedStateHandle、带参数的类型化路由和业务对象恢复入口一起交付，覆盖全部页面、弹层与账户切换；不兼容本轮之前未发布的页面状态格式。性能与相机的设备验证仍须取得实际设备证据。
 
@@ -80,3 +80,11 @@ debug 通过 12 个直接相关类中的 94 项定向测试、无跳过，覆盖
 本地证据为 `tools/modernization/performance-profile-verified.log`、`profile-packaging-current.log`、`performance-profile-verification.json` 和 `release-profile-verification.json`。最后两份 APK SHA-256 分别为 `66bfa59d8622a1bc74bb7073d99d820bf67cf685c078ba29fcab61fc6c061e0c`、`9ccbaea09d5d5c57d8860355ec476acc2b7bf5acf26e2a26947ce44dedc61bd1`。
 
 CI 采集按最新要求仅手动运行，更新分支为 `perf/baseline-profiles-main` / `perf/baseline-profiles-beta`，自动提交无正文。正式打包仅消费并核验现有资料；无需每次运行模拟器。工作流已做静态检查，未推送或触发远端执行。使用方式与限制见 [性能基准与应用 Profiles](performance-profiles.md)。同设备的编译模式对照、Startup DEX 布局对照及真实收益仍待设备操作恢复后完成。
+
+## Camera2 session API
+
+原 Camera2 管线使用 `SessionConfiguration.SESSION_REGULAR`，通过两个 `OutputConfiguration` 连接既有预览与 ImageReader；回调 Executor 投递到原相机工作线程，线程已关闭时拒绝投递。保留会话世代、图像门控、首帧顺序及 `onClosed` 后交出相机的规则，删除废弃重载和对应压制注解。
+
+`DeviceCameraThreadingTest` 的 10 项与 `ScannerLifecycleTest` 的 5 项均通过，无失败或跳过。新增断言确认 session 类型、两个实际输出及回调线程；既有检查覆盖退出、前后台、首帧超时、重开与中断返回动画。测试二进制结果在 `app/build/test-results/modernization-camera/binary`；独立汇总报告 `app/build/reports/tests/modernization-camera-summary` 已成功生成，确认先前失败仅为报告任务依赖声明，不是测试失败。随后优化性能及正式构建也编译了这份相机实现。
+
+因当前禁止 ADB，真机进入退出、旋转、闪光灯、缩放、预测返回、首帧与识别耗时仍待验收；主机测试不替代物理相机证据。
