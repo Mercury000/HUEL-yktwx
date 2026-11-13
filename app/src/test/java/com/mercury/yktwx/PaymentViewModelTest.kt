@@ -32,6 +32,29 @@ import java.util.concurrent.atomic.AtomicBoolean
 @Config(sdk = [35])
 @LooperMode(LooperMode.Mode.PAUSED)
 class PaymentViewModelTest {
+    @Test fun restoredLocalSuccessNoticeIsBoundToOwnerAndClearedByRelogin() {
+        val handle = androidx.lifecycle.SavedStateHandle()
+        val saved = com.mercury.yktwx.state.RestorableState(handle, "payment-notice",
+            com.mercury.yktwx.state.PaymentNoticeSavedState.serializer(), { it.valid }) {
+            com.mercury.yktwx.state.PaymentNoticeSavedState(1234)
+        }
+        saved.bind("owner", false)
+        val restored = handle.recreated()
+        val next = PaymentViewModel(repository, analytics = com.mercury.yktwx.analytics.AnalyticsFixtures.from(
+            ApplicationProvider.getApplicationContext<Application>()), savedState = restored)
+        store.put("restored", next)
+        next.bindPresentation("owner", false, 10)
+        assertEquals(1234L, next.paymentSuccess.value)
+        assertNull(next.state.value.code)
+        assertEquals(0, payments); assertEquals(0, logins)
+        next.bindPresentation("owner", false, 11)
+        assertNull(next.paymentSuccess.value)
+        val other = PaymentViewModel(repository, analytics = com.mercury.yktwx.analytics.AnalyticsFixtures.from(
+            ApplicationProvider.getApplicationContext<Application>()), savedState = handle.recreated())
+        store.put("other", other)
+        other.bindPresentation("other", false, 20)
+        assertNull(other.paymentSuccess.value)
+    }
     private val vault = MemoryVault()
     private var account = PaymentAccount("fake-account", "fake-payacc", "1", "统一账户", 6496)
     private var codeAvailable = false

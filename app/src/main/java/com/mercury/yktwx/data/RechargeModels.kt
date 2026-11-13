@@ -50,9 +50,10 @@ class PendingRecharge(
     val orderId: String? = null,
     val payId: String? = null,
     val recipient: RechargeRecipient? = null,
+    val targetFingerprint: String? = null,
 ) {
     fun withOrder(orderId: String, payId: String?) = PendingRecharge(
-        username, targetId, feeItemId, amountCents, orderId, payId, recipient,
+        username, targetId, feeItemId, amountCents, orderId, payId, recipient, targetFingerprint,
     )
     override fun toString() = "PendingRecharge([redacted])"
 }

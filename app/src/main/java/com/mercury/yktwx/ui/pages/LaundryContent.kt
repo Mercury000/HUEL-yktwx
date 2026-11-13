@@ -187,8 +187,8 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
     val loading = state.loadingDevice || state.laundryBusy
     val ended = session != null && !session.active
     val canCancel = session?.canCancel == true && state.paymentLaunch == null
-    var cancelRequested by remember(session?.sessionId, active, state.paymentVisible, canCancel) { mutableStateOf(false) }
-    val confirmingCancel = cancelRequested && active && canCancel && !state.paymentVisible && !state.laundryBusy
+    val confirmingCancel = state.cancelOrderConfirmation != null && state.cancelOrderConfirmation == session?.sessionId &&
+        active && canCancel && !state.paymentVisible && !state.laundryBusy
     val retry = state.error != null
     val label = when {
         state.loadingDevice -> "正在查询设备…"
@@ -237,17 +237,17 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             }
         }
         if (canCancel) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { cancelRequested = true }, modifier = Modifier.weight(1f).testTag("laundry-cancel-order"),
+            Button(onClick = model::requestLaundryCancellation, modifier = Modifier.weight(1f).testTag("laundry-cancel-order"),
                 enabled = active && !state.laundryBusy && !state.quoteLoading && !state.paymentVisible) { Text("取消订单") }
             Button(onClick = onBack, modifier = Modifier.weight(1f), enabled = active) { Text("返回") }
         } else if (session != null) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = active) { Text("返回") }
     }
     OverlayDialog(show = confirmingCancel, title = "取消洗衣订单", summary = "取消后需重新扫码下单。",
-        onDismissRequest = { cancelRequested = false }, renderInRootScaffold = true) {
+        onDismissRequest = model::dismissLaundryCancellation, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { cancelRequested = false }, modifier = Modifier.weight(1f), enabled = confirmingCancel) { Text("暂不取消") }
+            Button(onClick = model::dismissLaundryCancellation, modifier = Modifier.weight(1f), enabled = confirmingCancel) { Text("暂不取消") }
             Button(onClick = {
-                if (confirmingCancel) { cancelRequested = false; model.cancelLaundry() }
+                if (confirmingCancel) { model.dismissLaundryCancellation(); model.cancelLaundry() }
             }, modifier = Modifier.weight(1f).testTag("laundry-confirm-cancel"), enabled = confirmingCancel,
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("确认取消") }
         }
@@ -288,6 +288,8 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                     PaymentResultContent(result.phase, result.loading, result.price.toBigDecimal().movePointRight(2).longValueExact(),
                         result.detail, { if (enabled && isResult) model.dismissLaundryPayment() }, subject = "支付",
                         retryMethods = methods.takeUnless { closed }.orEmpty(),
+                        selectedRetryId = state.paymentMethod, selectedRetryCode = state.paymentMethod,
+                        onRetrySelection = { model.selectPaymentMethod(it?.id) },
                         onContinuePayment = { if (enabled && isResult) model.payLaundry(it.id) },
                         enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
                         onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
@@ -300,7 +302,8 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                     val loading = rememberWhileShown(show && !isResult, state.quoteLoading)
                     val error = rememberWhileShown(show && !isResult, state.error)
                     val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
-                    var selected by remember(channels) { mutableIntStateOf(channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)) }
+                    val selected = channels.indexOfFirst { it.method == state.paymentMethod }.takeIf { it >= 0 }
+                        ?: channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)
                     Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
                         if (loading || busy && quote == null) CircularProgressIndicator(Modifier.size(24.dp).testTag("laundry-payment-loading"))
                         else Text(quote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—", fontSize = 32.sp,
@@ -311,7 +314,7 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                     val reason = if (quote == null || loading) null else if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
                     val canPay = state.laundry?.let { !it.active || it.phase == LaundryPhase.Paying ||
                         it.phase == LaundryPhase.Checking && !it.createSent } ?: true
-                    PaymentMethodActions(channels.map { it.name }, selected, { selected = it },
+                    PaymentMethodActions(channels.map { it.name }, selected, { model.selectPaymentMethod(channels[it].method) },
                         label = if (busy) "正在发起…" else when (method?.method) {
                             "13" -> "支付宝支付"
                             "52" -> "银联支付"

@@ -2,6 +2,8 @@ package com.mercury.yktwx
 
 import android.app.Application
 import android.graphics.Bitmap
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.ui.nav.*
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.mercury.yktwx.data.life.*
@@ -21,6 +23,34 @@ import java.io.IOException
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class Hui798ViewModelTest {
+    @Test fun recreatedLoginRestoresPhoneButRequiresFreshCaptchaAndCode() = runTest(dispatcher) {
+        val handle = SavedStateHandle()
+        val firstApi = Api()
+        fun fresh(api: Api, handle: SavedStateHandle) = Hui798ViewModel(api, Store(null), dispatcher, { clock },
+            com.mercury.yktwx.analytics.AnalyticsFixtures.from(ApplicationProvider.getApplicationContext<Application>()), handle)
+        val first = fresh(firstApi, handle).also { models.put("first", it) }
+        runCurrent(); first.bindPresentation("campus", false, 1)
+        first.manageLogin(); first.phoneChanged("12345678901"); first.codeChanged("123456")
+        runCurrent()
+        val restored = handle.recreated(); models.clear()
+        val api = Api()
+        val next = fresh(api, restored).also { models.put("next", it) }
+        runCurrent(); next.bindPresentation("campus", false, 7)
+        assertTrue(next.state.value.loginVisible)
+        assertEquals("12345678901", next.state.value.phone)
+        assertEquals("", next.state.value.code)
+        assertEquals("", next.state.value.imageCode)
+        assertNull(next.state.value.captcha)
+        next.resumePresentation(true, false); runCurrent()
+        assertTrue(api.captchaKeys.isEmpty())
+        next.resumePresentation(true, true); runCurrent()
+        assertEquals(1, api.captchaKeys.size)
+        assertFalse(api.captchaKeys.single() in firstApi.captchaKeys)
+        assertNotNull(next.state.value.captcha)
+        assertEquals(0, api.smsRequests); assertEquals(0, api.starts); assertEquals(0, api.ends)
+        next.bindPresentation("another-campus", false, 8)
+        assertFalse(next.state.value.loginVisible)
+    }
     private val dispatcher = StandardTestDispatcher()
     private val models = ViewModelStore()
     private val clock = 1_700_000_000_000L
@@ -103,6 +133,28 @@ class Hui798ViewModelTest {
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
 
+    @Test fun restoredRouteReopensThe798SessionAndValidatesDeviceAndAccountBeforeQuery() = runTest(dispatcher) {
+        val api = Api().apply { reading = Hui798Reading(1, clock); overviewDevices = listOf(device) }
+        val store = Store(account, listOf(running()))
+        model(api, store); runCurrent()
+        val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
+        nav.bind("campus", false, 1)
+        nav.showLife(AppRoute.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = running().sessionId, account = account.phone))
+        val nextHandle = handle.recreated(); models.clear()
+        val next = model(api, store); runCurrent()
+        val nextNav = AppNavigationViewModel(nextHandle).apply { bind("campus", false, 1) }
+        val route = nextNav.backStack.last() as AppRoute.LifeDevice
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, false, next))
+        assertEquals(running().sessionId, next.state.value.selectedSessionId)
+        assertEquals(LifeRouteRestore.AccountChanged, restoreLifeRoute(route.copy(account = "other"), true, next))
+        assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(route.copy(sessionId = "missing"), true, next))
+        val deviceRoute = route.copy(sessionId = null, deviceId = device.id)
+        val queries = api.deviceQueries.size
+        assertEquals(LifeRouteRestore.WaitingForNetwork, restoreLifeRoute(deviceRoute, false, next))
+        assertEquals(queries, api.deviceQueries.size)
+        assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(deviceRoute.copy(deviceId = "invalid"), true, next))
+        assertEquals(0, api.starts); assertEquals(0, api.ends); assertEquals(0, api.smsRequests)
+    }
     @Test fun anotherLocalRunningDeviceDoesNotRejectStartingTheScannedIdleDevice() = runTest(dispatcher) {
         val api = Api().apply { reading = Hui798Reading(1, clock) }
         val model = model(api, Store(account, listOf(running()))); runCurrent()

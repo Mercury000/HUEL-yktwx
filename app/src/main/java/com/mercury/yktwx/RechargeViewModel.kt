@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -36,10 +38,26 @@ class RechargeViewModel internal constructor(
     private val repository: AccountRepository,
     private val checkDelayMillis: Long = 5_000,
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, checkDelayMillis = 5000, analytics = analytics)
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(repository, checkDelayMillis = 5000, analytics = analytics, savedState = savedState)
     private val mutable = MutableStateFlow(RechargeUiState())
     val state = mutable.asStateFlow()
+    private val formMutable = MutableStateFlow(RechargeFormDraft())
+    internal val form = formMutable.asStateFlow()
+    internal fun updateForm(value: RechargeFormDraft) { if (value.valid) formMutable.value = value }
+    private var binding: Pair<String?, Boolean>? = null
+    private var preferredTarget: String? = null
+    private var restoring: RechargeSavedState? = null
+    private var restoreFailed = false
+    private var restoreEnvironment = false
+    private val saved = RestorableState(savedState, "recharge", RechargeSavedState.serializer(), { it.valid }) {
+        restoring ?: RechargeSavedState(state.value.visible || state.value.loading, state.value.config?.targetId ?: preferredTarget,
+            state.value.config?.recipient?.let(RecipientReference::from), form.value,
+            state.value.pending?.let(RechargeOrderReference::from), state.value.pending != null,
+            state.value.pending?.amountCents ?: 0)
+    }
     private val launches = Channel<WechatRechargeLaunch>(Channel.BUFFERED)
     val events = launches.receiveAsFlow()
     private val notifications = Channel<String>(Channel.BUFFERED)
@@ -58,11 +76,15 @@ class RechargeViewModel internal constructor(
 
     init {
         repository.observeAccount(viewModelScope) { username, renewed ->
-            if (!mutable.value.preview && owner.isNotBlank() && (renewed || owner != username)) dismiss()
+            if (binding != null && binding?.second != true) accountChanged(username.orEmpty(), renewed = renewed)
         }
     }
 
     fun open(username: String, preferredCard: String?, preview: Boolean) {
+        accountChanged(username, preview)
+        restoring = null
+        preferredTarget = preferredCard
+        formMutable.value = RechargeFormDraft()
         // Opening recharge is always a new amount selection, never an old result.
         endAttempt()
         owner = username
@@ -71,7 +93,7 @@ class RechargeViewModel internal constructor(
         mutable.value = RechargeUiState(loading = true, preview = UiPreview.enabled && preview)
         task = viewModelScope.launch {
             try {
-                val config = if (UiPreview.enabled && preview) PreviewData.rechargeConfiguration() else repository.rechargeConfiguration(preferredCard)
+                val config = if (UiPreview.enabled && preview) PreviewData.rechargeConfiguration() else repository.rechargeConfiguration(preferredCard, username)
                 if (attempt == current && !preview) operationIdentity = repository.identity(username)
                 if (attempt == current) mutable.value = RechargeUiState(visible = true, config = config, preview = UiPreview.enabled && preview)
             } catch (e: CancellationException) { throw e }
@@ -87,6 +109,10 @@ class RechargeViewModel internal constructor(
 
     fun openOthers(username: String, config: RechargeConfiguration, preview: Boolean) {
         if (config.recipient == null) return
+        accountChanged(username, preview)
+        restoring = null
+        preferredTarget = config.targetId
+        formMutable.value = RechargeFormDraft()
         endAttempt()
         owner = username
         operationIdentity = repository.identity(username)
@@ -196,12 +222,71 @@ class RechargeViewModel internal constructor(
         // A request error is shown on the result page, not classified as a transaction outcome.
         update(visible = true, loading = false, phase = RechargePhase.Checking, error = message)
     }
-    fun accountChanged(username: String) {
-        if (owner.isNotEmpty() && username != owner) dismiss()
+    fun accountChanged(username: String, preview: Boolean = false, renewed: Boolean = false) {
+        val next = username.takeIf(String::isNotBlank) to (UiPreview.enabled && preview)
+        if (binding == next && !renewed) return
+        val restored = saved.bind(next.first, next.second, renewed)
+        dismiss()
+        binding = next
+        if (restored?.visible == true) {
+            owner = username
+            preferredTarget = restored.target
+            formMutable.value = restored.form
+            restoring = restored
+            mutable.value = RechargeUiState(visible = true, loading = true, preview = next.second)
+        }
+    }
+    internal fun restoreIfNeeded(active: Boolean, online: Boolean) {
+        restoreEnvironment = active && online
+        val restored = restoring ?: return
+        if (!active || !online) {
+            if (task?.isActive == true) { attempt++; task?.cancel(); task = null }
+            return
+        }
+        if (task?.isActive == true || restoreFailed) return
+        if (restored.interrupted || restored.order != null) {
+            restoring = null
+            operationIdentity = repository.identity(owner)
+            mutable.value = RechargeUiState(visible = true, preview = binding?.second == true,
+                pending = restored.order?.pending(owner) ?: PendingRecharge(owner, restored.target.orEmpty(), "", restored.submittedAmount),
+                phase = RechargePhase.Checking,
+                error = if (restored.order == null) "操作已中断，未取得订单号，请先在官网核实本笔结果" else null)
+            if (restored.order != null) checkResult()
+            return
+        }
+        val current = attempt
+        val username = owner
+        task = viewModelScope.launch {
+            try {
+                val config = if (binding?.second == true) PreviewData.rechargeConfiguration()
+                    else restored.recipient?.let { repository.recipientRechargeConfiguration(username, it.recipient()) }
+                        ?: repository.rechargeConfiguration(restored.target, username)
+                if (attempt != current) return@launch
+                if (restored.target != null && config.targetId != restored.target) throw YktException("原充值账户已变更，请重新选择")
+                restoring = null
+                operationIdentity = repository.identity(username)
+                mutable.value = RechargeUiState(visible = true, config = config, preview = binding?.second == true)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (attempt == current) {
+                    restoreFailed = true
+                    mutable.value = RechargeUiState(visible = true, error = safeError(e, "读取充值信息失败，请重试"),
+                        preview = binding?.second == true)
+                }
+            }
+        }
+    }
+    internal fun retryRestore() {
+        restoreFailed = false
+        if (restoring != null) restoreIfNeeded(restoreEnvironment, restoreEnvironment)
     }
     fun finish() = dismiss()
     fun dismiss() {
         endAttempt()
+        restoring = null
+        restoreFailed = false
+        preferredTarget = null
+        formMutable.value = RechargeFormDraft()
         mutable.value = RechargeUiState()
     }
     private fun endAttempt() {

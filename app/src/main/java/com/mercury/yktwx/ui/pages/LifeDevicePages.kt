@@ -98,7 +98,10 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
-    LaunchedEffect(state.scanning, active) { if (!state.scanning || !active) { manual = false; help = false } }
+    LaunchedEffect(state.scanning, active) {
+        if (!state.scanning || !active) manual = false
+        if (!active) help = false
+    }
     val scanning = state.scanning || state.loadingDevice && state.device == null
     if (state.feature == LifeFeature.Water && !scanning) {
         PangguiWaterDevicePage(state, settings, model, active, onBack, nowMillis)

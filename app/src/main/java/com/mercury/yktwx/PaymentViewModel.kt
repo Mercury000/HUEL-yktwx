@@ -2,6 +2,8 @@ package com.mercury.yktwx
 
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -55,8 +57,10 @@ class PaymentViewModel internal constructor(private val repository: AccountRepos
     retryDelaysMillis: List<Long> = TransactionRefresh.DefaultDelaysMillis,
     initialEnvironment: ReadEnvironment = ReadEnvironment.standalone(ReadPage.Payment),
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics) : this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics)
+    @Inject internal constructor(repository: AccountRepository, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(repository, initialEnvironment = ReadEnvironment.Inactive, analytics = analytics, savedState = savedState)
     private val mutable = MutableStateFlow(PaymentUiState(restoringLogin = true))
     val state = mutable.asStateFlow()
     val sessionState = repository.sessionState
@@ -85,6 +89,17 @@ class PaymentViewModel internal constructor(private val repository: AccountRepos
     private var handledLoginGeneration: Long? = null
     private val mutableSuccess = MutableStateFlow<Long?>(null)
     val paymentSuccess = mutableSuccess.asStateFlow()
+    private var noticeBinding: Triple<String?, Boolean, Long>? = null
+    private val notices = RestorableState(savedState, "payment-notice", PaymentNoticeSavedState.serializer(), { it.valid }) {
+        PaymentNoticeSavedState(mutableSuccess.value)
+    }
+    internal fun bindPresentation(owner: String?, preview: Boolean, generation: Long) {
+        val next = Triple(owner, preview, generation)
+        if (noticeBinding == next) return
+        val renewed = noticeBinding != null && noticeBinding?.third != generation
+        mutableSuccess.value = notices.bind(owner, preview, renewed)?.amount
+        noticeBinding = next
+    }
     private data class Balance(val username: String, val account: String, val payacc: String,
         val paytype: String, val cents: Long)
     private var lastLiveBalance: Balance? = null

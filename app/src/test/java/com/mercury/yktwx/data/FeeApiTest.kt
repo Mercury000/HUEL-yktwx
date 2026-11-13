@@ -10,6 +10,26 @@ import java.net.URL
 import java.net.URLDecoder
 
 class FeeApiTest {
+    @Test fun restoredResultChecksOriginalFingerprintAmountProjectAndPayIdWithoutPaymentPayload() = runBlocking {
+        val original = "{\"room\":\"demo-room\",\"nested\":{\"reading\":1.0}}"
+        val reference = PendingRecharge("test-user", "", "410", 100, "FAKE-ORDER", "64",
+            targetFingerprint = feeTargetFingerprint(original))
+        val good = jsonObjectOf("orderid" to "FAKE-ORDER", "status" to 1, "tranamt" to 1, "actulamt" to 1,
+            "third_party" to "{\"nested\":{\"reading\":1},\"room\":\"demo-room\"}", "payid" to "64",
+            "feeitemlist" to jsonArrayOf(listOf(jsonObjectOf("feeitemid" to 410))))
+        suspend fun query(order: JsonObject): RechargeResult = fixtureFeeApi { url ->
+            assertEquals("/charge/order/personal_data", url.path)
+            FakeResponse(url, jsonObjectOf("code" to 200, "orderList" to jsonArrayOf(listOf(order))).toString())
+        }.feeResult("fake-token", reference)
+        assertTrue(query(good).paid)
+        for ((key, value) in listOf("third_party" to JsonPrimitive("{\"room\":\"other\"}"),
+            "tranamt" to JsonPrimitive(2), "actulamt" to JsonPrimitive(2), "payid" to JsonPrimitive("65"),
+            "orderid" to JsonPrimitive("other-order"), "feeitemlist" to jsonArrayOf(listOf(jsonObjectOf("feeitemid" to 409))))) {
+            try { query(JsonObject(good + (key to value))); fail("Restored result must reject changed $key") }
+            catch (_: YktException) { }
+        }
+        assertNotEquals(feeTargetFingerprint("{\"n\":1}"), feeTargetFingerprint("{\"n\":\"1\"}"))
+    }
     private class FakeResponse(url: URL, private val body: String, private val status: Int = 200,
         private val location: String? = null) : HttpFixture(url) {
 
@@ -151,6 +171,26 @@ class FeeApiTest {
     }
 
     private fun pending() = PendingRecharge("test-user", "{\"room\":\"demo-room\"}", "410", 100, "FAKE-ORDER", "64")
+    @Test fun restoredCashierRevalidatesOriginalTargetAndMethodsWithOnlyARead() = runBlocking {
+        val original = pending()
+        val reference = PendingRecharge(original.username, "", original.feeItemId, original.amountCents,
+            original.orderId, original.payId, targetFingerprint = feeTargetFingerprint(original.targetId))
+        val calls = mutableListOf<FakeResponse>()
+        val restored = api(calls, "{}").restoreFeeOrder("fake-token", reference)
+        assertSame(reference, restored.pending)
+        assertEquals("64", restored.methods.single().id)
+        assertEquals("ACCOUNTTSM", restored.methods.single().code)
+        assertEquals(listOf("/charge/pay/getpayinfo"), calls.map { it.url.path })
+        assertEquals("GET", calls.single().request.method)
+        for (paid in listOf(false, true)) {
+            val rejectedCalls = mutableListOf<FakeResponse>()
+            val target = if (paid) reference else PendingRecharge(reference.username, "", reference.feeItemId, 200,
+                reference.orderId, reference.payId, targetFingerprint = reference.targetFingerprint)
+            try { api(rejectedCalls, "{}", status = if (paid) 1 else 0).restoreFeeOrder("fake-token", target); fail("Expected rejection") }
+            catch (_: YktException) { }
+            assertEquals(listOf("/charge/pay/getpayinfo"), rejectedCalls.map { it.url.path })
+        }
+    }
     private fun method() = FeeMethod("64", "ACCOUNTTSM", "一卡通", false, 0)
     private fun preparation() = FeeAccountPreparation("FAKE-ORDER", "64", listOf(FeeAccount("demo-type", "统一账户", 1000)), "fake-uuid", "9876543210")
     private fun orderInfo(expiry: String = "2026-10-21 12:30:00", status: Int = 0) = jsonObjectOf("code" to (200), "order" to (jsonObjectOf("orderid" to ("FAKE-ORDER"), "third_party" to (pending().targetId), "tranamt" to (1), "status" to (status), "payexpdate" to (expiry), "feeitemlist" to (jsonArrayOf(listOf(jsonObjectOf("feeitemid" to (410))))))), "payList" to (jsonArrayOf(listOf(jsonObjectOf("payid" to ("64"), "code" to ("ACCOUNTTSM"), "nopassword" to (0))))))

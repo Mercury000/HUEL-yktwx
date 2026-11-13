@@ -19,6 +19,7 @@ import com.mercury.yktwx.FeeRoomAction
 import com.mercury.yktwx.FeeUiState
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.data.*
+import com.mercury.yktwx.state.FeeFormDraft
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
@@ -67,36 +68,37 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     bindingProjects: Set<FeeProject> = emptySet(),
     onCheck: (() -> Unit)? = null,
     onInputEdited: (FormField) -> Unit = {},
+    savedDraft: FeeFormDraft? = null,
+    onDraftChanged: ((FeeFormDraft) -> Unit)? = null,
+    fixedSelection: Map<String, String>? = fixedTarget?.selections,
 ) {
     val session = rememberOverlaySession(visible)
     val form = rememberWhileShown(visible && state.stage == FeeStage.Query,
         remember(state, project, fixedTarget) { HallFeeFormDisplay(state, project, fixedTarget) })
-    var amount by remember(session, form.config) { mutableStateOf("") }
-    var amountStep by remember(session, project, fixedTarget, saveOnly) {
-        mutableStateOf(!saveOnly && (fixedTarget != null || project?.network == true))
+    var localDraft by remember(session, form.project, form.selections) {
+        mutableStateOf(FeeFormDraft(amountStep = !saveOnly && (fixedSelection != null || project?.network == true)))
     }
-    var saveCommon by remember(session, form.project, form.selections) { mutableStateOf(false) }
-    var bindingPending by remember(session, form.project) { mutableStateOf(false) }
-    var targetSelected by remember(session, form.project, form.selections) { mutableStateOf(true) }
-    var methodCode by remember(session, form.project) { mutableStateOf("ACCOUNTTSM") }
+    val draft = savedDraft ?: localDraft
+    val currentOnDraftChanged by rememberUpdatedState(onDraftChanged)
+    fun change(value: FeeFormDraft) { if (currentOnDraftChanged != null) currentOnDraftChanged?.invoke(value) else localDraft = value }
     LaunchedEffect(state.roomNotice) {
-        if (bindingPending && state.roomNotice != null) {
-            bindingPending = false; saveCommon = false
+        if (draft.bindingPending && state.roomNotice != null) {
+            change(draft.copy(bindingPending = false, saveCommon = false, amountStep = !saveOnly))
             onConsumeRoomNotice()
-            if (saveOnly) onDismiss() else amountStep = true
+            if (saveOnly) onDismiss()
         }
     }
     LaunchedEffect(state.roomBusy, state.error) {
-        if (bindingPending && !state.roomBusy && state.error != null) bindingPending = false
+        if (draft.bindingPending && !state.roomBusy && state.error != null) change(draft.copy(bindingPending = false))
     }
-    val cents = RechargeMoney.cents(amount)
+    val cents = RechargeMoney.cents(draft.amount)
     val config = form.config
     val displayProject = form.project
     val ready = !state.loading && !state.selecting && state.query?.canPay == true &&
         state.query.thirdParty != null && state.query.tip == null &&
         state.switchingProject == null && state.switchingMeterKind == null &&
         config?.project == displayProject &&
-        (fixedTarget == null || fixedTarget.sameTarget(state.currentRoom))
+        (fixedSelection == null || fixedSelection == state.currentRoom?.selections)
     val orderAmount = state.order?.pending?.amountCents ?: state.paymentRetry?.amountCents ?: cents ?: 0
     val meterName = fixedTarget?.let { target ->
         when (project) {
@@ -112,7 +114,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         saveOnly -> HallFeePage.Target
         state.stage == FeeStage.Password -> null
         state.stage == FeeStage.Result || state.stage == FeeStage.Methods -> HallFeePage.Result
-        amountStep || project?.network == true -> HallFeePage.Amount
+        draft.amountStep || project?.network == true -> HallFeePage.Amount
         else -> HallFeePage.Target
     }
     var page by remember(session) { mutableStateOf(requestedPage ?: HallFeePage.Amount) }
@@ -122,10 +124,24 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         page == HallFeePage.Result -> null
         else -> paymentTitle
     })
+    // Root-hosted overlays can retain their composable callback while open.
+    // Read observable presentation values in the popup itself, including when
+    // a fixed target finishes loading without changing the amount-page route.
+    val currentState by rememberUpdatedState(state)
+    val currentForm by rememberUpdatedState(form)
+    val currentDraft by rememberUpdatedState(draft)
+    val currentReady by rememberUpdatedState(ready)
+    val currentPage by rememberUpdatedState(page)
     PaymentSheet(show = visible && state.stage != FeeStage.Password,
         title = title, onDismissRequest = {
         if (state.stage == FeeStage.Result) onFinish() else onDismiss()
     }, insideMargin = DpSize(20.dp, 12.dp)) {
+        val state = currentState
+        val form = currentForm
+        val config = form.config
+        val draft = currentDraft
+        val ready = currentReady
+        val page = currentPage
         key(session) { SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
         val active = interactive && visible && state.stage != FeeStage.Password
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp),
@@ -138,6 +154,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                 HallFeeTargetPlaceholder(showRoomBinding = !saveOnly && displayProject in bindingProjects)
                             } else if (config == null) {
                                 AnimatedInlineError(form.error)
+                                if (form.error != null) TextButton("重试", onRetry, enabled = active)
                             } else {
                                 val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
                                     state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
@@ -153,15 +170,15 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                 }
                                 InlineErrorGroup(form.error, 16.dp) {
                                     if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(state = if (saveCommon) ToggleableState.On else ToggleableState.Off,
-                                            onClick = { saveCommon = !saveCommon }, enabled = targetEnabled && ready)
+                                        Checkbox(state = if (draft.saveCommon) ToggleableState.On else ToggleableState.Off,
+                                            onClick = { change(draft.copy(saveCommon = !draft.saveCommon)) }, enabled = targetEnabled && ready)
                                         Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                                     }
                                     Button(onClick = {
                                         if (targetEnabled && ready) {
-                                            if ((saveOnly || saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
-                                                bindingPending = true; onRoomAction()
-                                            } else if (saveOnly) onDismiss() else amountStep = true
+                                            if ((saveOnly || draft.saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
+                                                change(draft.copy(bindingPending = true)); onRoomAction()
+                                            } else if (saveOnly) onDismiss() else change(draft.copy(amountStep = true))
                                         }
                                     }, enabled = targetEnabled && ready && state.currentRoom != null &&
                                         (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
@@ -173,8 +190,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     }
                 }
                 HallFeePage.Amount -> {
-                    HallFeeSummary(form, Modifier.testTag("hall-payment-target"), targetSelected,
-                        { targetSelected = !targetSelected }, active && !state.loading && !state.selecting,
+                    HallFeeSummary(form, Modifier.testTag("hall-payment-target"), draft.targetSelected,
+                        { change(draft.copy(targetSelected = !draft.targetSelected)) }, active && !state.loading && !state.selecting,
                     )
                     val codes = if (form.project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
                     // A fixed room is verified across several requests. Configuration can
@@ -184,14 +201,17 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                     val showForm = config != null && (!form.queryPending || presented)
                     SideEffect { if (showForm) presented = true }
                     PaymentFormContent(form.loading && !showForm) {
-                        if (config != null) PaymentAmountForm(config.amountRules, amount, { amount = it },
-                            codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(methodCode).coerceAtLeast(0),
-                            { methodCode = codes[it] }, form.loading || form.selecting || form.roomBusy,
-                            active && ready && targetSelected && !state.preview, form.error, { onCreate(it, methodCode) }, onRetry,
+                        if (config != null) PaymentAmountForm(config.amountRules, draft.amount, { change(draft.copy(amount = it)) },
+                            codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(draft.methodCode).coerceAtLeast(0),
+                            { change(draft.copy(methodCode = codes[it])) }, form.loading || form.selecting || form.roomBusy,
+                            active && ready && draft.targetSelected && !state.preview, form.error, { onCreate(it, draft.methodCode) }, onRetry,
                             enabled = active, onInputEdited = onInputEdited,
                             submitting = state.loading && state.order != null &&
                                 state.resultPhase == RechargePhase.Creating)
-                        else AnimatedInlineError(form.error)
+                        else {
+                            AnimatedInlineError(form.error)
+                            if (form.error != null) TextButton("重试", onRetry, enabled = active)
+                        }
                     }
                 }
                 HallFeePage.Result -> {
@@ -213,6 +233,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                         PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
                             { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
                             subject = "充值", retryMethods = result.methods, enabled = resultActive, onCheck = onCheck,
+                            selectedRetryId = currentDraft.retryMethodId, selectedRetryCode = currentDraft.retryMethodCode,
+                            onRetrySelection = { method -> change(currentDraft.copy(retryMethodId = method?.id, retryMethodCode = method?.code)) },
                             loadingTitle = "准备中".takeIf { choosingMethod && result.loading },
                             onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
                     }
@@ -223,7 +245,8 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     }
     FeePasswordDialog(show = visible && state.stage == FeeStage.Password,
         amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
-        onDismiss = onCancelPayment, onPay = onPayAccount, onInputEdited = onInputEdited)
+        onDismiss = onCancelPayment, onPay = onPayAccount, onInputEdited = onInputEdited,
+        selectedType = draft.accountType, onTypeChanged = { change(draft.copy(accountType = it)) })
     val dialog = state.roomDialog
     val confirmingRoom = visible && dialog != null
     val replacing = rememberWhileShown(confirmingRoom, dialog?.previous != null)
@@ -231,9 +254,9 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         dialog?.let { if (it.previous != null) "将「${it.previous.dialogLabel}」替换为「${it.target.dialogLabel}」" else it.target.dialogLabel })
     OverlayDialog(show = confirmingRoom, title = if (replacing) "替换已绑定房间" else "绑定房间",
         summary = roomSummary,
-        onDismissRequest = { bindingPending = false; onDismissRoomDialog() }, renderInRootScaffold = true) {
+        onDismissRequest = { change(draft.copy(bindingPending = false)); onDismissRoomDialog() }, renderInRootScaffold = true) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { bindingPending = false; onDismissRoomDialog() }, enabled = confirmingRoom, modifier = Modifier.weight(1f)) { Text("取消") }
+            Button(onClick = { change(draft.copy(bindingPending = false)); onDismissRoomDialog() }, enabled = confirmingRoom, modifier = Modifier.weight(1f)) { Text("取消") }
             Button(onClick = onConfirmRoomAction, enabled = confirmingRoom && !state.roomBusy,
                 modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) {
                 Text(if (replacing) "替换" else "绑定")

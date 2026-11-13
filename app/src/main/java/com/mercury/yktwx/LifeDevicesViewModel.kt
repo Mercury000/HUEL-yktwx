@@ -1,6 +1,8 @@
 package com.mercury.yktwx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -36,6 +38,9 @@ data class LifeDevicesUiState(
     val waterSessions: List<WaterSession> = emptyList(), val laundrySessions: List<LaundrySession> = emptyList(),
     val changingAccount: Boolean = false, val accountBusy: Boolean = false,
     val accountError: String? = null,
+    val paymentMethod: String? = null,
+    val paymentRestorePending: Boolean = false,
+    val cancelOrderConfirmation: String? = null,
 )
 
 /** One login gate and scanner route each recognized code to its device service. */
@@ -44,16 +49,73 @@ class LifeDevicesViewModel internal constructor(
     private val api: LifeDeviceService, private val store: LifeDeviceStore,
     private val io: CoroutineDispatcher = Dispatchers.IO, private val now: () -> Long = System::currentTimeMillis,
     private val analytics: AppAnalytics,
+    savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    @Inject internal constructor(api: LifeDeviceService, store: LifeDeviceStore, analytics: AppAnalytics) : this(api, store, io = Dispatchers.IO, analytics = analytics)
+    @Inject internal constructor(api: LifeDeviceService, store: LifeDeviceStore, analytics: AppAnalytics, savedState: SavedStateHandle) :
+        this(api, store, io = Dispatchers.IO, analytics = analytics, savedState = savedState)
     private val mutable = MutableStateFlow(LifeDevicesUiState())
     val state = mutable.asStateFlow()
+    private var pendingOverlay: LifeOverlaySavedState? = null
+    private val overlays = LifeOverlayRestoration(savedState) {
+        LifeOverlaySavedState(state.value.loginVisible, state.value.changingAccount, state.value.phone,
+            payment = pendingOverlay?.payment == true || state.value.paymentVisible,
+            session = pendingOverlay?.session ?: state.value.laundry?.sessionId,
+            device = pendingOverlay?.device ?: state.value.device?.id,
+            sku = pendingOverlay?.sku ?: state.value.selectedSkuId.takeIf(String::isNotBlank), method = state.value.paymentMethod,
+            cancelSession = state.value.cancelOrderConfirmation)
+    }
+    internal fun bindPresentation(campus: String, preview: Boolean, generation: Long) {
+        if (state.value.restoring) return
+        val restored = overlays.bind(campus, restorationOwner, preview, generation) {
+            pendingOverlay = null; dismissLogin(); dismissLaundryPayment(); mutable.update { it.copy(paymentMethod = null, cancelOrderConfirmation = null) }
+        } ?: return
+        mutable.update { it.copy(loginVisible = restored.login, changingAccount = restored.changing, phone = restored.phone,
+            code = "", paymentMethod = restored.method, paymentRestorePending = restored.payment, cancelOrderConfirmation = restored.cancelSession) }
+        pendingOverlay = restored.takeIf { it.payment }
+    }
+    internal fun resumePresentation(active: Boolean, online: Boolean) {
+        val restored = pendingOverlay ?: return
+        if (!active || !online || state.value.restoring) return
+        val session = state.value.laundry
+        if (restored.session != null) {
+            if (session?.sessionId != restored.session) return
+            pendingOverlay = null
+            mutable.update { it.copy(paymentVisible = true, paymentLaunch = null, paymentRestorePending = false,
+                paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Checking,
+                    detail = "原订单结果待确认，请继续查询")) }
+            if (session.orderNo.isNotBlank()) checkLaundryPayment()
+            else mutable.update { it.copy(paymentFeedback = LaundryPaymentFeedback(session.sessionId, RechargePhase.Failed,
+                detail = "未取得原订单号，请先核实结果")) }
+        } else if (state.value.device?.id == restored.device && state.value.selectedSkuId == restored.sku) {
+            pendingOverlay = null; mutable.update { it.copy(paymentRestorePending = false) }; showLaundryPayment()
+        }
+    }
+    internal fun selectPaymentMethod(method: String?) { mutable.update { it.copy(paymentMethod = method) } }
+    internal fun requestLaundryCancellation() {
+        state.value.laundry?.takeIf { it.canCancel }?.let { session ->
+            mutable.update { it.copy(cancelOrderConfirmation = session.sessionId) }
+        }
+    }
+    internal fun dismissLaundryCancellation() { mutable.update { it.copy(cancelOrderConfirmation = null) } }
+    internal fun discardRestoredPayment() { pendingOverlay = null; mutable.update { it.copy(paymentRestorePending = false) }; dismissLaundryPayment() }
     private var account: LifeAccount? = null
     private var ownerPhone = ""
     private var requestedFeature: LifeFeature? = null
     private var requestedScan = false
     private var requestedSessionId: String? = null
     private var pendingDeviceSerial: String? = null
+    private var restoredSkuId: String? = null
+    internal val restorationOwner: String? get() = ownerPhone.takeIf(String::isNotBlank)
+
+    /** Restore a device selection by its service identifier, without scanning or starting it. */
+    internal fun restoreDevice(feature: LifeFeature, serial: String, skuId: String?): Boolean {
+        if (mutable.value.restoring || feature == LifeFeature.Ride || LifeDeviceCode.identify(serial)?.first != feature) return false
+        scan()
+        restoredSkuId = skuId
+        mutable.update { it.copy(feature = feature) }
+        loadDevice(serial)
+        return true
+    }
     private val persistence = Mutex()
     private val sessionErrors = mutableMapOf<String, String>()
     private var deviceTask: Job? = null
@@ -293,9 +355,10 @@ class LifeDevicesViewModel internal constructor(
                 }
                 account = next
                 ownerPhone = next.phone
+                dismissLaundryPayment(); dismissLaundryCancellation()
                 accountVerifier.verified(next.maskedPhone)
                 mutable.update { it.copy(loggingIn = false, connectedPhone = next.maskedPhone, loginVisible = false,
-                    code = "", changingAccount = false) }
+                    code = "", changingAccount = false, paymentMethod = null) }
                 val restored = withContext(io) { store.waterSessions() to store.laundrySessions() }
                 val candidates = restored.first.filter { item -> item.active &&
                     mutable.value.waterSessions.none { it.sessionId == item.sessionId } }
@@ -331,6 +394,7 @@ class LifeDevicesViewModel internal constructor(
     fun scan() {
         if (mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
         pendingDeviceSerial = null
+        restoredSkuId = null
         requestedFeature = null; requestedScan = false; requestedSessionId = null
         scanGeneration++; deviceTask?.cancel(); quoteTask?.cancel()
         mutable.update { it.copy(scanning = true, scannedSerial = null, device = null, selectedSkuId = "", error = null, loadingDevice = false,
@@ -371,6 +435,7 @@ class LifeDevicesViewModel internal constructor(
                 mutable.update { it.copy(device = device, selectedSkuId = water?.skuId ?: laundry?.skuId ?: device.skus.firstOrNull { sku -> sku.available != false }?.id.orEmpty(),
                     loadingDevice = false, error = if (feature == LifeFeature.Water) device.startError else device.laundryError,
                     laundryQuote = null) }
+                restoredSkuId?.let(::selectSku); restoredSkuId = null
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == scanGeneration) mutable.update { it.copy(loadingDevice = false, scanning = it.device == null, error = failure(e)) }
@@ -707,8 +772,9 @@ class LifeDevicesViewModel internal constructor(
         }
     }
     fun dismissLaundryPayment() {
+        pendingOverlay = null
         quoteSequence++; quoteTask?.cancel()
-        mutable.update { it.copy(paymentVisible = false, paymentFeedback = null, quoteLoading = false,
+        mutable.update { it.copy(paymentVisible = false, paymentRestorePending = false, paymentFeedback = null, quoteLoading = false,
             error = it.error ?: it.device?.laundryError) }
     }
     fun showLaundryPayment() {
@@ -739,7 +805,7 @@ class LifeDevicesViewModel internal constructor(
                 }
                 val channels = service.laundryChannels(session, token)
                 mutable.update { it.copy(laundryQuote = LaundryQuote(session.device.id, session.skuId, session.price, session.minutes, channels),
-                    paymentVisible = true, paymentFeedback = null) }
+                    paymentFeedback = null) }
             }
         } else if (value.device != null && value.selectedSkuId.isNotBlank()) {
             if (value.paymentVisible && value.laundryQuote != null) return

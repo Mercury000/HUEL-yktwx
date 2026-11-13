@@ -17,6 +17,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
+import android.os.Looper
+import org.robolectric.Shadows.shadowOf
+import com.mercury.yktwx.analytics.AnalyticsFixtures
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -43,6 +49,77 @@ class FeeSelectorUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private var contentView: View? = null
     private var observedImeBottom = 0
+    @Test fun amountAndMethodSurviveNewViewModelAndComposeRestorationWithoutCreatingPayment() {
+        val restorer = StateRestorationTester(compose)
+        val store = ViewModelStore()
+        val handle = SavedStateHandle()
+        val services = mutableListOf<FeeRestorationTest.Fees>()
+        fun model(saved: SavedStateHandle): FeeViewModel {
+            val service = FeeRestorationTest.Fees().also(services::add)
+            val repository = accountRepositoryFixture(FakeAccountService(), object : Vault {
+                override fun credentials() = Credentials("owner", "fixture-credential")
+                override fun session() = Session("fixture-token", Long.MAX_VALUE)
+                override fun saveCredentials(value: Credentials) = Unit
+                override fun saveSession(value: Session) = Unit
+                override fun clearSession() = Unit
+                override fun clear() = Unit
+            }, feeService = service)
+            return FeeViewModel(repository, analytics = AnalyticsFixtures.from(compose.activity.application), savedState = saved)
+                .also { store.put("fees", it) }
+        }
+        var current by mutableStateOf(model(handle))
+        var renderedLoading = false
+        try {
+            restorer.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+                val state by current.state.collectAsState()
+                val entry by current.entry.collectAsState()
+                val draft by current.form.collectAsState()
+                SideEffect { renderedLoading = state.loading }
+                HallFeeDialog(state, entry != null, entry?.project, state.currentRoom, fixedSelection = entry?.fixed,
+                    savedDraft = draft, onDraftChanged = current::updateForm, onDismiss = current::dismiss,
+                    onSelect = current::select, onRetry = current::retry, onCreate = current::createWithMethod,
+                    onMethod = current::chooseMethod, onPayAccount = current::payAccount, onCancelPayment = current::cancelPayment,
+                    onFinish = current::dismiss, onContinuePayment = current::continuePayment,
+                    onRoomAction = current::requestRoomAction, onConfirmRoomAction = current::confirmRoomAction,
+                    onDismissRoomDialog = current::dismissRoomDialog, onConsumeRoomNotice = current::consumeRoomNotice)
+            } } } }
+            val target = FeeRoomBinding.from(listOf(FeeLevel("campus", 1, "校区"), FeeLevel("room", 2, "房间")),
+                mapOf("campus" to "c", "room" to "r"), mapOf("campus" to "原校区名称", "room" to "原房间名称"))!!
+            compose.runOnIdle { current.open(FeeProject.Zhengdong, "owner", false, target) }
+            compose.waitUntil(5000) { shadowOf(Looper.getMainLooper()).idle(); !current.state.value.loading }
+            assertNull(current.state.value.error)
+            assertNotNull(current.state.value.query)
+            assertTrue(current.form.value.amountStep)
+            compose.waitForIdle()
+            try {
+                compose.waitUntil(5000) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size == 1
+                }
+            } catch (failure: Throwable) {
+                throw AssertionError("fee input missing; entry=${current.entry.value}; stage=${current.state.value.stage}; " +
+                    "loading=${current.state.value.loading}; renderedLoading=$renderedLoading; query=${current.state.value.query != null}; " +
+                    compose.onRoot(useUnmergedTree = true).printToString(maxDepth = 12), failure)
+            }
+            compose.onNode(hasSetTextAction()).performTextReplacement("29.50")
+            compose.onNodeWithText("微信").performClick()
+            lateinit var saved: SavedStateHandle
+            compose.runOnIdle { saved = handle.recreated(); current = model(saved) }
+            restorer.emulateSavedInstanceStateRestore()
+            compose.runOnIdle { current.accountChanged("owner"); current.restoreIfNeeded(true, true) }
+            compose.waitUntil(5000) { shadowOf(Looper.getMainLooper()).idle(); !current.state.value.loading }
+            assertNull(current.state.value.error)
+            compose.waitForIdle()
+            compose.waitUntil(5000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size == 1
+            }
+            compose.onNode(hasSetTextAction()).assertTextContains("29.50")
+            assertEquals("TSM", current.form.value.methodCode)
+            compose.onNodeWithText("充值 ¥ 29.50").assertIsEnabled()
+            assertEquals(0, services.sumOf { it.commands })
+        } finally { store.clear() }
+    }
     private val levels = listOf(FeeLevel("building", 1, "楼栋"), FeeLevel("floor", 2, "楼层"), FeeLevel("room", 3, "房间"))
     private fun state(project: FeeProject, kind: String = "", complete: Boolean = true): FeeUiState {
         val names = mapOf("building" to "示例A栋", "floor" to "示例楼层", "room" to "示例A栋-房间A$kind")
