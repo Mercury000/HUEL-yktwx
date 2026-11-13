@@ -58,12 +58,13 @@ class LifeDeviceStatusUiTest {
     private fun sessions(): Sessions {
         val waterDevice = LifeDevice("water", "test-water", "雅5-1冷", "04", "org", "org", "shop", "imei",
             "学校", "", "after", false, true, null, listOf(LifeSku("water-sku", "冷水", true)), emptyList())
-        val water = WaterSession(waterDevice, "water-sku", WaterPhase.Running, sessionId = "water-session")
+        val water = WaterSession(waterDevice, "water-sku", WaterPhase.Running, orderNo = "water-order", sessionId = "water-session")
         val laundryDevice = waterDevice.copy(id = "laundry", name = "77", category = "00", payment = "before",
             skus = listOf(LifeSku("laundry-sku", "桶自洁", true, "0.00", minutes = 5)))
         val started = 1_700_000_000_000L
         return Sessions(water, LaundrySession(laundryDevice, "laundry-sku", "0.00", "2", LaundryPhase.Running,
-            startedAtMillis = started, expectedEndMillis = started + 300_000, sessionId = "laundry-session"))
+            orderNo = "laundry-order", orderId = "laundry-id", startedAtMillis = started,
+            expectedEndMillis = started + 300_000, sessionId = "laundry-session"))
     }
 
     @Test fun existingIslandsDoNotReplayOnPageRecreationButNewSessionsStillEnter() {
@@ -313,9 +314,10 @@ class LifeDeviceStatusUiTest {
 
     private fun laundryTime(value: String) = LocalDateTime.parse(value).atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
 
-    @Test fun onlyUnknownCreationHasAnExceptionDismissButtonAndRemovalDeletesItsRecord() {
+    @Test fun unknownCreationHasAnExceptionDismissButtonAndNormalOrdersDoNot() {
         val base = sessions().laundry.copy(startedAtMillis = null, expectedEndMillis = null)
-        val unknown = base.copy(sessionId = "unknown-create", phase = LaundryPhase.Creating, createSent = true, creationUncertain = true)
+        val unknown = base.copy(sessionId = "unknown-create", phase = LaundryPhase.Creating, createSent = true,
+            creationUncertain = true, orderNo = "", orderId = "")
         val paying = base.copy(sessionId = "pending-order", phase = LaundryPhase.Paying, orderNo = "wash-1", orderId = "wash-id")
         val starting = paying.copy(sessionId = "starting-order", phase = LaundryPhase.Starting)
         val checking = base.copy(sessionId = "unestablished-check", phase = LaundryPhase.Checking)
@@ -334,6 +336,30 @@ class LifeDeviceStatusUiTest {
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-session-${unknown.sessionId}").assertDoesNotExist()
         assertEquals(3, laundries.size); assertFalse(laundries.any { it.sessionId == unknown.sessionId })
+    }
+
+    @Test fun failedStatusReadsExposeDismissButtonsForWaterShowerAndKnownLaundryOrders() {
+        val base = sessions()
+        val water = base.water
+        val shower = water.copy(sessionId = "shower-failure", device = water.device.copy(category = "08"))
+        val laundry = base.laundry.copy(phase = LaundryPhase.Starting)
+        var waters by mutableStateOf(listOf(water, shower))
+        var laundries by mutableStateOf(listOf(laundry))
+        val errors = (waters.map { it.sessionId } + laundry.sessionId).associateWith { "设备状态查询失败" }
+        val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1); setFloating(false) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            LifeDeviceStatusIslands(waters, laundries, { _, _ -> }, { feature, id ->
+                if (feature == LifeFeature.Water) waters = waters.filterNot { it.sessionId == id }
+                else laundries = laundries.filterNot { it.sessionId == id }
+            }, settings, sessionErrors = errors)
+        } } }
+        compose.mainClock.advanceTimeBy(1000)
+        for (id in listOf(water.sessionId, shower.sessionId, laundry.sessionId)) {
+            compose.onNodeWithTag("dismiss-life-session-$id").performScrollTo().performClick()
+            compose.mainClock.advanceTimeBy(1000)
+            compose.onNodeWithTag("life-session-$id").assertDoesNotExist()
+        }
+        assertTrue(waters.isEmpty()); assertTrue(laundries.isEmpty())
     }
 
     @Test fun completedLaundryExpiresAtNextDayThreeEvenWhenItIsTheOnlyIsland() {

@@ -64,6 +64,27 @@ class LifeDeviceAccountStoreTest {
         store.clearAccount(); store.removeAccount()
         assertTrue(records.values.isEmpty())
     }
+    @Test fun logoutErasesAllProgressAndReloginCannotRestoreIt() {
+        for (expired in listOf(false, true)) {
+            val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
+            val waters = WaterPhase.entries.map { phase ->
+                WaterSession(device.copy(category = "04"), "water", phase, startSent = true,
+                    creationUncertain = true, sessionId = "water-$phase")
+            }
+            val laundries = LaundryPhase.entries.map { phase ->
+                LaundrySession(device, "clean", "0.00", "13", phase, createSent = true,
+                    creationUncertain = true, sessionId = "laundry-$phase")
+            }
+            store.saveWaterSessions(waters); store.saveLaundrySessions(laundries)
+            store.saveSession(waters.first()); store.saveLaundrySession(laundries.first())
+            if (expired) store.clearAccount()
+            store.removeAccount()
+            assertTrue(records.values.isEmpty())
+            val restored = LifeDeviceAccountStore(records); restored.saveAccount(account)
+            assertTrue(restored.waterSessions().isEmpty()); assertTrue(restored.laundrySessions().isEmpty())
+            assertNull(restored.session()); assertNull(restored.laundrySession())
+        }
+    }
     @Test fun multipleSessionsRoundTripStableIdsAndServerTimes() {
         val records = Records(); val store = LifeDeviceAccountStore(records)
         store.saveAccount(account)
