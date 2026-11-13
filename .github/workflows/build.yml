@@ -164,6 +164,9 @@ jobs:
           if [ -z "$HUI798_API_GATEWAY" ]; then unset HUI798_API_GATEWAY; fi
           chmod +x gradlew
           ./gradlew ":app:assemble${BUILD_TYPE^}" --no-configuration-cache --console=plain
+      - name: Verify release profiles
+        if: steps.version.outputs.build_type == 'release' && needs.release-please.outputs.reused != 'true'
+        run: python scripts/verify_profiles.py app/build/outputs/apk/release/app-release-unsigned.apk --mapping app/build/outputs/mapping/release/mapping.txt
       - name: Upload debug APK
         if: steps.version.outputs.build_type == 'debug'
         uses: actions/upload-artifact@v7.0.1
