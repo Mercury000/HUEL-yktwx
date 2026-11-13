@@ -17,6 +17,100 @@ else:
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
+    def preparation_step(self, name):
+        source = WORKFLOW.read_text(encoding="utf-8").split("\n  build:\n", 1)[0]
+        step = source.split(f"      - name: {name}\n", 1)[1]
+        body = step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0]
+        return "\n".join(line[10:] for line in body.splitlines())
+
+    def exercise_preparation(self, apk_count, *, exists=True, token="write", downloaded_name=None):
+        body = self.preparation_step("Reuse an already published APK on retries") + "\n" + \
+            self.preparation_step("Prepare release notes")
+        with tempfile.TemporaryDirectory(prefix="release-preparation-test-") as temporary:
+            root = Path(temporary)
+            (root / "fixture.apk").write_bytes(b"original signed APK")
+            script = root / "prepare.sh"
+            script.write_text('''gh() {
+              printf '%s\\n' "$*" >> calls.txt
+              if [ "$EXISTS" != true ] || [ "$GH_TOKEN" != write ]; then
+                echo 'release not found' >&2; return 1
+              fi
+              if [ "$2" = view ]; then
+                case "$*" in
+                  *'--json assets'*) printf '%s\\n' "$APK_COUNT" ;;
+                  *'--json body'*) printf '%s' "$NOTES" ;;
+                  *) return 2 ;;
+                esac
+              elif [ "$2" = download ]; then
+                cp fixture.apk "release-input/$DOWNLOADED_APK"
+              else
+                return 2
+              fi
+            }
+''' + body, encoding="utf-8")
+            notes = "## Beta 更新\n\n- 保留 Markdown 和换行\n"
+            environment = os.environ.copy()
+            environment.update(GH_TOKEN=token, RELEASE_TAG="v1.5.0-beta", VERSION_NAME="1.5.0-beta",
+                               GITHUB_OUTPUT=str(root / "output"), EXISTS=str(exists).lower(),
+                               APK_COUNT=str(apk_count), NOTES=notes,
+                               DOWNLOADED_APK=downloaded_name or "CaiXiaoTong-1.5.0-beta-release.apk")
+            result = subprocess.run([BASH, script.as_posix()], cwd=root, env=environment, capture_output=True, text=True)
+            output = (root / "output").read_text() if (root / "output").exists() else ""
+            note_file = root / "release-input/release-notes.md"
+            written_notes = note_file.read_text(encoding="utf-8") if note_file.exists() else None
+            apk_file = root / "release-input/CaiXiaoTong-1.5.0-beta-release.apk"
+            apk = apk_file.read_bytes() if apk_file.exists() else None
+            calls = (root / "calls.txt").read_text()
+            return result, output, written_notes, apk, calls, notes
+
+    def test_new_draft_prepares_notes_with_existing_writer_and_no_apk_reuse(self):
+        result, output, written, apk, calls, notes = self.exercise_preparation(0)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(notes, written)
+        self.assertEqual("", output)
+        self.assertIsNone(apk)
+        self.assertNotIn("release download", calls)
+
+    def test_draft_retry_passes_original_apk_and_notes_without_rebuilding(self):
+        result, output, written, apk, calls, notes = self.exercise_preparation(1)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("reused=true\n", output)
+        self.assertEqual(notes, written)
+        self.assertEqual(b"original signed APK", apk)
+        self.assertEqual(1, calls.count("release download"))
+
+    def test_missing_inaccessible_ambiguous_or_misnamed_release_input_fails_preparation(self):
+        cases = [(0, dict(exists=False), "release not found"),
+                 (0, dict(token="read"), "release not found"),
+                 (2, {}, "multiple APKs"),
+                 (1, dict(downloaded_name="wrong-version.apk"), None)]
+        for count, options, message in cases:
+            with self.subTest(count=count, options=options):
+                result, output, written, *_ = self.exercise_preparation(count, **options)
+                self.assertNotEqual(0, result.returncode)
+                if message:
+                    self.assertIn(message, result.stderr)
+                self.assertEqual("", output)
+                self.assertIsNone(written)
+
+    def test_read_only_build_consumes_writer_preparation_and_resolved_retry_tag(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        defaults, jobs = source.split("\njobs:\n", 1)
+        writer, rest = jobs.split("\n  build:\n", 1)
+        build = rest.split("\n  release:\n", 1)[0]
+        self.assertIn("permissions:\n  contents: read\n", defaults)
+        self.assertIn("      contents: write\n", writer)
+        self.assertNotIn("contents: write", build)
+        self.assertNotIn("gh release", build)
+        self.assertIn("release_tag: ${{ steps.version.outputs.release_tag }}", writer)
+        self.assertIn("ref: ${{ needs.release-please.outputs.release_tag || github.sha }}", build)
+        self.assertIn("name: release-preparation", writer)
+        self.assertIn("name: release-preparation", build)
+        self.assertIn("uses: actions/download-artifact@", build)
+        self.assertNotIn("steps.existing", build)
+        self.assertIn("reused: ${{ needs.release-please.outputs.reused }}", build)
+        self.assertIn("if: steps.version.outputs.publish == 'true'", build)
+
     def publication_step(self):
         source = WORKFLOW.read_text(encoding="utf-8")
         step = source.split("      - name: Publish the Release without replacing existing APKs\n", 1)[1]
