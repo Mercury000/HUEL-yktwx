@@ -1,0 +1,914 @@
+{
+  "analysis_date": "2026-11-13",
+  "source_identity": [
+    {
+      "source": "D:\\mercu\\Downloads\\哈啰_7.0.75.apk",
+      "source_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+      "slice": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk",
+      "slice_sha256": "e8ffbc8c903c2bec2b2e4783f4a711d2ed1b5c555893a41996b7c4134a4a13f1",
+      "entries_copied_without_modification": [
+        {
+          "entry": "AndroidManifest.xml",
+          "sha256": "2333e508d8e452cf944a0e124c1cdab53b22b778c9e78e296a96370ffb9adfbe",
+          "bytes": 414528
+        },
+        {
+          "entry": "resources.arsc",
+          "sha256": "0f06b23c1bde6c44aabd6b3dcb606724a47013dcc708c0a377ad79441cc32107",
+          "bytes": 4451416
+        },
+        {
+          "entry": "classes7.dex",
+          "sha256": "e6f9be8412ccb67020c8bbc0e1718cde94746365d46357b0989c618f9bd0797d",
+          "bytes": 11056916
+        }
+      ],
+      "limitations": "Selected original DEX only; cross-DEX references can be incomplete. Never executed."
+    },
+    {
+      "source": "D:\\mercu\\Downloads\\胖乖生活_1.145.0.apk",
+      "source_sha256": "b0de8fdc4fe0f778b7b9134347b4bb427b73a67fdf223607fec4d9ecdc8bef18",
+      "slice": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-network-slice.apk",
+      "slice_sha256": "e68af7931ba000dc2016a5eb179597cea2679dc177be248e90d3e3a53e5b935c",
+      "entries_copied_without_modification": [
+        {
+          "entry": "AndroidManifest.xml",
+          "sha256": "41ce2e1321a02206ecce16019b1b8a5aabcd810fa15a1c9c4ac71fbd32edcf45",
+          "bytes": 225872
+        },
+        {
+          "entry": "resources.arsc",
+          "sha256": "871d3caefb82c6e5becec6cc68acad4aadb8164bc5c4489a549c7257a9358563",
+          "bytes": 2094644
+        },
+        {
+          "entry": "classes11.dex",
+          "sha256": "ba11a37b5fb4833eafa2fd70965310b9798def5adbb3e86307f56ac31d2cab90",
+          "bytes": 7913824
+        }
+      ],
+      "limitations": "Selected original DEX only; cross-DEX references can be incomplete. Never executed."
+    },
+    {
+      "source": "D:\\mercu\\Downloads\\胖乖生活_1.145.0.apk",
+      "source_sha256": "b0de8fdc4fe0f778b7b9134347b4bb427b73a67fdf223607fec4d9ecdc8bef18",
+      "slice": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-errors-slice.apk",
+      "slice_sha256": "95c1e65b783bca6a78f3b830bff188d985583c1c3e308404d01d36b843537abc",
+      "entries_copied_without_modification": [
+        {
+          "entry": "AndroidManifest.xml",
+          "sha256": "41ce2e1321a02206ecce16019b1b8a5aabcd810fa15a1c9c4ac71fbd32edcf45",
+          "bytes": 225872
+        },
+        {
+          "entry": "resources.arsc",
+          "sha256": "871d3caefb82c6e5becec6cc68acad4aadb8164bc5c4489a549c7257a9358563",
+          "bytes": 2094644
+        },
+        {
+          "entry": "classes4.dex",
+          "sha256": "3836ce37067ba1a6afa835a739ce206f87c830acccc1be65aba15b7b9e127d6d",
+          "bytes": 7292680
+        }
+      ],
+      "limitations": "Selected original DEX only; cross-DEX references can be incomplete. Never executed."
+    }
+  ],
+  "rea_evidence": [
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_0583f83f7411bb1095a6620bef1a29a203e44ecac804c76819a7835df5ff29d3",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.hellobike.networking.http.core.callback.ApiObserver",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": true,
+        "markers": [
+          "java_body_unavailable"
+        ],
+        "method": {
+          "dex_descriptor": "(Lcom/hellobike/networking/http/core/HiResponse;)V",
+          "is_constructor": false,
+          "name": "onNext",
+          "overload_index": 0,
+          "reported_signature": "onNext(com.hellobike.networking.http.core.HiResponse<T>): void"
+        },
+        "overload_count": 2,
+        "representation": "smali",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": ".method public final onNext(Lcom/hellobike/networking/http/core/HiResponse;)V\n    .registers 4\n    .annotation system Ldalvik/annotation/Signature;\n        value = {\n            \"(\",\n            \"Lcom/hellobike/networking/http/core/HiResponse<\",\n            \"TT;>;)V\"\n        }\n    .end annotation\n\n    .line 2\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->isSuccess()Z\n\n    move-result v0\n\n    if-eqz v0, :cond_e\n\n    .line 3\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->getData()Ljava/lang/Object;\n\n    move-result-object v0\n\n    invoke-direct {p0, v0, p1}, Lcom/hellobike/networking/http/core/callback/ApiObserver;->innerOnApiSuccess(Ljava/lang/Object;Lcom/hellobike/networking/http/core/HiResponse;)V\n\n    goto :goto_27\n\n    .line 4\n    :cond_e\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->isTokenError()Z\n\n    move-result v0\n\n    if-eqz v0, :cond_18\n\n    .line 5\n    invoke-virtual {p0}, Lcom/hellobike/networking/http/core/callback/ApiObserver;->innerNotLoginOrTokenInvalid()V\n\n    goto :goto_27\n\n    .line 6\n    :cond_18\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->getCode()I\n\n    move-result v0\n\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->getMsg()Ljava/lang/String;\n\n    move-result-object v1\n\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;->getData()Ljava/lang/Object;\n\n    move-result-object p1\n\n    invoke-direct {p0, v0, v1, p1}, Lcom/hellobike/networking/http/core/callback/ApiObserver;->innerOnApiFailed(ILjava/lang/String;Ljava/lang/Object;)V\n\n    :goto_27\n    return-void\n.end method"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.networking.http.core.callback.ApiObserver",
+        "method_name": "onNext",
+        "overload_index": 0,
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\",\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.callback.ApiObserver"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"fields\":[{\"name\":\"callback\",\"def_pos\":0,\"type\":\"com.hellobike.networking.http.core.callback.ApiCallback\"}],\"field_count\":1,\"full_name\":\"com.hellobike.networking.http.core.callback.ApiObserver\",\"name\":\"ApiObserver\",\"inner_classes\":[],\"inner_class_count\":0,\"method_count\":18,\"methods\":[{\"signature\":\"\\u003cinit\\u003e(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0},{\"signature\":\"\\u003cinit\\u003e(com.hellobike.networking.http.core.callback.ApiCallback): void\",\"dex_descriptor\":\"(Lcom/hellobike/networking/http/core/callback/ApiCallback;)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0},{\"signature\":\"callBackNotLoginOrTokenInvalid(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"callBackNotLoginOrTokenInvalid\",\"def_pos\":0},{\"signature\":\"callbackOnApiFailed(int, java.lang.String): void\",\"dex_descriptor\":\"(ILjava/lang/String;)V\",\"is_constructor\":false,\"name\":\"callbackOnApiFailed\",\"def_pos\":0},{\"signature\":\"callbackOnApiSuccess(T): void\",\"dex_descriptor\":\"(Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"callbackOnApiSuccess\",\"def_pos\":0},{\"signature\":\"innerNotLoginOrTokenInvalid(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"innerNotLoginOrTokenInvalid\",\"def_pos\":0},{\"signature\":\"innerOnApiFailed(int, java.lang.String, T): void\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"innerOnApiFailed\",\"def_pos\":0},{\"signature\":\"innerOnApiSuccess(T, com.hellobike.networking.http.core.HiResponse\\u003cT\\u003e): void\",\"dex_descriptor\":\"(Ljava/lang/Object;Lcom/hellobike/networking/http/core/HiResponse;)V\",\"is_constructor\":false,\"name\":\"innerOnApiSuccess\",\"def_pos\":0},{\"signature\":\"notLoginOrTokenInvalid(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"notLoginOrTokenInvalid\",\"def_pos\":0},{\"signature\":\"onApiFailed(int, java.lang.String): void\",\"dex_descriptor\":\"(ILjava/lang/String;)V\",\"is_constructor\":false,\"name\":\"onApiFailed\",\"def_pos\":0},{\"signature\":\"onApiFailed(int, java.lang.String, T): void\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"onApiFailed\",\"def_pos\":0},{\"signature\":\"onApiSuccess(com.hellobike.networking.http.core.HiResponse\\u003cT\\u003e): void\",\"dex_descriptor\":\"(Lcom/hellobike/networking/http/core/HiResponse;)V\",\"is_constructor\":false,\"name\":\"onApiSuccess\",\"def_pos\":0},{\"signature\":\"onApiSuccess(T): void\",\"dex_descriptor\":\"(Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"onApiSuccess\",\"def_pos\":0},{\"signature\":\"onComplete(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"onComplete\",\"def_pos\":0},{\"signature\":\"onError(java.lang.Throwable): void\",\"dex_descriptor\":\"(Ljava/lang/Throwable;)V\",\"is_constructor\":false,\"name\":\"onError\",\"def_pos\":0},{\"signature\":\"onNext(com.hellobike.networking.http.core.HiResponse\\u003cT\\u003e): void\",\"dex_descriptor\":\"(Lcom/hellobike/networking/http/core/HiResponse;)V\",\"is_constructor\":false,\"name\":\"onNext\",\"def_pos\":0},{\"signature\":\"onNext(java.lang.Object): void\",\"dex_descriptor\":\"(Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"onNext\",\"def_pos\":0},{\"signature\":\"onSubscribe(io.reactivex.disposables.Disposable): void\",\"dex_descriptor\":\"(Lio/reactivex/disposables/Disposable;)V\",\"is_constructor\":false,\"name\":\"onSubscribe\",\"def_pos\":0}]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.callback.ApiObserver",
+              "method_name": "onNext",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"markers\":[\"java_body_unavailable\"],\"body\":\".method public final onNext(Lcom/hellobike/networking/http/core/HiResponse;)V\\n    .registers 4\\n    .annotation system Ldalvik/annotation/Signature;\\n        value \\u003d {\\n            \\\"(\\\",\\n            \\\"Lcom/hellobike/networking/http/core/HiResponse\\u003c\\\",\\n            \\\"TT;\\u003e;)V\\\"\\n        }\\n    .end annotation\\n\\n    .line 2\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003eisSuccess()Z\\n\\n    move-result v0\\n\\n    if-eqz v0, :cond_e\\n\\n    .line 3\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003egetData()Ljava/lang/Object;\\n\\n    move-result-object v0\\n\\n    invoke-direct {p0, v0, p1}, Lcom/hellobike/networking/http/core/callback/ApiObserver;-\\u003einnerOnApiSuccess(Ljava/lang/Object;Lcom/hellobike/networking/http/core/HiResponse;)V\\n\\n    goto :goto_27\\n\\n    .line 4\\n    :cond_e\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003eisTokenError()Z\\n\\n    move-result v0\\n\\n    if-eqz v0, :cond_18\\n\\n    .line 5\\n    invoke-virtual {p0}, Lcom/hellobike/networking/http/core/callback/ApiObserver;-\\u003einnerNotLoginOrTokenInvalid()V\\n\\n    goto :goto_27\\n\\n    .line 6\\n    :cond_18\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003egetCode()I\\n\\n    move-result v0\\n\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003egetMsg()Ljava/lang/String;\\n\\n    move-result-object v1\\n\\n    invoke-virtual {p1}, Lcom/hellobike/networking/http/core/HiResponse;-\\u003egetData()Ljava/lang/Object;\\n\\n    move-result-object p1\\n\\n    invoke-direct {p0, v0, v1, p1}, Lcom/hellobike/networking/http/core/callback/ApiObserver;-\\u003einnerOnApiFailed(ILjava/lang/String;Ljava/lang/Object;)V\\n\\n    :goto_27\\n    return-void\\n.end method\",\"mode\":\"smali\",\"class_name\":\"com.hellobike.networking.http.core.callback.ApiObserver\",\"dex_descriptor\":\"(Lcom/hellobike/networking/http/core/HiResponse;)V\",\"overload_count\":2,\"method_name\":\"onNext\",\"overload_index\":0,\"full_name\":\"com.hellobike.networking.http.core.callback.ApiObserver.onNext\",\"fell_back\":true}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-d1a74900407e18d6ddd71220579e18da\\target.apk",
+          "class_count": 4280,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "e8ffbc8c903c2bec2b2e4783f4a711d2ed1b5c555893a41996b7c4134a4a13f1"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk",
+        "name": "hellobike-network-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_3d52d1a73c881e1be1329a7c92eae2b3f4b5c38c6c8ea0d9b5a34881c0990107",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.hellobike.networking.http.core.HiResponse",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "()Z",
+          "is_constructor": false,
+          "name": "isTokenError",
+          "overload_index": 0,
+          "reported_signature": "isTokenError(): boolean"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "    public boolean isTokenError() {\r\n        int i = this.code;\r\n        return i == 103 || i == -10003;\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.networking.http.core.HiResponse",
+        "method_name": "isTokenError",
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-0e5db35b09cf2247c0b9a84663d789bf\\target.apk",
+              "resources": "full",
+              "threads": 1
+            },
+            "operation": "load_apk",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"state\":\"LOADED\",\"apk_path\":\"C:\\\\Users\\\\mercu\\\\AppData\\\\Local\\\\Temp\\\\rea-android-0e5db35b09cf2247c0b9a84663d789bf\\\\target.apk\",\"class_count\":4280,\"raw_class_count\":4280,\"resource_count\":3,\"load_duration_ms\":6460,\"decompile_timeout_ms\":90000,\"threads\":1,\"code_cache_size\":64,\"resources\":\"full\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.HiResponse"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"name\":\"HiResponse\",\"inner_classes\":[],\"inner_class_count\":0,\"method_count\":18,\"methods\":[{\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\"},{\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, T): void\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\"},{\"def_pos\":0,\"signature\":\"getCode(): int\",\"dex_descriptor\":\"()I\",\"is_constructor\":false,\"name\":\"getCode\"},{\"def_pos\":0,\"signature\":\"getData(): T\",\"dex_descriptor\":\"()Ljava/lang/Object;\",\"is_constructor\":false,\"name\":\"getData\"},{\"def_pos\":0,\"signature\":\"getMsg(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"getMsg\"},{\"def_pos\":0,\"signature\":\"isApiFailed(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isApiFailed\"},{\"def_pos\":0,\"signature\":\"isCache(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isCache\"},{\"def_pos\":0,\"signature\":\"isCanceled(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isCanceled\"},{\"def_pos\":0,\"signature\":\"isException(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isException\"},{\"def_pos\":0,\"signature\":\"isSuccess(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isSuccess\"},{\"def_pos\":0,\"signature\":\"isTokenError(): boolean\",\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isTokenError\"},{\"def_pos\":0,\"signature\":\"setCache(boolean): void\",\"dex_descriptor\":\"(Z)V\",\"is_constructor\":false,\"name\":\"setCache\"},{\"def_pos\":0,\"signature\":\"setCanceled(boolean): void\",\"dex_descriptor\":\"(Z)V\",\"is_constructor\":false,\"name\":\"setCanceled\"},{\"def_pos\":0,\"signature\":\"setCode(int): void\",\"dex_descriptor\":\"(I)V\",\"is_constructor\":false,\"name\":\"setCode\"},{\"def_pos\":0,\"signature\":\"setData(T): void\",\"dex_descriptor\":\"(Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"setData\"},{\"def_pos\":0,\"signature\":\"setException(boolean): void\",\"dex_descriptor\":\"(Z)V\",\"is_constructor\":false,\"name\":\"setException\"},{\"def_pos\":0,\"signature\":\"setMsg(java.lang.String): void\",\"dex_descriptor\":\"(Ljava/lang/String;)V\",\"is_constructor\":false,\"name\":\"setMsg\"},{\"def_pos\":0,\"signature\":\"toString(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"toString\"}],\"fields\":[{\"type\":\"int\",\"name\":\"code\",\"def_pos\":0},{\"type\":\"T\",\"name\":\"data\",\"def_pos\":0},{\"type\":\"boolean\",\"name\":\"isCache\",\"def_pos\":0},{\"type\":\"boolean\",\"name\":\"isCanceled\",\"def_pos\":0},{\"type\":\"boolean\",\"name\":\"isException\",\"def_pos\":0},{\"type\":\"java.lang.String\",\"name\":\"msg\",\"def_pos\":0}],\"field_count\":6,\"full_name\":\"com.hellobike.networking.http.core.HiResponse\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.HiResponse",
+              "method_name": "isTokenError",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"dex_descriptor\":\"()Z\",\"overload_count\":1,\"method_name\":\"isTokenError\",\"overload_index\":0,\"full_name\":\"com.hellobike.networking.http.core.HiResponse.isTokenError\",\"fell_back\":false,\"markers\":[],\"body\":\"    public boolean isTokenError() {\\r\\n        int i \\u003d this.code;\\r\\n        return i \\u003d\\u003d 103 || i \\u003d\\u003d -10003;\\r\\n    }\",\"mode\":\"java\",\"class_name\":\"com.hellobike.networking.http.core.HiResponse\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-0e5db35b09cf2247c0b9a84663d789bf\\target.apk",
+          "class_count": 4280,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "e8ffbc8c903c2bec2b2e4783f4a711d2ed1b5c555893a41996b7c4134a4a13f1"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk",
+        "name": "hellobike-network-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_86cdf558a5bb434275c4e93e6ffe45a7627e9c1ed52a01319207791afebc0923",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "me.qiekj.jetpackmvvm.state.ResultStateKt",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "(Landroidx/lifecycle/MutableLiveData;Lme/qiekj/jetpackmvvm/network/BaseResponse;)V",
+          "is_constructor": false,
+          "name": "paresResult",
+          "overload_index": 1,
+          "reported_signature": "paresResult(androidx.lifecycle.MutableLiveData, me.qiekj.jetpackmvvm.network.BaseResponse): void"
+        },
+        "overload_count": 2,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "/* JADX INFO: loaded from: classes4.dex */\r\npublic abstract class ResultStateKt {\r\n    public static final void paresResult(MutableLiveData mutableLiveData, BaseResponse result) {\r\n        ResultState resultStateOnAppError;\r\n        Intrinsics.checkNotNullParameter(mutableLiveData, \"<this>\");\r\n        Intrinsics.checkNotNullParameter(result, \"result\");\r\n        if (result.isSucces()) {\r\n            resultStateOnAppError = ResultState.Companion.onAppSuccess(result.getResponseData());\r\n        } else if (result.getResponseCode() == 126 || result.getResponseCode() == 10) {\r\n            ToastUtils.showShort(result.getResponseMsg(), new Object[0]);\r\n            IModuleService service = ModuleServiceHolder.getService();\r\n            if (service != null) {\r\n                service.clear();\r\n            }\r\n            IModuleService service2 = ModuleServiceHolder.getService();\r\n            if (service2 != null) {\r\n                service2.openLogin(true);\r\n            }\r\n            resultStateOnAppError = ResultState.Companion.onAppError(new AppException(result.getResponseCode(), result.getResponseMsg(), null, 4, null));\r\n        } else {\r\n            ToastUtils.showShort(result.getResponseMsg(), new Object[0]);\r\n            resultStateOnAppError = ResultState.Companion.onAppError(new AppException(result.getResponseCode(), result.getResponseMsg(), null, 4, null));\r\n        }\r\n        mutableLiveData.setValue(resultStateOnAppError);\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "me.qiekj.jetpackmvvm.state.ResultStateKt",
+        "method_name": "paresResult",
+        "overload_index": 1,
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-errors-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\",\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-7e05664d4d9cfca09795daeb3f3881ee\\target.apk",
+              "resources": "full",
+              "threads": 1
+            },
+            "operation": "load_apk",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"state\":\"LOADED\",\"apk_path\":\"C:\\\\Users\\\\mercu\\\\AppData\\\\Local\\\\Temp\\\\rea-android-7e05664d4d9cfca09795daeb3f3881ee\\\\target.apk\",\"class_count\":3896,\"raw_class_count\":3896,\"resource_count\":3,\"load_duration_ms\":5415,\"decompile_timeout_ms\":90000,\"threads\":1,\"code_cache_size\":64,\"resources\":\"full\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "me.qiekj.jetpackmvvm.state.ResultStateKt"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"methods\":[{\"signature\":\"paresException(androidx.lifecycle.MutableLiveData, java.lang.Throwable): void\",\"dex_descriptor\":\"(Landroidx/lifecycle/MutableLiveData;Ljava/lang/Throwable;)V\",\"is_constructor\":false,\"name\":\"paresException\",\"def_pos\":0},{\"signature\":\"paresResult(androidx.lifecycle.MutableLiveData, java.lang.Object): void\",\"dex_descriptor\":\"(Landroidx/lifecycle/MutableLiveData;Ljava/lang/Object;)V\",\"is_constructor\":false,\"name\":\"paresResult\",\"def_pos\":0},{\"signature\":\"paresResult(androidx.lifecycle.MutableLiveData, me.qiekj.jetpackmvvm.network.BaseResponse): void\",\"dex_descriptor\":\"(Landroidx/lifecycle/MutableLiveData;Lme/qiekj/jetpackmvvm/network/BaseResponse;)V\",\"is_constructor\":false,\"name\":\"paresResult\",\"def_pos\":0}],\"fields\":[],\"field_count\":0,\"full_name\":\"me.qiekj.jetpackmvvm.state.ResultStateKt\",\"name\":\"ResultStateKt\",\"inner_classes\":[],\"inner_class_count\":0,\"method_count\":3}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "me.qiekj.jetpackmvvm.state.ResultStateKt",
+              "method_name": "paresResult",
+              "overload_index": 1,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"markers\":[],\"body\":\"/* JADX INFO: loaded from: classes4.dex */\\r\\npublic abstract class ResultStateKt {\\r\\n    public static final void paresResult(MutableLiveData mutableLiveData, BaseResponse result) {\\r\\n        ResultState resultStateOnAppError;\\r\\n        Intrinsics.checkNotNullParameter(mutableLiveData, \\\"\\u003cthis\\u003e\\\");\\r\\n        Intrinsics.checkNotNullParameter(result, \\\"result\\\");\\r\\n        if (result.isSucces()) {\\r\\n            resultStateOnAppError \\u003d ResultState.Companion.onAppSuccess(result.getResponseData());\\r\\n        } else if (result.getResponseCode() \\u003d\\u003d 126 || result.getResponseCode() \\u003d\\u003d 10) {\\r\\n            ToastUtils.showShort(result.getResponseMsg(), new Object[0]);\\r\\n            IModuleService service \\u003d ModuleServiceHolder.getService();\\r\\n            if (service !\\u003d null) {\\r\\n                service.clear();\\r\\n            }\\r\\n            IModuleService service2 \\u003d ModuleServiceHolder.getService();\\r\\n            if (service2 !\\u003d null) {\\r\\n                service2.openLogin(true);\\r\\n            }\\r\\n            resultStateOnAppError \\u003d ResultState.Companion.onAppError(new AppException(result.getResponseCode(), result.getResponseMsg(), null, 4, null));\\r\\n        } else {\\r\\n            ToastUtils.showShort(result.getResponseMsg(), new Object[0]);\\r\\n            resultStateOnAppError \\u003d ResultState.Companion.onAppError(new AppException(result.getResponseCode(), result.getResponseMsg(), null, 4, null));\\r\\n        }\\r\\n        mutableLiveData.setValue(resultStateOnAppError);\\r\\n    }\",\"mode\":\"java\",\"class_name\":\"me.qiekj.jetpackmvvm.state.ResultStateKt\",\"dex_descriptor\":\"(Landroidx/lifecycle/MutableLiveData;Lme/qiekj/jetpackmvvm/network/BaseResponse;)V\",\"overload_count\":2,\"method_name\":\"paresResult\",\"overload_index\":1,\"full_name\":\"me.qiekj.jetpackmvvm.state.ResultStateKt.paresResult\",\"fell_back\":false}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-7e05664d4d9cfca09795daeb3f3881ee\\target.apk",
+          "class_count": 3896,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "95c1e65b783bca6a78f3b830bff188d985583c1c3e308404d01d36b843537abc"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-errors-slice.apk",
+        "name": "panggui-errors-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_dff97156eb5430622ece26d9d143b3c2024ea80297b4230c1fa34d5571eeca02",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.hellobike.networking.http.core.HellobikeInterceptor",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "(Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;",
+          "is_constructor": false,
+          "name": "intercept",
+          "overload_index": 0,
+          "reported_signature": "intercept(okhttp3.Interceptor$Chain): okhttp3.Response"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "    /* JADX WARN: Code duplicated, block: B:18:0x004a  */\r\n    /* JADX WARN: Code duplicated, block: B:21:0x0055  */\r\n    /* JADX WARN: Code duplicated, block: B:23:0x005d  */\r\n    @NotNull\r\n    public Response intercept(@NotNull Interceptor.Chain chain) throws IOException {\r\n        Companion companion;\r\n        boolean z;\r\n        Intrinsics.checkNotNullParameter(chain, \"chain\");\r\n        StringBuilder sb2 = new StringBuilder(\"new Network http\");\r\n        long jCurrentTimeMillis = System.currentTimeMillis();\r\n        Request request = chain.request();\r\n        RequestBody requestBodyBody = request.body();\r\n        RequestBodyProxy requestBodyProxy = requestBodyBody instanceof RequestBodyProxy ? (RequestBodyProxy) requestBodyBody : null;\r\n        if (requestBodyProxy == null) {\r\n            Response responseProceed = chain.proceed(request);\r\n            Intrinsics.checkNotNullExpressionValue(responseProceed, \"chain.proceed(request)\");\r\n            return responseProceed;\r\n        }\r\n        Request.Builder builderNewBuilder = request.newBuilder();\r\n        String str = d;\r\n        if (str == null) {\r\n            companion = INSTANCE;\r\n            if (companion.d()) {\r\n                companion.c();\r\n            }\r\n        } else {\r\n            if (str == null) {\r\n                z = false;\r\n            } else if (str.length() > 0) {\r\n                z = true;\r\n            } else {\r\n                z = false;\r\n            }\r\n            if (z) {\r\n                builderNewBuilder.header(\"User-Agent\", d);\r\n            } else {\r\n                companion = INSTANCE;\r\n                if (companion.d()) {\r\n                    companion.c();\r\n                }\r\n            }\r\n        }\r\n        builderNewBuilder.header(\"inner_action\", String.valueOf(requestBodyProxy.getAction()));\r\n        builderNewBuilder.header(\"inner_start_time\", String.valueOf(jCurrentTimeMillis));\r\n        if (Intrinsics.areEqual(Config.INSTANCE.a(), Boolean.TRUE)) {\r\n            builderNewBuilder.header(\"inner_app_debug_mark\", \"1\");\r\n        }\r\n        String strP = ServerFingerprint.a.p();\r\n        if (strP != null) {\r\n            builderNewBuilder.header(\"hello_token\", strP);\r\n        }\r\n        if (requestBodyProxy.getNeedLogin()) {\r\n            String token = requestBodyProxy.getToken();\r\n            if (token == null || token.length() == 0) {\r\n                sb2.append(\"action -> \" + requestBodyProxy.getAction() + \" response -> 本地判断token无效或null token -> \" + requestBodyProxy.getToken());\r\n                HiLogger.c(\"NetClient\", sb2.toString());\r\n                Response responseBuild = new Response.Builder().protocol(Protocol.HTTP_1_1).header(\"inner_action\", String.valueOf(requestBodyProxy.getAction())).header(\"inner_start_time\", String.valueOf(jCurrentTimeMillis)).header(\"inner_call\", \"true\").body(ResponseBody.create(RequestBodyProxyKt.a(), JsonFactory.a().b(new HiResponse(-10003, \"登录失效\", null)))).request(request).message(\"登录失效\").code(200).build();\r\n                Intrinsics.checkNotNullExpressionValue(responseBuild, \"Builder()\\n              …\\n                .build()\");\r\n                return responseBuild;\r\n            }\r\n        }\r\n        if (requestBodyProxy.getSystemCode() != null) {\r\n            builderNewBuilder.header(\"systemCode\", FetchProxy.a.f().getSystemCode());\r\n        }\r\n        builderNewBuilder.post(requestBodyProxy);\r\n        String string = request.url().toString();\r\n        Intrinsics.checkNotNullExpressionValue(string, \"request.url().toString()\");\r\n        if ((string.length() == 0) || Intrinsics.areEqual(\"http://base/\", request.url().toString())) {\r\n            try {\r\n                builderNewBuilder.url(requestBodyProxy.getProvider().url());\r\n            } catch (Throwable th) {\r\n                TraceListener traceListener = FetchProxy.a.f().getTraceListener();\r\n                if (traceListener != null) {\r\n                    traceListener.onEvent(TraceListener.INSTANCE.a(), \"HellobikeInterceptor, networkprovider url is illegal: \" + requestBodyProxy.getProvider().url());\r\n                }\r\n                throw new IOException(th);\r\n            }\r\n        }\r\n        Request requestBuild = builderNewBuilder.build();\r\n        try {\r\n            sb2.append(\"url -> \" + requestBuild.url() + \" request -> \" + requestBodyProxy.getValue() + \" \\r\\n\");\r\n            Response.Builder builderNewBuilder2 = chain.proceed(requestBuild).newBuilder();\r\n            builderNewBuilder2.header(\"inner_action\", String.valueOf(requestBodyProxy.getAction()));\r\n            builderNewBuilder2.header(\"inner_start_time\", String.valueOf(jCurrentTimeMillis));\r\n            Response responseBuild2 = builderNewBuilder2.build();\r\n            ResponseBody responseBodyBody = responseBuild2.body();\r\n            String strString = responseBodyBody != null ? responseBodyBody.string() : null;\r\n            sb2.append(\"response code -> \" + responseBuild2.code() + \" response -> \" + strString);\r\n            Response.Builder builderNewBuilder3 = responseBuild2.newBuilder();\r\n            MediaType mediaTypeA = RequestBodyProxyKt.a();\r\n            if (strString == null) {\r\n                strString = BuildConfig.FLAVOR;\r\n            }\r\n            Response responseBuild3 = builderNewBuilder3.body(ResponseBody.create(mediaTypeA, strString)).build();\r\n            Intrinsics.checkNotNullExpressionValue(responseBuild3, \"resp.newBuilder().body(R…PE, content?:\\\"\\\")).build()\");\r\n            HiLogger.l(\"NetClient,HellobikeInterceptor\", sb2.toString());\r\n            return responseBuild3;\r\n        } catch (Throwable th2) {\r\n            try {\r\n                sb2.append(\"response -> exception \" + th2 + \", cause -> \" + th2.getCause() + \" , message -> \" + th2.getMessage());\r\n                NetworkingProvider provider = requestBodyProxy.getProvider();\r\n                String string2 = request.url().toString();\r\n                Intrinsics.checkNotNullExpressionValue(string2, \"request.url().toString()\");\r\n                provider.onUrlTestFailed(string2);\r\n                for (HttpCallListener httpCallListener : FetchProxy.a.g()) {\r\n                    if (httpCallListener != null) {\r\n                        httpCallListener.onException(requestBuild, null, requestBodyProxy.getProvider().url(), requestBodyProxy.getAction(), System.currentTimeMillis() - jCurrentTimeMillis, th2);\r\n                    }\r\n                }\r\n                if (th2 instanceof IOException) {\r\n                    throw th2;\r\n                }\r\n                throw new IOException(th2);\r\n            } catch (Throwable th3) {\r\n                HiLogger.l(\"NetClient,HellobikeInterceptor\", sb2.toString());\r\n                throw th3;\r\n            }\r\n        }\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.networking.http.core.HellobikeInterceptor",
+        "method_name": "intercept",
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\",\"engine_reported_version\":\"0.7.1\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.HellobikeInterceptor"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"name\":\"HellobikeInterceptor\",\"inner_classes\":[\"com.hellobike.networking.http.core.HellobikeInterceptor.Companion\"],\"inner_class_count\":1,\"method_count\":4,\"methods\":[{\"def_pos\":0,\"signature\":\"\\u003cclinit\\u003e(): void\",\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"\\u003cclinit\\u003e\"},{\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(boolean): void\",\"dex_descriptor\":\"(Z)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\"},{\"def_pos\":0,\"signature\":\"a(java.lang.String): void\",\"dex_descriptor\":\"(Ljava/lang/String;)V\",\"is_constructor\":false,\"name\":\"a\"},{\"def_pos\":0,\"signature\":\"intercept(okhttp3.Interceptor$Chain): okhttp3.Response\",\"dex_descriptor\":\"(Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;\",\"is_constructor\":false,\"name\":\"intercept\"}],\"fields\":[{\"type\":\"boolean\",\"name\":\"b\",\"def_pos\":0},{\"type\":\"com.hellobike.networking.http.core.HellobikeInterceptor$Companion\",\"name\":\"c\",\"def_pos\":0},{\"type\":\"java.lang.String\",\"name\":\"d\",\"def_pos\":0}],\"field_count\":3,\"full_name\":\"com.hellobike.networking.http.core.HellobikeInterceptor\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.hellobike.networking.http.core.HellobikeInterceptor",
+              "method_name": "intercept",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"dex_descriptor\":\"(Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;\",\"overload_count\":1,\"method_name\":\"intercept\",\"overload_index\":0,\"full_name\":\"com.hellobike.networking.http.core.HellobikeInterceptor.intercept\",\"fell_back\":false,\"markers\":[],\"body\":\"    /* JADX WARN: Code duplicated, block: B:18:0x004a  */\\r\\n    /* JADX WARN: Code duplicated, block: B:21:0x0055  */\\r\\n    /* JADX WARN: Code duplicated, block: B:23:0x005d  */\\r\\n    @NotNull\\r\\n    public Response intercept(@NotNull Interceptor.Chain chain) throws IOException {\\r\\n        Companion companion;\\r\\n        boolean z;\\r\\n        Intrinsics.checkNotNullParameter(chain, \\\"chain\\\");\\r\\n        StringBuilder sb2 \\u003d new StringBuilder(\\\"new Network http\\\");\\r\\n        long jCurrentTimeMillis \\u003d System.currentTimeMillis();\\r\\n        Request request \\u003d chain.request();\\r\\n        RequestBody requestBodyBody \\u003d request.body();\\r\\n        RequestBodyProxy requestBodyProxy \\u003d requestBodyBody instanceof RequestBodyProxy ? (RequestBodyProxy) requestBodyBody : null;\\r\\n        if (requestBodyProxy \\u003d\\u003d null) {\\r\\n            Response responseProceed \\u003d chain.proceed(request);\\r\\n            Intrinsics.checkNotNullExpressionValue(responseProceed, \\\"chain.proceed(request)\\\");\\r\\n            return responseProceed;\\r\\n        }\\r\\n        Request.Builder builderNewBuilder \\u003d request.newBuilder();\\r\\n        String str \\u003d d;\\r\\n        if (str \\u003d\\u003d null) {\\r\\n            companion \\u003d INSTANCE;\\r\\n            if (companion.d()) {\\r\\n                companion.c();\\r\\n            }\\r\\n        } else {\\r\\n            if (str \\u003d\\u003d null) {\\r\\n                z \\u003d false;\\r\\n            } else if (str.length() \\u003e 0) {\\r\\n                z \\u003d true;\\r\\n            } else {\\r\\n                z \\u003d false;\\r\\n            }\\r\\n            if (z) {\\r\\n                builderNewBuilder.header(\\\"User-Agent\\\", d);\\r\\n            } else {\\r\\n                companion \\u003d INSTANCE;\\r\\n                if (companion.d()) {\\r\\n                    companion.c();\\r\\n                }\\r\\n            }\\r\\n        }\\r\\n        builderNewBuilder.header(\\\"inner_action\\\", String.valueOf(requestBodyProxy.getAction()));\\r\\n        builderNewBuilder.header(\\\"inner_start_time\\\", String.valueOf(jCurrentTimeMillis));\\r\\n        if (Intrinsics.areEqual(Config.INSTANCE.a(), Boolean.TRUE)) {\\r\\n            builderNewBuilder.header(\\\"inner_app_debug_mark\\\", \\\"1\\\");\\r\\n        }\\r\\n        String strP \\u003d ServerFingerprint.a.p();\\r\\n        if (strP !\\u003d null) {\\r\\n            builderNewBuilder.header(\\\"hello_token\\\", strP);\\r\\n        }\\r\\n        if (requestBodyProxy.getNeedLogin()) {\\r\\n            String token \\u003d requestBodyProxy.getToken();\\r\\n            if (token \\u003d\\u003d null || token.length() \\u003d\\u003d 0) {\\r\\n                sb2.append(\\\"action -\\u003e \\\" + requestBodyProxy.getAction() + \\\" response -\\u003e 本地判断token无效或null token -\\u003e \\\" + requestBodyProxy.getToken());\\r\\n                HiLogger.c(\\\"NetClient\\\", sb2.toString());\\r\\n                Response responseBuild \\u003d new Response.Builder().protocol(Protocol.HTTP_1_1).header(\\\"inner_action\\\", String.valueOf(requestBodyProxy.getAction())).header(\\\"inner_start_time\\\", String.valueOf(jCurrentTimeMillis)).header(\\\"inner_call\\\", \\\"true\\\").body(ResponseBody.create(RequestBodyProxyKt.a(), JsonFactory.a().b(new HiResponse(-10003, \\\"登录失效\\\", null)))).request(request).message(\\\"登录失效\\\").code(200).build();\\r\\n                Intrinsics.checkNotNullExpressionValue(responseBuild, \\\"Builder()\\\\n              …\\\\n                .build()\\\");\\r\\n                return responseBuild;\\r\\n            }\\r\\n        }\\r\\n        if (requestBodyProxy.getSystemCode() !\\u003d null) {\\r\\n            builderNewBuilder.header(\\\"systemCode\\\", FetchProxy.a.f().getSystemCode());\\r\\n        }\\r\\n        builderNewBuilder.post(requestBodyProxy);\\r\\n        String string \\u003d request.url().toString();\\r\\n        Intrinsics.checkNotNullExpressionValue(string, \\\"request.url().toString()\\\");\\r\\n        if ((string.length() \\u003d\\u003d 0) || Intrinsics.areEqual(\\\"http://base/\\\", request.url().toString())) {\\r\\n            try {\\r\\n                builderNewBuilder.url(requestBodyProxy.getProvider().url());\\r\\n            } catch (Throwable th) {\\r\\n                TraceListener traceListener \\u003d FetchProxy.a.f().getTraceListener();\\r\\n                if (traceListener !\\u003d null) {\\r\\n                    traceListener.onEvent(TraceListener.INSTANCE.a(), \\\"HellobikeInterceptor, networkprovider url is illegal: \\\" + requestBodyProxy.getProvider().url());\\r\\n                }\\r\\n                throw new IOException(th);\\r\\n            }\\r\\n        }\\r\\n        Request requestBuild \\u003d builderNewBuilder.build();\\r\\n        try {\\r\\n            sb2.append(\\\"url -\\u003e \\\" + requestBuild.url() + \\\" request -\\u003e \\\" + requestBodyProxy.getValue() + \\\" \\\\r\\\\n\\\");\\r\\n            Response.Builder builderNewBuilder2 \\u003d chain.proceed(requestBuild).newBuilder();\\r\\n            builderNewBuilder2.header(\\\"inner_action\\\", String.valueOf(requestBodyProxy.getAction()));\\r\\n            builderNewBuilder2.header(\\\"inner_start_time\\\", String.valueOf(jCurrentTimeMillis));\\r\\n            Response responseBuild2 \\u003d builderNewBuilder2.build();\\r\\n            ResponseBody responseBodyBody \\u003d responseBuild2.body();\\r\\n            String strString \\u003d responseBodyBody !\\u003d null ? responseBodyBody.string() : null;\\r\\n            sb2.append(\\\"response code -\\u003e \\\" + responseBuild2.code() + \\\" response -\\u003e \\\" + strString);\\r\\n            Response.Builder builderNewBuilder3 \\u003d responseBuild2.newBuilder();\\r\\n            MediaType mediaTypeA \\u003d RequestBodyProxyKt.a();\\r\\n            if (strString \\u003d\\u003d null) {\\r\\n                strString \\u003d BuildConfig.FLAVOR;\\r\\n            }\\r\\n            Response responseBuild3 \\u003d builderNewBuilder3.body(ResponseBody.create(mediaTypeA, strString)).build();\\r\\n            Intrinsics.checkNotNullExpressionValue(responseBuild3, \\\"resp.newBuilder().body(R…PE, content?:\\\\\\\"\\\\\\\")).build()\\\");\\r\\n            HiLogger.l(\\\"NetClient,HellobikeInterceptor\\\", sb2.toString());\\r\\n            return responseBuild3;\\r\\n        } catch (Throwable th2) {\\r\\n            try {\\r\\n                sb2.append(\\\"response -\\u003e exception \\\" + th2 + \\\", cause -\\u003e \\\" + th2.getCause() + \\\" , message -\\u003e \\\" + th2.getMessage());\\r\\n                NetworkingProvider provider \\u003d requestBodyProxy.getProvider();\\r\\n                String string2 \\u003d request.url().toString();\\r\\n                Intrinsics.checkNotNullExpressionValue(string2, \\\"request.url().toString()\\\");\\r\\n                provider.onUrlTestFailed(string2);\\r\\n                for (HttpCallListener httpCallListener : FetchProxy.a.g()) {\\r\\n                    if (httpCallListener !\\u003d null) {\\r\\n                        httpCallListener.onException(requestBuild, null, requestBodyProxy.getProvider().url(), requestBodyProxy.getAction(), System.currentTimeMillis() - jCurrentTimeMillis, th2);\\r\\n                    }\\r\\n                }\\r\\n                if (th2 instanceof IOException) {\\r\\n                    throw th2;\\r\\n                }\\r\\n                throw new IOException(th2);\\r\\n            } catch (Throwable th3) {\\r\\n                HiLogger.l(\\\"NetClient,HellobikeInterceptor\\\", sb2.toString());\\r\\n                throw th3;\\r\\n            }\\r\\n        }\\r\\n    }\",\"mode\":\"java\",\"class_name\":\"com.hellobike.networking.http.core.HellobikeInterceptor\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-0e5db35b09cf2247c0b9a84663d789bf\\target.apk",
+          "class_count": 4280,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "e8ffbc8c903c2bec2b2e4783f4a711d2ed1b5c555893a41996b7c4134a4a13f1"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\hellobike-network-slice.apk",
+        "name": "hellobike-network-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_e26ca8d204a05ce909a84a515eeec8f65af696b9fe33de1f11154ef9dd3e3aca",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.qiekj.user.base.ApiResponse",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "()Z",
+          "is_constructor": false,
+          "name": "isSucces",
+          "overload_index": 0,
+          "reported_signature": "isSucces(): boolean"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "    public boolean isSucces() {\r\n        return this.code == 0;\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.qiekj.user.base.ApiResponse",
+        "method_name": "isSucces",
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-network-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"engine_reported_version\":\"0.7.1\",\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.qiekj.user.base.ApiResponse"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"fields\":[{\"def_pos\":0,\"type\":\"kotlinx.serialization.descriptors.SerialDescriptor\",\"name\":\"$cachedDescriptor\"},{\"def_pos\":0,\"type\":\"int\",\"name\":\"$stable\"},{\"def_pos\":0,\"type\":\"com.qiekj.user.base.ApiResponse$Companion\",\"name\":\"Companion\"},{\"def_pos\":0,\"type\":\"int\",\"name\":\"code\"},{\"def_pos\":0,\"type\":\"T\",\"name\":\"data\"},{\"def_pos\":0,\"type\":\"java.lang.String\",\"name\":\"msg\"},{\"def_pos\":0,\"type\":\"long\",\"name\":\"t\"}],\"field_count\":7,\"full_name\":\"com.qiekj.user.base.ApiResponse\",\"name\":\"ApiResponse\",\"inner_classes\":[\"com.qiekj.user.base.ApiResponse.Companion\"],\"inner_class_count\":1,\"method_count\":22,\"methods\":[{\"is_constructor\":false,\"name\":\"\\u003cclinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cclinit\\u003e(): void\",\"dex_descriptor\":\"()V\"},{\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, int, java.lang.String, java.lang.Object, long, kotlinx.serialization.internal.SerializationConstructorMarker): void\",\"dex_descriptor\":\"(IILjava/lang/String;Ljava/lang/Object;JLkotlinx/serialization/internal/SerializationConstructorMarker;)V\"},{\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, T, long): void\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;J)V\"},{\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, java.lang.Object, long, int, kotlin.jvm.internal.DefaultConstructorMarker): void\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;JILkotlin/jvm/internal/DefaultConstructorMarker;)V\"},{\"is_constructor\":false,\"name\":\"component1\",\"def_pos\":0,\"signature\":\"component1(): int\",\"dex_descriptor\":\"()I\"},{\"is_constructor\":false,\"name\":\"component2\",\"def_pos\":0,\"signature\":\"component2(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"is_constructor\":false,\"name\":\"component3\",\"def_pos\":0,\"signature\":\"component3(): T\",\"dex_descriptor\":\"()Ljava/lang/Object;\"},{\"is_constructor\":false,\"name\":\"component4\",\"def_pos\":0,\"signature\":\"component4(): long\",\"dex_descriptor\":\"()J\"},{\"is_constructor\":false,\"name\":\"copy\",\"def_pos\":0,\"signature\":\"copy(int, java.lang.String, T, long): com.qiekj.user.base.ApiResponse\\u003cT\\u003e\",\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;J)Lcom/qiekj/user/base/ApiResponse;\"},{\"is_constructor\":false,\"name\":\"copy$default\",\"def_pos\":0,\"signature\":\"copy$default(com.qiekj.user.base.ApiResponse, int, java.lang.String, java.lang.Object, long, int, java.lang.Object): com.qiekj.user.base.ApiResponse\",\"dex_descriptor\":\"(Lcom/qiekj/user/base/ApiResponse;ILjava/lang/String;Ljava/lang/Object;JILjava/lang/Object;)Lcom/qiekj/user/base/ApiResponse;\"},{\"is_constructor\":false,\"name\":\"equals\",\"def_pos\":0,\"signature\":\"equals(java.lang.Object): boolean\",\"dex_descriptor\":\"(Ljava/lang/Object;)Z\"},{\"is_constructor\":false,\"name\":\"getCode\",\"def_pos\":0,\"signature\":\"getCode(): int\",\"dex_descriptor\":\"()I\"},{\"is_constructor\":false,\"name\":\"getData\",\"def_pos\":0,\"signature\":\"getData(): T\",\"dex_descriptor\":\"()Ljava/lang/Object;\"},{\"is_constructor\":false,\"name\":\"getMsg\",\"def_pos\":0,\"signature\":\"getMsg(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"is_constructor\":false,\"name\":\"getResponseCode\",\"def_pos\":0,\"signature\":\"getResponseCode(): int\",\"dex_descriptor\":\"()I\"},{\"is_constructor\":false,\"name\":\"getResponseData\",\"def_pos\":0,\"signature\":\"getResponseData(): T\",\"dex_descriptor\":\"()Ljava/lang/Object;\"},{\"is_constructor\":false,\"name\":\"getResponseMsg\",\"def_pos\":0,\"signature\":\"getResponseMsg(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"is_constructor\":false,\"name\":\"getT\",\"def_pos\":0,\"signature\":\"getT(): long\",\"dex_descriptor\":\"()J\"},{\"is_constructor\":false,\"name\":\"hashCode\",\"def_pos\":0,\"signature\":\"hashCode(): int\",\"dex_descriptor\":\"()I\"},{\"is_constructor\":false,\"name\":\"isSucces\",\"def_pos\":0,\"signature\":\"isSucces(): boolean\",\"dex_descriptor\":\"()Z\"},{\"is_constructor\":false,\"name\":\"toString\",\"def_pos\":0,\"signature\":\"toString(): java.lang.String\",\"dex_descriptor\":\"()Ljava/lang/String;\"},{\"is_constructor\":false,\"name\":\"write$Self$app_product\",\"def_pos\":0,\"signature\":\"write$Self$app_product(com.qiekj.user.base.ApiResponse, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor, kotlinx.serialization.KSerializer): void\",\"dex_descriptor\":\"(Lcom/qiekj/user/base/ApiResponse;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlinx/serialization/KSerializer;)V\"}]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.qiekj.user.base.ApiResponse",
+              "method_name": "isSucces",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"mode\":\"java\",\"class_name\":\"com.qiekj.user.base.ApiResponse\",\"dex_descriptor\":\"()Z\",\"overload_count\":1,\"method_name\":\"isSucces\",\"overload_index\":0,\"full_name\":\"com.qiekj.user.base.ApiResponse.isSucces\",\"fell_back\":false,\"markers\":[],\"body\":\"    public boolean isSucces() {\\r\\n        return this.code \\u003d\\u003d 0;\\r\\n    }\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-03672287b081962dfd17db5e365e1c9a\\target.apk",
+          "class_count": 2499,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "e68af7931ba000dc2016a5eb179597cea2679dc177be248e90d3e3a53e5b935c"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-network-slice.apk",
+        "name": "panggui-network-slice.apk"
+      }
+    },
+    {
+      "analysis_profile": null,
+      "authority": "shipped-artifact",
+      "confidence": "derived",
+      "environment": null,
+      "evidence_id": "ev_242b3dc371a4bbe47c2eaa718351b43e043d8e382156ee90dc5a464a89d9b6b2",
+      "evidence_links": [],
+      "limitations": [
+        "Static decompiler observations do not establish runtime behavior; the APK is never executed.",
+        "Method signatures use provider display types; DEX prototypes come from frozen JADX metadata. Display names may be aliases, and overload indices are local to this engine and artifact.",
+        "Class inventories use parsed metadata before code generation, including synthetic members that may be omitted from decompiled source. Source positions remain unknown.",
+        "Incoming reference totals count JADX using nodes. Direct invoke entries within a using method report raw DEX code-unit offsets and method indexes, but coverage is limited to those nodes and directly matched invokes; it does not establish every possible dynamic or reflective call site.",
+        "Manifest summary fields are extracted by the upstream engine; decoded XML is retained for verification. APK signatures, split APKs, native libraries and Android runtime capture are not verified by this provider."
+      ],
+      "locations": [],
+      "normalized_result": {
+        "body_status": "available",
+        "class_name": "com.qiekj.user.base.ApiResponse",
+        "engine": {
+          "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+          "heap_limit_mib": 3886,
+          "name": "jadx-headless-mcp",
+          "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+          "version": "0.7.1",
+          "worker_count": 1
+        },
+        "fell_back": false,
+        "markers": [],
+        "method": {
+          "dex_descriptor": "()I",
+          "is_constructor": false,
+          "name": "getResponseCode",
+          "overload_index": 0,
+          "reported_signature": "getResponseCode(): int"
+        },
+        "overload_count": 1,
+        "representation": "java",
+        "source": {
+          "reported_total_bytes": null,
+          "status": "complete",
+          "text": "    public int getResponseCode() {\r\n        return this.code;\r\n    }"
+        }
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.qiekj.user.base.ApiResponse",
+        "method_name": "getResponseCode",
+        "path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-network-slice.apk"
+      },
+      "predicate_type": "rea.analysis",
+      "provider": {
+        "id": "jadx",
+        "name": "JADX headless",
+        "version": "0.7.1"
+      },
+      "raw_result": {
+        "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+        "calls": [
+          {
+            "input": {},
+            "operation": "rea_jvm_status",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"engine_reported_version\":\"0.7.1\",\"available_processors\":16,\"java_version\":\"21.0.10\",\"max_heap_bytes\":4074766336,\"metadata_scope\":\"parsed_members\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-189b11344a4d26ca1a854080d2042158\\target.apk",
+              "resources": "full",
+              "threads": 1
+            },
+            "operation": "load_apk",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"state\":\"LOADED\",\"apk_path\":\"C:\\\\Users\\\\mercu\\\\AppData\\\\Local\\\\Temp\\\\rea-android-189b11344a4d26ca1a854080d2042158\\\\target.apk\",\"class_count\":2499,\"raw_class_count\":2499,\"resource_count\":3,\"load_duration_ms\":4127,\"decompile_timeout_ms\":90000,\"threads\":1,\"code_cache_size\":64,\"resources\":\"full\"}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.qiekj.user.base.ApiResponse"
+            },
+            "operation": "get_class_summary",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"fields\":[{\"name\":\"$cachedDescriptor\",\"def_pos\":0,\"type\":\"kotlinx.serialization.descriptors.SerialDescriptor\"},{\"name\":\"$stable\",\"def_pos\":0,\"type\":\"int\"},{\"name\":\"Companion\",\"def_pos\":0,\"type\":\"com.qiekj.user.base.ApiResponse$Companion\"},{\"name\":\"code\",\"def_pos\":0,\"type\":\"int\"},{\"name\":\"data\",\"def_pos\":0,\"type\":\"T\"},{\"name\":\"msg\",\"def_pos\":0,\"type\":\"java.lang.String\"},{\"name\":\"t\",\"def_pos\":0,\"type\":\"long\"}],\"field_count\":7,\"full_name\":\"com.qiekj.user.base.ApiResponse\",\"name\":\"ApiResponse\",\"inner_classes\":[\"com.qiekj.user.base.ApiResponse.Companion\"],\"inner_class_count\":1,\"method_count\":22,\"methods\":[{\"dex_descriptor\":\"()V\",\"is_constructor\":false,\"name\":\"\\u003cclinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cclinit\\u003e(): void\"},{\"dex_descriptor\":\"(IILjava/lang/String;Ljava/lang/Object;JLkotlinx/serialization/internal/SerializationConstructorMarker;)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, int, java.lang.String, java.lang.Object, long, kotlinx.serialization.internal.SerializationConstructorMarker): void\"},{\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;J)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, T, long): void\"},{\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;JILkotlin/jvm/internal/DefaultConstructorMarker;)V\",\"is_constructor\":true,\"name\":\"\\u003cinit\\u003e\",\"def_pos\":0,\"signature\":\"\\u003cinit\\u003e(int, java.lang.String, java.lang.Object, long, int, kotlin.jvm.internal.DefaultConstructorMarker): void\"},{\"dex_descriptor\":\"()I\",\"is_constructor\":false,\"name\":\"component1\",\"def_pos\":0,\"signature\":\"component1(): int\"},{\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"component2\",\"def_pos\":0,\"signature\":\"component2(): java.lang.String\"},{\"dex_descriptor\":\"()Ljava/lang/Object;\",\"is_constructor\":false,\"name\":\"component3\",\"def_pos\":0,\"signature\":\"component3(): T\"},{\"dex_descriptor\":\"()J\",\"is_constructor\":false,\"name\":\"component4\",\"def_pos\":0,\"signature\":\"component4(): long\"},{\"dex_descriptor\":\"(ILjava/lang/String;Ljava/lang/Object;J)Lcom/qiekj/user/base/ApiResponse;\",\"is_constructor\":false,\"name\":\"copy\",\"def_pos\":0,\"signature\":\"copy(int, java.lang.String, T, long): com.qiekj.user.base.ApiResponse\\u003cT\\u003e\"},{\"dex_descriptor\":\"(Lcom/qiekj/user/base/ApiResponse;ILjava/lang/String;Ljava/lang/Object;JILjava/lang/Object;)Lcom/qiekj/user/base/ApiResponse;\",\"is_constructor\":false,\"name\":\"copy$default\",\"def_pos\":0,\"signature\":\"copy$default(com.qiekj.user.base.ApiResponse, int, java.lang.String, java.lang.Object, long, int, java.lang.Object): com.qiekj.user.base.ApiResponse\"},{\"dex_descriptor\":\"(Ljava/lang/Object;)Z\",\"is_constructor\":false,\"name\":\"equals\",\"def_pos\":0,\"signature\":\"equals(java.lang.Object): boolean\"},{\"dex_descriptor\":\"()I\",\"is_constructor\":false,\"name\":\"getCode\",\"def_pos\":0,\"signature\":\"getCode(): int\"},{\"dex_descriptor\":\"()Ljava/lang/Object;\",\"is_constructor\":false,\"name\":\"getData\",\"def_pos\":0,\"signature\":\"getData(): T\"},{\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"getMsg\",\"def_pos\":0,\"signature\":\"getMsg(): java.lang.String\"},{\"dex_descriptor\":\"()I\",\"is_constructor\":false,\"name\":\"getResponseCode\",\"def_pos\":0,\"signature\":\"getResponseCode(): int\"},{\"dex_descriptor\":\"()Ljava/lang/Object;\",\"is_constructor\":false,\"name\":\"getResponseData\",\"def_pos\":0,\"signature\":\"getResponseData(): T\"},{\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"getResponseMsg\",\"def_pos\":0,\"signature\":\"getResponseMsg(): java.lang.String\"},{\"dex_descriptor\":\"()J\",\"is_constructor\":false,\"name\":\"getT\",\"def_pos\":0,\"signature\":\"getT(): long\"},{\"dex_descriptor\":\"()I\",\"is_constructor\":false,\"name\":\"hashCode\",\"def_pos\":0,\"signature\":\"hashCode(): int\"},{\"dex_descriptor\":\"()Z\",\"is_constructor\":false,\"name\":\"isSucces\",\"def_pos\":0,\"signature\":\"isSucces(): boolean\"},{\"dex_descriptor\":\"()Ljava/lang/String;\",\"is_constructor\":false,\"name\":\"toString\",\"def_pos\":0,\"signature\":\"toString(): java.lang.String\"},{\"dex_descriptor\":\"(Lcom/qiekj/user/base/ApiResponse;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlinx/serialization/KSerializer;)V\",\"is_constructor\":false,\"name\":\"write$Self$app_product\",\"def_pos\":0,\"signature\":\"write$Self$app_product(com.qiekj.user.base.ApiResponse, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor, kotlinx.serialization.KSerializer): void\"}]}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          },
+          {
+            "input": {
+              "class_name": "com.qiekj.user.base.ApiResponse",
+              "method_name": "getResponseCode",
+              "overload_index": 0,
+              "smali_fallback": true
+            },
+            "operation": "get_method_body",
+            "response": {
+              "content": [
+                {
+                  "text": "{\"markers\":[],\"body\":\"    public int getResponseCode() {\\r\\n        return this.code;\\r\\n    }\",\"mode\":\"java\",\"class_name\":\"com.qiekj.user.base.ApiResponse\",\"dex_descriptor\":\"()I\",\"overload_count\":1,\"method_name\":\"getResponseCode\",\"overload_index\":0,\"full_name\":\"com.qiekj.user.base.ApiResponse.getResponseCode\",\"fell_back\":false}",
+                  "type": "text"
+                }
+              ],
+              "isError": false
+            }
+          }
+        ],
+        "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "loaded": {
+          "apk_path": "C:\\Users\\mercu\\AppData\\Local\\Temp\\rea-android-189b11344a4d26ca1a854080d2042158\\target.apk",
+          "class_count": 2499,
+          "resource_count": 3,
+          "resources": "full",
+          "state": "LOADED",
+          "threads": 1
+        },
+        "server": {
+          "name": "rea-jadx-bridge",
+          "version": "4"
+        }
+      },
+      "relationship_coverage": null,
+      "subject": {
+        "architecture": null,
+        "digest": {
+          "sha256": "e68af7931ba000dc2016a5eb179597cea2679dc177be248e90d3e3a53e5b935c"
+        },
+        "format": "apk",
+        "local_path": "D:\\mercu\\Desktop\\yktwx\\tools\\life-auth-audit\\panggui-network-slice.apk",
+        "name": "panggui-network-slice.apk"
+      }
+    }
+  ]
+}

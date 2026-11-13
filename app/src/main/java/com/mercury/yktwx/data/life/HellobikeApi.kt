@@ -125,7 +125,8 @@ class HellobikeApi internal constructor(
             val code = envelope.hbInt("code")
             val resultStatus = envelope.hbInt("resultStatus").takeIf { action.startsWith("com.alphapay.") }
             val message = HellobikeProtocol.clean(envelope.hbText("msg") ?: envelope.hbText("resultMessage") ?: "哈啰未接受本次请求，请稍后重试")
-            if (code == -10003) throw HellobikeException(message, loginExpired = true, rejected = true)
+            // Official 7.0.75 HiResponse.isTokenError(); see docs/life-login-expiry-evidence.md.
+            if (code in setOf(103, -10003)) throw HellobikeException(message, loginExpired = true, rejected = true)
             if (!response.isSuccessful) throw HellobikeException(message, rejected = true)
             if (action == "user.tw.ride.check" && code == 301) return@readResponse jsonObjectOf("_noRide" to true)
             if (code == null && resultStatus == null)

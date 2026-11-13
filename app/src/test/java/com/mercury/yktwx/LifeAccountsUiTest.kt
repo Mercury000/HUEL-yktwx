@@ -4,6 +4,7 @@ import com.mercury.yktwx.data.appPreferencesRepositoryFixture
 import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.ViewModelStore
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -29,8 +30,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
+import com.mercury.yktwx.analytics.AnalyticsFixtures
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.fixtureHttp
+import com.mercury.yktwx.data.fixtureLifeDeviceApi
+import com.mercury.yktwx.data.fixtureHui798Api
+import kotlinx.coroutines.Dispatchers
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.File
+import java.io.ByteArrayInputStream
+import java.net.URL
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp-mdpi")
@@ -38,14 +47,72 @@ import java.io.File
 class LifeAccountsUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val preferences = com.mercury.yktwx.data.MemoryPreferences()
+    private val models = ViewModelStore()
     private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
     private fun settings() = themeSettingsFixture(appPreferencesRepositoryFixture(
         preferences, preferenceScope))
-    @After fun cleanupPreferences() { preferenceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
+    @After fun cleanupPreferences() { models.clear(); preferenceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
     private fun capture(name: String) {
         val file = File("../tools/life-accounts-ui/$name.png").absoluteFile
         file.parentFile?.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun officialExpiryResponsesShowAllLoginBannersAndExpiredSettingsRatherThanCheckFailure() {
+        fun reply(url: URL, code: Int) = object : HttpFixture(url) {
+            override fun bodyStream() = ByteArrayInputStream("""{"code":$code,"msg":"登录信息已失效，请重新登录"}""".toByteArray())
+        }
+        val pgStore = LifeDeviceAccountStore(BikeRecords()).apply { saveAccount(LifeAccount(fixtureBikeAccount.phone, "test-token")) }
+        val huiStore = Hui798AccountStore(BikeRecords()).apply { saveAccount(Hui798Account(fixtureBikeAccount.phone, "test-token", "test-user")) }
+        val bikeStore = BikeRecords().store()
+        val app = compose.activity.application
+        val pg = lifeDevicesViewModelFixture(app, fixtureLifeDeviceApi("test-secret", { reply(it, 126) }), pgStore, Dispatchers.Unconfined)
+            .also { models.put("pg", it) }
+        val hui = hui798ViewModelFixture(app, fixtureHui798Api("https://fixture.invalid/api", "test-salt", { reply(it, -99) }), huiStore, Dispatchers.Unconfined)
+            .also { models.put("hui", it) }
+        val bike = HellobikeViewModel(HellobikeApi(fixtureHttp { reply(it, 103) }), bikeStore, FakeBikeLocation(),
+            io = Dispatchers.Unconfined, analytics = AnalyticsFixtures.from(app)).also { models.put("bike", it) }
+        val settings = settings()
+        var showSettings by mutableStateOf(false)
+        var login: LifeProvider? = null
+        compose.setContent {
+            val pgState by pg.state.collectAsState()
+            val huiState by hui.state.collectAsState()
+            val bikeState by bike.state.collectAsState()
+            val pgConnection by pg.accountConnection.collectAsState()
+            val huiConnection by hui.accountConnection.collectAsState()
+            val bikeConnection by bike.accountConnection.collectAsState()
+            LaunchedEffect(Unit) { bike.initialize(preview = false); bike.environment(true) }
+            if (showSettings) SettingsFixture(listOf(
+                ManagedLifeAccount(LifeProvider.Panggui, pgConnection),
+                ManagedLifeAccount(LifeProvider.Hui798, huiConnection),
+                ManagedLifeAccount(LifeProvider.Hellobike, bikeConnection)), onLogin = { login = it })
+            else CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
+                        lifeLoginRequired = !pgState.restoring && pgState.connectedPhone.isBlank(),
+                        hui798LoginRequired = !huiState.restoring && !huiState.connected,
+                        hellobikeLoginRequired = !bikeState.restoring && !bikeState.connected,
+                        onHellobikeLogin = { login = LifeProvider.Hellobike })
+                }
+            }
+        }
+        compose.waitUntil(10_000) { listOf(pg.accountConnection.value, hui.accountConnection.value, bike.accountConnection.value)
+            .all { it.status == LifeAccountStatus.Expired } }
+        compose.onNodeWithTag("life-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-login-notice").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(LifeProvider.Hellobike, login)
+            assertNull(pgStore.account()); assertNull(huiStore.account()); assertNull(bikeStore.load().account)
+            assertFalse(pg.state.value.loginVisible); assertFalse(hui.state.value.loginVisible); assertFalse(bike.state.value.loginVisible)
+            login = null; showSettings = true
+        }
+        compose.onAllNodesWithText("登录失效").assertCountEquals(3)
+        compose.onNodeWithText("检查失败").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-account-row").performClick()
+        compose.runOnIdle { assertEquals(LifeProvider.Hellobike, login) }
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
     }
 
     @Test fun paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable() {

@@ -203,11 +203,13 @@ class HellobikeApiTest {
         assertEquals(fixtureBikeSession.bikeNo, ride.bikeNo)
         assertEquals(-1, ride.status)
     }
-    @Test fun onlyOfficialExpiryCodeExpiresLoginAndCloudRejectionsKeepTheirMessage() = runBlocking {
-        for (code in listOf(-10003, 401, 403)) {
+    @Test fun onlyOfficialExpiryCodesExpireLoginAndCloudRejectionsKeepTheirMessage() = runBlocking {
+        for (code in listOf(103, -10003, 401, 403)) {
             try { api("""{"code":$code,"msg":"服务端提示"}""").checkRide(fixtureBikeAccount); fail() }
-            catch (e: HellobikeException) { assertEquals(code == -10003, e.loginExpired); assertEquals("服务端提示", e.message) }
+            catch (e: HellobikeException) { assertEquals(code in setOf(103, -10003), e.loginExpired); assertEquals("服务端提示", e.message) }
         }
+        try { api("""{"code":7,"msg":"登录信息已失效，请重新登录"}""").checkRide(fixtureBikeAccount); fail() }
+        catch (e: HellobikeException) { assertFalse(e.loginExpired); assertEquals("登录信息已失效，请重新登录", e.message) }
         try { api("""{"code":403,"msg":"请求未被允许"}""", httpStatus = 403).checkRide(fixtureBikeAccount); fail() }
         catch (e: HellobikeException) { assertFalse(e.loginExpired); assertEquals("请求未被允许", e.message) }
     }

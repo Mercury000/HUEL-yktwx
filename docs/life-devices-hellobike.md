@@ -38,7 +38,7 @@
 
 本次 APK 的 SHA-256 为 `7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b`。REA 使用逐字节保留原 DEX 的分析切片，未执行 APK。原生登录版本为7.0.75；当日公开 `https://m.hellobike.com/AppHelloMiniBrand/latest/index.html` 及脚本的 H5 版本为7.0.70，两者分别使用，不假定一致。本次补查的类／方法、Evidence ID、原始DEX一致性、Walle渠道字节偏移及官方H5 URL／哈希／摘录见[协议补查依据](hellobike-protocol-audit.json)，历史分析归档保留原始观察，不作为修正后字段的最新定义。
 
-原生 `InitClientTask.getClientId` 调初始化接口后保存服务器返回的 clientId；`ClientIdUtils.a` 尚未取得该值时返回空字符串。当前没有完整接入该设备初始化链路，登录使用已确认的空值回退，不再随机生成或发送旧的本地 UUID。静态依据不保证服务端接受空值；若云端拒绝，保留云端提示。登录失效仅按已确认的业务码 `-10003` 处理，HTTP／业务401、403不再自行判定为登录过期。
+原生 `InitClientTask.getClientId` 调初始化接口后保存服务器返回的 clientId；`ClientIdUtils.a` 尚未取得该值时返回空字符串。当前没有完整接入该设备初始化链路，登录使用已确认的空值回退，不再随机生成或发送旧的本地 UUID。静态依据不保证服务端接受空值；若云端拒绝，保留云端提示。登录失效按官方 `HiResponse.isTokenError()` 确认的业务码 `103`、`-10003` 处理，HTTP／业务401、403及提示文案不用于推断登录过期。原始方法与调用分支见[登录失效核验证据](life-login-expiry-evidence.md)。
 
 其他依据：[初始评估](hellobike-integration-assessment.md)、[支付分析](hellobike-payment-analysis.md)、[接入补证](hellobike-integration-evidence.md)、[还车与付款模型](hellobike-implementation-evidence.json)、[还车类型](hellobike-close-type-evidence.json)、[付款查询模型](hellobike-payment-query-evidence.json)。Evidence 的静态覆盖范围与限制保留在对应归档中。
 
