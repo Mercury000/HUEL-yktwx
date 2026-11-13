@@ -140,7 +140,7 @@ class LifeDevicesViewModel internal constructor(
     private val accountVerifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: LifeAccount ->
         val profile = (api as? LifeAccountService)?.profile(owner.token)
             ?: throw LifeDeviceException("暂时无法确认登录状态，请重新登录")
-        if (profile.phone != owner.phone) throw LifeDeviceException("胖乖账户信息不一致，请重新登录", true)
+        if (profile.phone != owner.phone) throw LifeDeviceException("胖乖账户信息不一致，请重新登录")
     }, { e, _ -> expired(e, showLogin = false) }, ::failure)
     val accountConnection = accountVerifier.state
     private var accountTask: Job? = null
@@ -592,12 +592,9 @@ class LifeDevicesViewModel internal constructor(
         if (session.phase == WaterPhase.Starting && session.messageId.isNotBlank()) {
             val message = api.message(session.messageId, token)
             if (message == null) return
-            if (message.code.toIntOrNull()?.let { it != 0 } == true) {
-                saveSession(session.copy(fault = "设备返回启动失败，请更换设备使用"))
-                sessionError(LifeFeature.Water, session.sessionId, "设备返回启动失败，请更换设备使用")
-                return
-            }
-            if (message.state != "OK" || message.code != "0") return
+            // Official DeviceStartupAct/StartStatusAct: OK (case insensitive) OR code 05.
+            // All other combinations continue polling; a numeric code alone is not a fault.
+            if (!message.state.equals("OK", ignoreCase = true) && message.code != "05") return
         }
         // Official showers use shower/sync at startup, then water/sync for the same outlet/order.
         val reading = if (session.device.isShower && session.phase == WaterPhase.Starting) api.shower(session.skuId, token)
@@ -1222,9 +1219,12 @@ class LifeDevicesViewModel internal constructor(
             withContext(io) { store.clearAccount() }
             account = null
         }
-        accountVerifier.expired()
+        accountVerifier.expired(failure(e))
         mutable.update { it.copy(connectedPhone = "") }
-        if (showLogin && visible) requireLogin()
+        if (showLogin && visible) {
+            requireLogin()
+            mutable.update { it.copy(loginError = failure(e)) }
+        }
         return true
     }
     private fun failure(e: Exception) = when (e) {
