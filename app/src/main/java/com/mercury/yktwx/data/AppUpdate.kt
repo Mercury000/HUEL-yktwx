@@ -22,6 +22,7 @@ internal data class UpdateRelease(
     val urls: List<String> = emptyList(), val sha256: String = "", val size: Long = 0,
     val packageName: String = BuildConfig.APPLICATION_ID, val minSdk: Int = 34,
     val expiresAt: Instant? = null, val signedManifest: String = "",
+    val signerSha256: String? = null,
 ) {
     fun required(current: Int) = current <= maxForcedVersionCode && versionCode > current
 }
@@ -115,6 +116,9 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
             val forced = integer(json, "maxForcedVersionCode"); require(forced in 0 until version)
             val revision = integer(json, "policyRevision"); require(revision > 0)
             val hash = json.stringValue("sha256"); require(hash.matches(Regex("[a-f0-9]{64}")))
+            val signer = json["signerSha256"]?.let {
+                json.stringValue("signerSha256").also { require(it.matches(Regex("[a-f0-9]{64}"))) }
+            }
             val array = json.arrayValue("urls"); require(array.size in 6..20)
             val urls = (0 until array.size).map { array.stringValue(it).also(::httpsUri) }
             require(urls.distinct().size == urls.size)
@@ -128,7 +132,7 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
             val expires = Instant.parse(json.stringValue("expiresAt"))
             return UpdateRelease(version.toInt(), name, json.stringValue("changelog"), releaseUrl,
                 channel, published, forced.toInt(), revision, urls, hash, size,
-                json.stringValue("packageName"), minSdk.toInt(), expires)
+                json.stringValue("packageName"), minSdk.toInt(), expires, signerSha256 = signer)
         }
     }
 }

@@ -18,6 +18,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.BuildConfig
 import com.mercury.yktwx.R
@@ -83,33 +86,38 @@ internal fun AppUpdateDialog(state: AppUpdateUiState, onSkip: () -> Unit = {}, o
     }
     OverlayDialog(show = state.visible, title = if (state.required) "需要更新后继续使用" else "更新详情", cornerRadius = 28.dp,
         onDismissRequest = { if (!state.required && !state.download.busy) onDismiss() }, renderInRootScaffold = true) {
+        // Consume the gesture inside the popup, before Miuix can animate its dismissal.
+        NavigationBackHandler(state = rememberNavigationEventState(NavigationEventInfo.None),
+            isBackEnabled = state.visible && (state.required || state.download.busy), onBackCompleted = {})
         if (release != null) {
             val notes = remember(release.notes, release.versionName) { updateNotesForDisplay(release.notes, release.versionName) }
             Column(Modifier.fillMaxWidth().testTag("app-update-dialog")) {
                 Column(Modifier.fillMaxWidth().heightIn(max = (LocalWindowInfo.current.containerDpSize.height * .44f)
                     .coerceIn(100.dp, 360.dp))
-                    .verticalScroll(scroll).testTag("app-update-notes"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text(release.versionName, modifier = Modifier.weight(1f, fill = false), fontSize = 25.sp,
-                            fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            lineHeight = 30.sp, color = MiuixTheme.colorScheme.onSurface)
-                        Text(if (release.channel == "beta") "测试版" else "正式版", fontSize = 10.sp,
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier.background(MiuixTheme.colorScheme.primary.copy(alpha = .08f), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 7.dp, vertical = 4.dp))
+                    .verticalScroll(scroll).testTag("app-update-notes")) {
+                    Column(Modifier.fillMaxWidth().testTag("app-update-details"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Text(release.versionName, modifier = Modifier.weight(1f, fill = false), fontSize = 25.sp,
+                                fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                lineHeight = 30.sp, color = MiuixTheme.colorScheme.onSurface)
+                            Text(if (release.channel == "beta") "测试版" else "正式版", fontSize = 10.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                                modifier = Modifier.background(MiuixTheme.colorScheme.primary.copy(alpha = .08f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 7.dp, vertical = 4.dp))
+                        }
+                        updatePublishedTime(release.publishedAt)?.let { Text("发布时间：$it", fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+                        HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
+                        if (state.required) Box(Modifier.fillMaxWidth()
+                            .background(MiuixTheme.colorScheme.primary.copy(alpha = .07f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)) {
+                            Text("当前版本需要更新。\n请安装新版本后继续使用财小通。", fontSize = 13.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary, lineHeight = 20.sp)
+                        }
+                        if (notes.isNotEmpty()) UpdateMarkdown(notes, onLinkError = { linkError = it })
                     }
-                    updatePublishedTime(release.publishedAt)?.let { Text("发布时间：$it", fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
-                    HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
-                    if (state.required) Box(Modifier.fillMaxWidth()
-                        .background(MiuixTheme.colorScheme.primary.copy(alpha = .07f), RoundedCornerShape(12.dp))
-                        .padding(12.dp)) {
-                        Text("当前版本需要更新。\n请安装新版本后继续使用财小通。", fontSize = 13.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary, lineHeight = 20.sp)
-                    }
-                    if (notes.isNotEmpty()) UpdateMarkdown(notes, onLinkError = { linkError = it })
-                    Box(Modifier.fillMaxWidth().heightIn(min = 36.dp)) { AnimatedInlineError(error) }
+                    AnimatedInlineError(error, topSpacing = 14.dp)
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 16.dp)) {
                     val compact = maxWidth < 300.dp || LocalDensity.current.fontScale > 1.2f
@@ -155,7 +163,11 @@ private fun UpdateDownloadButton(state: AppUpdateUiState, onDownload: () -> Unit
                     backgroundColor = primaryColors.contentColor.copy(alpha = .25f)))
             Text(when (state.download.phase) {
                 UpdateDownloadPhase.Idle -> "下载安装"
-                UpdateDownloadPhase.Downloading -> state.download.percent?.let { "下载中 $it%" } ?: "下载中"
+                UpdateDownloadPhase.SelectingSource -> "准备下载"
+                UpdateDownloadPhase.Downloading -> {
+                    val label = if (state.download.attempt > 1) "重试下载" else "下载中"
+                    state.download.percent?.let { "$label $it%" } ?: label
+                }
                 UpdateDownloadPhase.Verifying -> "正在校验"
                 UpdateDownloadPhase.Ready, UpdateDownloadPhase.Installing -> "安装更新"
                 UpdateDownloadPhase.NeedsAuthorization -> "允许安装"

@@ -47,7 +47,8 @@ internal fun appUpdateApiFixture(http: UpdateHttp = updateHttpFixture(),
     sourceTimeoutMillis: Long = 2_500,
     now: () -> Instant = Instant::now): AppUpdateApi = AppUpdateApi(http = http, verifier = verifier, sourceTimeoutMillis = sourceTimeoutMillis, now = now)
 
+// Transfer/installation fixtures bypass probing; AppUpdateSourceSelectionTest exercises the real selector.
 internal fun appUpdateInstallerFixture(context: Context, http: UpdateHttp = updateHttpFixture(),
     contentUri: (File) -> Uri = {
         FileProvider.getUriForFile(context, "${context.packageName}.updates", it)
-    }): AppUpdateInstaller = AppUpdateInstaller(context = context, http = http, contentUri = contentUri)
+    }): AppUpdateInstaller = AppUpdateInstaller(context = context, http = http, sourceSelectionMillis = 0, contentUri = contentUri)

@@ -79,6 +79,99 @@ class AppUpdateInstallerTest {
             assertFalse(file.exists())
         }
     }
+    @Test fun matchingBytesWithIncompatibleIdentityStopAfterOneSourceAndExposeTheReason() = runBlocking {
+        for ((candidate, message) in listOf(info(packageName = "other.app") to "安装包包名不匹配",
+            info(version = 11) to "安装包版本不匹配", info(signature = byteArrayOf(2)) to "安装包签名与当前应用不一致")) {
+            var requests = 0
+            val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { url ->
+                requests++
+                object : HttpFixture(url) {
+                    override fun contentLength() = bytes.size.toLong()
+                    override fun bodyStream() = ByteArrayInputStream(bytes)
+                }
+            })
+            val file = installer.apk(release)
+            file.delete()
+            val error = assertThrows(UpdateApkIdentityFailure::class.java) {
+                runBlocking { installer.download(release) {
+                    if (it.phase == UpdateDownloadPhase.Verifying) {
+                        val temporary = file.parentFile!!.listFiles()!!.single { file -> file.name.endsWith(".download") }
+                        shadowOf(context.packageManager).setPackageArchiveInfo(temporary.absolutePath, candidate)
+                    }
+                } }
+            }
+            assertEquals(message, error.message)
+            assertEquals("Another mirror cannot repair matching, incompatible bytes", 1, requests)
+            assertFalse(file.exists())
+            assertFalse(file.parentFile!!.listFiles()!!.any { it.name.endsWith(".download") })
+        }
+    }
+    @Test fun cachedIncompatibleIdentityFailsWithoutDownloadingIdenticalBytesAgain() = runBlocking {
+        var requests = 0
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { requests++; error("No network expected") })
+        val file = installer.apk(release)
+        file.writeBytes(bytes)
+        shadowOf(context.packageManager).setPackageArchiveInfo(file.absolutePath, info(signature = byteArrayOf(2)))
+        val error = assertThrows(UpdateApkIdentityFailure::class.java) { runBlocking { installer.download(release) {} } }
+        assertEquals("安装包签名与当前应用不一致", error.message)
+        assertEquals(0, requests)
+        assertFalse(file.exists())
+    }
+    @Test fun installationRechecksTheCertificateAgainstTheCurrentManifest() = runBlocking {
+        val installer = appUpdateInstallerFixture(context)
+        val file = installer.apk(release)
+        file.writeBytes(bytes)
+        shadowOf(context.packageManager).setPackageArchiveInfo(file.absolutePath, info())
+        installer.verify(release.copy(signerSha256 = sha256(byteArrayOf(1))))
+        val error = assertThrows(UpdateApkIdentityFailure::class.java) {
+            runBlocking { installer.verify(release.copy(signerSha256 = sha256(byteArrayOf(2)))) }
+        }
+        assertEquals("安装包签名与更新清单不一致", error.message)
+        assertFalse(file.exists())
+    }
+    @Test fun missingContentLengthUsesVerifiedManifestSizeForProgress() = runBlocking<Unit> {
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { url ->
+            object : HttpFixture(url) {
+                override fun contentLength() = -1L
+                override fun bodyStream() = ByteArrayInputStream(bytes)
+            }
+        })
+        val file = installer.apk(release)
+        file.delete()
+        val states = mutableListOf<UpdateDownloadState>()
+        installer.download(release) {
+            states += it
+            if (it.phase == UpdateDownloadPhase.Verifying) {
+                val temporary = file.parentFile!!.listFiles()!!.single { file -> file.name.endsWith(".download") }
+                shadowOf(context.packageManager).setPackageArchiveInfo(temporary.absolutePath, info())
+            }
+        }
+        val downloading = states.filter { it.phase == UpdateDownloadPhase.Downloading }
+        assertEquals(0, downloading.first().percent)
+        assertTrue(downloading.all { it.percent != null && it.percent in 0..99 })
+        assertTrue(downloading.any { it.percent == 99 })
+        file.delete()
+    }
+    @Test fun exhaustedCorruptSourcesRetainTheFailureReasonAndAttemptNumber() = runBlocking {
+        var requests = 0
+        val installer = appUpdateInstallerFixture(context, fixtureUpdateHttp { url ->
+            requests++
+            object : HttpFixture(url) {
+                override fun contentLength() = bytes.size.toLong()
+                override fun bodyStream() = ByteArrayInputStream(ByteArray(bytes.size))
+            }
+        })
+        installer.apk(release).delete()
+        val attempts = mutableListOf<Int>()
+        val error = assertThrows(java.io.IOException::class.java) {
+            runBlocking { installer.download(release) {
+                if (it.phase == UpdateDownloadPhase.Downloading && it.percent == 0) attempts += it.attempt
+            } }
+        }
+        assertEquals(release.urls.size, requests)
+        assertEquals((1..release.urls.size).toList(), attempts)
+        assertTrue(error.message!!.contains("安装包校验失败"))
+    }
     @Test fun cancellationCleansPartialFileAfterTheBodyWorkerClosesAndDoesNotTryAnotherCdn() = runBlocking {
         val reading = CompletableDeferred<Unit>()
         val stopped = java.util.concurrent.CountDownLatch(1)

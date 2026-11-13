@@ -319,6 +319,17 @@ class AppUpdateApiTest {
         val altered = parseObject(valid).withField("payload", Base64.getEncoder().encodeToString(fixture.json(11).toString().toByteArray()))
         assertThrows(Exception::class.java) { fixture.verifier.manifest(altered.toString(), "stable") }
     }
+    @Test fun signedManifestRetainsCertificateFingerprintAndRejectsMalformedValues() {
+        val signer = sha256(byteArrayOf(1))
+        val signed = fixture.sign(fixture.json().withField("signerSha256", signer))
+        assertEquals(signer, fixture.verifier.manifest(signed, "stable").first.signerSha256)
+        assertNull(fixture.verifier.manifest(fixture.sign(fixture.json()), "stable").first.signerSha256)
+        for (invalid in listOf("", "A".repeat(64), "not-a-certificate", 123)) {
+            assertThrows(Exception::class.java) {
+                fixture.verifier.manifest(fixture.sign(fixture.json().withField("signerSha256", invalid)), "stable")
+            }
+        }
+    }
     @Test fun localVersionAndCompatibilityDecideResult() = runBlocking {
         for ((json, reason) in listOf(fixture.json() to UpdateCheckReason.UpdateAvailable,
             fixture.json(version = 9) to UpdateCheckReason.CurrentOrNewer,

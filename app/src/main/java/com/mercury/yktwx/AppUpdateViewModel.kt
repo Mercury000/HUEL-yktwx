@@ -346,7 +346,7 @@ internal class AppUpdateViewModel internal constructor(
         fun current() = downloadAttempt == downloadGeneration &&
             state.value.release?.let { it.versionCode to it.sha256 } == binding
         fun progress(value: UpdateDownloadState) {
-            if (value.phase == UpdateDownloadPhase.Downloading) downloadStarted = true
+            if (value.phase in listOf(UpdateDownloadPhase.SelectingSource, UpdateDownloadPhase.Downloading)) downloadStarted = true
             mutable.update { latest ->
                 if (downloadAttempt == downloadGeneration && latest.release?.let { it.versionCode to it.sha256 } == binding)
                     latest.copy(download = value) else latest
@@ -355,7 +355,8 @@ internal class AppUpdateViewModel internal constructor(
         viewModelScope.launch(start = CoroutineStart.LAZY) {
             var readyForInstall = false
             try {
-                progress(UpdateDownloadState(UpdateDownloadPhase.Verifying))
+                progress(UpdateDownloadState(if (installer.apk(release).isFile)
+                    UpdateDownloadPhase.Verifying else UpdateDownloadPhase.SelectingSource))
                 installer.download(release) { value -> if (current()) progress(value) }
                 if (!current() || !networkAllowed) return@launch
                 val currentRelease = state.value.release ?: return@launch
