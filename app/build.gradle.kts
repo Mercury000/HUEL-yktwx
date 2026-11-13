@@ -191,6 +191,8 @@ dependencies {
     testImplementation(libs.okhttp.tls)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
+    // The plugin configures this variant later; declare its dependency without deprecated Project notation.
+    add(configurations.maybeCreate("performanceBaselineProfile").name, project(":benchmark"))
 }
 
 aboutLibraries {
@@ -210,5 +212,4 @@ baselineProfile {
     saveInSrc = true
     automaticGenerationDuringBuild = false
     dexLayoutOptimization = true
-    variants { maybeCreate("performance").from(project(":benchmark")) }
 }
