@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0-beta.2](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0-beta.1...v1.5.0-beta.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **life:** 明确登录失效时始终显示横幅 ([6d9d3a0](https://github.com/Mercury000/HUEL-yktwx/commit/6d9d3a03974749594e1d4b1c1b5bb8912e1e53c9))
+* **update:** 修复下载选源与更新弹窗交互 ([6f1cf58](https://github.com/Mercury000/HUEL-yktwx/commit/6f1cf58d6edbdefe1f509c9bdc878bdff65d112b))
+* **update:** 修复长版本号显示与检查状态布局跳动 ([d679619](https://github.com/Mercury000/HUEL-yktwx/commit/d6796199ee5ea82ff579b2c2286488640893bf4a))
+
 ## [1.5.0-beta.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0-beta...v1.5.0-beta.1) (2026-11-13)
 
 
