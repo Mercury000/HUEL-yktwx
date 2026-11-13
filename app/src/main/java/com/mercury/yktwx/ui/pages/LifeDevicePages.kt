@@ -406,7 +406,7 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         supportsFinish = if (exceptional) null else device?.supportsFinish, error = state.error ?: water?.fault, shower = device?.isShower == true,
         status = when {
             restoringAccount -> WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备", true)
-            exceptional -> WaterDeviceStatus(water?.fault ?: "启动结果未知", "可移除本条提醒或重新扫码")
+            exceptional -> WaterDeviceStatus(water.fault ?: "启动结果未知", "可移除本条提醒或重新扫码")
             else -> null
         })
     val primary = WaterDeviceAction(label, !loading && when {
