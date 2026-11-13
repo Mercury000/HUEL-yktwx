@@ -72,6 +72,15 @@ class LifeAccountsViewModelTest {
         model.checkAccount(force = true); runCurrent(); assertEquals(3, api.reads)
     }
 
+    @Test fun pangguiIdentityMismatchKeepsCredentialsUnverifiedWithoutInventingExpiry() = runTest(dispatcher) {
+        val api = PgApi().apply { phone = "13900000001" }
+        val store = PgStore(LifeAccount("13800000000", "old-token")); val model = pg(api, store)
+        runCurrent()
+        assertEquals("old-token", store.owner?.token)
+        assertEquals(LifeAccountStatus.Unverified, model.accountConnection.value.status)
+        assertEquals("胖乖账户信息不一致，请重新登录", model.accountConnection.value.error)
+    }
+
     @Test fun networkFailureKeepsCredentialsButExpiredProfileDoesNotOpenLoginSheet() = runTest(dispatcher) {
         val api = PgApi().apply { error = IOException("offline") }
         val store = PgStore(LifeAccount("13800000000", "old-token")); val model = pg(api, store); runCurrent()
@@ -82,6 +91,7 @@ class LifeAccountsViewModelTest {
         model.checkAccount(force = true); runCurrent()
         assertNull(store.owner)
         assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertEquals("expired", model.accountConnection.value.error)
         assertEquals("138****0000", model.accountConnection.value.phone)
         assertFalse(model.state.value.loginVisible)
         assertTrue(model.removeAccount()); runCurrent()

@@ -85,7 +85,7 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
             }
         }
     }
-    item { AnimatedInlineError(state.error.takeUnless { state.paymentVisible }) }
+    item { AnimatedInlineError(state.error.takeUnless { state.paymentVisible }, preserveMessage = true) }
 }
 
 @Composable
@@ -294,7 +294,7 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
                         onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
                         paymentApp = if (state.laundry?.payMethod == "52") "银联" else "支付宝",
-                        retryMethodLabel = { it.name })
+                        retryMethodLabel = { it.name }, preserveError = true)
                 } else {
                     // Keep display-only form values during the transition; never retain SDK payloads.
                     val quote = rememberWhileShown(show && !isResult, state.laundryQuote)
@@ -322,7 +322,7 @@ internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model
                         },
                         onSubmit = { method?.let { model.payLaundry(it.method) } },
                         enabled = enabled && !isResult && !busy && !loading && state.paymentLaunch == null,
-                        canSubmit = !closed && canPay && method != null && reason == null, error = error ?: reason,
+                        canSubmit = !closed && canPay && method != null && reason == null, error = error ?: reason, preserveError = true,
                         modifier = Modifier.testTag("laundry-pay-submit"))
                     if (quote == null && error != null && !loading && !busy) Button(onClick = model::showLaundryPayment,
                         enabled = enabled && !isResult, modifier = Modifier.fillMaxWidth().testTag("laundry-payment-retry")) { Text("重试") }

@@ -115,7 +115,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
                             item { WaterUsageNotice(display) }
                     }
                 }
-                item { InlineErrorGroup(display.error, 12.dp) {
+                item { InlineErrorGroup(display.error, 12.dp, preserveMessage = display.provider == LifeProvider.Panggui) {
                     if (retryAction != null) TextButton(retryAction.label, retryAction.onClick,
                         enabled = stageActive && retryAction.enabled, modifier = Modifier.testTag("${display.tag}-retry"))
                 } }
