@@ -148,18 +148,8 @@ private fun WaterDeviceFacts(state: WaterDeviceUiState, paymentEnabled: Boolean 
         if (state.phase == WaterPhase.Ended && state.paymentMethod != null) add("支付方式" to state.paymentMethod)
         add("服务提供方" to state.providerName)
     }
-    Card(Modifier.fillMaxWidth().testTag(if (state.provider == LifeProvider.Panggui) "life-device-info" else "hui798-device-info"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-            rows.forEachIndexed { index, (label, value) ->
-                LifeDeviceField(label) { Text(value, fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End) }
-                if (index < rows.lastIndex) HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-            }
-            if (paymentContent != null) {
-                HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-                paymentContent(paymentEnabled)
-            }
-        }
-    }
+    LifeDeviceInfoCard(rows, if (state.provider == LifeProvider.Panggui) "life-device-info" else "hui798-device-info",
+        extra = paymentContent?.let { content -> { content(paymentEnabled) } })
 }
 
 @Composable
@@ -226,28 +216,6 @@ private fun waterDuration(millis: Long): String {
 @Composable
 internal fun LifeWaterProgress(phase: WaterPhase, startedAt: Long?, endedAt: Long?, action: String, tag: String,
     nowMillis: () -> Long = System::currentTimeMillis) {
-    var now by remember(startedAt) { mutableLongStateOf(nowMillis()) }
-    LaunchedEffect(phase, startedAt, nowMillis) {
-        while (phase != WaterPhase.Ended) { now = nowMillis(); delay(1000) }
-    }
-    val ended = phase == WaterPhase.Ended
-    Column(Modifier.fillMaxWidth().padding(top = if (ended) 30.dp else 36.dp, bottom = 24.dp).testTag("$tag-progress"),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        if (ended) {
-            DeviceCompletedIcon("$tag-ended-icon")
-            Text("${action}已结束", Modifier.padding(top = 18.dp), fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold)
-            Text("设备已结束本次${action}", Modifier.padding(top = 7.dp), fontSize = 12.sp, color = DashboardPalette.muted)
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(Modifier.size(6.dp).background(lifeSuccessInk(), CircleShape))
-                Text(if (phase == WaterPhase.Stopping) "正在结束" else "${action}中", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
-            }
-            startedAt?.let { started ->
-                Text(waterDuration((endedAt ?: now) - started), Modifier.padding(top = 22.dp, bottom = 9.dp).testTag("$tag-elapsed"),
-                    fontSize = 60.sp, lineHeight = 72.sp, fontWeight = FontWeight.SemiBold)
-                Text("本地参考计时", fontSize = 12.sp, color = DashboardPalette.muted)
-            }
-            Text("费用以实际扣款记录为准", Modifier.padding(top = 3.dp), fontSize = 10.sp, color = DashboardPalette.muted)
-        }
-    }
+    LifeDeviceProgress(phase == WaterPhase.Ended, if (phase == WaterPhase.Stopping) "正在结束" else "${action}中",
+        "${action}已结束", "设备已结束本次${action}", startedAt, endedAt, tag, "本地参考计时", "费用以实际扣款记录为准", nowMillis)
 }

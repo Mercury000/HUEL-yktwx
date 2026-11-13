@@ -5,9 +5,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
     <queries>
+        <package android:name="com.jingyao.easybike" />
         <package android:name="com.unionpay" />
         <package android:name="com.unionpay.tsmservice" />
         <package android:name="com.unionpay.tsmservice.mi" />

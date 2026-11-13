@@ -1,0 +1,440 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "worktree": "D:/mercu/Desktop/yktwx-hellobike",
+  "branch": "feature/hellobike",
+  "baseline": "a144f6beb136117ab1c70e298fcbf2fa04bdbafb",
+  "method": "Distinct targeted offline tests; most recent archived result retained per case.",
+  "passed": 52,
+  "failed": 0,
+  "skipped": 1,
+  "tests": [
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeAccountStoreTest",
+      "name": "aLateWriteFromAnotherAccountCannotReplaceCurrentProgress",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeAccountStoreTest.xml",
+      "timestamp": "2026-11-12T17:07:19.035Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeAccountStoreTest",
+      "name": "pendingRecordsSurviveExpiryLogoutAndOwnerRoundTripsWithoutExposingOtherOwners",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeAccountStoreTest.xml",
+      "timestamp": "2026-11-12T17:07:19.035Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeAccountStoreTest",
+      "name": "corruptRecordsRequireRecoveryAndAcknowledgementDoesNotChangeAnyOrderState",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeAccountStoreTest.xml",
+      "timestamp": "2026-11-12T17:07:19.035Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeAccountStoreTest",
+      "name": "failedDiskCommitsPreserveBothCredentialsAndPendingOperations",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeAccountStoreTest.xml",
+      "timestamp": "2026-11-12T17:07:19.035Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "conflictingEnvelopeCodesCannotClaimAConfirmedPayment",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "onlyNumericOneConfirmsPaymentAndQueriesUseThePaymentGuid",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "sliderImagesCarryOriginalDimensionsAndRejectOversizedOrMismatchedPieces",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "smsAndLoginUsePublicCertificateDigestAndKeepTokensOutOfUrlAndErrors",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "noRideCodeIsScopedToItsReadEndpointAndNeverAuthorizesACommand",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "lbsUsesThePublishedArg0SignatureAndNestedRegionRatherThanDummyValues",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "rideDetailsUseUnpaidPayNumbersAndDoNotTurnClosedOrEmptyListsIntoPaid",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "preCloseRequiresAConsistentFreeNetworkBranchAndRejectsAdditionalConfirmation",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "onlyServerOfferedOrdinaryChannelsAreAvailableAndAgreementsStayOnOfficialFlow",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "returnedChannelAndCredentialsArePreservedWithoutSubstitutingRideIdForPaymentId",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "aMismatchedRideOrPaymentCannotBeConfirmed",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "timestamp": "2026-11-12T17:07:19.162Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "spoofedAndAmbiguousOrOtherVehicleLinksAreRejectedLocally",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeModelsTest.xml",
+      "timestamp": "2026-11-12T17:07:20.077Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "locationAndProofAgeBoundsRejectStaleFutureAndInaccuratePoints",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeModelsTest.xml",
+      "timestamp": "2026-11-12T17:07:20.077Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "domainsRouteThreeProvidersAndDoNotGuessBareBicycleNumbers",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeModelsTest.xml",
+      "timestamp": "2026-11-12T17:07:20.077Z"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "endingAndClosingAnOrderCannotBePresentedAsPaymentSuccess",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.data.life.HellobikeModelsTest.xml",
+      "timestamp": "2026-11-12T17:07:20.077Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "successfulPaymentQuerySurvivesDetailFailureButKeepsRideFeesUnconfirmed",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "saveFailurePreventsCreateAndPaymentSubmission",
+      "status": "passed",
+      "report": "build/hellobike-validation/ui-initial/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:18:59.36Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anUnconfirmedCloseCannotReenableAnotherCloseEvenWhenServerStillSaysRiding",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "previewDoesNotReadSavedCredentialsOrStartLocationAndBusinessRequests",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T18:39:01.854Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "locationAuthorizationResumesTheOriginalScanWithoutAnAutomaticCreate",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "differentOrderResponsesNeverReplaceThePendingOrderOrAuthorizeClose",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "balanceProcessingNeedsAMatchedQueryAndThenRefreshesRideSettlement",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "leavingDuringCreateKeepsThePendingRecordAndForegroundRecoveryOnlyQueries",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "logoutWaitsForCancelledReadsAndCannotPublishAnotherOwnersLateRide",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "smsSliderKeepsTheChallengeAndLoginContinuesScanningWithoutOpening",
+      "status": "passed",
+      "report": "build/hellobike-validation/ui-initial/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:18:59.36Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "expiredPrecheckDoesNotOpenOrRefreshByItself",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anSdkSuccessCallbackStartsQueriesAndCannotMarkTheRidePaidOrRetryPayment",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "restartQueriesAPersistedPaymentFourTimesAndNeverLaunchesOrSubmitsItAgain",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "backendChannelWinsAndStaleCallbacksCannotClaimAnotherPayment",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anUnclassifiedServerRejectionCannotEraseTheAttemptOrAllowAnotherCreate",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "closeCommitsOnceAfterProofAndRideEndLeavesAnUnsettledProgressEntry",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "startCommitsItsRecordBeforeOneCreateAndRequiresAQueriedRideToShowRunning",
+      "status": "passed",
+      "report": "build/hellobike-validation/core/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:07:10.922Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "anOutgoingPaymentDrawerDisablesQueriesBeforeItsExitMotionFinishes",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "lightLoginUsesTheSharedDrawerAndDragsTheServerSizedPuzzle",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "dismissingHellobikeReminderKeepsOtherProvidersAndSettingsAccountMetadata",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "darkLoginUsesTheSharedDrawerAndDragsTheServerSizedPuzzle",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "darkDeviceAndPaymentStagesUseSharedCardsProgressAndPaymentControls",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-paint/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:42:29.569Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "lightDeviceAndPaymentStagesUseSharedCardsProgressAndPaymentControls",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-paint/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:42:29.569Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "cancellationDuringLoginCommitKeepsMemoryAndDiskOnTheSameAccount",
+      "status": "passed",
+      "report": "build/hellobike-validation/ui-initial/TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "timestamp": "2026-11-12T17:18:59.36Z"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsUiTest",
+      "name": "paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.LifeAccountsUiTest.xml",
+      "timestamp": "2026-11-12T18:39:07.713Z"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDeviceUiTest",
+      "name": "capturedWaterDeviceFitsNativePageAndDoesNotInventPrices",
+      "status": "skipped",
+      "report": "build/hellobike-validation/ui-initial/TEST-com.mercury.yktwx.LifeDeviceUiTest.xml",
+      "timestamp": "2026-11-12T17:19:05.618Z"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDeviceUiTest",
+      "name": "scannerFillsPageAndManualEntryUsesDrawer",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.LifeDeviceUiTest.xml",
+      "timestamp": "2026-11-12T18:39:08.058Z"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDeviceUiTest",
+      "name": "showerPageShowsOutletActionsAndProgressWithoutInventingPrice",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.LifeDeviceUiTest.xml",
+      "timestamp": "2026-11-12T18:39:08.058Z"
+    },
+    {
+      "class": "com.mercury.yktwx.LifePaymentEffectTest",
+      "name": "sdkContractsRouteOnceAndMissingResultRetainsTheOriginalRequestId",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.LifePaymentEffectTest.xml",
+      "timestamp": "2026-11-12T18:39:10.124Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "settingsDispatchesTheThirdAccountAndExplainsUnresolvedOrdersInLargeText",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "anOutgoingLoginDrawerDisablesSmsBeforeItsExitMotionFinishes",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "ridingAndUnsettledEntriesReuseTheStatusIslandAndOnlySettledOrdersCanBeDismissed",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "timestamp": "2026-11-12T18:38:42.744Z"
+    },
+    {
+      "class": "com.mercury.yktwx.ScannerLifecycleTest",
+      "name": "cameraClosesInBackgroundAndGetsANewPreviewOnResume",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.ScannerLifecycleTest.xml",
+      "timestamp": "2026-11-12T18:39:12.932Z"
+    },
+    {
+      "class": "com.mercury.yktwx.ScannerLifecycleTest",
+      "name": "committedPopClosesCameraBeforeExitMotionRemovesItsPreview",
+      "status": "passed",
+      "report": "build/hellobike-validation/final-shared/TEST-com.mercury.yktwx.ScannerLifecycleTest.xml",
+      "timestamp": "2026-11-12T18:39:12.932Z"
+    }
+  ],
+  "limitations": [
+    "No live credentials, SMS, vehicle commands or payment requests were used.",
+    "The initial optional water HAR test was skipped because its fixture is absent from the independent checkout; no real HAR was imported.",
+    "Native payment-sheet PixelCopy is primed and captured at the sheet bounds because the first full-window capture can omit nested shader layers under Robolectric."
+  ],
+  "apk": {
+    "path": "app/build/outputs/apk/debug/app-debug.apk",
+    "application_id": "com.mercury.yktwx",
+    "variant": "debug",
+    "version_name": "1.4.1",
+    "version_code": 9,
+    "min_sdk": 34,
+    "bytes": 53085052,
+    "sha256": "60d45718d62854b3ef15c9fe0c778ed230aa9c9477f0c538ff940f2bb98dcb8a",
+    "signature_verified": true,
+    "build_log": "build/hellobike-apk-build.log",
+    "signature_log": "build/hellobike-apk-signature.log"
+  },
+  "source_hashes": [
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/ui/pages/HellobikePages.kt",
+      "sha256": "8723fcc7e8fdecc97f32dcd7b0956afcdb4d911a575f0f235848624b69846853"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/ui/components/HellobikeLocationPermissionEffect.kt",
+      "sha256": "1cb73f394a4ec8ebbfa24786f9698a43eb3c26561a9a992afb20ab3a9af4c2c0"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/HellobikeViewModel.kt",
+      "sha256": "60dde4b374e23f97dae46ea548cd513dadb90f07c1da9710ee88093e9f495473"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/data/life/HellobikeApi.kt",
+      "sha256": "f849840fb56d5968ec4404890f82905d9fcaeceb4e2440f02ef23a9865619f45"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/data/life/HellobikeModels.kt",
+      "sha256": "bafa79b596e0e4f7a2e2d40935ecad9f922836968a775380d1dfba3d466d0651"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/data/life/HellobikeAccountStore.kt",
+      "sha256": "90ffa9691fabc06ad5576ad946e95bbe1f6d9c3a9f70587e5471c26f543915d9"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/data/life/HellobikeLocation.kt",
+      "sha256": "5b01bc3ace9334fedd525908407726740672f83f4dea25f7b2c42935d7f20bd0"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/ui/YktApp.kt",
+      "sha256": "d8673fceb30d5779700cac54a2f6b2c83163bf0720c039c337c483c278564b5d"
+    },
+    {
+      "path": "app/src/main/java/com/mercury/yktwx/ui/pages/LifeDeviceContent.kt",
+      "sha256": "9468d4e13166c1e0b62c619a5fd98fafbe3b0faa17f3cdc88472a5ff4a6237f8"
+    }
+  ]
+}

@@ -174,14 +174,7 @@ private fun LaundryFacts(session: LaundrySession) {
         if (session.phase == LaundryPhase.Ended) session.finishedAtMillis?.let { add("完成时间" to laundryTime(it)) }
         else session.expectedEndMillis?.let { add("预计完成" to laundryTime(it)) }
     }
-    Card(Modifier.fillMaxWidth().testTag("laundry-info"), cornerRadius = 24.dp) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-            rows.forEachIndexed { index, (label, value) ->
-                LifeDeviceField(label) { Text(value, fontSize = 12.sp, lineHeight = 20.sp, textAlign = TextAlign.End) }
-                if (index < rows.lastIndex) HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
-            }
-        }
-    }
+    LifeDeviceInfoCard(rows, "laundry-info")
 }
 
 private fun laundryTime(millis: Long): String = DateTimeFormatter.ofPattern("MM-dd HH:mm")
