@@ -66,7 +66,7 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
                 model::sendCode, enabled = enabled && display.phone.length == 11 && display.codeSeconds == 0,
                 modifier = Modifier.testTag("life-send-code"))
         }
-        InlineErrorGroup(display.loginError, 16.dp) {
+        InlineErrorGroup(display.loginError, 16.dp, preserveMessage = true) {
             Button(onClick = { keyboard?.hide(); model.login() }, enabled = enabled && display.phone.length == 11 && display.code.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("life-login-submit"), colors = ButtonDefaults.buttonColorsPrimary()) {
                 Text(if (display.loggingIn) "正在登录…" else if (display.changingAccount) "登录并更换账户" else "登录并继续")
@@ -455,7 +455,7 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
             val identify = { if (show && UnifiedDeviceCode.identifyManual(serial) != null) onIdentify() }
             DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
                 modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
-            InlineErrorGroup(state.error, 16.dp) {
+            InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
                 Button(onClick = onIdentify, enabled = show && !state.loadingDevice && UnifiedDeviceCode.identifyManual(serial) != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
