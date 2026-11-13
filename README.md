@@ -59,6 +59,7 @@ macOS / Linux 使用 `./gradlew :app:assembleDebug`。依赖版本以本版本�
 - [生活服务](docs/life-services.md)
 - [应用更新](docs/app-updates.md)
 - [构建与发版](docs/releases.md)
+- [性能基准](docs/performance-profiles.md)
 - [使用统计](docs/analytics.md)
 
 ## 许可证

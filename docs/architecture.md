@@ -13,6 +13,7 @@
 | `.github/workflows/` | 自动构建与发版 |
 | `app/src/uiPreview/、app/src/production/` | 预览样本与正式实现隔离 |
 | `updates/、.github/scripts/` | 签名清单配置与发布工具 |
+| `benchmark/` | 性能测量与编译资料生成 |
 
 `ui/pages/` 与 `ui/components/` 负责界面，ViewModel 负责页面状态，`data/` 提供接口、账户仓库与加密存储。
 
