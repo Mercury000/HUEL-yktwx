@@ -19,6 +19,8 @@ internal object LifeDeviceProtocol {
         return MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
+    fun message(data: JsonObject): String? = listOf("faultDesc", "deviceErrorMsg", "msg", "message", "_officialResponseMessage")
+        .firstNotNullOfOrNull { data.text(it).takeIf(String::isNotBlank) }
 }
 
 /** Shared account and device transport for drinking water, showers and laundry. */
@@ -27,7 +29,7 @@ class LifeDeviceApi(
     private val client: Call.Factory,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : LifeDeviceService, LifeLaundryService, LifeAccountService {
-    private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? {
+    private suspend fun postEnvelope(path: String, fields: Map<String, String>, token: String = ""): JsonObject {
         if (token.isNotBlank() && secret.isBlank()) throw LifeDeviceException("胖乖生活连接配置缺失")
         val timestamp = clock().toString()
         val request = AppHttp.request("https://userapi.qiekj.com$path")
@@ -45,22 +47,31 @@ class LifeDeviceApi(
             "application/x-www-form-urlencoded;charset=UTF-8"))
         return client.readResponse(request.build()) { result ->
             val status = result.code
-            if (status in setOf(401, 403)) throw LifeDeviceException("连接失败，请稍后重试", businessRejected = true)
-            if (status !in 200..299) throw LifeDeviceException("连接失败，请稍后重试")
             val bytes = result.readBytesAtMost(1_048_576)
             if (bytes.size > 1_048_576) throw LifeDeviceException("服务器返回内容过大")
             val text = bytes.toString(Charsets.UTF_8)
-            val response = runCatching { parseObject(text) }.getOrElse { throw LifeDeviceException("服务器返回内容异常") }
+            val response = runCatching { parseObject(text) }.getOrElse {
+                throw LifeDeviceException("$path：${if (status !in 200..299) "HTTP $status，" else ""}响应不是 JSON 对象",
+                    businessRejected = status in setOf(401, 403))
+            }
             val code = response.text("code")
-            if (code !in setOf("0", "200")) {
-                val message = response.text("msg").ifBlank { response.text("message") }.ifBlank { "请求失败，请稍后重试" }
+            if (code != "0" || status !in 200..299) {
+                val message = response.text("msg").takeIf(String::isNotBlank)
+                    ?: response.text("message").takeIf(String::isNotBlank)
+                    ?: "$path：服务端未提供原因（code=${code.ifBlank { "缺失" }}，HTTP $status）"
                 // Official 1.145.0 ResultStateKt.paresResult(); see docs/life-login-expiry-evidence.md.
                 val expired = code in setOf("10", "126")
-                throw LifeDeviceException(if (expired) "胖乖登录已失效，请重新登录" else message, expired,
-                    businessRejected = code.toIntOrNull() != null)
+                throw LifeDeviceException(message, expired,
+                    businessRejected = code.toIntOrNull()?.let { it != 0 } == true || status in setOf(401, 403))
             }
-            response.scalarOrElement("data").takeUnless { it == JsonNull }
+            response
         }
+    }
+    private suspend fun post(path: String, fields: Map<String, String>, token: String = ""): Any? {
+        val response = postEnvelope(path, fields, token)
+        val data = response.scalarOrElement("data").takeUnless { it == JsonNull }
+        val message = response.text("msg").takeIf(String::isNotBlank)
+        return if (data is JsonObject && message != null) data.withField("_officialResponseMessage", message) else data
     }
 
     override suspend fun sendCode(phone: String) {
@@ -89,17 +100,19 @@ class LifeDeviceApi(
         val scan = post("/goods/scan/v2", mapOf(field to code), token).obj()
         val category = scan.text("categoryCode")
         if (scan.text("type") != "goods" || category !in categories)
-            throw LifeDeviceException("未知设备")
+            throw LifeDeviceException(LifeDeviceProtocol.message(scan) ?: "当前应用尚未接入此设备类别（categoryCode=$category）")
         val id = scan.required("id")
         val detail = post("/goods/normal/details", mapOf("goodsId" to id), token).obj()
         if (detail.required("goodsId") != id || detail.text("categoryCode") != category) throw LifeDeviceException("设备信息不匹配，请重新扫码")
+        val deviceError = detail.text("deviceErrorMsg").takeIf(String::isNotBlank)
+        val offlineBluetoothAfterPay = detail.text("deviceErrorCode") == "4204" &&
+            detail.text("isBluetooth") == "1" && detail.text("payment") != "before"
+        // LockingAct checks this before loading programs/channels, except its offline BLE path.
+        if (deviceError != null && !offlineBluetoothAfterPay) throw LifeDeviceException(deviceError, businessRejected = true)
         val skuData = post("/goods/normal/skus", mapOf("goodsId" to id), token) as? JsonArray
             ?: throw LifeDeviceException("设备未返回接水选项")
-        val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), when {
-            it.booleanOrNull("scanAvailable") == false -> false
-            it.booleanOrNull("scanAvailable") == true && it.text("stockState") == "1" -> true
-            else -> null
-        },
+        // Official scanAvailable selection checks apply to washer programs, not water outlets.
+        val skus = skuData.objects().map { LifeSku(it.required("skuId"), it.text("name"), if (category == "00") it.booleanOrNull("scanAvailable") else null,
             it.text("price"), it.text("feature"), if (category == "00")
                 (it.text("markMinutes").toBigDecimalOrNull() ?: it.text("unit").toBigDecimalOrNull())
                     ?.let { value -> runCatching { value.intValueExact() }.getOrNull() }?.takeIf { minutes -> minutes > 0 }
@@ -113,7 +126,7 @@ class LifeDeviceApi(
         return LifeDevice(id, code, detail.text("name"), detail.text("categoryCode"), routeShopId, orgId,
             detail.text("shopId"), imei, shop.text("shopName"), shop.text("address"), detail.text("payment"),
             when (detail.text("isBluetooth")) { "0" -> false; "1" -> true; else -> null }, detail.booleanOrNull("supportAppUserFinish"),
-            detail.text("deviceErrorMsg").ifBlank { null }, skus, channels)
+            deviceError.takeUnless { offlineBluetoothAfterPay }, skus, channels)
     }
     override suspend fun selectAfterPay(token: String) { post("/payChannelRoute/addUserAfterPayChannel", mapOf("method" to "15"), token) }
     override suspend fun unlock(skuId: String, token: String): WaterUnlock {
@@ -139,7 +152,7 @@ class LifeDeviceApi(
             amount?.signum() == 0, amount?.signum() == 1)
     }
     override suspend fun endWater(goodsId: String, token: String) {
-        if (post("/goods/endWater", mapOf("goodsId" to goodsId), token) != true) throw LifeDeviceException("结束接水失败，请重试")
+        endAt("/goods/endWater", mapOf("goodsId" to goodsId), token)
     }
     override suspend fun finishSupported(goodsId: String, token: String): Boolean? =
         post("/goods/normal/details", mapOf("goodsId" to goodsId), token).obj().let {
@@ -147,8 +160,13 @@ class LifeDeviceApi(
             it.booleanOrNull("supportAppUserFinish")
         }
     override suspend fun endShower(goodsId: String, orderNo: String, token: String) {
-        if (post("/shower/goods/remoteEnd", mapOf("goodsId" to goodsId, "orderNo" to orderNo), token) != true)
-            throw LifeDeviceException("结束淋浴失败，请重试")
+        endAt("/shower/goods/remoteEnd", mapOf("goodsId" to goodsId, "orderNo" to orderNo), token)
+    }
+    private suspend fun endAt(path: String, fields: Map<String, String>, token: String) {
+        val response = postEnvelope(path, fields, token)
+        // DeviceStartupAct.afterEndData -> lambda40 also checks this Boolean.
+        if (response.scalarOrElement("data") != true) throw LifeDeviceException(
+            LifeDeviceProtocol.message(response) ?: "$path：data=${response["data"] ?: "缺失"}，服务端未提供原因")
     }
     override suspend fun createAfterPay(orderNo: String, token: String): String {
         val data = post("/order/afterPay/creating", mapOf("orderNo" to orderNo), token).obj()
@@ -157,7 +175,9 @@ class LifeDeviceApi(
     }
     override suspend fun syncOrder(orderNo: String, token: String) {
         val data = post("/order/sync", mapOf("orderNo" to orderNo, "payType" to "0"), token).obj()
-        if (data.text("code") != "0") throw LifeDeviceException("订单处理失败，请稍后重试")
+        // PayStateAct retries nonzero codes; these are not a permanent business rejection.
+        if (data.text("code") != "0") throw LifeDeviceException(LifeDeviceProtocol.message(data)
+            ?: "/order/sync：订单尚未确认（code=${data.text("code").ifBlank { "缺失" }}），服务端未提供原因")
     }
 
     private fun laundryItems(deviceId: String, skuId: String) = jsonArrayOf(listOf(jsonObjectOf("amount" to ("1"), "goodsId" to (deviceId), "num" to ("1"), "skuId" to (skuId), "soldType" to ("1")))).toString()
@@ -181,7 +201,8 @@ class LifeDeviceApi(
         val result = post("/trade/check_device_status", mapOf("goodsId" to deviceId), token)
         if (result == null || result == JsonNull) return ""
         val data = result.obj()
-        if (data.booleanOrNull("health") == false) throw LifeDeviceException(data.text("faultDesc").ifBlank { "设备暂不可用，请稍后重试" })
+        if (data.booleanOrNull("health") == false) throw LifeDeviceException(LifeDeviceProtocol.message(data)
+            ?: "/trade/check_device_status：health=false，服务端未提供原因")
         return data.text("msgId")
     }
     override suspend fun laundryMachineReady(messageId: String, token: String): Boolean =
@@ -230,12 +251,12 @@ internal fun JsonObject.booleanOrNull(name: String): Boolean? = when (text(name)
     "false", "0" -> false
     else -> null
 }
-private fun JsonObject.required(name: String) = text(name).takeIf { it.isNotBlank() } ?: throw LifeDeviceException("设备响应信息不完整")
-private fun Any?.obj() = this as? JsonObject ?: throw LifeDeviceException("服务器返回内容异常")
+private fun JsonObject.required(name: String) = text(name).takeIf { it.isNotBlank() } ?: throw LifeDeviceException("响应缺少 $name")
+private fun Any?.obj() = this as? JsonObject ?: throw LifeDeviceException("响应的 data 不是 JSON 对象")
 internal fun JsonArray.objects(): List<JsonObject> = indices.map { objectValue(it) }
 private fun Any?.channels(): List<LifePayChannel> = (this as? JsonArray ?: throw LifeDeviceException("设备未返回支付方式"))
-    .objects().map { LifePayChannel(it.required("method"), it.text("methodName"), it.booleanOrNull("useStatus"),
-        it.booleanOrNull("needOpenFlag"), it.text("notUseRemark").ifBlank { null }, it.text("link").ifBlank { null }) }
+    .objects().map { LifePayChannel(it.required("method"), it.text("methodName"), it.booleanOrNull("canChecked"),
+        it.booleanOrNull("needOpenFlag"), it.text("remark").ifBlank { it.text("notUseRemark") }.ifBlank { null }, it.text("link").ifBlank { null }) }
 private fun String.validPrice(): String = takeIf { toBigDecimalOrNull()?.let { price -> price.signum() >= 0 && price.scale() <= 2 } == true }
     ?: throw LifeDeviceException("价格信息异常，请在胖乖生活核对")
 internal fun lifeTimestamp(value: String): Long? = runCatching {

@@ -29,22 +29,22 @@ enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣"), 
     val waterAction: String get() = if (isShower) "淋浴" else "接水"
     val alipay: LifePayChannel? get() = channels.firstOrNull { it.method == "15" }
     val startError: String? get() = when {
+        error != null -> error
         category !in setOf("04", "08") -> "未知设备"
         bluetooth == true -> "该设备需要蓝牙操作，请使用胖乖生活"
-        payment != "after" -> "该设备的支付方式暂未接入"
-        error != null -> error
+        payment.isNotBlank() && payment != "after" -> "当前应用尚未接入该设备的支付方式"
         skus.none { it.available != false } -> "设备当前没有可用的${if (isShower) "出水口" else "接水选项"}"
         alipay == null -> "该设备没有可用的支付宝免密渠道"
-        alipay?.needsOpen == true -> "请先在胖乖生活开通支付宝免密，返回后刷新设备"
-        alipay?.available == false -> alipay?.remark ?: "支付宝免密暂不可用"
+        // The implemented legacy method 15 is judged by selectAfterPay/unlock.
+        // Official 1.145.0's opening guide is conditional on method 1501 + thirdMethod 1506.
         else -> null
     }
     val laundryError: String? get() = when {
+        error != null -> error
         category != "00" -> "未知设备"
         bluetooth == true -> "该设备需要蓝牙操作，请使用胖乖生活"
-        payment != "before" -> "该设备的支付方式暂未接入"
-        error != null -> error
-        skus.none { it.available != false } -> "设备当前没有可用的洗衣程序"
+        payment.isNotBlank() && payment != "before" -> "当前应用尚未接入该设备的支付方式"
+        skus.none { it.available != false } -> "该洗涤程序暂时无法使用，请更换其他程序使用"
         else -> null
     }
 }
