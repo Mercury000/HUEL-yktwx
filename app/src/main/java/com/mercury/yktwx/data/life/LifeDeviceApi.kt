@@ -45,7 +45,7 @@ class LifeDeviceApi(
             "application/x-www-form-urlencoded;charset=UTF-8"))
         return client.readResponse(request.build()) { result ->
             val status = result.code
-            if (status in setOf(401, 403)) throw LifeDeviceException("胖乖登录已失效，请重新登录", true, businessRejected = true)
+            if (status in setOf(401, 403)) throw LifeDeviceException("连接失败，请稍后重试", businessRejected = true)
             if (status !in 200..299) throw LifeDeviceException("连接失败，请稍后重试")
             val bytes = result.readBytesAtMost(1_048_576)
             if (bytes.size > 1_048_576) throw LifeDeviceException("服务器返回内容过大")
@@ -54,8 +54,8 @@ class LifeDeviceApi(
             val code = response.text("code")
             if (code !in setOf("0", "200")) {
                 val message = response.text("msg").ifBlank { response.text("message") }.ifBlank { "请求失败，请稍后重试" }
-                val expired = code in setOf("401", "403") || listOf("未登录", "未登陆", "请先登录", "登录失效", "登录过期").any(message::contains) ||
-                    message.contains("token", true) && listOf("过期", "无效", "expired", "invalid").any { message.contains(it, true) }
+                // Official 1.145.0 ResultStateKt.paresResult(); see docs/life-login-expiry-evidence.md.
+                val expired = code in setOf("10", "126")
                 throw LifeDeviceException(if (expired) "胖乖登录已失效，请重新登录" else message, expired,
                     businessRejected = code.toIntOrNull() != null)
             }
