@@ -41,6 +41,7 @@ data class LifeDevicesUiState(
     val paymentMethod: String? = null,
     val paymentRestorePending: Boolean = false,
     val cancelOrderConfirmation: String? = null,
+    val sessionErrors: Map<String, String> = emptyMap(),
 )
 
 /** One login gate and scanner route each recognized code to its device service. */
@@ -118,6 +119,7 @@ class LifeDevicesViewModel internal constructor(
     }
     private val persistence = Mutex()
     private val sessionErrors = mutableMapOf<String, String>()
+    private val dismissedSessionIds = mutableSetOf<String>()
     private var deviceTask: Job? = null
     private var authTask: Job? = null
     private var timerTask: Job? = null
@@ -178,7 +180,7 @@ class LifeDevicesViewModel internal constructor(
                     account = null; ownerPhone = ""
                 }
                 requestedFeature = null; requestedScan = false; requestedSessionId = null
-                pendingDeviceSerial = null
+                pendingDeviceSerial = null; pendingOverlay = null
                 sessionErrors.clear(); accountVerifier.cleared()
                 mutable.update { LifeDevicesUiState(restoring = false, entryRequest = it.entryRequest) }
             } catch (e: CancellationException) { throw e }
@@ -243,18 +245,29 @@ class LifeDevicesViewModel internal constructor(
         val value = mutable.value
         if (feature == LifeFeature.Water) {
             val session = value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
-            if (session.phase != WaterPhase.Ended && (value.waterBusy || !session.canDismissException)) return
+            if (value.accountBusy || value.waterBusy && session.active || !session.canDismissRecord(sessionErrors[sessionId])) return
             mutable.update { it.copy(waterSessions = it.waterSessions.filterNot { item -> item.sessionId == sessionId },
                 water = it.water?.takeUnless { item -> item.sessionId == sessionId },
                 error = if (it.water?.sessionId == sessionId && it.feature == feature) null else it.error) }
         } else {
             val session = value.laundrySessions.firstOrNull { it.sessionId == sessionId } ?: return
-            if (session.active && !session.canDismissUnknownCreation) return
+            if (value.accountBusy || value.laundryBusy && session.active || !session.canDismissRecord(sessionErrors[sessionId])) return
+            if (value.laundry?.sessionId == sessionId) {
+                paymentSequence++; paymentInFlight = null; pendingOverlay = null
+                quoteSequence++; quoteTask?.cancel()
+            }
             mutable.update { it.copy(laundrySessions = it.laundrySessions.filterNot { item -> item.sessionId == sessionId },
                 laundry = it.laundry?.takeUnless { item -> item.sessionId == sessionId },
+                paymentLaunch = if (it.laundry?.sessionId == sessionId) null else it.paymentLaunch,
+                paymentVisible = it.paymentVisible && it.laundry?.sessionId != sessionId,
+                paymentRestorePending = it.paymentRestorePending && it.laundry?.sessionId != sessionId,
+                paymentFeedback = it.paymentFeedback?.takeUnless { feedback -> feedback.sessionId == sessionId },
+                cancelOrderConfirmation = it.cancelOrderConfirmation?.takeUnless { id -> id == sessionId },
                 error = if (it.laundry?.sessionId == sessionId && it.feature == feature) null else it.error) }
         }
         sessionErrors.remove(sessionId)
+        dismissedSessionIds.add(sessionId)
+        mutable.update { it.copy(sessionErrors = sessionErrors.toMap()) }
         viewModelScope.launch {
             try {
                 if (feature == LifeFeature.Laundry) persistence.withLock {
@@ -601,7 +614,7 @@ class LifeDevicesViewModel internal constructor(
         when {
             reading.workStatus == 2 && reading.status == 1 -> {
                 val next = session.copy(phase = if (session.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
-                    startedAtMillis = session.startedAtMillis ?: now())
+                    startedAtMillis = session.startedAtMillis ?: now(), creationUncertain = false, fault = null)
                 if (next != session) saveSession(next)
                 sessionError(LifeFeature.Water, session.sessionId, null)
             }
@@ -635,6 +648,7 @@ class LifeDevicesViewModel internal constructor(
     }
     private suspend fun saveSession(session: WaterSession, select: Boolean = false, restoring: Boolean = false) {
         currentCoroutineContext().ensureActive()
+        if (session.sessionId in dismissedSessionIds) return
         if (!select && !restoring && mutable.value.waterSessions.none { it.sessionId == session.sessionId }) return
         // Preserve the command in memory even if disk persistence fails after its response.
         mutable.update {
@@ -656,14 +670,16 @@ class LifeDevicesViewModel internal constructor(
         }
     }
     private fun sessionError(feature: LifeFeature, sessionId: String, message: String?) {
+        if (sessionId in dismissedSessionIds) return
         if (message == null) sessionErrors.remove(sessionId) else sessionErrors[sessionId] = message
+        mutable.update { it.copy(sessionErrors = sessionErrors.toMap()) }
         val selected = if (feature == LifeFeature.Water) mutable.value.water?.sessionId else mutable.value.laundry?.sessionId
         if (selected == sessionId) serviceError(feature, message)
     }
     private fun serviceError(feature: LifeFeature, message: String?) {
         val sessionId = if (feature == LifeFeature.Water) mutable.value.water?.sessionId else mutable.value.laundry?.sessionId
         sessionId?.let { if (message == null) sessionErrors.remove(it) else sessionErrors[it] = message }
-        mutable.update { if (it.feature == feature) it.copy(error = message) else it }
+        mutable.update { it.copy(sessionErrors = sessionErrors.toMap(), error = if (it.feature == feature) message else it.error) }
     }
     private suspend fun removeWaterSession(id: String) {
         mutable.update { it.copy(waterSessions = it.waterSessions.filterNot { session -> session.sessionId == id },
@@ -675,18 +691,21 @@ class LifeDevicesViewModel internal constructor(
     private suspend fun recoverWaterSessions(token: String, candidates: List<WaterSession>) {
         if (account?.token != token) return
         for (session in candidates) {
+            if (session.sessionId in dismissedSessionIds) continue
             try {
                 if (session.orderNo.isBlank()) {
                     saveSession(session.copy(phase = WaterPhase.Starting, creationUncertain = true), restoring = true)
                 } else {
                     val reading = if (session.device.isShower) api.shower(session.skuId, token) else api.water(session.skuId, token)
+                    if (session.sessionId in dismissedSessionIds) continue
                     if (account?.token != token) return
                     if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回${session.device.waterAction}订单，请重试")
                     if (reading.orderNo == session.orderNo) {
                         when {
                             reading.status == 1 && reading.workStatus == 2 -> {
                                 val running = session.copy(phase = WaterPhase.Running,
-                                    startedAtMillis = session.startedAtMillis ?: now(), endedAtMillis = null)
+                                    startedAtMillis = session.startedAtMillis ?: now(), endedAtMillis = null,
+                                    creationUncertain = false, fault = null)
                                 mutable.update { it.copy(waterSessions = it.waterSessions + running,
                                     water = if (it.restoring && it.water == null && !it.scanning && it.scannedSerial == null) running else it.water) }
                             }
@@ -701,7 +720,7 @@ class LifeDevicesViewModel internal constructor(
             catch (e: Exception) {
                 if (account?.token != token) return
                 saveSession(session, restoring = true)
-                sessionErrors[session.sessionId] = failure(e)
+                sessionError(LifeFeature.Water, session.sessionId, failure(e))
                 mutable.update { if (it.feature == LifeFeature.Water && it.water == null && !it.scanning && it.scannedSerial == null)
                     it.copy(error = failure(e)) else it }
                 if (expired(e, showLogin = false)) return
@@ -1081,7 +1100,7 @@ class LifeDevicesViewModel internal constructor(
         val reading = service.laundryOrder(session.orderNo, token)
         if (reading.orderNo != session.orderNo || reading.orderId != session.orderId || reading.deviceId != session.device.id || reading.skuId != session.skuId)
             throw LifeDeviceException("洗衣订单信息不匹配，请在胖乖生活核对")
-        val next = session.copy(price = reading.price, serverStatus = reading.status, device = session.device.copy(
+        val next = session.copy(price = reading.price, serverStatus = reading.status, creationUncertain = false, device = session.device.copy(
             name = reading.deviceName.ifBlank { session.device.name },
             shopName = reading.shopName.ifBlank { session.device.shopName },
             skus = session.device.skus.map { sku ->
@@ -1141,6 +1160,7 @@ class LifeDevicesViewModel internal constructor(
     }
     private suspend fun saveLaundrySession(value: LaundrySession, select: Boolean = false) {
         currentCoroutineContext().ensureActive()
+        if (value.sessionId in dismissedSessionIds) return
         val session = value.withCompletionObservation(now())
         // A response that finishes after manual dismissal must not restore the removed card.
         if (!select && mutable.value.laundrySessions.none { it.sessionId == session.sessionId }) return
