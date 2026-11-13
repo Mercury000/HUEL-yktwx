@@ -830,13 +830,13 @@ private fun MainContent(
                                                     hellobikeLoginExpired = hellobikeConnection.status == LifeAccountStatus.Expired,
                                                     onHellobikeLogin = ::connectHellobikeAccount,
                                                     additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,
-                                                        when (session.phase) {
+                                                        hui798State.sessionErrors[session.sessionId]?.let { "状态异常" } ?: when (session.phase) {
                                                             WaterPhase.Ended -> "已完成"
                                                             WaterPhase.Starting -> if (session.uncertain) "启动结果未知" else "正在启动"
                                                             WaterPhase.Stopping -> "正在结束"
                                                             else -> "用水中"
                                                         }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
-                                                        progress = if (session.active) null else 1f, dismissible = session.canDismissException,
+                                                        progress = if (session.active) null else 1f, dismissible = session.canDismissRecord(hui798State.sessionErrors[session.sessionId]),
                                                         onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
                                                         hellobikeState.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Ride,
                                                             hellobikeState.sessionErrors[session.sessionId]?.let { "状态异常" } ?: session.title,
@@ -845,6 +845,7 @@ private fun MainContent(
                                                             dismissible = session.canDismissRecord(hellobikeState.sessionErrors[session.sessionId]),
                                                             onOpen = { openHellobikeSession(session.sessionId) }, onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
                                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
+                                                    lifeSessionErrors = lifeState.sessionErrors,
                                                     onOpenLifeSession = ::openLifeSession,
                                                     onDismissLifeSession = lifeModel::dismissSession,
                                                     onUnlost = {

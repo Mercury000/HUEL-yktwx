@@ -29,6 +29,7 @@ data class Hui798UiState(
     val confirmedSessions: Set<String> = emptySet(),
     val changingAccount: Boolean = false, val accountBusy: Boolean = false,
     val accountError: String? = null,
+    val sessionErrors: Map<String, String> = emptyMap(),
 ) {
     val session: Hui798Session? get() = sessions.firstOrNull { it.sessionId == selectedSessionId }
     val connected: Boolean get() = connectedPhone.isNotBlank()
@@ -70,6 +71,7 @@ class Hui798ViewModel internal constructor(
     private var visible = false
     private val persistence = Mutex()
     private val sessionErrors = mutableMapOf<String, String>()
+    private val dismissedSessionIds = mutableSetOf<String>()
     private var deviceTask: Job? = null
     private var commandTask: Job? = null
     private var authTask: Job? = null
@@ -318,11 +320,13 @@ class Hui798ViewModel internal constructor(
     }
     fun dismissSession(id: String) {
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
-        if (mutable.value.busy || session.active && !session.canDismissException) return
+        if (mutable.value.accountBusy || mutable.value.busy || !session.canDismissRecord(sessionErrors[id])) return
+        dismissedSessionIds.add(id)
+        sessionErrors.remove(id)
         mutable.update { it.copy(sessions = it.sessions.filterNot { item -> item.sessionId == id },
             selectedSessionId = it.selectedSessionId?.takeUnless { selected -> selected == id },
-            device = it.device.takeUnless { _ -> it.selectedSessionId == id }, confirmedSessions = it.confirmedSessions - id) }
-        sessionErrors.remove(id)
+            device = it.device.takeUnless { _ -> it.selectedSessionId == id }, confirmedSessions = it.confirmedSessions - id,
+            error = if (it.selectedSessionId == id) null else it.error, sessionErrors = sessionErrors.toMap()) }
         viewModelScope.launch { try {
             persistence.withLock { withContext(io) { store.removeSession(id) } }
         } catch (e: CancellationException) { throw e }
@@ -440,7 +444,10 @@ class Hui798ViewModel internal constructor(
         catch (e: Exception) {
             if (account == owner) accountVerifier.failed(failure(e))
             if (account == owner) {
-                for (session in cached) saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
+                for (session in cached) {
+                    saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
+                    error(failure(e), session.sessionId)
+                }
             }
             throw e
         }
@@ -460,15 +467,18 @@ class Hui798ViewModel internal constructor(
         var failed = false
         for (device in candidates) {
             try {
+                if (cached.any { it.device.id == device.id && it.sessionId in dismissedSessionIds }) continue
                 val use = api.deviceUse(device.id, verifiedOwner.token)
                 currentCoroutineContext().ensureActive()
                 if (account != verifiedOwner) return
+                if (cached.any { it.device.id == device.id && it.sessionId in dismissedSessionIds }) continue
                 val existing = mutable.value.sessions.firstOrNull { it.active && it.device.id == device.id }
                 // Recovery must not replace a live session; its next read verifies that session separately.
                 if (existing != null) continue
                 if (use.reading.status == 99 || use.userId != null && use.userId != verifiedOwner.userId) {
                     continue
                 }
+                if (use.reading.status != 1) throw Hui798Exception("设备状态尚未确认，请核对现场状态")
                 if (use.userId == null) throw Hui798Exception("设备未返回使用人，暂时无法恢复接水进度")
                 val time = use.reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
                 val previous = cached.firstOrNull { it.device.id == device.id && it.serverTime == time }
@@ -481,7 +491,7 @@ class Hui798ViewModel internal constructor(
                 failed = true
                 cached.firstOrNull { it.device.id == device.id && mutable.value.sessions.none { active -> active.active && active.device.id == device.id } }?.let { session ->
                     saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
-                    sessionErrors[session.sessionId] = failure(e)
+                    error(failure(e), session.sessionId)
                 }
                 mutable.update { it.copy(error = failure(e)) }
                 expired(e, verifiedOwner)
@@ -535,7 +545,7 @@ class Hui798ViewModel internal constructor(
                 removeTrackedSession(id)
                 mutable.update { it.copy(deviceReady = true, deviceInUse = false) }
             }
-        }
+        } else throw Hui798Exception("设备状态尚未确认，请核对现场状态")
     }
     private suspend fun removeTrackedSession(id: String) {
         mutable.update { it.copy(sessions = it.sessions.filterNot { item -> item.sessionId == id },
@@ -546,6 +556,7 @@ class Hui798ViewModel internal constructor(
     }
     private suspend fun saveSession(session: Hui798Session, select: Boolean = false, restoring: Boolean = false) {
         currentCoroutineContext().ensureActive()
+        if (session.sessionId in dismissedSessionIds) return
         if (!select && !restoring && mutable.value.sessions.none { it.sessionId == session.sessionId }) return
         mutable.update { it.copy(sessions = if (it.sessions.none { item -> item.sessionId == session.sessionId }) it.sessions + session
             else it.sessions.map { item -> if (item.sessionId == session.sessionId) session else item },
@@ -557,8 +568,10 @@ class Hui798ViewModel internal constructor(
         withContext(io) { store.saveSessions(mutable.value.sessions) }
     }
     private fun error(message: String?, id: String?) {
+        if (id in dismissedSessionIds) return
         if (id != null) { if (message == null) sessionErrors.remove(id) else sessionErrors[id] = message }
-        mutable.update { if (id == null || it.selectedSessionId == id) it.copy(error = message) else it }
+        mutable.update { it.copy(sessionErrors = sessionErrors.toMap(),
+            error = if (id == null || it.selectedSessionId == id) message else it.error) }
     }
     private suspend fun expired(e: Exception, owner: Hui798Account) {
         if (e !is Hui798Exception || !e.loginExpired || account != owner) return
