@@ -1,0 +1,75 @@
+name: Generate application profiles
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseline-profiles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: 22
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      - name: Prepare emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          chmod +x gradlew
+      - name: Collect Baseline and Startup Profiles
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 36
+          target: google_apis_playstore
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 2048
+          script: ./gradlew :app:generateBaselineProfile --no-daemon --no-configuration-cache --max-workers=2 --console=plain
+      - name: Verify optimized APK packaging
+        run: |
+          ./gradlew :app:assembleBenchmarkPerformance :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2 --console=plain
+          python -m unittest discover -s scripts -p test_verify_profiles.py
+          python scripts/verify_profiles.py app/build/outputs/apk/benchmarkPerformance/app-benchmarkPerformance.apk --mapping app/build/outputs/mapping/benchmarkPerformance/mapping.txt > performance-profile-verification.json
+          python scripts/verify_profiles.py app/build/outputs/apk/release/app-release-unsigned.apk --mapping app/build/outputs/mapping/release/mapping.txt > release-profile-verification.json
+      - name: Upload profiles and generation evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: baseline-profiles-${{ github.sha }}
+          path: |
+            app/src/main/generated/baselineProfiles/*.txt
+            benchmark/build/outputs/androidTest-results/**
+            benchmark/build/outputs/connected_android_test_additional_output/**
+            *-profile-verification.json
+          retention-days: 14
+      - name: Propose updated profiles
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta'
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          base: ${{ github.ref_name }}
+          branch: perf/baseline-profiles-${{ github.ref_name }}
+          add-paths: app/src/main/generated/baselineProfiles/*.txt
+          commit-message: 'perf(profile): 更新应用启动与常用操作编译资料'
+          title: 'perf(profile): 更新应用启动与常用操作编译资料'
+          body: |
+            在 API 36 模拟器上运行冷启动、主标签、账单详情和滚动场景，更新 Baseline/Startup Profile。已检查优化性能 APK 和正式 APK 中的编译资料。
+
+            采集结果与打包检查报告保存在本次工作流制品中；这次生成不代表真机提速测量。

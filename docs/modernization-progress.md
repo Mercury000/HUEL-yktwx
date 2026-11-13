@@ -8,14 +8,14 @@
 | kotlinx.serialization | 完成 | 生产代码及测试依赖移除 org.json；18 组、224 项 JSON 相关定向测试通过；专门存储兼容集中到 `StoredRecordJson` |
 | DataStore 与启动准备状态 | 完成 | 一个类型化文件与仓库；1.4.1 一次性迁移；9 个相关类中的 68 项定向验证通过，含真实文件迁移与启动阻断 |
 | Hilt 全图接入 | 完成 | debug、preview、release 的生产和测试图均编译通过；104 项定向测试通过、无跳过 |
-| Macrobenchmark 与 Profiles | 待实施 | 尚未生成/打包 profile，也没有发布配置测量数据 |
+| Macrobenchmark 与 Profiles | 实现及本地验证完成，真机收益待验收 | 两条生成流程通过；优化性能/正式 APK 的应用 Profile 均通过解析与 DEX 匹配检查；CI 仅手动触发 |
 | Camera2 session API | 待实施 | 尚未更新重载及完成相机定向验证 |
 
 以上迁移验证后，按新增要求完整迁移页面状态恢复：SavedStateHandle、带参数的类型化路由和业务对象恢复入口一起交付，覆盖全部页面、弹层与账户切换；不兼容本轮之前未发布的页面状态格式。性能与相机的设备验证仍须取得实际设备证据。
 
 所有更改完成后进行完整 review，发现问题修入所属迁移提交，并再次复查修正结果，直到没有未解决的审查项；不另留独立修补提交。
 
-以上工作完成后，检查指定后续聊天的工作是否完成；已完成时按线性历史接入 main，并适配本轮完成的存储、注入和页面恢复架构。
+哈啰接入按 2026-11-13 的最新要求纳入本轮：按线性历史接入 main，并适配已完成的存储、注入及后续页面恢复架构。当前禁止 ADB；本地实现、定向测试和构建继续，真机性能及相机验收保持待完成，不以模拟器或主机测试替代。
 
 ## Version Catalog
 
@@ -68,3 +68,15 @@ MainActivity 与 Compose 壳继续使用原 Activity 的 ViewModelStoreOwner，�
 debug 通过 12 个直接相关类中的 94 项定向测试、无跳过，覆盖 HiltGraphTest、PreferencesStartupTest、UsageConsentStartupTest、SharedReadStoreTest、AccountRepositoryTest、AppHttpTest、NetworkMonitorTest、AppUpdateViewModelTest、UiPreviewIsolationTest，以及缴费/充值统计和强制更新页各一个定向用例。preview、release 分别通过 UiPreviewIsolationTest 的 5 项测试，验证 SDK 依赖范围、统一 Application、有效同意的冷启动初始化及预览参数隔离。合计 104 项，全部通过、无跳过；三种构建的生产和测试 Hilt 图均已完成 Java 编译。
 
 提交前两轮检查覆盖生产创建入口、限定符与作用域、Activity 模型归属、截图保护顺序、同意初始化及测试替身边界，没有剩余已识别问题。只执行以上直接相关测试及依赖图编译，没有运行全量测试、发布 APK 构建或 Lint。本地诊断日志为未提交的 `tools/modernization/hilt-verification.log`。
+
+## Macrobenchmark 与 Profiles
+
+增加独立 benchmark 模块，共用冷启动、主标签、账单详情及滚动操作。性能目标构建复用受控样本，关闭统计和真实业务操作；测量使用不可调试且启用 R8 的配置。启动采集单独生成 Startup Profile，常用操作加入 Baseline Profile，生成入口排除预览样本类。主界面页签等待明确的 pager 动画结束标识，避免在切页尚未完成时误点详情。
+
+2026-11-13 在暂停 ADB 前，两条 API 36 模拟器生成流程通过；测量的四种参数化用例在生成模式按规则跳过，不计为性能测试通过。排除预览样本后，Baseline 含 28,710 条规则，Startup 含 22,575 条规则。生成文件直接随源码保存，日常构建不会调用设备。
+
+最后一次本地优化性能与正式 APK 构建成功，校验器结合各自 R8 mapping 确认 Profile 对应打包 DEX，分别找到 1,235、1,254 个应用所属类的方法；编译资料分别为 13,333、12,011 字节，均低于 1.5 MB。这里统计打包资料中的方法，不声称 ART 已实际编译或速度已改善。校验器的六项定向测试覆盖混淆后归属、热方法与启动位图、多 DEX、错误校验值、只有库方法、错误映射和无效文本资料。
+
+本地证据为 `tools/modernization/performance-profile-verified.log`、`profile-packaging-current.log`、`performance-profile-verification.json` 和 `release-profile-verification.json`。最后两份 APK SHA-256 分别为 `66bfa59d8622a1bc74bb7073d99d820bf67cf685c078ba29fcab61fc6c061e0c`、`9ccbaea09d5d5c57d8860355ec476acc2b7bf5acf26e2a26947ce44dedc61bd1`。
+
+CI 采集按最新要求仅手动运行，更新分支为 `perf/baseline-profiles-main` / `perf/baseline-profiles-beta`，自动提交无正文。正式打包仅消费并核验现有资料；无需每次运行模拟器。工作流已做静态检查，未推送或触发远端执行。使用方式与限制见 [性能基准与应用 Profiles](performance-profiles.md)。同设备的编译模式对照、Startup DEX 布局对照及真实收益仍待设备操作恢复后完成。
