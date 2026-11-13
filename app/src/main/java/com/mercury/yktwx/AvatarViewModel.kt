@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import com.mercury.yktwx.state.AvatarSavedState
+import com.mercury.yktwx.state.RestorableState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
@@ -33,23 +36,39 @@ internal data class AvatarUiState(
 internal class AvatarViewModel internal constructor(
     private val store: LocalAvatarStore,
     private val decode: (Uri) -> Bitmap,
+    savedState: SavedStateHandle = SavedStateHandle(),
+    private val retain: (Uri) -> Unit = {},
+    private val release: (Uri) -> Unit = {},
 ) : ViewModel() {
-    @Inject internal constructor(store: LocalAvatarStore, decoder: AvatarDecoder) : this(store, decoder::decode)
+    @Inject internal constructor(store: LocalAvatarStore, decoder: AvatarDecoder, savedState: SavedStateHandle) :
+        this(store, decoder::decode, savedState, decoder::retain, decoder::release)
     private val mutable = MutableStateFlow(AvatarUiState())
     val state = mutable.asStateFlow()
     private var restoreJob: Job? = null
     private var editJob: Job? = null
     private var generation = 0L
-    private var session = 0L
+    private fun nextSession() = java.util.UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE
+    private var session = nextSession()
+    private var draftUri: Uri? = null
+    private var bound = false
+    private val saved = RestorableState(savedState, "avatar-editor", AvatarSavedState.serializer(), { it.valid }) {
+        val value = mutable.value
+        AvatarSavedState(value.visible, draftUri?.toString(), value.crop.zoom, value.crop.centerX, value.crop.centerY, session)
+    }
     private fun storageOwner(state: AvatarUiState) = if (state.preview) "preview:${state.owner}" else state.owner
 
     private var accountGeneration = 0L
 
     fun accountChanged(owner: String, preview: Boolean = false, accountGeneration: Long = this.accountGeneration) {
-        if (state.value.owner == owner && state.value.preview == preview && this.accountGeneration == accountGeneration) return
+        if (bound && state.value.owner == owner && state.value.preview == preview && this.accountGeneration == accountGeneration) return
+        val restored = saved.bind(owner.takeIf(String::isNotBlank), preview, bound && this.accountGeneration != accountGeneration)
+        bound = true
         this.accountGeneration = accountGeneration
-        generation++; session++; restoreJob?.cancel(); editJob?.cancel()
-        mutable.value = AvatarUiState(owner, preview, restoring = owner.isNotBlank())
+        generation++; session = nextSession(); restoreJob?.cancel(); editJob?.cancel()
+        releaseDraft()
+        if (restored != null) session = restored.session
+        mutable.value = AvatarUiState(owner, preview, restoring = owner.isNotBlank(), visible = restored?.visible == true,
+            crop = restored?.crop() ?: AvatarCrop())
         if (owner.isBlank()) return
         val attempt = generation
         val key = storageOwner(state.value)
@@ -57,23 +76,26 @@ internal class AvatarViewModel internal constructor(
             val image = withContext(Dispatchers.IO) { readImage(store.read(key)) }
             if (attempt == generation) mutable.value = mutable.value.copy(bytes = image.first, image = image.second, restoring = false)
         }
+        if (restored?.visible == true) restored.uri?.let { restoreDraft(Uri.parse(it), session, restored.crop()) }
     }
 
     fun open() {
         if (state.value.owner.isBlank()) return
-        session++; editJob?.cancel()
+        session = nextSession(); editJob?.cancel()
+        releaseDraft()
         mutable.value = state.value.copy(visible = true, loading = false, saving = false, draft = null,
             crop = AvatarCrop(), error = null)
     }
 
     fun dismiss() {
-        session++; editJob?.cancel()
+        session = nextSession(); editJob?.cancel()
+        releaseDraft()
         mutable.value = state.value.copy(visible = false, loading = false, saving = false, draft = null, error = null)
     }
 
     fun beginPick(): Long? {
         if (!state.value.visible || state.value.loading || state.value.saving || state.value.restoring) return null
-        session++
+        session = nextSession()
         mutable.value = state.value.copy(loading = true, error = null)
         return session
     }
@@ -85,17 +107,32 @@ internal class AvatarViewModel internal constructor(
     fun imagePicked(uri: Uri?, token: Long) {
         if (token != session || !state.value.visible) return
         if (uri == null) { mutable.value = state.value.copy(loading = false); return }
+        if (uri.scheme != "content") { pickFailed(token); return }
+        if (draftUri != uri) releaseDraft()
+        retain(uri)
+        restoreDraft(uri, token, AvatarCrop())
+    }
+
+    private fun restoreDraft(uri: Uri, token: Long, crop: AvatarCrop) {
+        editJob?.cancel()
+        draftUri = uri
+        mutable.value = state.value.copy(loading = true, crop = crop)
         editJob = viewModelScope.launch {
             try {
                 val bitmap = withContext(Dispatchers.IO) { decode(uri) }
                 if (token == session && state.value.visible) mutable.value = state.value.copy(
-                    loading = false, draft = bitmap, crop = AvatarCrop(), error = null)
+                    loading = false, draft = bitmap, crop = crop.clamped(bitmap.width, bitmap.height), error = null)
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
-                if (token == session) mutable.value = state.value.copy(loading = false, error = "无法读取这张图片，请重新选择")
+                if (token == session) {
+                    releaseDraft()
+                    mutable.value = state.value.copy(loading = false, draft = null, error = "无法读取这张图片，请重新选择")
+                }
             }
         }
     }
+
+    private fun releaseDraft() { draftUri?.let(release); draftUri = null }
 
     fun cropChanged(crop: AvatarCrop) {
         val draft = state.value.draft ?: return
@@ -129,6 +166,7 @@ internal class AvatarViewModel internal constructor(
                 val image = withContext(Dispatchers.IO) { readImage(write()) }
                 if (token == session) mutable.value = state.value.copy(bytes = image.first, image = image.second,
                     saving = false, visible = false, draft = null, error = null, restoring = false)
+                if (token == session) releaseDraft()
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
                 if (token == session) mutable.value = state.value.copy(saving = false, error = "头像保存失败，请重试")

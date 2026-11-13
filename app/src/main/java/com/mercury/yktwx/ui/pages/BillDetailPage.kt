@@ -24,7 +24,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
-fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, onBack: () -> Unit) {
+fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, loading: Boolean = false, error: String? = null,
+    onRetry: () -> Unit = {}, onBack: () -> Unit) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
@@ -52,7 +53,13 @@ fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, onBack: () -> U
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (record == null) {
-                        item { BillEmptyCard("未找到账单", "请返回账单列表后重试。") }
+                        item {
+                            if (loading) Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                            else if (error != null) InlineErrorGroup(error, 12.dp) {
+                                Button(onRetry, Modifier.fillMaxWidth()) { Text("重新加载") }
+                            }
+                            else BillEmptyCard("未找到账单", "这笔记录可能已更新，请返回账单列表查看。")
+                        }
                     } else {
                         item { DetailHeader(record) }
                         item { DetailInfo(record) }

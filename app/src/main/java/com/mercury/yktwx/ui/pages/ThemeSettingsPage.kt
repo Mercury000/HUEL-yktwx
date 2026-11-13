@@ -11,7 +11,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.R
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
+import com.mercury.yktwx.ui.components.RestorableDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 private val NavTransitionStyleOptions = listOf("Miuix", "AOSP")
@@ -63,13 +63,13 @@ fun ThemeSettingsPage(
     ) {
         item {
             Card {
-                OverlayDropdownPreference(
+                RestorableDropdownPreference(
                     title = stringResource(R.string.theme_title),
                     items = themeOptions,
                     selectedIndex = themeMode.value.coerceIn(themeOptions.indices),
                     onSelectedIndexChange = { onThemeModeChange(it) },
                 )
-                OverlayDropdownPreference(
+                RestorableDropdownPreference(
                     title = stringResource(R.string.theme_color),
                     summary = stringResource(R.string.theme_color_summary),
                     items = accentOptions,
@@ -83,7 +83,7 @@ fun ThemeSettingsPage(
                     onCheckedChange = { onFloatingBottomBarChange(it) },
                 )
                 if (floatingBottomBar.value) {
-                    OverlayDropdownPreference(
+                    RestorableDropdownPreference(
                         title = stringResource(R.string.floating_bottom_bar_style),
                         items = floatingStyleOptions,
                         selectedIndex = floatingBottomBarStyle.value.coerceIn(floatingStyleOptions.indices),
@@ -102,7 +102,7 @@ fun ThemeSettingsPage(
                     checked = blurTopBar.value,
                     onCheckedChange = { onBlurTopBarChange(it) },
                 )
-                OverlayDropdownPreference(
+                RestorableDropdownPreference(
                     title = stringResource(R.string.nav_transition_style),
                     items = NavTransitionStyleOptions,
                     selectedIndex = navTransitionStyle.value.coerceIn(NavTransitionStyleOptions.indices),
