@@ -1,0 +1,999 @@
+{
+  "audit_date": "2026-11-14",
+  "base_commit": "b1b529807fceda3ca11e3f6270c08181fb3d9cd9",
+  "unique_directly_related_tests": 102,
+  "failures": 0,
+  "skipped": 0,
+  "source_snapshot_at_completion": [
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\HellobikeViewModel.kt",
+      "sha256": "bf4c76282a820af7e8797e5082a81a81415a8738a8a05f97141ff292a420eef5",
+      "git_blob_sha256": "bf4c76282a820af7e8797e5082a81a81415a8738a8a05f97141ff292a420eef5"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\LifeDevicesViewModel.kt",
+      "sha256": "e7dc9f434d1fd3ea82595f113f3aa12f921f8434d5b0fca30d57fa5e0c29f7fe",
+      "git_blob_sha256": "e7dc9f434d1fd3ea82595f113f3aa12f921f8434d5b0fca30d57fa5e0c29f7fe"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\HellobikeApi.kt",
+      "sha256": "1cda5ad7090b6b954c99fe074c49e6ed67da98c732de91158cf703d0941b61b5",
+      "git_blob_sha256": "1cda5ad7090b6b954c99fe074c49e6ed67da98c732de91158cf703d0941b61b5"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\HellobikeLocation.kt",
+      "sha256": "58ca1f5c7c34dc13e5ce602dccd3ec3489c1d7d070407b07ae85d00ab44e6575",
+      "git_blob_sha256": "58ca1f5c7c34dc13e5ce602dccd3ec3489c1d7d070407b07ae85d00ab44e6575"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\HellobikeModels.kt",
+      "sha256": "a2b6281585ec51ac9b738c72cf7a7ae65908ff2fd2a90d7cac7016b997a69f02",
+      "git_blob_sha256": "a2b6281585ec51ac9b738c72cf7a7ae65908ff2fd2a90d7cac7016b997a69f02"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\LaundryModels.kt",
+      "sha256": "4145a0f42722c24b0f310715f45a0f7a08ee0b5959aa6695e07913aa10b8ee07",
+      "git_blob_sha256": "4145a0f42722c24b0f310715f45a0f7a08ee0b5959aa6695e07913aa10b8ee07"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\LifeAccountConnection.kt",
+      "sha256": "993249ac62726daecce975512718b2d5f325175a0a5e3f8ce7962dfddc614c8f",
+      "git_blob_sha256": "993249ac62726daecce975512718b2d5f325175a0a5e3f8ce7962dfddc614c8f"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\LifeDeviceApi.kt",
+      "sha256": "0ad8c27b2c488f24b820df36a9ed3b990e9e5d8b6c2a7e40ed1df9713aaaf287",
+      "git_blob_sha256": "0ad8c27b2c488f24b820df36a9ed3b990e9e5d8b6c2a7e40ed1df9713aaaf287"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\data\\life\\LifeDeviceModels.kt",
+      "sha256": "ceeddbf43159b52a252e664e4a4440f0b06a7cc5ee66a482fe54b17132421328",
+      "git_blob_sha256": "ceeddbf43159b52a252e664e4a4440f0b06a7cc5ee66a482fe54b17132421328"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\components\\InlineFeedback.kt",
+      "sha256": "eb528aa3b82f9d2cf31bef249b76dbc1c3ee529e10b1faa8ce14a3a26c7f6dd7",
+      "git_blob_sha256": "eb528aa3b82f9d2cf31bef249b76dbc1c3ee529e10b1faa8ce14a3a26c7f6dd7"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\components\\MiuixComponents.kt",
+      "sha256": "55ed86e90373505b2ee837edec9a8c320d61c94ef6a6502d9b3c1bd5553bcd22",
+      "git_blob_sha256": "55ed86e90373505b2ee837edec9a8c320d61c94ef6a6502d9b3c1bd5553bcd22"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\HellobikePages.kt",
+      "sha256": "02322719a1570328bfe2254d6a40ff731dcb45148a16ef6ab542277a5c93c017",
+      "git_blob_sha256": "02322719a1570328bfe2254d6a40ff731dcb45148a16ef6ab542277a5c93c017"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\LaundryContent.kt",
+      "sha256": "f7e39a3a58c1b342bdb5401bb0fdfb7450ca2e6bf9e4e7235f83dcad26fd88a0",
+      "git_blob_sha256": "f7e39a3a58c1b342bdb5401bb0fdfb7450ca2e6bf9e4e7235f83dcad26fd88a0"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\LifeAccountsSettings.kt",
+      "sha256": "0da5d3dff7acf919b166c824a9da604613fb689bc3ff8316f1e6644f6bf5d368",
+      "git_blob_sha256": "0da5d3dff7acf919b166c824a9da604613fb689bc3ff8316f1e6644f6bf5d368"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\LifeDevicePages.kt",
+      "sha256": "353d308afd06fad9e9d385466ee7f470db08bb913e07cf73192ff9c1c547a09b",
+      "git_blob_sha256": "353d308afd06fad9e9d385466ee7f470db08bb913e07cf73192ff9c1c547a09b"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\PaymentDialogContent.kt",
+      "sha256": "1150f47c70eff62a53db6b49b96292fb77499875d1b430a645326ffd52e3ca28",
+      "git_blob_sha256": "1150f47c70eff62a53db6b49b96292fb77499875d1b430a645326ffd52e3ca28"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\main\\java\\com\\mercury\\yktwx\\ui\\pages\\WaterDevicePage.kt",
+      "sha256": "7a5706ef3f43b98bc5ad5f717c1b3b646a40676353facf9a64ed310f23bdc028",
+      "git_blob_sha256": "7a5706ef3f43b98bc5ad5f717c1b3b646a40676353facf9a64ed310f23bdc028"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\HellobikeUiTest.kt",
+      "sha256": "76f87e05d7ddff91eafc23f17a05a603ca32b40a3c8941ebb7fc5af5bf3e7cdf",
+      "git_blob_sha256": "76f87e05d7ddff91eafc23f17a05a603ca32b40a3c8941ebb7fc5af5bf3e7cdf"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\HellobikeViewModelTest.kt",
+      "sha256": "c254b1799850e5616a876dcd4fbf613806a6bda3b618aed7f5e467b041d3f382",
+      "git_blob_sha256": "c254b1799850e5616a876dcd4fbf613806a6bda3b618aed7f5e467b041d3f382"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\LifeAccountsUiTest.kt",
+      "sha256": "6ae9c628a5fe6cc918f8e85ddca80ba1333d739535edb5cde9011b339aeea7be",
+      "git_blob_sha256": "6ae9c628a5fe6cc918f8e85ddca80ba1333d739535edb5cde9011b339aeea7be"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\LifeAccountsViewModelTest.kt",
+      "sha256": "f088a180a275bc072bacc280773d86595a0e044187af93698a85043d525e6bba",
+      "git_blob_sha256": "f088a180a275bc072bacc280773d86595a0e044187af93698a85043d525e6bba"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\LifeDevicesViewModelTest.kt",
+      "sha256": "384bfba325e7344ac12d0a342a01ba837c2b8b6aa84aef6c1644794798f0b822",
+      "git_blob_sha256": "384bfba325e7344ac12d0a342a01ba837c2b8b6aa84aef6c1644794798f0b822"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\data\\life\\HellobikeApiTest.kt",
+      "sha256": "6fe721ff7dd730715a2a0ab8103afed8b15311cdbd3453fc5b7d9c6a80abb926",
+      "git_blob_sha256": "6fe721ff7dd730715a2a0ab8103afed8b15311cdbd3453fc5b7d9c6a80abb926"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\data\\life\\HellobikeModelsTest.kt",
+      "sha256": "097a8fec2f2872bbc0c0221ad4bccf5591218b52838de1faec9f5c38f0ef8e4d",
+      "git_blob_sha256": "097a8fec2f2872bbc0c0221ad4bccf5591218b52838de1faec9f5c38f0ef8e4d"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\src\\test\\java\\com\\mercury\\yktwx\\data\\life\\LifeDeviceApiTest.kt",
+      "sha256": "66aab65ef064a51221937591611bafbf75f70576066fb01f6afab47dcef7ac18",
+      "git_blob_sha256": "66aab65ef064a51221937591611bafbf75f70576066fb01f6afab47dcef7ac18"
+    }
+  ],
+  "evidence_archive_sha256": "5bf5191b60ced2e867c999b5d8b8a28a3aed107855660ff402290e67cf4a9d8b",
+  "evidence_records": 80,
+  "verified_original_apks": 2,
+  "verified_original_dex_slices": 7,
+  "result_xml_files": [
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\first-validation\\TEST-com.mercury.yktwx.data.life.HellobikeModelsTest.xml",
+      "sha256": "23b4de5de181d7db2449714d9c2d2e29b40510209b7ad7627b906babe4d3bb15",
+      "suite": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "timestamp": "2026-11-13T18:39:01.275Z",
+      "tests": 4,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\first-validation\\TEST-com.mercury.yktwx.LifeAccountsViewModelTest.xml",
+      "sha256": "6f6a21b74b6bb6620fc006657d386e278d4f707d2240b51ca2e93b6a19c0f139",
+      "suite": "com.mercury.yktwx.LifeAccountsViewModelTest",
+      "timestamp": "2026-11-13T18:38:58.998Z",
+      "tests": 4,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\first-validation\\TEST-com.mercury.yktwx.LifeDevicesViewModelTest.xml",
+      "sha256": "7d36085d52fe20bff604347f110722e48610f14d61c27ed215a419deddc7e2d8",
+      "suite": "com.mercury.yktwx.LifeDevicesViewModelTest",
+      "timestamp": "2026-11-13T18:38:59.394Z",
+      "tests": 3,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-flow-validation\\TEST-com.mercury.yktwx.data.life.HellobikeApiTest.xml",
+      "sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5",
+      "suite": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "timestamp": "2026-11-13T18:51:26.123Z",
+      "tests": 25,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-flow-validation\\TEST-com.mercury.yktwx.data.life.LifeDeviceApiTest.xml",
+      "sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70",
+      "suite": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "timestamp": "2026-11-13T18:51:27.414Z",
+      "tests": 31,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-flow-validation\\TEST-com.mercury.yktwx.HellobikeViewModelTest.xml",
+      "sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035",
+      "suite": "com.mercury.yktwx.HellobikeViewModelTest",
+      "timestamp": "2026-11-13T18:51:17.125Z",
+      "tests": 30,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-flow-validation\\TEST-com.mercury.yktwx.LaundryViewModelTest.xml",
+      "sha256": "23c56977bf3bdba73c1598f23c0770a103ded06589ae5a3789d47e954fe85770",
+      "suite": "com.mercury.yktwx.LaundryViewModelTest",
+      "timestamp": "2026-11-13T18:51:25.300Z",
+      "tests": 2,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-flow-validation\\TEST-com.mercury.yktwx.LifeDevicesViewModelTest.xml",
+      "sha256": "065b778d97d2536156683b7c58c4e7947c8fada04c9ef6e9e0fb9f965d0b2c27",
+      "suite": "com.mercury.yktwx.LifeDevicesViewModelTest",
+      "timestamp": "2026-11-13T18:51:25.474Z",
+      "tests": 2,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\build\\test-results\\testDebugUnitTest\\TEST-com.mercury.yktwx.HellobikeUiTest.xml",
+      "sha256": "b9da55d48363945ccd3f242264de6fa858d2cb7e2db51bc4f12f4507ae1bba37",
+      "suite": "com.mercury.yktwx.HellobikeUiTest",
+      "timestamp": "2026-11-13T18:56:36.952Z",
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\build\\test-results\\testDebugUnitTest\\TEST-com.mercury.yktwx.LifeAccountsUiTest.xml",
+      "sha256": "4e2e32d951e7dca7dcb9fdd5869e4dff3b6127df7a0cadf149896004cd5e342c",
+      "suite": "com.mercury.yktwx.LifeAccountsUiTest",
+      "timestamp": "2026-11-13T18:56:45.874Z",
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\app\\build\\test-results\\testDebugUnitTest\\TEST-com.mercury.yktwx.LifeDeviceUiTest.xml",
+      "sha256": "ffa4150275114b8203754e0016b79b905daf8b932f61b8980affa3ea4c032833",
+      "suite": "com.mercury.yktwx.LifeDeviceUiTest",
+      "timestamp": "2026-11-13T18:56:47.369Z",
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0
+    }
+  ],
+  "tests": [
+    {
+      "class": "com.mercury.yktwx.HellobikeUiTest",
+      "name": "officialErrorsKeepNewlinesAndWrapFullyInDeviceAndPaymentForms",
+      "seconds": 7.934,
+      "passed": true,
+      "result_xml_sha256": "b9da55d48363945ccd3f242264de6fa858d2cb7e2db51bc4f12f4507ae1bba37"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "acceptedOpeningOrderContinuesAfterCreateRejectionWithoutErrorOrResubmission",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anSdkSuccessCallbackStartsQueriesAndCannotMarkTheRidePaidOrRetryPayment",
+      "seconds": 0.051,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anUnclassifiedServerRejectionCannotEraseTheAttemptOrAllowAnotherCreate",
+      "seconds": 0.039,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "anUnconfirmedCloseCannotReenableAnotherCloseEvenWhenServerStillSaysRiding",
+      "seconds": 0.05,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "backendChannelWinsAndStaleCallbacksCannotClaimAnotherPayment",
+      "seconds": 0.039,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "balanceProcessingNeedsAMatchedQueryAndThenRefreshesRideSettlement",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "cancellationDuringLoginCommitKeepsMemoryAndDiskOnTheSameAccount",
+      "seconds": 0.04,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "closeCommitsOnceAfterProofAndRideEndLeavesAnUnsettledProgressEntry",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "differentOrderResponsesNeverReplaceThePendingOrderOrAuthorizeClose",
+      "seconds": 0.034,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "dismissingAnUncertainRidePreventsALateRecoveryFromAddingItBack",
+      "seconds": 0.067,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "elapsedTimeDoesNotInventACloudExpiryOrAutomaticallyOpenTheBike",
+      "seconds": 0.037,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "leavingDuringCreateKeepsThePendingRecordAndForegroundRecoveryOnlyQueries",
+      "seconds": 0.04,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "locationAuthorizationResumesTheOriginalScanWithoutAnAutomaticCreate",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "logoutWaitsForCancelledReadsAndCannotPublishAnotherOwnersLateRide",
+      "seconds": 0.04,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "lostCreateResponseUsesExactOrderProgressAndNeverSendsASecondCreate",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "previewDoesNotReadSavedCredentialsOrStartLocationAndBusinessRequests",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "recreatedLoginRestoresOnlyPhoneAndRejectsAnotherCampusOwner",
+      "seconds": 0.034,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "recreatedPaymentRestoresOriginalRideAndMethodWithoutSubmitting",
+      "seconds": 0.047,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "recreatedSliderGetsFreshImageWithoutSendingSmsAndDismissCancelsPendingImage",
+      "seconds": 0.085,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "restartQueriesAPersistedPaymentFourTimesAndNeverLaunchesOrSubmitsItAgain",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "restoredRideWithoutRegionNeedsNoLocationUntilUserReturnsTheBike",
+      "seconds": 0.057,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "restoredRouteWaitsForAccountAndSelectsTheSavedRideWithoutCommands",
+      "seconds": 0.094,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "restoringAnOpeningOrderQueriesTheOriginalEvenWhenRideCheckHasNoRide",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "saveFailurePreventsCreateAndPaymentSubmission",
+      "seconds": 0.072,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "scanningAnotherBikeAndExplicitCreateReachCloudDespiteAnExistingLocalRide",
+      "seconds": 0.041,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "sliderLoadFailureStaysInVerificationAndCancelRejectsALateImage",
+      "seconds": 0.051,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "smsSliderKeepsTheChallengeAndLoginContinuesScanningWithoutOpening",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "startCommitsItsRecordBeforeOneCreateAndRequiresAQueriedRideToShowRunning",
+      "seconds": 0.034,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "successfulPaymentQuerySurvivesDetailFailureButKeepsRideFeesUnconfirmed",
+      "seconds": 5.354,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.HellobikeViewModelTest",
+      "name": "uncertainAndFailedRideRecordsCanBeDeletedWithoutSendingCommands",
+      "seconds": 0.05,
+      "passed": true,
+      "result_xml_sha256": "6def667883644b04505e00e66bbdd98d4ebd2ab84faa9e740af84b93a1c55035"
+    },
+    {
+      "class": "com.mercury.yktwx.LaundryViewModelTest",
+      "name": "blockedDeviceRetryReadsAgainAndRedisplaysUnchangedError",
+      "seconds": 0.03,
+      "passed": true,
+      "result_xml_sha256": "23c56977bf3bdba73c1598f23c0770a103ded06589ae5a3789d47e954fe85770"
+    },
+    {
+      "class": "com.mercury.yktwx.LaundryViewModelTest",
+      "name": "scanningAndSelectingProgramsDoNotQuoteUntilThePaymentDrawerIsOpened",
+      "seconds": 0.045,
+      "passed": true,
+      "result_xml_sha256": "23c56977bf3bdba73c1598f23c0770a103ded06589ae5a3789d47e954fe85770"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsUiTest",
+      "name": "officialExpiryResponsesShowAllLoginBannersAndExpiredSettingsRatherThanCheckFailure",
+      "seconds": 1.433,
+      "passed": true,
+      "result_xml_sha256": "4e2e32d951e7dca7dcb9fdd5869e4dff3b6127df7a0cadf149896004cd5e342c"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsViewModelTest",
+      "name": "networkFailureKeepsCredentialsButExpiredProfileDoesNotOpenLoginSheet",
+      "seconds": 0.037,
+      "passed": true,
+      "result_xml_sha256": "6f6a21b74b6bb6620fc006657d386e278d4f707d2240b51ca2e93b6a19c0f139"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsViewModelTest",
+      "name": "pangguiAllowsRemovalWithRunningAndUnknownLaundry",
+      "seconds": 0.192,
+      "passed": true,
+      "result_xml_sha256": "6f6a21b74b6bb6620fc006657d386e278d4f707d2240b51ca2e93b6a19c0f139"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsViewModelTest",
+      "name": "pangguiChecksAtRestoreAndCachesSuccessfulReads",
+      "seconds": 0.034,
+      "passed": true,
+      "result_xml_sha256": "6f6a21b74b6bb6620fc006657d386e278d4f707d2240b51ca2e93b6a19c0f139"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeAccountsViewModelTest",
+      "name": "pangguiIdentityMismatchKeepsCredentialsUnverifiedWithoutInventingExpiry",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "6f6a21b74b6bb6620fc006657d386e278d4f707d2240b51ca2e93b6a19c0f139"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDeviceUiTest",
+      "name": "showerPageShowsOutletActionsAndProgressWithoutInventingPrice",
+      "seconds": 0.402,
+      "passed": true,
+      "result_xml_sha256": "ffa4150275114b8203754e0016b79b905daf8b932f61b8980affa3ea4c032833"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDevicesViewModelTest",
+      "name": "officialMessageSuccessUsesOkOr05AndOtherCodesKeepPollingWithoutInventingAFault",
+      "seconds": 0.03,
+      "passed": true,
+      "result_xml_sha256": "065b778d97d2536156683b7c58c4e7947c8fada04c9ef6e9e0fb9f965d0b2c27"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDevicesViewModelTest",
+      "name": "showerFaultDoesNotBecomeCompletedOrCreatePayment",
+      "seconds": 0.042,
+      "passed": true,
+      "result_xml_sha256": "7d36085d52fe20bff604347f110722e48610f14d61c27ed215a419deddc7e2d8"
+    },
+    {
+      "class": "com.mercury.yktwx.LifeDevicesViewModelTest",
+      "name": "showerStartsOnceThenPollsSharedWaterAndWaitsForEndAcknowledgment",
+      "seconds": 0.038,
+      "passed": true,
+      "result_xml_sha256": "065b778d97d2536156683b7c58c4e7947c8fada04c9ef6e9e0fb9f965d0b2c27"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "aMismatchedRideOrPaymentCannotBeConfirmed",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "absentCloudReasonIsReportedAsAbsentWithNoInventedFailureReason",
+      "seconds": 0.03,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "anUnverifiedBusinessCodeDoesNotBecomeNoRideOrAuthorizeACommand",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "balanceFlagsFallbackToAccountBalanceAndUseTheOfficialExplanation",
+      "seconds": 0.037,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "conflictingEnvelopeCodesCannotClaimAConfirmedPayment",
+      "seconds": 0.242,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "lbsUsesThePublishedArg0SignatureAndNestedRegionRatherThanDummyValues",
+      "seconds": 0.032,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "loginUsesDeviceWebViewAgentOfficialChannelAndIndependentSsid",
+      "seconds": 0.037,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "missingPriceRuleDoesNotRejectSuccessfulPrecheckAndOnlyForcedBluetoothRequiresItsFlow",
+      "seconds": 0.037,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "officialNothingStatusNeedsNoOrderIdentityAndIsAValidAuthenticatedRead",
+      "seconds": 0.028,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "officialRejectionTextKeepsItsFullContentsAndNativePrecheckFields",
+      "seconds": 0.043,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "onlyNumericOneConfirmsPaymentAndQueriesUseThePaymentGuid",
+      "seconds": 0.04,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "onlyOfficialExpiryCodesExpireLoginAndCloudRejectionsKeepTheirMessage",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "onlyServerOfferedOrdinaryChannelsAreAvailableAndAgreementsStayOnOfficialFlow",
+      "seconds": 0.032,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "orderQueryKeepsOpeningSubstatusesSeparateFromTheRideCheckStatus",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "preCloseUsesOfficialCauseTypesAndAllowsItsNormalConfirmation",
+      "seconds": 0.03,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "precheckAndCreateReuseTheOfficialScanIdAndTheirOwnPlatformValues",
+      "seconds": 0.035,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "precheckUsesTheOfficialOrConditionAndKeepsNoticesWithoutInventingVehicleRestrictions",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "returnedChannelAndCredentialsArePreservedWithoutSubstitutingRideIdForPaymentId",
+      "seconds": 0.032,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "rideDetailsUseUnpaidPayNumbersAndDoNotTurnClosedOrEmptyListsIntoPaid",
+      "seconds": 0.048,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "sliderImagesCarryOriginalDimensionsAndRejectOversizedOrMismatchedPieces",
+      "seconds": 0.213,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "smsAndLoginAcceptNoCachedRegionAndNeverInventLocationCodes",
+      "seconds": 0.033,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "smsAndLoginUsePublicCertificateDigestAndKeepTokensOutOfUrlAndErrors",
+      "seconds": 0.031,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "smsHandlesTheOfficialCaptchaPriorityAndPreservesVerificationFailureText",
+      "seconds": 0.031,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "specialPrecheckFlowIsNotMisclassifiedAsRejectionAndOrdinaryNoticesRemainConfirmable",
+      "seconds": 0.032,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeApiTest",
+      "name": "successfulLoginDoesNotRejectMobileFlagsOrInventTokenLengthRules",
+      "seconds": 0.031,
+      "passed": true,
+      "result_xml_sha256": "b8fa25e270634c8334ecf09b43d52b9280f2e188d07d25a3b0b74ed9d72c00d5"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "domainsRouteThreeProvidersAndDoNotGuessBareBicycleNumbers",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "23b4de5de181d7db2449714d9c2d2e29b40510209b7ad7627b906babe4d3bb15"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "endingAndClosingAnOrderCannotBePresentedAsPaymentSuccess",
+      "seconds": 0.0,
+      "passed": true,
+      "result_xml_sha256": "23b4de5de181d7db2449714d9c2d2e29b40510209b7ad7627b906babe4d3bb15"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "localRecordsDoNotInventCloudPrecisionOrExpiryRequirements",
+      "seconds": 0.009,
+      "passed": true,
+      "result_xml_sha256": "23b4de5de181d7db2449714d9c2d2e29b40510209b7ad7627b906babe4d3bb15"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.HellobikeModelsTest",
+      "name": "spoofedAndAmbiguousOrOtherVehicleLinksAreRejectedLocally",
+      "seconds": 0.002,
+      "passed": true,
+      "result_xml_sha256": "23b4de5de181d7db2449714d9c2d2e29b40510209b7ad7627b906babe4d3bb15"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "absentCapabilityFieldsStayUnknownAndDoNotInventADeviceOrChannelRejection",
+      "seconds": 0.015,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "absentHealthResultDoesNotInventAFaultAndPromotionMetadataDoesNotBlockAQuote",
+      "seconds": 0.006,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "accountProfileRejectsMissingIdentityAndRecognizesExpiredCredentials",
+      "seconds": 0.005,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "accountProfileUsesAuthenticatedReadWithoutScanningDevices",
+      "seconds": 0.003,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "authorizationRejectionCannotLeaveAnUnknownCreationButServerTransportFailureCan",
+      "seconds": 0.007,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "channelUsesOfficialCanCheckedAndRemarkWithoutInventingALegacyWaterOpeningGate",
+      "seconds": 0.012,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "closedLaundryReadsServerCreateTimeWithoutInventingPaymentTimes",
+      "seconds": 0.003,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "creationRejectsParsedBusinessErrorsButMissingOrMalformedResultsRemainUncertain",
+      "seconds": 0.006,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "deviceFaultPrecedesFurtherQueriesAndOwnCapabilityMessages",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "deviceKeepsDistinctShopIdentifiersAndUsesOnlyReturnedOptions",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "expiryUsesOfficialBusinessCodesRatherThanMessageKeywordsOrHttpCodes",
+      "seconds": 0.204,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "finishingProcessesAfterPayWithoutReadingBillsOrInferringAmount",
+      "seconds": 0.008,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "healthyDeviceWithoutSyncMessageIsReadyButFaultStillBlocksCreation",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryAgainPayUsesOrderShopAndSignedAlipayPayloadIsPassedWithoutRewriting",
+      "seconds": 0.006,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryCancellationPropagatesBackendRejection",
+      "seconds": 0.005,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryCancellationUsesOrderIdAndAcceptsObservedNullSuccessPayload",
+      "seconds": 0.002,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryOrderKeepsCapturedPaymentNameAndStringSkuInfo",
+      "seconds": 0.002,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryParsingDoesNotAcceptWrongLinksAndOrderIdentityMismatchIsRejected",
+      "seconds": 0.011,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryUnionPayPassesTransactionNumberAndUsesChannel52ForResultQuery",
+      "seconds": 0.005,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "laundryUsesNqtAndOnlyActualProgramsThenLoadsQuoteAndNumericShopChannel",
+      "seconds": 0.012,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "loginUsesObservedSmsAndRegistrationFieldsWithoutDeviceRequests",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "observedQrFormatParsesWithoutGuessingNumbersInOtherLinks",
+      "seconds": 0.0,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "officialMessagesSurviveExpiryHealthEndAndHttpErrorsWithoutTruncation",
+      "seconds": 0.007,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "orderSyncNonzeroRemainsPendingWithOriginalTextOrCodeDiagnostic",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "showerCommandsUseDedicatedPathsAndSameOrderWithoutPrepayment",
+      "seconds": 0.006,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "showerEndDoesNotAcceptNullOrRejectedSuccess",
+      "seconds": 0.005,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "showerScanRejectsUnknownCategoryAndMismatchedDetailsWithoutCommands",
+      "seconds": 0.004,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "showerScanUsesSnAndActualCategoryForAfterPayAndKeepsOutletData",
+      "seconds": 0.006,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "waterOutletDoesNotUseWasherAvailabilityAndStockStateDoesNotRejectPrograms",
+      "seconds": 0.008,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "zeroDeviceConsumptionIsExplicitAndMissingAmountIsNotZero",
+      "seconds": 0.005,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    },
+    {
+      "class": "com.mercury.yktwx.data.life.LifeDeviceApiTest",
+      "name": "zeroLaundryStillCreatesPaysAndReadsSameOrderFinishedTime",
+      "seconds": 0.008,
+      "passed": true,
+      "result_xml_sha256": "9ec1aa54d259373b98d4492d67b7225d931f12ed75fac48e844c8b86862fde70"
+    }
+  ],
+  "execution_logs": [
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\final-tests.log",
+      "sha256": "c7a60b94e37a14630b8d70fa6b680cdada757719508a67ae4a304248891ac5c7",
+      "outcome": "failed_then_resolved"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\final-api-ui-tests.log",
+      "sha256": "08f4d0cc8af3a1397d847acc75938f97efe5ef02fd7c0649c9bbaa1d35dc592d",
+      "outcome": "passed"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\final-hello-flow-tests.log",
+      "sha256": "515ef11bc8c3950a7d4a3d8fce491ba7c1661e14993bb5fd9130f488d03cb272",
+      "outcome": "failed_then_resolved"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-final-tests.log",
+      "sha256": "83f501bd5a6a5fd05ee33fa1c0bbb4dfadd9bbd576c290a84ad16cbd25cdba88",
+      "outcome": "passed"
+    },
+    {
+      "path": "D:\\mercu\\Desktop\\yktwx\\build\\cloud-authority-audit\\verified-original-message-ui-tests.log",
+      "sha256": "0c82fc83750380ad58f7fea331defe011a87722b6c53a6aa951774bfea1c881f",
+      "outcome": "passed"
+    }
+  ],
+  "resolved_intermediate_failures": [
+    "A health fixture already provided deviceErrorMsg. Its assertion was corrected to require the supplied original text, rather than a missing-reason diagnostic.",
+    "Removing the local existing-ride gate exposed reuse of the same precheck confirmation after a failed create. The confirmation is now consumed before sending, so an unchanged click cannot replay the same attempt. The targeted ViewModel suite passed after the fix."
+  ],
+  "coverage_notes": [
+    "Latest passing results are merged by test identity. No all-project test suite, separate APK build or Lint was run.",
+    "The final UI check verifies exact original strings, multiline TextLayoutResult and no visual ellipsis in device error and payment form components. All final UI checks passed.",
+    "Earlier passing model/account tests cover unchanged paths; later targeted API/ViewModel/UI runs cover subsequent changes. Source hashes record the final source snapshot, not a claimed Git commit for each earlier intermediate run.",
+    "All API tests use local fixtures. No real login, unlock, finish, order creation or payment was performed.",
+    "Both working-file SHA-256 and staged Git blob SHA-256 are retained, so newline normalization does not obscure the final committed source/evidence identity."
+  ],
+  "static_checks": {
+    "git_diff_check": "passed",
+    "document_evidence_ids": "all resolve to the retained 80 REA records",
+    "original_slice_bytes": "all seven slices compared independently with original APK entries"
+  },
+  "evidence_archive_git_blob_sha256": "803ac388006a553c876eab162fd4b7ea27c1b217d269d0d86b0dd489c696e701"
+}
