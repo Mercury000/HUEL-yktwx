@@ -4,6 +4,7 @@ import com.mercury.yktwx.data.appPreferencesRepositoryFixture
 import com.mercury.yktwx.ui.themeSettingsFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.ViewModelStore
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -29,22 +30,24 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
-import java.io.File
-import androidx.lifecycle.ViewModelStore
 import com.mercury.yktwx.analytics.AnalyticsFixtures
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureHttp
+import com.mercury.yktwx.data.fixtureLifeDeviceApi
+import com.mercury.yktwx.data.fixtureHui798Api
 import kotlinx.coroutines.Dispatchers
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import java.io.File
 import java.io.ByteArrayInputStream
+import java.net.URL
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LifeAccountsUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
-    private val models = ViewModelStore()
     private val preferences = com.mercury.yktwx.data.MemoryPreferences()
+    private val models = ViewModelStore()
     private val preferenceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
     private fun settings() = themeSettingsFixture(appPreferencesRepositoryFixture(
         preferences, preferenceScope))
@@ -87,6 +90,107 @@ class LifeAccountsUiTest {
         compose.onNodeWithText("已登录").assertIsDisplayed()
         compose.onNodeWithText("检查失败").assertDoesNotExist()
         compose.runOnIdle { assertNull(bike.accountConnection.value.error); assertNull(bike.state.value.error) }
+    }
+
+    @Test fun officialExpiryResponsesShowAllLoginBannersAndExpiredSettingsRatherThanCheckFailure() {
+        fun reply(url: URL, code: Int) = object : HttpFixture(url) {
+            override fun bodyStream() = ByteArrayInputStream("""{"code":$code,"msg":"登录信息已失效，请重新登录"}""".toByteArray())
+        }
+        val pgStore = LifeDeviceAccountStore(BikeRecords()).apply { saveAccount(LifeAccount(fixtureBikeAccount.phone, "test-token")) }
+        val huiStore = Hui798AccountStore(BikeRecords()).apply { saveAccount(Hui798Account(fixtureBikeAccount.phone, "test-token", "test-user")) }
+        val bikeStore = BikeRecords().store()
+        val app = compose.activity.application
+        val pg = lifeDevicesViewModelFixture(app, fixtureLifeDeviceApi("test-secret", { reply(it, 126) }), pgStore, Dispatchers.Unconfined)
+            .also { models.put("pg", it) }
+        val hui = hui798ViewModelFixture(app, fixtureHui798Api("https://fixture.invalid/api", "test-salt", { reply(it, -99) }), huiStore, Dispatchers.Unconfined)
+            .also { models.put("hui", it) }
+        val bike = HellobikeViewModel(HellobikeApi(fixtureHttp { reply(it, 103) }), bikeStore, FakeBikeLocation(),
+            io = Dispatchers.Unconfined, analytics = AnalyticsFixtures.from(app)).also { models.put("bike", it) }
+        val settings = settings()
+        LifeProvider.entries.forEach(settings::dismissLifeLoginNotice)
+        var showSettings by mutableStateOf(false)
+        var login: LifeProvider? = null
+        compose.setContent {
+            val pgState by pg.state.collectAsState()
+            val huiState by hui.state.collectAsState()
+            val bikeState by bike.state.collectAsState()
+            val pgConnection by pg.accountConnection.collectAsState()
+            val huiConnection by hui.accountConnection.collectAsState()
+            val bikeConnection by bike.accountConnection.collectAsState()
+            LaunchedEffect(Unit) { bike.initialize(preview = false); bike.environment(true) }
+            if (showSettings) SettingsFixture(listOf(
+                ManagedLifeAccount(LifeProvider.Panggui, pgConnection),
+                ManagedLifeAccount(LifeProvider.Hui798, huiConnection),
+                ManagedLifeAccount(LifeProvider.Hellobike, bikeConnection)), onLogin = { login = it })
+            else CompositionLocalProvider(LocalInspectionMode provides true) {
+                AppTheme(ColorSchemeMode.Light) {
+                    PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
+                        lifeLoginRequired = !pgState.restoring && pgState.connectedPhone.isBlank(),
+                        lifeLoginExpired = pgConnection.status == LifeAccountStatus.Expired,
+                        hui798LoginRequired = !huiState.restoring && !huiState.connected,
+                        hui798LoginExpired = huiConnection.status == LifeAccountStatus.Expired,
+                        hellobikeLoginRequired = !bikeState.restoring && !bikeState.connected,
+                        hellobikeLoginExpired = bikeConnection.status == LifeAccountStatus.Expired,
+                        onHellobikeLogin = { login = LifeProvider.Hellobike })
+                }
+            }
+        }
+        compose.waitUntil(10_000) { listOf(pg.accountConnection.value, hui.accountConnection.value, bike.accountConnection.value)
+            .all { it.status == LifeAccountStatus.Expired } }
+        compose.onNodeWithTag("life-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-login-notice").assertIsDisplayed().performClick()
+        compose.onNodeWithText("胖乖生活登录失效，请重新登录").assertIsDisplayed()
+        compose.onNodeWithText("慧生活798登录失效，请重新登录").assertIsDisplayed()
+        compose.onNodeWithText("哈啰登录失效，请重新登录").assertIsDisplayed()
+        listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice").forEach {
+            compose.onNodeWithTag("$it-dismiss").assertDoesNotExist()
+        }
+        compose.runOnIdle {
+            assertEquals(LifeProvider.Hellobike, login)
+            assertNull(pgStore.account()); assertNull(huiStore.account()); assertNull(bikeStore.load().account)
+            assertFalse(pg.state.value.loginVisible); assertFalse(hui.state.value.loginVisible); assertFalse(bike.state.value.loginVisible)
+            login = null; showSettings = true
+        }
+        compose.onAllNodesWithText("登录失效").assertCountEquals(3)
+        compose.onAllNodesWithText("登录信息已失效，请重新登录").assertCountEquals(2)
+        compose.onNodeWithText("检查失败").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-account-row").performClick()
+        compose.runOnIdle { assertEquals(LifeProvider.Hellobike, login) }
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+    }
+
+    @Test fun expiredBannersUpdateOnPaymentFailureAndClearWhenAccountsRecover() {
+        val settings = settings()
+        LifeProvider.entries.forEach(settings::dismissLifeLoginNotice)
+        var expired by mutableStateOf(false)
+        val logins = mutableListOf<LifeProvider>()
+        val tags = listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice")
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
+            AppTheme(ColorSchemeMode.Light) {
+                PaymentPage(PreviewData.paymentState(false).copy(code = null, account = null,
+                    error = "付款码暂不可用", busy = false), settings, 0.dp, {},
+                    lifeLoginRequired = true, hui798LoginRequired = true, hellobikeLoginRequired = true,
+                    lifeLoginExpired = expired, hui798LoginExpired = expired, hellobikeLoginExpired = expired,
+                    onLifeLogin = { logins += LifeProvider.Panggui },
+                    onHui798Login = { logins += LifeProvider.Hui798 },
+                    onHellobikeLogin = { logins += LifeProvider.Hellobike })
+            }
+        } }
+        tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
+        compose.runOnIdle { expired = true }
+        tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed().performClick() }
+        compose.runOnIdle {
+            assertEquals(listOf(LifeProvider.Panggui, LifeProvider.Hui798, LifeProvider.Hellobike), logins)
+            assertTrue(settings.pangguiLoginNoticeDismissed.value)
+            assertTrue(settings.hui798LoginNoticeDismissed.value)
+            assertTrue(settings.hellobikeLoginNoticeDismissed.value)
+            expired = false
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
+        compose.runOnIdle { expired = true }
+        tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed() }
     }
 
     @Test fun paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable() {
