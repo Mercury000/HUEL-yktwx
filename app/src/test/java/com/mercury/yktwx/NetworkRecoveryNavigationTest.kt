@@ -55,6 +55,10 @@ class NetworkRecoveryNavigationTest {
         compose.waitUntil(5_000) { shadowOf(Looper.getMainLooper()).idle(); condition() }
         compose.waitForIdle()
     }
+    private fun awaitMainNavigation() {
+        // Preferences and the update store initialize asynchronously before the authenticated shell.
+        await { compose.onAllNodes(hasText("大厅") and hasClickAction()).fetchSemanticsNodes().size == 1 }
+    }
     private fun connection(connected: Boolean) {
         online = connected
         val manager = compose.activity.getSystemService(ConnectivityManager::class.java)
@@ -174,6 +178,7 @@ class NetworkRecoveryNavigationTest {
             compose.setContent {
                 CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
             }
+            awaitMainNavigation()
             compose.onNode(hasText("账单") and hasClickAction()).performClick()
             await { bills.state.value.listAvailable && !bills.state.value.restoringDisplay }
             compose.onNode(hasText("统计") and hasClickAction()).performClick()
@@ -295,6 +300,7 @@ class NetworkRecoveryNavigationTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
         }
+        awaitMainNavigation()
         compose.onNode(hasText("大厅") and hasClickAction()).performClick()
         assertFalse(hall.state.value.loaded)
         assertFalse(hall.state.value.loading)
@@ -511,6 +517,7 @@ class NetworkRecoveryNavigationTest {
             compose.setContent {
                 CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(themeSettingsFixture(app), payment, bills) }
             }
+            awaitMainNavigation()
             compose.onNode(hasText("我的") and hasClickAction()).performClick()
             await { identityReads.get() >= 1 && mine.state.value.profile != null }
             assertEquals(1, identityReads.get())

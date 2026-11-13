@@ -88,3 +88,17 @@ CI 采集按最新要求仅手动运行，更新分支为 `perf/baseline-profile
 `DeviceCameraThreadingTest` 的 10 项与 `ScannerLifecycleTest` 的 5 项均通过，无失败或跳过。新增断言确认 session 类型、两个实际输出及回调线程；既有检查覆盖退出、前后台、首帧超时、重开与中断返回动画。测试二进制结果在 `app/build/test-results/modernization-camera/binary`；独立汇总报告 `app/build/reports/tests/modernization-camera-summary` 已成功生成，确认先前失败仅为报告任务依赖声明，不是测试失败。随后优化性能及正式构建也编译了这份相机实现。
 
 因当前禁止 ADB，真机进入退出、旋转、闪光灯、缩放、预测返回、首帧与识别耗时仍待验收；主机测试不替代物理相机证据。
+
+## 哈啰线性接入与界面整理
+
+将 `feature/hellobike` 的 `aa42183` 在独立集成工作区适配到当前迁移架构：HellobikeViewModel 使用 Hilt，服务、存储和原生定位统一注入，保留 Activity 作用域及现有支付桥接。预览模式在初始化前明确，构造不读账号；预览不会转为真实账号模式。原分支未改写，最终接入保持线性历史、不推送。
+
+登录抽屉复用胖乖生活与慧生活798的输入和间距；手机号／短信页与安全验证页使用共用 SheetPageContent。松开滑块或无障碍调整即提交验证，发送成功回到短信页，换图不发短信、返回保留手机号；移除地区输入和第二个发送按钮。普通骑行与付款页面去除常驻官方链接、重复状态和底部说明，官方入口仅保留在异常和帮助中，品牌统一为哈啰。
+
+认证仅附带已有有效地区；没有地区时仍能恢复并保存服务器骑行，实际查车／还车才读取新鲜位置并反查地区。所有恢复仍只查询原单，不能重放短信、开锁、关锁或付款。官方静态依据及真实服务端限制见 [哈啰接入说明](life-devices-hellobike.md)。
+
+集成前一轮 56 项定向测试全部通过，覆盖哈啰模型、服务、存储、ViewModel、UI、Hilt 图和直接共享的账户／扫码／支付路径；debug、preview、release 生产依赖图编译通过。界面整理后仅运行 4 个直接相关类的 45 项：HellobikeAccountStoreTest 4、HellobikeApiTest 12、HellobikeViewModelTest 20、HellobikeUiTest 9，全部通过、无跳过。随后仅补跑明暗登录的 2 个用例，检查返回、换图、实际拖动和无障碍提交，两项通过；不是增加无关全量验证。
+
+当前报告位于集成工作区 `app/build/reports/tests/hellobike-ui-refinement-summary/` 与 `hellobike-login-controls-summary/`。本地日志 `tools/modernization/hellobike-ui-refinement.log`（3m）、`hellobike-login-controls.log`（1m23s）；原生明暗截图在 `build/hellobike-ui/`。首次整窗截图漏画文字按钮的现象经按钮范围捕获和真实点击核对，补充整窗截图已完整显示。未调用 ADB、安装设备、发送真实短信或产生骑行与付款。
+
+主线网络修复更新为 `873b879` 后，本接入重新基于 `501cd82` 线性整理，保留同步生命周期读权限撤销，新增哈啰登录／扫码／骑行入口一并读取最新网络状态。HiltGraphTest 通过；NetworkRecoveryNavigationTest 三项最终全部通过，日志为 `hellobike-shell-retry.log`，报告 `app/build/reports/tests/hellobike-shell-retry-summary/`。首次失败是测试在异步设置／更新存储初始化前点击导航，测试已等待真实首页入口后再执行原断言，不放宽网络行为检查。

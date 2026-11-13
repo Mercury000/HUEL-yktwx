@@ -44,6 +44,20 @@ object AppIcons {
         }
     }.build()
 
+    val Ride = ImageVector.Builder("Ride", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.6f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
+            moveTo(8f, 17f); curveTo(8f, 11.7f, 1f, 11.7f, 1f, 17f)
+            curveTo(1f, 22.3f, 8f, 22.3f, 8f, 17f); close()
+            moveTo(23f, 17f); curveTo(23f, 11.7f, 16f, 11.7f, 16f, 17f)
+            curveTo(16f, 22.3f, 23f, 22.3f, 23f, 17f); close()
+            moveTo(4.5f, 17f); lineTo(9f, 8f); lineTo(16f, 8f); lineTo(11f, 17f); close()
+            moveTo(8f, 6f); lineTo(11f, 6f)
+            moveTo(19.5f, 17f); lineTo(15f, 4f); lineTo(18f, 4f)
+        }
+    }.build()
+
     val Close = ImageVector.Builder("Close", 16.dp, 16.dp, 16f, 16f).apply {
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round) {

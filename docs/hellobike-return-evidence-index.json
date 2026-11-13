@@ -1,0 +1,1404 @@
+{
+  "analysis_date": "2026-11-13",
+  "coverage": {
+    "complete_method_outputs": 32,
+    "instruction_dex_count": 6,
+    "instruction_failures": 0,
+    "instruction_methods_scanned": 340084,
+    "metadata_dex_count": 20,
+    "method_outputs": 32,
+    "operations": {
+      "inspect_android_class": 10,
+      "inspect_android_method": 32,
+      "trace_android_references": 1
+    },
+    "rea_records": 43,
+    "selected_direct_invokes": 387,
+    "selected_string_uses": 29
+  },
+  "failed_requests": [
+    {
+      "error": {
+        "error": {
+          "category": "invalid_input",
+          "code": "invalid_request",
+          "details": {
+            "issues": [
+              {
+                "message": "Method com.jingyao.blelibrary.BleOperator.<clinit> was not found; inspect_android_class lists available methods.",
+                "path": [
+                  "method_name"
+                ],
+                "reason": "invalid_value"
+              }
+            ],
+            "operation": "inspect_android_method",
+            "partial_observation": {
+              "calls": [
+                {
+                  "input": {},
+                  "operation": "rea_jvm_status",
+                  "response": {
+                    "content": [
+                      {
+                        "text": "{\"java_version\":\"21.0.10\",\"available_processors\":2,\"engine_reported_version\":\"0.7.1\",\"metadata_scope\":\"parsed_members\",\"max_heap_bytes\":3113877504}",
+                        "type": "text"
+                      }
+                    ],
+                    "isError": false
+                  }
+                },
+                {
+                  "input": {
+                    "class_name": "com.jingyao.blelibrary.BleOperator"
+                  },
+                  "operation": "get_class_summary",
+                  "response": {
+                    "content": [
+                      {
+                        "text": "{\"inner_class_count\":2,\"inner_classes\":[\"com.jingyao.blelibrary.BleOperator.AnonymousClass1\",\"com.jingyao.blelibrary.BleOperator.AnonymousClass2\"],\"name\":\"BleOperator\",\"full_name\":\"com.jingyao.blelibrary.BleOperator\",\"field_count\":15,\"fields\":[{\"def_pos\":0,\"name\":\"a\",\"type\":\"java.util.UUID\"},{\"def_pos\":0,\"name\":\"b\",\"type\":\"java.util.UUID\"},{\"def_pos\":0,\"name\":\"c\",\"type\":\"java.util.UUID\"},{\"def_pos\":0,\"name\":\"d\",\"type\":\"java.util.UUID\"},{\"def_pos\":0,\"name\":\"e\",\"type\":\"android.bluetooth.BluetoothGatt\"},{\"def_pos\":0,\"name\":\"f\",\"type\":\"com.jingyao.blelibrary.OnOperatorActionListener\"},{\"def_pos\":0,\"name\":\"g\",\"type\":\"com.jingyao.blelibrary.Utils.WatcherDog\"},{\"def_pos\":0,\"name\":\"h\",\"type\":\"int\"},{\"def_pos\":0,\"name\":\"i\",\"type\":\"android.os.Handler\"},{\"def_pos\":0,\"name\":\"j\",\"type\":\"int\"},{\"def_pos\":0,\"name\":\"k\",\"type\":\"java.util.List\\u003ccom.jingyao.blelibrary.model.HBPackageData\\u003e\"},{\"def_pos\":0,\"name\":\"l\",\"type\":\"java.util.List\\u003ccom.jingyao.blelibrary.model.HBPackageData\\u003e\"},{\"def_pos\":0,\"name\":\"m\",\"type\":\"java.util.List\\u003ccom.jingyao.blelibrary.model.HBPackageData\\u003e\"},{\"def_pos\":0,\"name\":\"n\",\"type\":\"boolean\"},{\"def_pos\":0,\"name\":\"o\",\"type\":\"com.jingyao.blelibrary.OnConnectionStateChangeListener\"}],\"methods\":[{\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"()V\",\"signature\":\"\\u003cinit\\u003e(): void\",\"def_pos\":0},{\"name\":\"\\u003cinit\\u003e\",\"is_constructor\":true,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/OnOperatorActionListener;)V\",\"signature\":\"\\u003cinit\\u003e(com.jingyao.blelibrary.OnOperatorActionListener): void\",\"def_pos\":0},{\"name\":\"a\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/BleOperator;)Lcom/jingyao/blelibrary/OnOperatorActionListener;\",\"signature\":\"a(com.jingyao.blelibrary.BleOperator): com.jingyao.blelibrary.OnOperatorActionListener\",\"def_pos\":0},{\"name\":\"b\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/BleOperator;I)V\",\"signature\":\"b(com.jingyao.blelibrary.BleOperator, int): void\",\"def_pos\":0},{\"name\":\"c\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/content/Context;Landroid/bluetooth/BluetoothDevice;J)V\",\"signature\":\"c(android.content.Context, android.bluetooth.BluetoothDevice, long): void\",\"def_pos\":0},{\"name\":\"d\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/content/Context;Landroid/bluetooth/BluetoothDevice;JZ)V\",\"signature\":\"d(android.content.Context, android.bluetooth.BluetoothDevice, long, boolean): void\",\"def_pos\":0},{\"name\":\"e\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"e(): void\",\"def_pos\":0},{\"name\":\"f\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;ZLandroid/bluetooth/BluetoothGattCharacteristic;)V\",\"signature\":\"f(android.bluetooth.BluetoothGatt, boolean, android.bluetooth.BluetoothGattCharacteristic): void\",\"def_pos\":0},{\"name\":\"g\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/util/UUID;\",\"signature\":\"g(): java.util.UUID\",\"def_pos\":0},{\"name\":\"h\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/util/UUID;\",\"signature\":\"h(): java.util.UUID\",\"def_pos\":0},{\"name\":\"i\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/util/UUID;\",\"signature\":\"i(): java.util.UUID\",\"def_pos\":0},{\"name\":\"j\",\"is_constructor\":false,\"dex_descriptor\":\"()Ljava/util/UUID;\",\"signature\":\"j(): java.util.UUID\",\"def_pos\":0},{\"name\":\"k\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"k(): void\",\"def_pos\":0},{\"name\":\"l\",\"is_constructor\":false,\"dex_descriptor\":\"(ILjava/lang/String;)V\",\"signature\":\"l(int, java.lang.String): void\",\"def_pos\":0},{\"name\":\"m\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\",\"signature\":\"m(int): void\",\"def_pos\":0},{\"name\":\"n\",\"is_constructor\":false,\"dex_descriptor\":\"(I)V\",\"signature\":\"n(int): void\",\"def_pos\":0},{\"name\":\"o\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"o(): void\",\"def_pos\":0},{\"name\":\"onCharacteristicChanged\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V\",\"signature\":\"onCharacteristicChanged(android.bluetooth.BluetoothGatt, android.bluetooth.BluetoothGattCharacteristic): void\",\"def_pos\":0},{\"name\":\"onCharacteristicRead\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;I)V\",\"signature\":\"onCharacteristicRead(android.bluetooth.BluetoothGatt, android.bluetooth.BluetoothGattCharacteristic, int): void\",\"def_pos\":0},{\"name\":\"onCharacteristicWrite\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;I)V\",\"signature\":\"onCharacteristicWrite(android.bluetooth.BluetoothGatt, android.bluetooth.BluetoothGattCharacteristic, int): void\",\"def_pos\":0},{\"name\":\"onConnectionStateChange\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;II)V\",\"signature\":\"onConnectionStateChange(android.bluetooth.BluetoothGatt, int, int): void\",\"def_pos\":0},{\"name\":\"onServicesDiscovered\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;I)V\",\"signature\":\"onServicesDiscovered(android.bluetooth.BluetoothGatt, int): void\",\"def_pos\":0},{\"name\":\"p\",\"is_constructor\":false,\"dex_descriptor\":\"(J)V\",\"signature\":\"p(long): void\",\"def_pos\":0},{\"name\":\"q\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGattCharacteristic;Z)V\",\"signature\":\"q(android.bluetooth.BluetoothGattCharacteristic, boolean): void\",\"def_pos\":0},{\"name\":\"r\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/model/HBCommand;)V\",\"signature\":\"r(com.jingyao.blelibrary.model.HBCommand): void\",\"def_pos\":0},{\"name\":\"registerOnConnectionStateChangeListener\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/OnConnectionStateChangeListener;)V\",\"signature\":\"registerOnConnectionStateChangeListener(com.jingyao.blelibrary.OnConnectionStateChangeListener): void\",\"def_pos\":0},{\"name\":\"s\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/model/HBCommand;J)V\",\"signature\":\"s(com.jingyao.blelibrary.model.HBCommand, long): void\",\"def_pos\":0},{\"name\":\"setOnOperatorActionListener\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/OnOperatorActionListener;)V\",\"signature\":\"setOnOperatorActionListener(com.jingyao.blelibrary.OnOperatorActionListener): void\",\"def_pos\":0},{\"name\":\"t\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/model/HBCommandWithPackage;)V\",\"signature\":\"t(com.jingyao.blelibrary.model.HBCommandWithPackage): void\",\"def_pos\":0},{\"name\":\"timeout\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"timeout(): void\",\"def_pos\":0},{\"name\":\"u\",\"is_constructor\":false,\"dex_descriptor\":\"(Lcom/jingyao/blelibrary/model/HBCommandWithPackage;J)V\",\"signature\":\"u(com.jingyao.blelibrary.model.HBCommandWithPackage, long): void\",\"def_pos\":0},{\"name\":\"v\",\"is_constructor\":false,\"dex_descriptor\":\"(Z)V\",\"signature\":\"v(boolean): void\",\"def_pos\":0},{\"name\":\"w\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"w(): void\",\"def_pos\":0},{\"name\":\"x\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"x(): void\",\"def_pos\":0},{\"name\":\"y\",\"is_constructor\":false,\"dex_descriptor\":\"()V\",\"signature\":\"y(): void\",\"def_pos\":0},{\"name\":\"z\",\"is_constructor\":false,\"dex_descriptor\":\"(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V\",\"signature\":\"z(android.bluetooth.BluetoothGatt, android.bluetooth.BluetoothGattCharacteristic): void\",\"def_pos\":0}],\"method_count\":36}",
+                        "type": "text"
+                      }
+                    ],
+                    "isError": false
+                  }
+                }
+              ],
+              "operation": "inspect_android_method",
+              "provider_facts": {
+                "bridge_name": "rea-jadx-bridge",
+                "bridge_sha256": "a02b1ef0a4a40abd1ae310b9ee686ca163e0b59a3256df524c35b90ed17e9e63",
+                "bridge_version": "4",
+                "engine_version": "0.7.1",
+                "jar_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+                "server_name": "rea-jadx-bridge",
+                "server_version": "4"
+              },
+              "provider_id": "jadx",
+              "target": {
+                "format": "apk",
+                "path": "D:\\mercu\\Desktop\\yktwx\\build\\hellobike-return-analysis\\hellobike-return-slice.apk",
+                "selected_path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk",
+                "sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+              }
+            }
+          },
+          "message": "Analysis input is invalid. Check the arguments and try again.",
+          "remediation": {
+            "action": "Correct the listed arguments and retry."
+          },
+          "retryable": true
+        }
+      },
+      "label": "ble-operator-initializer"
+    }
+  ],
+  "files": {
+    "hellobike-return-dex-evidence.json": {
+      "bytes": 499583,
+      "sha256": "5b340b75b68728777aa0a981c9c6a36107674fe111e39ad78ed1c0094c3d657e"
+    },
+    "hellobike-return-rea-evidence.json": {
+      "bytes": 868538,
+      "sha256": "a0992044668559b6581bbe2a094368fab1a819287518e53a0f3e361cba7f9d58"
+    }
+  },
+  "limitations": [
+    "REA method outputs establish static observations, not current backend or hardware success.",
+    "DEX constants/annotations and direct instructions are a separate byte supplement, not fabricated REA decompilation.",
+    "Event labels do not establish fee calculation, current UI layout or real charged orders.",
+    "No complete Flutter/AOT business coverage or every lock model/GATT adaptation.",
+    "Zero using-node references do not establish global absence of a feature."
+  ],
+  "observations": [
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_00269643b181499f1bc664e2e7375cef7b35075d7f81bbed28441718a8f8ed44",
+      "fell_back": null,
+      "label": "ble-helper-class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.newble.BleHelper",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_056979fed732dfaa6bfbaf178056393df0529ecefb49512a255e4e40afc8b563",
+      "fell_back": false,
+      "label": "ble-command-selection",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Ljava/util/List;",
+        "is_constructor": false,
+        "name": "I",
+        "overload_index": 0,
+        "reported_signature": "I(): java.util.List<java.lang.String>"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "I",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_09cf378c40315a364153e4482112f244b5792a13901915a09a891ac3d0573992",
+      "fell_back": null,
+      "label": "ble-complex-strategy-class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.newble.strategy.BleForthComplexLock",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_13c0cafda22c56acaa164ad5a143540f254d37e509ca26e850634ee797dd21cd",
+      "fell_back": null,
+      "label": "ble-common-report-model",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.openlock.model.api.BleReportApiModel",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_17ca306a98ffb1db2ed3cb8ac3f70f522c3deb152b2e1b4f83bef8f02ba6adae",
+      "fell_back": false,
+      "label": "ble-parking-report",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/String;)V",
+        "is_constructor": false,
+        "name": "K",
+        "overload_index": 0,
+        "reported_signature": "K(java.lang.String): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReportBikePositionByBleAction",
+        "method_name": "K",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [
+        "                    /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */",
+        "                    /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */",
+        "                    /* JADX WARN: Multi-variable type inference failed */"
+      ],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_221f4d1309df6b2c673d29ee64b5c566cbb1d542d7b049acb31daee5d6d4ab6b",
+      "fell_back": false,
+      "label": "ble-current-scan-connect",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;ZLkotlin/jvm/functions/Function2;)V",
+        "is_constructor": false,
+        "name": "scanBleAndConnection",
+        "overload_index": 0,
+        "reported_signature": "scanBleAndConnection(android.content.Context, java.lang.String, java.lang.String, boolean, kotlin.jvm.functions.Function2<? super java.lang.Boolean, ? super com.hellobike.rm.ride_business_operatelock.common.commonbean.RideLockErrBean, kotlin.Unit>): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.rm.ride_business_operatelock.bleoperate.bleconnection.RideBleConnector",
+        "method_name": "scanBleAndConnection",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_223520293d80c6cdff0f357ec6e8e060e5c5f52d988c812a5d00d222e4956ad0",
+      "fell_back": false,
+      "label": "fee-out-service-label",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Lcom/hellobike/ride/common/ubt/event/BikeClickEvent;",
+        "is_constructor": false,
+        "name": "getCLICK_APPEAL_OUT_SERVICE",
+        "overload_index": 0,
+        "reported_signature": "getCLICK_APPEAL_OUT_SERVICE(): com.hellobike.ride.common.ubt.event.BikeClickEvent"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.ubt.BikeClickUbtEvents",
+        "method_name": "getCLICK_APPEAL_OUT_SERVICE",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [
+        "            /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */",
+        "            /* JADX WARN: Multi-variable type inference failed */"
+      ],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_25b343b39fdd8dcfb4a6b970fa67e79bf80ac6a473c3d66e51de7d74697adb3d",
+      "fell_back": false,
+      "label": "ble-current-write",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Landroid/content/Context;Lcom/hellobike/rm/ride_business_operatelock/bleoperate/bean/RideBleOperateConfigBean;Lkotlin/jvm/functions/Function3;)V",
+        "is_constructor": false,
+        "name": "writeBleInfo",
+        "overload_index": 0,
+        "reported_signature": "writeBleInfo(android.content.Context, com.hellobike.rm.ride_business_operatelock.bleoperate.bean.RideBleOperateConfigBean, kotlin.jvm.functions.Function3<? super java.lang.Boolean, ? super java.lang.String, ? super com.hellobike.rm.ride_business_operatelock.common.commonbean.RideLockErrBean, kotlin.Unit>): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.rm.ride_business_operatelock.bleoperate.bleconnection.RideBleConnector",
+        "method_name": "writeBleInfo",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_2d7ae0e32ef60ac3283cf5f60b31a5d95f752e1f3c64af81a867e70c856edb66",
+      "fell_back": null,
+      "label": "direct-tool-inspect_android_class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.api.ManhattanAcceptPenaltyApiModel",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_30ff67f0c2af83736999f9eb26c4530c7c21e33f5f6faba86b03799eb216ff92",
+      "fell_back": false,
+      "label": "ble-action-report-launch",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/String;)V",
+        "is_constructor": false,
+        "name": "S",
+        "overload_index": 0,
+        "reported_signature": "S(java.lang.String): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "S",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_36167b05f907d92038f722005f902138ad3d51494b86059adf727b061f835036",
+      "fell_back": false,
+      "label": "direct-tool-inspect_android_method",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "F",
+        "overload_index": 0,
+        "reported_signature": "F(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "F",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_36bc1b89cdf86fe9912bada19b5ccb677280a530163f0c5ea42f37d1ce92fd12",
+      "fell_back": false,
+      "label": "ble-current-data-exchange",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Lcom/hellobike/rm/ride_business_operatelock/bleoperate/bean/RideBleOperateConfigBean;ZLkotlin/jvm/functions/Function3;)V",
+        "is_constructor": false,
+        "name": "bleDataExchange",
+        "overload_index": 0,
+        "reported_signature": "bleDataExchange(com.hellobike.rm.ride_business_operatelock.bleoperate.bean.RideBleOperateConfigBean, boolean, kotlin.jvm.functions.Function3<? super java.lang.Boolean, ? super java.lang.String, ? super com.hellobike.rm.ride_business_operatelock.common.commonbean.RideLockErrBean, kotlin.Unit>): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.rm.ride_business_operatelock.bleoperate.bleconnection.RideBleConnector",
+        "method_name": "bleDataExchange",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_36f6e7ddcba23d9bae3cfe3e47b549a652fbe8ebefdc46cad8f47add1854c51f",
+      "fell_back": false,
+      "label": "ble-operator-uuid-init",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "k",
+        "overload_index": 0,
+        "reported_signature": "k(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.BleOperator",
+        "method_name": "k",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_3885f0985165d660b8772605b0dbbb8758491c74fab8a4352fa638536721b58d",
+      "fell_back": false,
+      "label": "ble-action-notify-handler",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Lcom/hellobike/bike/business/riding/rideinfo/ble/ReturnBikeByBleAction;Lcom/jingyao/blelibrary/newble/dto/ReadRetTO;)V",
+        "is_constructor": false,
+        "name": "b0",
+        "overload_index": 0,
+        "reported_signature": "b0(com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction, com.jingyao.blelibrary.newble.dto.ReadRetTO): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "b0",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_497240528f39fa5b573637771bbb657530e84d795a45c5dfcf8cc45e6c210781",
+      "fell_back": false,
+      "label": "direct-tool-inspect_android_method",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Lcom/hellobike/ride/common/ubt/event/BikeClickEvent;",
+        "is_constructor": false,
+        "name": "getAgreementDispatchBTN",
+        "overload_index": 0,
+        "reported_signature": "getAgreementDispatchBTN(): com.hellobike.ride.common.ubt.event.BikeClickEvent"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.ubt.BikeReportBtnLogEvents",
+        "method_name": "getAgreementDispatchBTN",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5058b789bffe2bf78a264d4603f1bbae4bdf718802924d594c72f04d3cba1658",
+      "fell_back": false,
+      "label": "fee-forbidden-label",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Lcom/hellobike/ride/common/ubt/event/BikeClickEvent;",
+        "is_constructor": false,
+        "name": "getCLICK_APPEAL_FORBIDDEN",
+        "overload_index": 0,
+        "reported_signature": "getCLICK_APPEAL_FORBIDDEN(): com.hellobike.ride.common.ubt.event.BikeClickEvent"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.ubt.BikeClickUbtEvents",
+        "method_name": "getCLICK_APPEAL_FORBIDDEN",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5b12c4b864b025b6ecc21f730e68c41cad9d950d72c5d9ba80bf99849a12e579",
+      "fell_back": false,
+      "label": "ble-action-read",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "P",
+        "overload_index": 0,
+        "reported_signature": "P(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "P",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5d994335a9d7d1d3fd1a651be6df3d2c71503921ba31d6479908e2ea9d33d767",
+      "fell_back": null,
+      "label": "direct-tool-inspect_android_class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ManhattanReturnBikeRepository",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5e7f0435c92db5dff30dc920176e7a4c75474e4a839da4872e8e40ea47c4bb33",
+      "fell_back": null,
+      "label": "direct-tool-inspect_android_class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5fe5f7559195a1c597af22a4faeb6853522342ac477b2ee87bd4a02872ad1789",
+      "fell_back": true,
+      "label": "direct-tool-inspect_android_method",
+      "markers": [
+        "static_initializer_disassembly"
+      ],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "<clinit>",
+        "overload_index": 0,
+        "reported_signature": "<clinit>(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.api.ManhattanP10PreCloseApiModel",
+        "method_name": "<clinit>",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": "smali",
+      "source_status": "complete",
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_5ff66c01edeeac5f931d190c5a67900e3c3252b9efff9724c8a4bcf83c511a05",
+      "fell_back": false,
+      "label": "ble-p10-report",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/String;)V",
+        "is_constructor": false,
+        "name": "U",
+        "overload_index": 0,
+        "reported_signature": "U(java.lang.String): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "U",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_609540930ab8346cb4dd4601eb27fcc81a9c04300aea132242432766bc9c9b57",
+      "fell_back": false,
+      "label": "ble-complex-uuid-init",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": true,
+        "name": "<init>",
+        "overload_index": 0,
+        "reported_signature": "<init>(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.newble.strategy.BleForthComplexLock",
+        "method_name": "<init>",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_648b08445504a72efddabe3530652a4486af0c089482eedbb41880900c02a3e8",
+      "fell_back": false,
+      "label": "ble-command-framing",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Lcom/jingyao/blelibrary/model/HBCommand;)Ljava/util/List;",
+        "is_constructor": false,
+        "name": "b",
+        "overload_index": 0,
+        "reported_signature": "b(com.jingyao.blelibrary.model.HBCommand): java.util.List<com.jingyao.blelibrary.model.HBPackageData>"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.HBCommandCoder",
+        "method_name": "b",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_6cc94c72d5274452bad84fbd4585fa1afa7d1d9a7a5f890fe88587d8a000632e",
+      "fell_back": null,
+      "label": "ble-report-coroutine-class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction$reportBleData$1",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_6d05c3cf37a5ac92819fbb94086aedecbdfaf6454c88445173857c1f66e5b7e4",
+      "fell_back": false,
+      "label": "ble-followup-report",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/String;)V",
+        "is_constructor": false,
+        "name": "T",
+        "overload_index": 0,
+        "reported_signature": "T(java.lang.String): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "T",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_751987c1590337c0513ce8585dff03f2d5b4517613ca5d3a0faf6c44ca0ad933",
+      "fell_back": null,
+      "label": "direct-tool-inspect_android_class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.api.ManhattanP10PreCloseApiModel",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_7829046064db788d9643f9e0acf8cf10d2fcbfd32b3ffb0178849d2763f64296",
+      "fell_back": false,
+      "label": "fee-hide-return-option",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Z",
+        "is_constructor": false,
+        "name": "isHideDispatchReturn",
+        "overload_index": 0,
+        "reported_signature": "isHideDispatchReturn(): boolean"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.entity.PreCloseForP10Entity",
+        "method_name": "isHideDispatchReturn",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_938910066c14b5e615194290989e4c61136b99e7951bc779ea2cde0a35171168",
+      "fell_back": false,
+      "label": "ble-complex-service-discovery",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Landroid/bluetooth/BluetoothGatt;I)V",
+        "is_constructor": false,
+        "name": "onServicesDiscovered",
+        "overload_index": 0,
+        "reported_signature": "onServicesDiscovered(android.bluetooth.BluetoothGatt, int): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.newble.strategy.BleForthComplexLock",
+        "method_name": "onServicesDiscovered",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_948772400fd53c25c47081929781b5b6bb7897d4cf3106ddde2e4d4c6546d32d",
+      "fell_back": false,
+      "label": "direct-tool-inspect_android_method",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/ArrayList;)V",
+        "is_constructor": false,
+        "name": "V",
+        "overload_index": 0,
+        "reported_signature": "V(java.lang.String, java.lang.String, java.lang.String, java.util.ArrayList<java.lang.String>): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "V",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_95298a90202033cf7aa8ec04dfd0485e6eaf92cafb73b75c0e52580bd6f5e4fa",
+      "fell_back": false,
+      "label": "ble-p10-finish-callback",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/Object;)Ljava/lang/Object;",
+        "is_constructor": false,
+        "name": "invokeSuspend",
+        "overload_index": 0,
+        "reported_signature": "invokeSuspend(java.lang.Object): java.lang.Object"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction$reportDataFinishOrder$1",
+        "method_name": "invokeSuspend",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_a43091cc3b6c8e412efab4fe608aa3d98d1033182d64988bc060b0e611501db0",
+      "fell_back": null,
+      "label": "ble-current-connector-class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.hellobike.rm.ride_business_operatelock.bleoperate.bleconnection.RideBleConnector",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_a5dac79bf931c9b1e3173f5ab042115d0142a79ffe30b96772a3f97e8f142569",
+      "fell_back": false,
+      "label": "ble-action-strategy",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Landroid/content/Context;Ljava/lang/Boolean;Ljava/lang/Boolean;)V",
+        "is_constructor": true,
+        "name": "<init>",
+        "overload_index": 0,
+        "reported_signature": "<init>(android.content.Context, java.lang.Boolean, java.lang.Boolean): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "<init>",
+        "overload_index": 0,
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [
+        "    /* JADX WARN: Code duplicated, block: B:30:0x00a0  */",
+        "    /* JADX WARN: Code duplicated, block: B:40:0x00bc  */",
+        "    /* JADX WARN: Code duplicated, block: B:50:0x00d8  */",
+        "    /* JADX WARN: Code duplicated, block: B:72:0x0163  */",
+        "    /* JADX WARN: Code duplicated, block: B:74:0x016b  */"
+      ],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_acd85bbfcc8a63a05cc27b5bfacd24c5d5ddf5833c5c919a54c0708f0712c8c2",
+      "fell_back": false,
+      "label": "ble-report-coroutine",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Ljava/lang/Object;)Ljava/lang/Object;",
+        "is_constructor": false,
+        "name": "invokeSuspend",
+        "overload_index": 0,
+        "reported_signature": "invokeSuspend(java.lang.Object): java.lang.Object"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction$reportBleData$1",
+        "method_name": "invokeSuspend",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_b21482df6162eb78c80752ed63221f3086d37af519e3c05ded60c7516af58ff8",
+      "fell_back": false,
+      "label": "fee-normal-parking-label",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Lcom/hellobike/ride/common/ubt/event/BikeClickEvent;",
+        "is_constructor": false,
+        "name": "getCLICK_APPEAL_NORM_PARK",
+        "overload_index": 0,
+        "reported_signature": "getCLICK_APPEAL_NORM_PARK(): com.hellobike.ride.common.ubt.event.BikeClickEvent"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.ubt.BikeClickUbtEvents",
+        "method_name": "getCLICK_APPEAL_NORM_PARK",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_b28911344456a8a1d9cb0c6addf2347a9ff1e03156c606ed009f2f186d3d23de",
+      "fell_back": null,
+      "label": "ble-command-coder-class",
+      "markers": null,
+      "method": null,
+      "operation": "inspect_android_class",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.HBCommandCoder",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_b2ab5d7db11184f23268392f3ed0e907c0914f706e47b80def91aa0c30e715c9",
+      "fell_back": false,
+      "label": "ble-action-g0",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "g0",
+        "overload_index": 0,
+        "reported_signature": "g0(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "g0",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_bba80e8d5a5f8333595ad3cd26fbd0cdf2a50fe58e21e6d221931b3b8de99c1d",
+      "fell_back": false,
+      "label": "ble-command-complex-framing",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Lcom/jingyao/blelibrary/model/HBCommandWithPackage;)Ljava/util/List;",
+        "is_constructor": false,
+        "name": "c",
+        "overload_index": 0,
+        "reported_signature": "c(com.jingyao.blelibrary.model.HBCommandWithPackage): java.util.List<com.jingyao.blelibrary.model.HBPackageData>"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.HBCommandCoder",
+        "method_name": "c",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_bf3d2e8367a944e244d54b6ba9d0645f2101dc95f0e4f5d3007cf615a72fdc46",
+      "fell_back": false,
+      "label": "ble-operator-uuid-constructor",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": true,
+        "name": "<init>",
+        "overload_index": 0,
+        "reported_signature": "<init>(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.BleOperator",
+        "method_name": "<init>",
+        "overload_index": 0,
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_ca8be729435ceb97440785dfc75e6b8e1d3159ea2c3bea2501b6bf157d336f9d",
+      "fell_back": false,
+      "label": "ble-parking-type",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()Z",
+        "is_constructor": false,
+        "name": "isParkBleType",
+        "overload_index": 0,
+        "reported_signature": "isParkBleType(): boolean"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.entity.PreCloseForP10Entity",
+        "method_name": "isParkBleType",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_ce7654ae4ba67a2989093a8ebcec701c56d548a4d45b8bf85d95e4e6ee568b67",
+      "fell_back": false,
+      "label": "ble-action-a0",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "a0",
+        "overload_index": 0,
+        "reported_signature": "a0(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "a0",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 2969,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_da0255a5588291349c97c3873adb4d52d6f990648aed4f4664213eb03500b77e",
+      "fell_back": false,
+      "label": "ble-service-discovery",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "(Landroid/bluetooth/BluetoothGatt;I)V",
+        "is_constructor": false,
+        "name": "onServicesDiscovered",
+        "overload_index": 0,
+        "reported_signature": "onServicesDiscovered(android.bluetooth.BluetoothGatt, int): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.jingyao.blelibrary.BleOperator",
+        "method_name": "onServicesDiscovered",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_e66a1fadf513d5d418cc157e7bb4ea9a260a858d1dd577404d8e81c08347fdbf",
+      "fell_back": false,
+      "label": "direct-tool-inspect_android_method",
+      "markers": [],
+      "method": {
+        "dex_descriptor": "()V",
+        "is_constructor": false,
+        "name": "M",
+        "overload_index": 0,
+        "reported_signature": "M(): void"
+      },
+      "operation": "inspect_android_method",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.ble.ReturnBikeByBleAction",
+        "method_name": "M",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-return-analysis/hellobike-return-slice.apk"
+      },
+      "representation": "java",
+      "source_status": "complete",
+      "subject_sha256": "2c4ebb339269f817a2ece314a434a0f80b5d8683bbe878d774e4794d1c692a6a"
+    },
+    {
+      "decompiler_warning_lines": [],
+      "engine": {
+        "artifact_sha256": "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75",
+        "heap_limit_mib": 3886,
+        "name": "jadx-headless-mcp",
+        "source_revision": "5844800a486d2248fa949b74c9896285f5b54de2",
+        "version": "0.7.1",
+        "worker_count": 1
+      },
+      "evidence_id": "ev_f2fb0cd212e8f4b994d5baaf2ec4bb04ac512e1c0ac4c80057775f9f79a76d59",
+      "fell_back": null,
+      "label": "direct-tool-trace_android_references",
+      "markers": null,
+      "method": null,
+      "operation": "trace_android_references",
+      "parameters": {
+        "class_name": "com.hellobike.bike.business.riding.rideinfo.model.entity.PreCloseForP10Entity",
+        "method_name": "getPenaltyDisplay",
+        "path": "D:/mercu/Desktop/yktwx/build/hellobike-payment-slice.apk"
+      },
+      "representation": null,
+      "source_status": null,
+      "subject_sha256": "0a324bde7bfd7ec83955948edacc53f79287f80cd04f9c785de4cbacb91fc307"
+    }
+  ],
+  "purpose": "Official APK static verification of return-related dispatch fees and BLE return",
+  "source_apk": "D:\\mercu\\Downloads\\哈啰_7.0.75.apk",
+  "source_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+  "verification": {
+    "authenticated_business_requests": false,
+    "build_lint_or_tests_run": false,
+    "business_code_changed": false,
+    "copied_dex_digests_match_original_inventory": true,
+    "copied_entries_compared_byte_for_byte": true,
+    "original_apk_identity_checked": true,
+    "provider_close_completed": true,
+    "provider_export_completed": true,
+    "rea_subject_digests_match_supplied_slices": true,
+    "target_executed": false
+  }
+}

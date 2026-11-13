@@ -101,7 +101,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                     }
                 }, dismissible = completed || session.canDismissUnknownCreation))
         }
-        addAll(additionalEntries.filterNot { it.feature == LifeFeature.Water && it.completed })
+        addAll(additionalEntries.filterNot { it.feature != LifeFeature.Laundry && it.completed })
     }
     StatusEntries(entries, enabled, onOpenSession, onDismiss, settings, modifier)
 }
@@ -217,7 +217,7 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
                                 colors = ProgressIndicatorDefaults.progressIndicatorColors(
                                     foregroundColor = accent, backgroundColor = accent.copy(alpha = .14f)))
                         }
-                        Icon(if (entry.feature == LifeFeature.Water) AppIcons.Water else AppIcons.Laundry,
+                        Icon(lifeFeatureIcon(entry.feature),
                             "${entry.feature.title}设备", Modifier.size(if (entry.feature == LifeFeature.Water && !entry.completed) 17.dp else 13.dp)
                                 .testTag("life-device-icon-${entry.sessionId}"), tint = accent)
                     }
@@ -236,7 +236,7 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
                                     fontWeight = FontWeight.SemiBold, color = accent,
                                     identity = entry.sessionId, maxLines = 1)
                             }
-                        } else if (entry.feature == LifeFeature.Water) {
+                        } else if (entry.feature in setOf(LifeFeature.Water, LifeFeature.Ride)) {
                             Box(Modifier.padding(end = 6.dp).size(5.dp)
                                 .background(accent.copy(alpha = .60f), CircleShape))
                         }

@@ -36,7 +36,7 @@ internal fun SectionTitle(title: String) {
 /** One single-line error in the current form. Empty errors occupy no space. */
 @Composable
 internal fun InlineError(
-    message: String?, modifier: Modifier = Modifier, maxLines: Int = 1,
+    message: String?, modifier: Modifier = Modifier, maxLines: Int = 1, preserveMessage: Boolean = false,
 ) {
     if (message.isNullOrBlank()) return
     Row(modifier.fillMaxWidth()
@@ -46,7 +46,8 @@ internal fun InlineError(
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(MiuixIcons.Info, null, Modifier.size(18.dp), tint = if (isSystemInDarkTheme())
             MiuixTheme.colorScheme.onErrorContainer else MiuixTheme.colorScheme.error)
-        Text(FeedbackText.inline(message), Modifier.weight(1f), fontSize = 13.sp, lineHeight = 18.sp,
-            maxLines = maxLines, overflow = TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onErrorContainer)
+        Text(if (preserveMessage) message else FeedbackText.inline(message), Modifier.weight(1f), fontSize = 13.sp, lineHeight = 18.sp,
+            maxLines = if (preserveMessage) Int.MAX_VALUE else maxLines,
+            overflow = if (preserveMessage) TextOverflow.Clip else TextOverflow.Ellipsis, color = MiuixTheme.colorScheme.onErrorContainer)
     }
 }

@@ -1,0 +1,8 @@
+{
+  "source_apk": "D:\\mercu\\Downloads\\哈啰_7.0.75.apk",
+  "apk_sha256": "7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b",
+  "certificate_source": "APK Signature Scheme v2, first signing certificate DER",
+  "certificate_sha256": "ce4ac58680e920f9642a589ffae4cdb4bd4461cb53487afbbc9fc613ae35804e",
+  "apkSignHash_Base64_DEFAULT": "zkrFhoDpIPlkKlif+uTNtL1EYctTSHr7vJ/GE641gE4=\n",
+  "scope": "Public client request field only; does not change the app signature or prove server acceptance."
+}
