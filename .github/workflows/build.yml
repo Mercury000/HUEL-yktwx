@@ -30,7 +30,8 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_tag: ${{ steps.release.outputs.tag_name }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      reused: ${{ steps.existing.outputs.reused }}
     steps:
       - name: Update the release PR or create its draft Release
         id: release
@@ -40,6 +41,60 @@ jobs:
           target-branch: ${{ github.ref_name }}
           config-file: ${{ github.ref_name == 'beta' && 'release-please-config-beta.json' || 'release-please-config.json' }}
           manifest-file: ${{ github.ref_name == 'beta' && '.release-please-manifest-beta.json' || '.release-please-manifest.json' }}
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag_name || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare the version shared by both channels
+        id: version
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/prepare_build_version.py --release-tag "$RELEASE_TAG"
+      - name: Reuse an already published APK on retries
+        id: existing
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-input
+          # Draft Releases require push access even for reads. Keep these calls in this job.
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets | map(select(.name | endswith(".apk"))) | length' > apk-count.txt
+          COUNT=$(cat apk-count.txt)
+          if [ "$COUNT" -gt 1 ]; then
+            echo "Release contains multiple APKs; refusing to choose or replace one." >&2
+            exit 1
+          fi
+          if [ "$COUNT" = 1 ]; then
+            gh release download "$RELEASE_TAG" --pattern '*.apk' --dir release-input
+            test -f "release-input/CaiXiaoTong-${VERSION_NAME}-release.apk"
+            echo 'reused=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prepare release notes
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-input
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > release-input/release-notes.md
+      - name: Pass release input to the read-only build job
+        if: steps.version.outputs.publish == 'true'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-preparation
+          path: release-input/
+          if-no-files-found: error
+          retention-days: 7
 
   build:
     needs: release-please
@@ -51,7 +106,7 @@ jobs:
       build_type: ${{ steps.version.outputs.build_type }}
       publish: ${{ steps.version.outputs.publish }}
       release_tag: ${{ steps.version.outputs.release_tag }}
-      reused: ${{ steps.existing.outputs.reused }}
+      reused: ${{ needs.release-please.outputs.reused }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -67,50 +122,23 @@ jobs:
           REQUESTED_BUILD_TYPE: ${{ inputs.build_type }}
           GH_TOKEN: ${{ github.token }}
         run: python scripts/prepare_build_version.py --release-tag "$RELEASE_TAG"
-      - name: Reuse an already published APK on retries
-        id: existing
+      - name: Read prepared release input
         if: steps.version.outputs.publish == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
-          VERSION_NAME: ${{ steps.version.outputs.version_name }}
-        run: |
-          set -euo pipefail
-          mkdir -p release-input
-          if gh release view "$RELEASE_TAG" --json assets --jq '.assets | map(select(.name | endswith(".apk"))) | length' > apk-count.txt 2>/dev/null; then
-            COUNT=$(cat apk-count.txt)
-            if [ "$COUNT" -gt 1 ]; then
-              echo "Release contains multiple APKs; refusing to choose or replace one." >&2
-              exit 1
-            fi
-            if [ "$COUNT" = 1 ]; then
-              gh release download "$RELEASE_TAG" --pattern '*.apk' --dir release-input
-              test -f "release-input/CaiXiaoTong-${VERSION_NAME}-release.apk"
-              echo 'reused=true' >> "$GITHUB_OUTPUT"
-            fi
-          fi
-      - name: Prepare release notes
-        if: steps.version.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-input
-          gh release view "$RELEASE_TAG" --json body --jq '.body' > release-input/release-notes.md
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-preparation
+          path: release-input
       - uses: actions/setup-java@v6.0.1
-        if: steps.existing.outputs.reused != 'true'
+        if: needs.release-please.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: 22
       - uses: gradle/actions/setup-gradle@v6.3.0
-        if: steps.existing.outputs.reused != 'true'
+        if: needs.release-please.outputs.reused != 'true'
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Build APK
-        if: steps.existing.outputs.reused != 'true'
+        if: needs.release-please.outputs.reused != 'true'
         shell: bash
         env:
           BUILD_TYPE: ${{ steps.version.outputs.build_type }}
@@ -130,7 +158,7 @@ jobs:
           chmod +x gradlew
           ./gradlew ":app:assemble${BUILD_TYPE^}" --no-configuration-cache --console=plain
       - name: Verify release profiles
-        if: steps.version.outputs.build_type == 'release' && steps.existing.outputs.reused != 'true'
+        if: steps.version.outputs.build_type == 'release' && needs.release-please.outputs.reused != 'true'
         run: python scripts/verify_profiles.py app/build/outputs/apk/release/app-release-unsigned.apk --mapping app/build/outputs/mapping/release/mapping.txt
       - name: Upload debug APK
         if: steps.version.outputs.build_type == 'debug'
@@ -144,7 +172,7 @@ jobs:
         if: steps.version.outputs.build_type == 'release'
         shell: bash
         env:
-          REUSED: ${{ steps.existing.outputs.reused }}
+          REUSED: ${{ needs.release-please.outputs.reused }}
         run: |
           set -euo pipefail
           mkdir -p release-input
