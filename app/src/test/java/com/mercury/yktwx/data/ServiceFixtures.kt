@@ -39,12 +39,12 @@ internal fun hui798ApiFixture(
     client: Call.Factory = testHttpClients.service,
 ): Hui798Api = Hui798Api(gateway = gateway, salt = salt, client = client)
 
-internal fun updateHttpFixture(metadataTimeoutMillis: Long = 1_500,
+internal fun updateHttpFixture(metadataTimeoutMillis: Long = UpdateHttp.DEFAULT_METADATA_TIMEOUT_MILLIS,
     client: Call.Factory = testHttpClients.update): UpdateHttp = UpdateHttp(metadataTimeoutMillis = metadataTimeoutMillis, client = client)
 
 internal fun appUpdateApiFixture(http: UpdateHttp = updateHttpFixture(),
     verifier: UpdateManifestVerifier = UpdateManifestVerifier(),
-    sourceTimeoutMillis: Long = 2_500,
+    sourceTimeoutMillis: Long = AppUpdateApi.DEFAULT_SOURCE_TIMEOUT_MILLIS,
     now: () -> Instant = Instant::now): AppUpdateApi = AppUpdateApi(http = http, verifier = verifier, sourceTimeoutMillis = sourceTimeoutMillis, now = now)
 
 // Transfer/installation fixtures bypass probing; AppUpdateSourceSelectionTest exercises the real selector.

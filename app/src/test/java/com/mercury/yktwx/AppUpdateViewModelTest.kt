@@ -256,6 +256,99 @@ class AppUpdateViewModelTest {
         assertEquals(listOf(UpdateFeedback.Failed), events)
     }
 
+    @Test fun rejectedMetadataHasSpecificManualFeedbackAndPreservesTheKnownUpdate() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v3")
+        store.cacheRelease(update.release)
+        val previousPolicies = store.repository.snapshot().policies
+        for ((reason, feedback) in listOf(UpdateMetadataRejection.Stale to UpdateFeedback.StaleMetadata,
+            UpdateMetadataRejection.Conflict to UpdateFeedback.ConflictingMetadata,
+            UpdateMetadataRejection.Invalid to UpdateFeedback.InvalidMetadata)) {
+            events.clear()
+            val gate = CompletableDeferred<UpdateCheckResult>()
+            val model = model { gate.await() }
+            model.configure(true, true, true); runCurrent()
+            model.checkManually(); runCurrent()
+            gate.completeExceptionally(UpdateMetadataRejected(reason, "rejected")); runCurrent()
+            assertEquals(listOf(feedback), events)
+            assertEquals(update.release!!.versionCode, model.state.value.release!!.versionCode)
+            assertEquals(previousPolicies, store.repository.snapshot().policies)
+            assertFalse(model.state.value.checking)
+        }
+    }
+
+    @Test fun automaticMetadataRejectionStaysSilentAndManualCheckRetries() = runTest(dispatcher) {
+        val model = model { count++; throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "rejected") }
+        model.configure(true, true, true); runCurrent()
+        assertTrue(events.isEmpty())
+        model.checkManually(); runCurrent()
+        assertEquals(2, count)
+        assertEquals(listOf(UpdateFeedback.StaleMetadata), events)
+        assertFalse(model.state.value.checking)
+    }
+
+    @Test fun serviceFailureHasSpecificManualFeedbackAndStopsChecking() = runTest(dispatcher) {
+        val model = model { count++; throw UpdateServiceUnavailable() }
+        model.configure(true, true, true); runCurrent()
+        assertTrue(events.isEmpty())
+        model.checkManually(); runCurrent()
+        assertEquals(2, count)
+        assertEquals(listOf(UpdateFeedback.Service), events)
+        assertFalse(model.state.value.checking)
+    }
+
+    @Test fun partialCheckNamesTheUnavailableChannelAndRetainsKnownUpdateWithoutOpeningDetails() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v3")
+        store.cacheRelease(update.release)
+        for ((resolved, feedback) in listOf("stable" to UpdateFeedback.BetaUnavailable,
+            "beta" to UpdateFeedback.StableUnavailable)) {
+            events.clear()
+            val model = model { UpdateCheckResult(UpdateCheckReason.PartiallyChecked, update.release,
+                availableChannels = emptySet(), resolvedChannels = setOf(resolved)) }
+            model.configure(true, true, true); runCurrent()
+            model.checkManually(); runCurrent()
+            assertEquals(listOf(feedback), events)
+            assertEquals(update.release!!.versionCode, model.state.value.release!!.versionCode)
+            assertFalse(model.state.value.checking)
+            assertFalse(model.state.value.detailsPending)
+            model.presentIfAllowed(true)
+            assertFalse(model.state.value.visible)
+        }
+    }
+
+    @Test fun partialAutomaticCheckRetriesHourlyAndManualCheckBypassesCooldown() = runTest(dispatcher) {
+        val check: suspend () -> UpdateCheckResult = {
+            count++
+            UpdateCheckResult(UpdateCheckReason.PartiallyChecked, resolvedChannels = setOf("stable"))
+        }
+        val model = model(check = check)
+        model.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        assertTrue(events.isEmpty())
+        time += UpdateCheckStore.HOUR - 1
+        model.configure(true, true, false); model.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        time++
+        model.configure(true, true, false); model.configure(true, true, true); runCurrent()
+        assertEquals(2, count)
+        model.checkManually(); runCurrent()
+        assertEquals(3, count)
+        assertEquals(listOf(UpdateFeedback.BetaUnavailable), events)
+    }
+
+    @Test fun staleMetadataKeepsTheForcedUpdateAndShowsTheSpecificReason() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v9")
+        store.cacheRelease(UpdateRelease(10, "1.5.0", "更新", "https://github.com/release", maxForcedVersionCode = 9))
+        val model = model("v9") { throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "rejected") }
+        model.configure(false, true, true); runCurrent()
+        assertTrue(model.state.value.required)
+        assertEquals(10, model.state.value.release!!.versionCode)
+        assertTrue(model.state.value.download.error!!.contains("更新信息已过期"))
+        assertTrue(events.isEmpty())
+        model.checkManually(); runCurrent()
+        assertEquals(listOf(UpdateFeedback.StaleMetadata), events)
+        assertTrue(model.state.value.required)
+    }
+
     @Test fun disablingRemindersKeepsThePendingCheckAndManualResult() = runTest(dispatcher) {
         val gate = CompletableDeferred<UpdateCheckResult>()
         val model = model { count++; gate.await() }
