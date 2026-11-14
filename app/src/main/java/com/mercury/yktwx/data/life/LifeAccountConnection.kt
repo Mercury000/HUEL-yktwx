@@ -60,8 +60,8 @@ internal class LifeAccountVerifier<T>(
 
     fun failed(error: String) {
         attemptedAt = now()
-        if (mutable.value.status !in setOf(LifeAccountStatus.Verified, LifeAccountStatus.Expired))
-            mutable.value = mutable.value.copy(status = LifeAccountStatus.Unverified, error = error)
+        if (mutable.value.status != LifeAccountStatus.Expired)
+            mutable.value = mutable.value.copy(status = LifeAccountStatus.Unverified, verifiedAtMillis = null, error = error)
     }
 
     fun reset() { generation++; job?.cancel(); job = null; attemptedAt = null }
