@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HellobikeAccountStoreTest {
+    @Test fun cardPurchaseSurvivesExpiryAndAccountSwitchAndLogoutErasesIt() {
+        val store = BikeRecords().store()
+        val purchase = HellobikeCardPurchase("校园月卡", listOf(HellobikePayOrder("pay-no", "6.90", "payment-id", "28")), "6.90", "28", "2801", fixtureBikeRegion)
+        store.saveCardPurchase(fixtureBikeAccount.userGuid, purchase)
+        store.clearAccount()
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        val other = fixtureBikeAccount.copy(userGuid = "other-owner")
+        store.saveAccount(other)
+        try { store.saveCardPurchase(fixtureBikeAccount.userGuid, purchase); fail("Old owner cannot overwrite card purchase") }
+        catch (e: HellobikeException) { assertTrue(e.storageFailure) }
+        store.saveAccount(fixtureBikeAccount)
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        store.removeAccount(); assertTrue(store.load().cardPurchases.isEmpty())
+    }
     @Test fun pendingRecordsSurviveExpiryAndOwnerRoundTripsWithoutExposingOtherOwners() {
         val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession))
         store.clearAccount()

@@ -26,10 +26,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.HellobikeUiState
@@ -277,68 +275,57 @@ private fun HellobikeRecoveryNotice(model: HellobikeViewModel, enabled: Boolean)
 
 @Composable
 internal fun HellobikePaymentSheet(show: Boolean, state: HellobikeUiState, model: HellobikeViewModel) {
-    val showing by rememberUpdatedState(show)
     val currentState by rememberUpdatedState(state)
-    if (!rememberOverlayMounted(show)) return
-    val session = rememberOverlaySession(show)
     val isResult = state.paymentFeedback != null
     val page = rememberWhileShown(show, if (isResult) HellobikePaymentPage.Result else HellobikePaymentPage.Methods)
     val currentPage by rememberUpdatedState(page)
-    PaymentSheet(show, rememberWhileShown(show, if (isResult) null else "付款"), model::dismissPayment, insideMargin = DpSize(0.dp, 0.dp)) {
-        key(session) { SheetPageContent(currentPage, Modifier.bottomSheetSafeArea()) { displayPage, interactive ->
-            val enabled = showing && interactive
-            val display = rememberWhileShown(showing && interactive, currentState.copy(phone = "", code = "", slider = null, paymentLaunch = null))
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = if (displayPage == HellobikePaymentPage.Result) 24.dp else 20.dp)
-                .padding(top = 8.dp, bottom = 20.dp).testTag("hellobike-payment-sheet"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (displayPage == HellobikePaymentPage.Result) {
-                    val result = display.paymentFeedback
-                    val amount = display.session?.paymentAttempt?.orders?.sumOf { it.amount.toBigDecimal() }?.toPlainString()
-                        ?: display.payDetail?.amount ?: display.session?.amount ?: "0.00"
-                    val retry = if (currentState.session?.paymentAttempt == null && currentState.session?.settlement == HellobikeSettlement.Pending)
-                        display.payOptions.filter { it.channel.available == true }.map { FeeMethod(it.channel.method, it.channel.method, it.channel.name, false, 0) }
-                        else emptyList()
-                    val phase = result?.phase ?: RechargePhase.Checking
-                    PaymentResultContent(if (phase == RechargePhase.TimedOut) RechargePhase.Checking else phase, result?.loading == true,
-                        amount.toBigDecimal().movePointRight(2).longValueExact(), result?.detail, model::dismissPayment,
-                        subject = "支付", retryMethods = retry, onContinuePayment = { if (enabled) model.pay(it.id) },
-                        selectedRetryId = currentState.paymentMethod, selectedRetryCode = currentState.paymentMethod,
-                        onRetrySelection = { model.selectPaymentMethod(it?.id) },
-                        enabled = enabled && (!currentState.busy || result?.phase == RechargePhase.Paid),
-                        onCheck = { if (enabled) model.checkPayment() }, paymentApp = when (display.session?.paymentAttempt?.channel) {
-                            "003" -> "哈啰"; "1201" -> "银联"; else -> "支付宝"
-                        }, retryMethodLabel = { it.name }, preserveError = true)
-                } else {
-                    val options = display.payOptions
-                    val selected = options.indexOfFirst { it.channel.method == currentState.paymentMethod }.takeIf { it >= 0 }
-                        ?: options.indexOfFirst { it.channel.available == true }.coerceAtLeast(0)
-                    val option = options.getOrNull(selected)
-                    Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
-                        if (display.paymentLoading) CircularProgressIndicator(Modifier.size(24.dp).testTag("hellobike-payment-loading"))
-                        else Text(option?.amount?.let { "¥$it" } ?: display.payDetail?.amount?.let { "¥$it" } ?: "—",
-                            fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    PaymentMethodActions(options.map { it.channel.name }, selected, { model.selectPaymentMethod(options[it].channel.method) },
-                        if (display.busy) "正在发起…" else option?.channel?.name?.let { "${it}支付" } ?: "确认支付",
-                        { if (enabled && option != null) model.pay(option.channel.method) },
-                        enabled = enabled && currentPage == HellobikePaymentPage.Methods && !currentState.busy && !currentState.paymentLoading && !currentState.paymentInFlight,
-                        canSubmit = option?.channel?.available == true && currentState.session?.paymentAttempt == null,
-                        error = display.error ?: option?.channel?.remark ?: "暂无支持的支付方式，请在哈啰处理".takeIf { !display.paymentLoading && options.isEmpty() },
-                        modifier = Modifier.testTag("hellobike-pay-submit"), preserveError = true)
-                    if (!display.paymentLoading && (options.isEmpty() || display.error != null)) Button(model::showPayment,
-                        Modifier.fillMaxWidth(), enabled = enabled && !currentState.busy) { Text("刷新费用") }
-                }
-                if (display.officialRequired || !display.paymentLoading && displayPage == HellobikePaymentPage.Methods &&
-                    display.payOptions.none { it.channel.available == true }) OfficialHellobikeLink(enabled = enabled)
-            }
-        } }
+    PaymentSheetPages(show, currentPage, { it == HellobikePaymentPage.Result }, if (isResult) null else "付款",
+        model::dismissPayment, Modifier.testTag("hellobike-payment-sheet")) { displayPage, enabled ->
+        val display = rememberWhileShown(enabled, currentState.copy(phone = "", code = "", slider = null, paymentLaunch = null))
+        if (displayPage == HellobikePaymentPage.Result) {
+            val result = display.paymentFeedback
+            val amount = display.session?.paymentAttempt?.orders?.sumOf { it.amount.toBigDecimal() }?.toPlainString()
+                ?: display.payDetail?.amount ?: display.session?.amount ?: "0.00"
+            val retry = if (currentState.session?.paymentAttempt == null && currentState.session?.settlement == HellobikeSettlement.Pending)
+                display.payOptions.filter { it.channel.available == true }.map { FeeMethod(it.channel.method, it.channel.method, it.channel.name, false, 0) }
+                else emptyList()
+            val phase = result?.phase ?: RechargePhase.Checking
+            PaymentResultContent(if (phase == RechargePhase.TimedOut) RechargePhase.Checking else phase, result?.loading == true,
+                amount.toBigDecimal().movePointRight(2).longValueExact(), result?.detail, model::dismissPayment,
+                subject = "支付", retryMethods = retry, onContinuePayment = { if (enabled) model.pay(it.id) },
+                selectedRetryId = currentState.paymentMethod, selectedRetryCode = currentState.paymentMethod,
+                onRetrySelection = { model.selectPaymentMethod(it?.id) },
+                enabled = enabled && (!currentState.busy || result?.phase == RechargePhase.Paid),
+                onCheck = { if (enabled) model.checkPayment() }, paymentApp = when (display.session?.paymentAttempt?.channel) {
+                    "003" -> "哈啰"; "1201" -> "银联"; else -> "支付宝"
+                }, retryMethodLabel = { it.name }, preserveError = true)
+        } else {
+            val options = display.payOptions
+            val selected = options.indexOfFirst { it.channel.method == currentState.paymentMethod }.takeIf { it >= 0 }
+                ?: options.indexOfFirst { it.channel.available == true }.coerceAtLeast(0)
+            val option = options.getOrNull(selected)
+            PaymentFixedAmount(option?.amount ?: display.payDetail?.amount, display.paymentLoading,
+                Modifier.testTag("hellobike-payment-loading"))
+            PaymentMethodActions(options.map { it.channel.name }, selected, { model.selectPaymentMethod(options[it].channel.method) },
+                if (display.busy) "正在发起…" else option?.channel?.name?.let { "${it}支付" } ?: "确认支付",
+                { if (enabled && option != null) model.pay(option.channel.method) },
+                enabled = enabled && currentPage == HellobikePaymentPage.Methods && !currentState.busy && !currentState.paymentLoading && !currentState.paymentInFlight,
+                canSubmit = option?.channel?.available == true && currentState.session?.paymentAttempt == null,
+                error = display.error ?: option?.channel?.remark ?: "暂无支持的支付方式，请在哈啰处理".takeIf { !display.paymentLoading && options.isEmpty() },
+                modifier = Modifier.testTag("hellobike-pay-submit"), preserveError = true, onCancel = model::dismissPayment)
+            if (!display.paymentLoading && (options.isEmpty() || display.error != null)) Button(model::showPayment,
+                Modifier.fillMaxWidth(), enabled = enabled && !currentState.busy) { Text("刷新费用") }
+        }
+        if (display.officialRequired || !display.paymentLoading && displayPage == HellobikePaymentPage.Methods &&
+            display.payOptions.none { it.channel.available == true }) OfficialHellobikeLink(enabled = enabled)
     }
 }
 
 @Composable
-private fun OfficialHellobikeLink(enabled: Boolean) {
+internal fun OfficialHellobikeLink(enabled: Boolean, color: androidx.compose.ui.graphics.Color = DashboardPalette.muted, label: String = "打开哈啰") {
     val context = LocalContext.current
-    DashboardLink("打开哈啰", { openHellobike(context) }, enabled = enabled, arrow = false,
-        modifier = Modifier.testTag("hellobike-official"), color = DashboardPalette.muted)
+    DashboardLink(label, { openHellobike(context) }, enabled = enabled, arrow = false,
+        modifier = Modifier.testTag("hellobike-official"), color = color)
 }
 private fun openHellobike(context: Context) {
     val intent = context.packageManager.getLaunchIntentForPackage("com.jingyao.easybike")

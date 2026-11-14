@@ -7,6 +7,7 @@ import android.graphics.Paint
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -60,6 +61,297 @@ class HellobikeUiTest {
         analytics = AnalyticsFixtures.from(compose.activity.application))
         .also { models.put("hellobike", it); it.initialize(preview = false) }
     @After fun cleanup() { models.clear(); preferenceScope.cancel() }
+    @Test fun emptyCardsFadeAndResizeWhileDisclosureAndLogoutKeepStableSections() {
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("account-motion", it) }
+        var display by mutableStateOf(HellobikeCardsState(loading = true, cardsLoading = true,
+            audit = HellobikeStudentAudit(2, 1), productsLoading = true))
+        compose.setContent { AppTheme { Scaffold { padding ->
+            val bikeState by bike.state.collectAsState()
+            val account = ManagedLifeAccount(LifeProvider.Hellobike,
+                if (bikeState.connected) LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified) else LifeAccountConnection(),
+                owner = if (bikeState.connected) fixtureBikeAccount.userGuid else "", busy = bikeState.accountBusy)
+            HellobikeAccountContent(Modifier.fillMaxSize(), padding, account, display, bike, true, {}, {})
+        } } }
+        compose.runOnIdle { bike.initialize(false) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.mainClock.autoAdvance = false
+        fun frame() { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        fun height() = compose.onNodeWithTag("hellobike-my-cards-section").getUnclippedBoundsInRoot().let { (it.bottom - it.top).value }
+        fun darkest(): Int {
+            val image = compose.onNodeWithTag("hellobike-my-cards-section").captureToImage().asAndroidBitmap()
+            var min = 255
+            for (y in 0 until image.height) for (x in 0 until image.width) min = minOf(min, Color.red(image.getPixel(x, y)))
+            return min
+        }
+        val sectionId = compose.onNodeWithTag("hellobike-my-cards-section").fetchSemanticsNode().id
+        val campusId = compose.onNodeWithTag("hellobike-campus-section").fetchSemanticsNode().id
+        val beforeHeight = height()
+        val beforePaint = darkest()
+        compose.runOnIdle { display = display.copy(loading = false, cardsLoading = false, productsLoading = false) }
+        val heights = mutableListOf<Float>()
+        val paint = mutableListOf<Int>()
+        repeat(18) { frame(); heights += height(); paint += darkest() }
+        val finalHeight = height()
+        val finalPaint = darkest()
+        assertTrue("Empty cards must resize through intermediate heights: $heights",
+            heights.any { it > minOf(beforeHeight, finalHeight) + 1 && it < maxOf(beforeHeight, finalHeight) - 1 })
+        assertTrue("Empty text must fade into view: $paint",
+            paint.any { it > minOf(beforePaint, finalPaint) + 2 && it < maxOf(beforePaint, finalPaint) - 2 })
+        assertEquals(sectionId, compose.onNodeWithTag("hellobike-my-cards-section").fetchSemanticsNode().id)
+        assertEquals(campusId, compose.onNodeWithTag("hellobike-campus-section").fetchSemanticsNode().id)
+        compose.onNodeWithText("暂无骑行卡").assertIsDisplayed()
+        val ordinary = HellobikeCampusProduct("ordinary-motion", "普通月卡", "6.90", "官方使用说明",
+            com.mercury.yktwx.data.jsonObjectOf("businessType" to 1), campus = false)
+        compose.runOnIdle { display = display.copy(ordinaryExpanded = true, ordinaryLoaded = true, ordinaryProducts = listOf(ordinary)) }
+        repeat(18) { frame() }
+        val buttonId = compose.onNodeWithTag("hellobike-other-cards").fetchSemanticsNode().id
+        val footerId = compose.onNodeWithTag("hellobike-logout").fetchSemanticsNode().id
+        val expandedY = compose.onNodeWithTag("hellobike-logout").getUnclippedBoundsInRoot().top.value
+        compose.runOnIdle { display = display.copy(ordinaryExpanded = false) }
+        val footerPositions = (0 until 18).map { frame(); compose.onNodeWithTag("hellobike-logout").getUnclippedBoundsInRoot().top.value }
+        val collapsedY = footerPositions.last()
+        assertTrue("Footer must move with the collapse, not jump after it: $footerPositions",
+            footerPositions.any { it > minOf(expandedY, collapsedY) + 1 && it < maxOf(expandedY, collapsedY) - 1 })
+        assertEquals(buttonId, compose.onNodeWithTag("hellobike-other-cards").fetchSemanticsNode().id)
+        assertEquals(footerId, compose.onNodeWithTag("hellobike-logout").fetchSemanticsNode().id)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("退出登录").performClick()
+        compose.onNodeWithTag("life-account-exit").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("登录哈啰").assertIsDisplayed()
+        compose.onNodeWithText("查看我的骑行卡").assertIsDisplayed()
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-logout").assertDoesNotExist()
+        compose.onNodeWithText("暂无骑行卡").assertDoesNotExist()
+    }
+    @Test fun collapseAtListBottomPreservesFooterAnchorAndLogoutResetsInOneTransition() {
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("account-scroll", it) }
+        val card = HellobikeUserCard("card", 1, "月卡", 23, 0, 1796572799L, "官方使用说明", renewable = true)
+        val product = HellobikeCampusProduct("product", "普通月卡", "6.90", "官方商品说明",
+            com.mercury.yktwx.data.jsonObjectOf("businessType" to 1), campus = false)
+        var display by mutableStateOf(HellobikeCardsState(cards = (1..8).map { card.copy(guid = "card-$it") }, audit = HellobikeStudentAudit(0, 1),
+            ordinaryExpanded = true, ordinaryLoaded = true, ordinaryProducts = (1..5).map { product.copy(key = "product-$it") }))
+        lateinit var list: androidx.compose.foundation.lazy.LazyListState
+        lateinit var bar: top.yukonga.miuix.kmp.basic.ScrollBehavior
+        compose.setContent { AppTheme {
+            val bikeState by bike.state.collectAsState()
+            list = androidx.compose.foundation.lazy.rememberLazyListState()
+            bar = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(top.yukonga.miuix.kmp.basic.rememberTopAppBarState())
+            Scaffold(topBar = { com.mercury.yktwx.ui.components.DashboardTopBar("哈啰", scrollBehavior = bar) }) { padding ->
+                val account = ManagedLifeAccount(LifeProvider.Hellobike, if (bikeState.connected)
+                    LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified) else LifeAccountConnection(), busy = bikeState.accountBusy)
+                HellobikeAccountContent(Modifier.fillMaxSize().nestedScroll(bar.nestedScrollConnection), padding, account, display, bike, true, {}, {}, scroll = bar, listState = list)
+            }
+        } }
+        compose.runOnIdle { bike.initialize(false) }
+        compose.onNodeWithTag("hellobike-account-page").performScrollToNode(hasTestTag("hellobike-logout"))
+        compose.onNodeWithTag("hellobike-logout").assertIsDisplayed()
+        compose.mainClock.autoAdvance = false
+        val footerId = compose.onNodeWithTag("hellobike-logout").fetchSemanticsNode().id
+        compose.runOnIdle { display = display.copy(ordinaryExpanded = false) }
+        repeat(18) {
+            compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+            compose.onNodeWithTag("hellobike-logout").assertIsDisplayed()
+            compose.runOnIdle { assertTrue("Collapse must retain the bottom anchor", list.firstVisibleItemIndex > 0) }
+        }
+        assertEquals(footerId, compose.onNodeWithTag("hellobike-logout").fetchSemanticsNode().id)
+        compose.runOnIdle { assertEquals(7, list.layoutInfo.totalItemsCount); bar.state.heightOffset = bar.state.heightOffsetLimit; bar.state.contentOffset = -200f }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("退出登录").performClick()
+        compose.onNodeWithTag("life-account-exit").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.runOnIdle { assertEquals(0, list.firstVisibleItemIndex); assertEquals(0, list.firstVisibleItemScrollOffset)
+            assertEquals(0f, bar.state.heightOffset); assertEquals(0f, bar.state.contentOffset) }
+        compose.onNodeWithText("登录哈啰").assertIsDisplayed()
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+    }
+    @Test fun accountUsesSkeletonsUntilCloudRepliesAndButtonExpandsOtherCards() {
+        val auditReply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var cardsReply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val productsReply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val ordinaryReply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var ordinaryCalls = 0
+        var dark by mutableStateOf(false)
+        val card = HellobikeUserCard("cloud-card", 1, "校园月卡", 23, 0, 1796572799L, "官方使用说明", renewable = true)
+        val product = HellobikeCampusProduct("cloud-campus", "校园月卡", "6.90", "官方商品说明",
+            com.mercury.yktwx.data.jsonObjectOf("businessType" to 1))
+        val api = object : FakeHellobikeService() {
+            override suspend fun studentAudit(account: HellobikeAccount): HellobikeStudentAudit {
+                auditReply.await(); return HellobikeStudentAudit(2, 1)
+            }
+            override suspend fun userCards(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?, businessType: Int, page: Int): HellobikeUserCardPage {
+                cardsReply.await(); return HellobikeUserCardPage(if (businessType == 1) listOf(card) else emptyList(), false)
+            }
+            override suspend fun campusProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCampusProducts {
+                productsReply.await(); return HellobikeCampusProducts("校园骑行卡", listOf(product))
+            }
+            override suspend fun ordinaryProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): List<HellobikeCampusProduct> {
+                ordinaryCalls++; ordinaryReply.await(); return listOf(product.copy(key = "cloud-ordinary", name = "普通月卡", campus = false))
+            }
+        }
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("loading-account", it) }
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified), owner = fixtureBikeAccount.userGuid)
+        compose.setContent { AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+            Scaffold(topBar = { com.mercury.yktwx.ui.components.DashboardTopBar("哈啰") }) { padding ->
+                val state by bike.cards.state.collectAsState()
+                HellobikeAccountContent(Modifier.fillMaxSize(), padding, account, state, bike, true, {}, {})
+            }
+        } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.cards.pageVisible(true) }
+        compose.onNodeWithTag("hellobike-my-cards-loading").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-student-loading").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-campus-loading").assertIsDisplayed()
+        compose.onNodeWithText("暂无骑行卡").assertDoesNotExist()
+        compose.onNodeWithText("未认证").assertDoesNotExist()
+        fun snapshot(name: String) {
+            repeat(30) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            val image = compose.onRoot().captureToImage().asAndroidBitmap()
+            File("../build/hellobike-campus-card/$name.png").absoluteFile.also { it.parentFile?.mkdirs() }.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        snapshot("account-skeleton-light")
+        compose.runOnIdle { dark = true }; snapshot("account-skeleton-dark")
+        compose.runOnIdle { dark = false; auditReply.complete(Unit) }
+        compose.onNodeWithText("已认证").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-my-cards-loading").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-campus-loading").assertIsDisplayed()
+        compose.runOnIdle { cardsReply.complete(Unit) }
+        compose.onNodeWithText("剩余 23 天").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-my-cards-loading").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-campus-loading").assertIsDisplayed()
+        compose.runOnIdle { productsReply.complete(Unit) }
+        compose.onNodeWithTag("hellobike-buy-cloud-campus").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-campus-loading").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, ordinaryCalls) }
+        compose.onNodeWithTag("hellobike-other-cards").performScrollTo().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("hellobike-ordinary-loading").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("收起其他骑行卡").assertExists()
+        compose.runOnIdle { ordinaryReply.complete(Unit) }
+        compose.onNodeWithTag("hellobike-buy-cloud-ordinary").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-ordinary-loading").assertDoesNotExist()
+        snapshot("account-other-cards-expanded-light")
+        compose.runOnIdle { dark = true }; snapshot("account-other-cards-expanded-dark")
+        compose.onNodeWithTag("hellobike-other-cards").performScrollTo().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("hellobike-other-cards-content").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-other-cards").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.runOnIdle { assertEquals(1, ordinaryCalls); cardsReply = kotlinx.coroutines.CompletableDeferred(); bike.cards.refresh() }
+        compose.onNodeWithTag("hellobike-account-page").performScrollToIndex(0)
+        compose.onNodeWithText("剩余 23 天").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-my-cards-loading").assertDoesNotExist()
+        compose.runOnIdle { cardsReply.complete(Unit) }
+    }
+    @Test fun purchaseWithDelayedChannelsUsesOfficialFallbackWithoutSendingPaymentAutomatically() {
+        val channelReply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var orders = 0
+        val product = HellobikeCampusProduct("no-default", "校园月卡", "6.90", "官方说明",
+            com.mercury.yktwx.data.jsonObjectOf("businessType" to 1))
+        val api = object : FakeHellobikeService() {
+            override suspend fun studentAudit(account: HellobikeAccount) = HellobikeStudentAudit(2, 1)
+            override suspend fun userCards(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?, businessType: Int, page: Int) = HellobikeUserCardPage(emptyList(), false)
+            override suspend fun campusProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?) = HellobikeCampusProducts("校园骑行卡", listOf(product))
+            override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCardPurchase {
+                orders++
+                return HellobikeCardPurchase(product.name, listOf(HellobikePayOrder("pay", "6.90", "payment", "28")), "6.90", "28", "2801", region)
+            }
+            override suspend fun cardPayChannels(account: HellobikeAccount, purchase: HellobikeCardPurchase): List<HellobikePayOption> {
+                channelReply.await()
+                return listOf(HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "6.90", defaultSelected = false))
+            }
+        }
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("delayed-purchase", it) }
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified), owner = fixtureBikeAccount.userGuid)
+        compose.setContent { AppTheme { Scaffold { padding ->
+            val state by bike.cards.state.collectAsState()
+            HellobikeAccountContent(Modifier.fillMaxSize(), padding, account, state, bike, true, {}, {})
+        } } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.cards.pageVisible(true) }
+        compose.onNodeWithTag("hellobike-buy-no-default").assertIsEnabled().performClick()
+        compose.mainClock.advanceTimeBy(1200)
+        compose.onNodeWithTag("hellobike-card-pay-submit").assertIsNotEnabled()
+        compose.runOnIdle { channelReply.complete(Unit) }
+        compose.mainClock.advanceTimeBy(1200)
+        compose.onNodeWithText("支付宝").assertIsDisplayed()
+        compose.onNodeWithText("支付宝").assertIsSelected()
+        compose.onNodeWithTag("hellobike-card-pay-submit").assertIsEnabled()
+        compose.onNodeWithTag("hellobike-card-pay-cancel").performClick()
+        compose.runOnIdle { assertEquals(1, orders); assertEquals(0, api.payCalls); assertFalse(bike.cards.state.value.paymentVisible) }
+    }
+    @Test fun accountDetailShowsAllCardsAboveCampusPurchaseAndPromptsUnapprovedStudents() {
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("account-bike", it) }
+        var approved by mutableStateOf(true)
+        var empty by mutableStateOf(false)
+        var dark by mutableStateOf(false)
+        var paymentShown by mutableStateOf(false)
+        val card = HellobikeUserCard("my-card", 1, "校园·30天月卡", 23, 0, 1796572799L, "限亲子车、普通单车使用，单笔最多抵扣120分钟。", renewable = true)
+        val product = HellobikeCampusProduct("month", "校园·30天月卡", "6.90", "30天内有效，限郑州市、开封市使用。",
+            com.mercury.yktwx.data.jsonObjectOf("businessType" to 1))
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified), owner = fixtureBikeAccount.userGuid)
+        compose.setContent { AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+            val bikeState by bike.state.collectAsState()
+            LaunchedEffect(Unit) { bike.initialize(false) }
+            Scaffold(topBar = { com.mercury.yktwx.ui.components.DashboardTopBar("哈啰") }) { padding ->
+                if (!bikeState.restoring) HellobikeAccountContent(Modifier.fillMaxSize(), PaddingValues(top = padding.calculateTopPadding(), bottom = 28.dp), account,
+                    HellobikeCardsState(cards = if (empty) emptyList() else listOf(card), audit = HellobikeStudentAudit(if (approved) 2 else 0, 1),
+                        purchase = HellobikeCardPurchase("校园·30天月卡", listOf(HellobikePayOrder("fixture-pay", "6.90", "fixture-payment", "28")), "6.90", "28", "2801", null),
+                        paymentVisible = paymentShown, options = listOf(HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "6.90"),
+                            HellobikePayOption(LifePayChannel("003", "哈啰余额", false, false, "余额不足"), "6.90")), method = "001", products = if (approved)
+                        listOf(product, product.copy(key = "semester", name = "校园·120天卡", price = "25.90"), product.copy(key = "year", name = "校园·365天卡", price = "68.90")) else emptyList()),
+                    bike, true, {}, {})
+            }
+        } }
+        compose.waitForIdle()
+        compose.onNodeWithText("剩余 23 天").assertIsDisplayed()
+        compose.onNodeWithText("到期时间 " + hellobikeCardExpiry(card.expireSecond)).assertIsDisplayed()
+        val myTitle = compose.onNodeWithTag("hellobike-my-cards-title").fetchSemanticsNode().boundsInRoot.top
+        val purchaseTitle = compose.onNodeWithTag("hellobike-campus-purchase-title").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(myTitle < purchaseTitle)
+        compose.onNodeWithText("哈啰账户").assertDoesNotExist()
+        fun snapshot(name: String) {
+            compose.waitForIdle()
+            val image = compose.onRoot().captureToImage().asAndroidBitmap()
+            File("../build/hellobike-campus-card/$name.png").absoluteFile.also { it.parentFile?.mkdirs() }.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        compose.onNodeWithTag("hellobike-renew-my-card").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-buy-month").assertIsDisplayed().assertIsEnabled()
+        val bounds = compose.onNodeWithTag("hellobike-campus-product-month").fetchSemanticsNode().boundsInRoot
+        assertTrue("Product stays compact", bounds.height < 120 * compose.activity.resources.displayMetrics.density)
+        assertTrue(compose.onNodeWithTag("hellobike-buy-month").fetchSemanticsNode().boundsInRoot.left > bounds.center.x)
+        snapshot("account-compact-cards-light")
+        compose.onNodeWithTag("hellobike-product-rules-month").assertTextEquals(product.description).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-user-rules-my-card").assertTextEquals(card.description).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-card-purchase-record").assertDoesNotExist()
+        compose.runOnIdle { paymentShown = true }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("支付方式").assertIsDisplayed()
+        compose.onNodeWithText("支付宝").assertIsDisplayed()
+        compose.onNodeWithText("哈啰余额").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-card-pay-submit").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("hellobike-card-pay-cancel").assertIsDisplayed().assertIsEnabled()
+        snapshot("account-card-payment-light")
+        compose.runOnIdle { dark = true }
+        snapshot("account-card-payment-dark")
+        compose.runOnIdle { paymentShown = false; dark = false }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.runOnIdle { empty = true }
+        compose.onNodeWithTag("hellobike-account-page").performScrollToIndex(0)
+        compose.onNodeWithText("暂无骑行卡").assertIsDisplayed()
+        snapshot("account-compact-empty-approved-light")
+        compose.runOnIdle { approved = false }
+        compose.onNodeWithTag("hellobike-buy-month").assertDoesNotExist()
+        compose.onNodeWithText("学生认证后可购买").assertIsDisplayed()
+        compose.onNodeWithText("前往哈啰").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-account-page").performScrollToIndex(0)
+        snapshot("account-compact-empty-unapproved-light")
+        compose.runOnIdle { dark = true }
+        snapshot("account-compact-empty-unapproved-dark")
+    }
     @Test fun officialErrorsKeepNewlinesAndWrapFullyInDeviceAndPaymentForms() {
         val message = "官方原因\n请核对车辆1234567890：https://c3x.me/?n=1234567890\n" + "官方详细说明，请阅读后处理。".repeat(8)
         var payment by mutableStateOf(false)

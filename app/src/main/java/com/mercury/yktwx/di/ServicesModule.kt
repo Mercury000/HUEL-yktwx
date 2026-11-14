@@ -30,7 +30,16 @@ internal object ServicesModule {
     @Provides @Singleton fun hui(@ServiceClient client: Call.Factory): Hui798Service = Hui798Api(BuildConfig.HUI798_API_GATEWAY, BuildConfig.HUI798_SIGN_SALT, client)
     @Provides @Singleton fun hellobike(@ServiceClient client: Call.Factory, @ApplicationContext context: Context): HellobikeService {
         val identity = HellobikeClientIdentity(context)
-        return HellobikeApi(client, userAgent = identity::userAgent, ssid = identity::ssid)
+        return HellobikeApi(client, userAgent = identity::userAgent, ssid = identity::ssid, alipayInstalled = {
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("alipays://platformapi/startApp"))
+                .resolveActivity(context.packageManager) != null
+        }, clientIp = {
+            runCatching {
+                java.net.NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
+                    .flatMap { it.inetAddresses.toList() }.filterIsInstance<java.net.Inet4Address>()
+                    .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }?.hostAddress.orEmpty()
+            }.getOrDefault("")
+        })
     }
     @Provides @Singleton fun hellobikeLocation(@ApplicationContext context: Context): HellobikeLocationService = HellobikeLocation(context)
     @Provides @Singleton fun updateHttp(@UpdateClient client: Call.Factory): UpdateHttp = UpdateHttp(client = client)
