@@ -82,8 +82,8 @@ class Hui798ViewModel internal constructor(
     private var accountTask: Job? = null
     private var restoreTask: Job? = null
     private val accountVerifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: Hui798Account ->
-        val overview = api.overview(owner.token)
-        if (owner.userId != null && owner.userId != overview.userId)
+        val userId = api.accountStatus(owner.token)
+        if (owner.userId != null && owner.userId != userId)
             throw Hui798Exception("慧生活798账户信息不一致，请重新登录", loginExpired = true)
     }, ::expired, ::failure)
     val accountConnection = accountVerifier.state
@@ -439,7 +439,7 @@ class Hui798ViewModel internal constructor(
     private suspend fun recoverOnce(owner: Hui798Account, cached: List<Hui798Session>) {
         if (account != owner) return
         persist()
-        val overview = try { api.overview(owner.token) }
+        val userId = try { api.accountStatus(owner.token) }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             if (account == owner) accountVerifier.failed(failure(e))
@@ -453,9 +453,9 @@ class Hui798ViewModel internal constructor(
         }
         currentCoroutineContext().ensureActive()
         if (account != owner) return
-        if (owner.userId != null && owner.userId != overview.userId)
+        if (owner.userId != null && owner.userId != userId)
             throw Hui798Exception("慧生活798账号信息不一致，请重新登录", loginExpired = true)
-        val verifiedOwner = owner.copy(userId = overview.userId)
+        val verifiedOwner = owner.copy(userId = userId)
         persistence.withLock {
             if (account != owner) return
             if (verifiedOwner != owner) withContext(io) { store.saveAccount(verifiedOwner) }
@@ -463,6 +463,21 @@ class Hui798ViewModel internal constructor(
             account = verifiedOwner
         }
         accountVerifier.verified(verifiedOwner.maskedPhone)
+        val overview = try { api.overview(verifiedOwner.token) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (account == verifiedOwner) {
+                for (session in cached) {
+                    saveSession(session.copy(uncertain = session.serverTime == null), restoring = true)
+                    error(failure(e), session.sessionId)
+                }
+            }
+            throw e
+        }
+        currentCoroutineContext().ensureActive()
+        if (account != verifiedOwner) return
+        if (overview.userId != userId)
+            throw Hui798Exception("慧生活798账号信息不一致，请重新登录", loginExpired = true)
         val candidates = (overview.devices + cached.map { it.device }).distinctBy { it.id }
         var failed = false
         for (device in candidates) {
@@ -522,7 +537,7 @@ class Hui798ViewModel internal constructor(
         if (reading.status == 1) {
             val time = reading.sessionTime ?: throw Hui798Exception("设备未返回用水记录，请核对现场状态")
             if (use != null) {
-                val userId = account?.userId ?: api.overview(owner.token).userId
+                val userId = account?.userId ?: api.accountStatus(owner.token)
                 if (account?.token != owner.token) return
                 if (use.userId == null) {
                     mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }

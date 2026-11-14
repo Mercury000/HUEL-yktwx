@@ -64,6 +64,7 @@ class Hui798UiTest {
             override suspend fun sendCode(phone: String, imageCode: String, key: String) { error("No live SMS") }
             override suspend fun login(phone: String, code: String): Hui798Account = error("No live login")
             override suspend fun device(id: String, token: String): Hui798Device = error("No live reads")
+            override suspend fun accountStatus(token: String): String = error("No live reads")
             override suspend fun overview(token: String): Hui798Overview = error("No live reads")
             override suspend fun deviceUse(id: String, token: String): Hui798DeviceUse = error("No live reads")
             override suspend fun status(id: String, token: String): Hui798Reading = error("No live reads")
