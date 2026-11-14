@@ -198,7 +198,7 @@ jobs:
 
   release:
     needs: build
-    if: needs.build.outputs.build_type == 'release' && github.event_name != 'pull_request'
+    if: always() && needs.build.result == 'success' && needs.build.outputs.build_type == 'release' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
