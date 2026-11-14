@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal enum class UpdateFeedback { Current, NoRelease, Incompatible, Network, Failed, Preview }
+internal enum class UpdateFeedback { Current, NoRelease, Incompatible, Network, Service, StableUnavailable, BetaUnavailable,
+    StaleMetadata, ConflictingMetadata, InvalidMetadata, Failed, Preview }
 internal data class AppUpdateUiState(
     val ready: Boolean = false,
     val loadFailed: Boolean = false,
@@ -237,26 +238,44 @@ internal class AppUpdateViewModel internal constructor(
                     UpdateCheckReason.NoPublishedRelease -> UpdateFeedback.NoRelease
                     UpdateCheckReason.NoCompatibleRelease -> UpdateFeedback.Incompatible
                     UpdateCheckReason.UpdateAvailable -> null
+                    UpdateCheckReason.PartiallyChecked -> if ("stable" in result.resolvedChannels.orEmpty())
+                        UpdateFeedback.BetaUnavailable else UpdateFeedback.StableUnavailable
                 }
                 mutable.value = AppUpdateUiState(ready = true, release = selected,
                     visible = sameDownload && state.value.visible && state.value.download.busy,
                     download = if (sameDownload) state.value.download else UpdateDownloadState(),
-                    detailsPending = selected != null && manualRequest)
+                    detailsPending = selected != null && manualRequest && result.reason == UpdateCheckReason.UpdateAvailable)
                 refreshNotice()
                 message?.let { feedback.tryEmit(it) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 if (generation == attempt) {
+                    val failureFeedback = when (error) {
+                        is UpdateMetadataRejected -> when (error.reason) {
+                            UpdateMetadataRejection.Stale -> UpdateFeedback.StaleMetadata
+                            UpdateMetadataRejection.Conflict -> UpdateFeedback.ConflictingMetadata
+                            UpdateMetadataRejection.Invalid -> UpdateFeedback.InvalidMetadata
+                        }
+                        is UpdateServiceUnavailable -> UpdateFeedback.Service
+                        is java.io.IOException -> UpdateFeedback.Network
+                        else -> UpdateFeedback.Failed
+                    }
+                    android.util.Log.w("AppUpdate", "check channel=$analyticsChannel result=$failureFeedback")
                     runCatching { store.checked(now(), successful = false, channel = analyticsChannel) }
                     val forced = store.cachedRelease()?.takeIf { it.required(BuildConfig.VERSION_CODE) }
                     mutable.value = state.value.copy(checking = false,
                         visible = state.value.visible && state.value.download.busy,
                         release = forced ?: state.value.release,
                         download = if (forced != null && !state.value.download.busy) UpdateDownloadState(UpdateDownloadPhase.Failed,
-                            error = "更新检查失败，请重试；当前版本仍需要更新") else state.value.download)
+                            error = when (failureFeedback) {
+                                UpdateFeedback.StaleMetadata -> "更新信息已过期，请稍后重试；当前版本仍需要更新"
+                                UpdateFeedback.ConflictingMetadata -> "更新信息暂时不一致，请稍后重试；当前版本仍需要更新"
+                                UpdateFeedback.InvalidMetadata -> "更新信息校验未通过，请稍后重试；当前版本仍需要更新"
+                                else -> "暂时无法获取更新信息，请重试；当前版本仍需要更新"
+                            }) else state.value.download)
                     refreshNotice()
-                    if (manualRequest) feedback.tryEmit(if (error is java.io.IOException) UpdateFeedback.Network else UpdateFeedback.Failed)
+                    if (manualRequest) feedback.tryEmit(failureFeedback)
                 }
             } finally {
                 if (generation == attempt) { job = null; manualRequest = false }

@@ -95,7 +95,7 @@ internal fun fixtureProfileApi(respond: (URL) -> HttpFixture): ProfileApi {
     val client = fixtureHttp(respond)
     return profileApiFixture(client, client)
 }
-internal fun fixtureUpdateHttp(metadataTimeoutMillis: Long = 1_500, respond: (URL) -> HttpFixture) =
+internal fun fixtureUpdateHttp(metadataTimeoutMillis: Long = UpdateHttp.DEFAULT_METADATA_TIMEOUT_MILLIS, respond: (URL) -> HttpFixture) =
     updateHttpFixture(metadataTimeoutMillis, fixtureHttp(respond))
 internal fun fixtureLifeDeviceApi(secret: String, respond: (URL) -> HttpFixture, clock: () -> Long = System::currentTimeMillis) =
     lifeDeviceApiFixture(secret, fixtureHttp(respond), clock)

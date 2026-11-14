@@ -151,6 +151,31 @@ class AppPreferencesRepositoryTest {
         assertTrue(updates.cachedRelease()!!.required(9))
     }
 
+    @Test fun partialChannelSuccessPreservesPreviouslyKnownAvailability() = runTest {
+        val fixture = SignedUpdateFixture()
+        for (unavailable in listOf("stable", "beta")) {
+            val repository = appPreferencesRepositoryFixture(MemoryPreferences(AppPreferences(updateChannel = "beta")),
+                backgroundScope, fixture.verifier::manifest)
+            runCurrent()
+            val updates = UpdateCheckStore(repository, fixture.request.packageName, 9,
+                verifyCached = { body, channel -> fixture.verifier.manifest(body, channel).first })
+            for (channel in listOf("stable", "beta")) {
+                val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json(channel = channel)), channel)
+                updates.acceptPolicy(channel, release, digest)
+            }
+            val key = "${fixture.request.packageName}:$unavailable"
+            for (previouslyAvailable in listOf(true, false)) {
+                repository.update { data -> data.copy(policies = data.policies +
+                    (key to data.policies.getValue(key).copy(cachedAvailable = previouslyAvailable))) }
+                val previous = repository.snapshot().policies.getValue(key)
+                val resolved = setOf("stable", "beta") - unavailable
+                updates.checked(100, true, result = UpdateCheckResult(UpdateCheckReason.UpdateAvailable,
+                    availableChannels = resolved, resolvedChannels = resolved))
+                assertEquals(previous, repository.snapshot().policies.getValue(key))
+            }
+        }
+    }
+
     @Test fun tamperedPersistedManifestBlocksReadinessWithoutClearingTheLedger() = runTest {
         val fixture = SignedUpdateFixture()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")

@@ -1,5 +1,6 @@
 package com.mercury.yktwx.data
 
+import android.util.Log
 import kotlinx.serialization.json.*
 import com.mercury.yktwx.BuildConfig
 import com.google.crypto.tink.subtle.Ed25519Verify
@@ -26,9 +27,9 @@ internal data class UpdateRelease(
 ) {
     fun required(current: Int) = current <= maxForcedVersionCode && versionCode > current
 }
-internal enum class UpdateCheckReason { UpdateAvailable, CurrentOrNewer, NoPublishedRelease, NoCompatibleRelease }
+internal enum class UpdateCheckReason { UpdateAvailable, CurrentOrNewer, NoPublishedRelease, NoCompatibleRelease, PartiallyChecked }
 internal data class UpdateCheckResult(val reason: UpdateCheckReason, val release: UpdateRelease? = null,
-    val availableChannels: Set<String>? = null)
+    val availableChannels: Set<String>? = null, val resolvedChannels: Set<String>? = null)
 
 internal fun httpsUri(value: String): URI = URI(value).also {
     require(it.scheme == "https" && !it.host.isNullOrBlank() && it.rawUserInfo == null &&
@@ -38,9 +39,12 @@ internal fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").dig
     .joinToString("") { "%02x".format(it) }
 
 internal class UpdateHttpFailure(val status: Int) : java.io.IOException("更新来源暂时不可用")
+internal enum class UpdateMetadataRejection { Stale, Conflict, Invalid }
+internal class UpdateMetadataRejected(val reason: UpdateMetadataRejection, message: String,
+    cause: Throwable? = null) : IllegalArgumentException(message, cause)
 
 /** Dedicated, cancellable public transport. No campus headers, cookies or account data. */
-internal class UpdateHttp(private val metadataTimeoutMillis: Long = 1_500,
+internal class UpdateHttp(private val metadataTimeoutMillis: Long = DEFAULT_METADATA_TIMEOUT_MILLIS,
     private val client: Call.Factory) {
     suspend fun <T> read(url: String, consume: (Response) -> T): T {
         var target = httpsUri(url)
@@ -81,6 +85,10 @@ internal class UpdateHttp(private val metadataTimeoutMillis: Long = 1_500,
             } else body
         }
     } ?: throw java.net.SocketTimeoutException("更新来源响应超时")
+
+    companion object {
+        const val DEFAULT_METADATA_TIMEOUT_MILLIS = 10_000L
+    }
 }
 
 /** Sign exact payload bytes; JSON key ordering cannot change the signed meaning. */
@@ -99,7 +107,9 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
         val bytes = Base64.getDecoder().decode(wrapper.stringValue("payload"))
         require(bytes.size <= 524_288)
         try { verifier.verify(Base64.getDecoder().decode(wrapper.stringValue("signature")), bytes) }
-        catch (error: GeneralSecurityException) { throw IllegalArgumentException("更新清单签名无效", error) }
+        catch (error: GeneralSecurityException) {
+            throw UpdateMetadataRejected(UpdateMetadataRejection.Invalid, "更新清单签名无效", error)
+        }
         return parseObject(bytes.toString(Charsets.UTF_8)) to sha256(bytes)
     }
     fun manifest(envelope: String, channel: String): Pair<UpdateRelease, String> {
@@ -138,29 +148,63 @@ internal class UpdateManifestVerifier(publicKey: String = BuildConfig.UPDATE_PUB
     }
 }
 
-internal class UpdateSourceUnavailable(val notPublished: Boolean = false) : java.io.IOException("暂时无法获取更新清单")
+internal open class UpdateSourceUnavailable(val notPublished: Boolean = false) : java.io.IOException("暂时无法获取更新清单")
+internal class UpdateServiceUnavailable : UpdateSourceUnavailable()
 
 internal class AppUpdateApi(private val http: UpdateHttp,
     private val verifier: UpdateManifestVerifier,
-    private val sourceTimeoutMillis: Long = 2_500,
+    private val sourceTimeoutMillis: Long = DEFAULT_SOURCE_TIMEOUT_MILLIS,
     private val now: () -> Instant = Instant::now) {
     private data class Candidate(val release: UpdateRelease, val digest: String, val authority: Boolean)
-    suspend fun check(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult = withTimeoutOrNull(3_000) {
-        store.repository.awaitReady()
-        checkChannels(request, store)
-    } ?: throw java.net.SocketTimeoutException("更新检查超时")
+    private data class ChannelOutcome(val channel: String, val release: UpdateRelease? = null,
+        val notPublished: Boolean = false, val serviceUnavailable: Boolean = false) {
+        val unavailable get() = release == null && !notPublished
+    }
+    suspend fun check(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult {
+        val started = System.nanoTime()
+        Log.d("AppUpdate", "check channel=${request.channel} started")
+        val result = withTimeoutOrNull(sourceTimeoutMillis + 1_000) {
+            store.repository.awaitReady()
+            checkChannels(request, store)
+        } ?: throw java.net.SocketTimeoutException("更新检查超时")
+        Log.d("AppUpdate", "check channel=${request.channel} elapsedMs=${(System.nanoTime() - started) / 1_000_000} " +
+            "result=${result.reason} resolved=${result.resolvedChannels.orEmpty().sorted().joinToString(",")}")
+        return result
+    }
 
     private suspend fun checkChannels(request: UpdateRequest, store: UpdateCheckStore): UpdateCheckResult = coroutineScope {
         val channels = if (request.channel == "beta") listOf("beta", "stable") else listOf("stable")
-        val outcomes = channels.map { channel -> async {
-            try { resolve(channel, store, request) to false }
-            catch (error: UpdateSourceUnavailable) { null to error.notPublished }
-        } }.awaitAll()
-        // A failed channel cannot establish that its previously known update was withdrawn.
-        if (outcomes.any { it.first == null && !it.second }) throw UpdateSourceUnavailable()
-        val releases = outcomes.mapNotNull { it.first }
+        val responses = Channel<ChannelOutcome>(Channel.UNLIMITED)
+        val jobs = channels.map { channel -> launch {
+            val outcome = try { ChannelOutcome(channel, resolve(channel, store, request)) }
+            catch (error: UpdateSourceUnavailable) { ChannelOutcome(channel,
+                notPublished = error.notPublished, serviceUnavailable = error is UpdateServiceUnavailable) }
+            responses.send(outcome)
+        } }
+        val completed = mutableListOf<ChannelOutcome>()
+        try {
+            withTimeoutOrNull(sourceTimeoutMillis + CONVERGENCE_WINDOW_MILLIS) {
+                while (completed.size < channels.size) {
+                    completed += responses.receive()
+                    if (completed.any { it.release != null }) break
+                }
+            }
+            if (completed.size < channels.size && completed.any { it.release != null }) {
+                // A usable channel must not wait for an unrelated channel's network deadline.
+                // Collect results that finish shortly afterwards, then cancel the remaining work.
+                withTimeoutOrNull(CONVERGENCE_WINDOW_MILLIS) {
+                    while (completed.size < channels.size) completed += responses.receive()
+                }
+            }
+        } finally { jobs.forEach { it.cancel() } }
+        val outcomes = channels.map { channel -> completed.firstOrNull { it.channel == channel } ?: ChannelOutcome(channel) }
+        val unavailableChannels = outcomes.filter { it.unavailable }.map { it.channel }.toSet()
+        val resolvedChannels = channels.toSet() - unavailableChannels
+        val releases = outcomes.mapNotNull { it.release }
         if (releases.isEmpty()) {
-            if (outcomes.all { it.second }) return@coroutineScope UpdateCheckResult(UpdateCheckReason.NoPublishedRelease)
+            if (outcomes.all { it.notPublished }) return@coroutineScope UpdateCheckResult(
+                UpdateCheckReason.NoPublishedRelease, resolvedChannels = resolvedChannels)
+            if (outcomes.any { it.serviceUnavailable }) throw UpdateServiceUnavailable()
             throw UpdateSourceUnavailable()
         }
         require(releases.all { it.packageName == request.packageName }) { "更新包名不匹配" }
@@ -169,88 +213,135 @@ internal class AppUpdateApi(private val http: UpdateHttp,
         val best = compatible.maxByOrNull { it.versionCode }?.let {
             it.copy(maxForcedVersionCode = boundary.coerceAtMost(it.versionCode - 1))
         }
+        val availableChannels = compatible.filter { it.versionCode > request.versionCode }.map { it.channel }.toSet()
+        if (unavailableChannels.isNotEmpty()) {
+            val known = store.cachedRelease()
+            if (best == null || best.versionCode <= request.versionCode ||
+                (known != null && known.channel in unavailableChannels && known.versionCode > best.versionCode))
+                return@coroutineScope UpdateCheckResult(UpdateCheckReason.PartiallyChecked, known,
+                    availableChannels, resolvedChannels)
+        }
         if (request.versionCode <= boundary && (best == null || best.versionCode <= request.versionCode))
             error("强制更新暂时没有兼容的安装包")
-        val availableChannels = compatible.filter { it.versionCode > request.versionCode }.map { it.channel }.toSet()
         when {
             best == null -> UpdateCheckResult(UpdateCheckReason.NoCompatibleRelease)
             best.versionCode <= request.versionCode -> UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
             else -> UpdateCheckResult(UpdateCheckReason.UpdateAvailable, best)
-        }.copy(availableChannels = availableChannels)
+        }.copy(availableChannels = availableChannels, resolvedChannels = resolvedChannels)
     }
     private suspend fun resolve(channel: String, store: UpdateCheckStore, request: UpdateRequest): UpdateRelease = coroutineScope {
         val responses = Channel<Pair<Int, Candidate?>>(Channel.UNLIMITED)
-        val invalidResponse = java.util.concurrent.atomic.AtomicBoolean(false)
+        val invalidResponse = java.util.concurrent.atomic.AtomicReference<UpdateMetadataRejected?>(null)
         val authorityMissing = java.util.concurrent.atomic.AtomicBoolean(false)
+        val officialRawMissing = java.util.concurrent.atomic.AtomicBoolean(false)
+        val serviceUnavailable = java.util.concurrent.atomic.AtomicBoolean(false)
         val jobs = sources(channel, "latest.json").mapIndexed { index, source -> launch {
             var pointerReceived = false
+            var stage = "pointer"
+            var stageStarted = System.nanoTime()
+            fun report(error: Exception) = sourceFailure(channel, source, stage,
+                (System.nanoTime() - stageStarted) / 1_000_000, error)
             val result = try {
                 val pointerBody = http.json(cacheBust(source))
+                sourceSuccess(channel, source, stage, stageStarted)
                 pointerReceived = true
                 val (pointer, _) = verifier.payload(pointerBody)
                 require(pointer.strictLongValue("schemaVersion") == 1L && pointer.stringValue("channel") == channel)
                 val pointerRevision = pointer.strictLongValue("policyRevision")
-                require(Instant.parse(pointer.stringValue("expiresAt")) > now()) { "更新指针已过期" }
+                if (Instant.parse(pointer.stringValue("expiresAt")) <= now())
+                    throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "更新指针已过期")
                 val path = pointer.stringValue("manifestPath")
                 require(path.matches(Regex("manifests/[1-9][0-9]*-[a-f0-9]{64}\\.json")))
+                stage = "manifest"
+                stageStarted = System.nanoTime()
                 val body = http.json(sources(channel, path)[index])
+                sourceSuccess(channel, source, stage, stageStarted)
                 require(sha256(body.toByteArray()) == pointer.stringValue("manifestSha256"))
                 val (release, digest) = verifier.manifest(body, channel)
                 require(release.packageName == request.packageName) { "更新包名不匹配" }
                 require(release.policyRevision == pointerRevision)
-                require(release.expiresAt!! > now()) { "更新清单已过期" }
+                if (release.expiresAt!! <= now())
+                    throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "更新清单已过期")
                 Candidate(release, digest, index == 0)
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (error: UpdateHttpFailure) {
                   if (index == 0 && !pointerReceived && error.status == 404) authorityMissing.set(true)
+                  if (index == 1 && !pointerReceived && error.status == 404) officialRawMissing.set(true)
+                  if (error.status != 404) serviceUnavailable.set(true)
+                  report(error)
                   null
               }
-              catch (_: java.io.IOException) { null }
-              catch (_: Exception) { invalidResponse.set(true); null }
+              catch (error: java.io.IOException) { report(error); null }
+              catch (error: Exception) {
+                  val rejected = error as? UpdateMetadataRejected ?: UpdateMetadataRejected(
+                      UpdateMetadataRejection.Invalid, "更新清单未通过校验", error)
+                  invalidResponse.compareAndSet(null, rejected)
+                  report(rejected)
+                  null
+              }
             responses.send(index to result)
         } }
         val candidates = mutableListOf<Candidate>()
         var received = 0
-        var authorityFinished = false
         suspend fun receiveResponse() {
-            val (index, candidate) = responses.receive()
+            val (_, candidate) = responses.receive()
             candidate?.let { candidates += it }
-            if (index == 0) authorityFinished = true
             received++
         }
         try {
             withTimeoutOrNull(sourceTimeoutMillis) {
                 while (received < jobs.size) {
                     receiveResponse()
-                    if (candidates.isNotEmpty() || (authorityFinished && authorityMissing.get())) {
+                    if (candidates.isNotEmpty() || authorityMissing.get() || officialRawMissing.get()) {
                         break
                     }
                 }
             }
-            if (received < jobs.size && (candidates.isNotEmpty() || (authorityFinished && authorityMissing.get()))) {
+            if (received < jobs.size && (candidates.isNotEmpty() || authorityMissing.get() || officialRawMissing.get())) {
                 // The convergence window starts after the first result, independently of the
                 // initial wait budget. Two fast mirrors may share the same stale cache.
-                withTimeoutOrNull(300) {
+                withTimeoutOrNull(CONVERGENCE_WINDOW_MILLIS) {
                     while (received < jobs.size) receiveResponse()
                 }
             }
         } finally { jobs.forEach { it.cancel() } }
         // A completed authoritative 404 overrides still-valid but withdrawn mirror caches.
-        if (authorityMissing.get()) throw UpdateSourceUnavailable(notPublished = true)
+        if (authorityMissing.get() || (officialRawMissing.get() && candidates.none { it.authority }))
+            throw UpdateSourceUnavailable(notPublished = true)
         if (candidates.isEmpty()) {
-            require(!invalidResponse.get()) { "更新清单未通过校验" }
+            invalidResponse.get()?.let { throw it }
+            if (serviceUnavailable.get()) throw UpdateServiceUnavailable()
             throw UpdateSourceUnavailable(authorityMissing.get())
         }
         val conflicts = candidates.groupBy { it.release.policyRevision }
             .filterValues { group -> group.map { it.digest }.distinct().size > 1 }.keys
         val chosen = candidates.firstOrNull { it.authority }
             ?: candidates.filter { it.release.policyRevision !in conflicts }.maxByOrNull { it.release.policyRevision }
-            ?: error("更新清单存在冲突")
-        require(chosen.release.policyRevision !in conflicts) { "更新清单存在冲突" }
+            ?: throw UpdateMetadataRejected(UpdateMetadataRejection.Conflict, "更新清单存在冲突")
+        if (chosen.release.policyRevision in conflicts)
+            throw UpdateMetadataRejected(UpdateMetadataRejection.Conflict, "更新清单存在冲突")
         store.acceptPolicy(channel, chosen.release, chosen.digest)
         chosen.release
     }
+    private fun sourceSuccess(channel: String, source: String, stage: String, started: Long) {
+        Log.d("AppUpdate", "channel=$channel source=${httpsUri(source).host} stage=$stage " +
+            "elapsedMs=${(System.nanoTime() - started) / 1_000_000} http=200")
+    }
+    private fun sourceFailure(channel: String, source: String, stage: String, elapsedMillis: Long, error: Exception) {
+        val detail = when (error) {
+            is UpdateHttpFailure -> "http=${error.status}"
+            is UpdateMetadataRejected -> "rejected=${error.reason}"
+            else -> "error=${error.javaClass.simpleName}"
+        }
+        // Public update diagnostics contain no response bodies, account headers or identifiers.
+        val message = "channel=$channel source=${httpsUri(source).host} stage=$stage elapsedMs=$elapsedMillis $detail"
+        if (error is UpdateHttpFailure && error.status == 404) Log.d("AppUpdate", message)
+        else Log.w("AppUpdate", message)
+    }
     companion object {
+        const val CONVERGENCE_WINDOW_MILLIS = 300L
+        // A source reads both the pointer and manifest before it can provide a valid candidate.
+        const val DEFAULT_SOURCE_TIMEOUT_MILLIS = 2 * UpdateHttp.DEFAULT_METADATA_TIMEOUT_MILLIS + 1_000L
         const val REPOSITORY = "Mercury000/HUEL-yktwx"
         fun sources(channel: String, path: String): List<String> {
             val file = "updates/$channel/$path"
