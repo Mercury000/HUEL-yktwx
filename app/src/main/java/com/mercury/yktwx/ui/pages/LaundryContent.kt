@@ -5,9 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,7 +16,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.LifeDevicesUiState
 import com.mercury.yktwx.LifeDevicesViewModel
@@ -257,78 +254,65 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
 @Composable
 internal fun LaundryPaymentSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel,
     nowMillis: () -> Long = System::currentTimeMillis) {
-    if (!rememberOverlayMounted(show)) return
-    val overlaySession = rememberOverlaySession(show)
     val seconds = rememberLaundryPaymentSeconds(state.laundry, show, nowMillis)
     val closed = state.laundry?.phase == LaundryPhase.Closed
     val feedback = state.paymentFeedback
     val isResult = feedback != null && feedback.phase != RechargePhase.Creating
     val targetPage = rememberWhileShown(show, if (isResult) LaundrySheetPage.Result else LaundrySheetPage.Method)
     val title = rememberWhileShown(show, if (isResult) null else "付款")
-    PaymentSheet(show = show, title = title, onDismissRequest = model::dismissLaundryPayment,
-        insideMargin = DpSize(0.dp, 0.dp)) {
-        key(overlaySession) { SheetPageContent(targetPage, Modifier.bottomSheetSafeArea()) { page, interactive ->
-            val resultPage = page == LaundrySheetPage.Result
-            val enabled = show && interactive
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                .then(if (resultPage) Modifier.padding(horizontal = 24.dp)
-                    else Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp))
-                .testTag("laundry-payment-sheet"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (resultPage) {
-                    val result = rememberWhileShown(show && isResult, LaundryResultDisplay(
-                        feedback?.phase ?: RechargePhase.Checking, feedback?.loading == true, feedback?.detail,
-                        state.laundry?.price ?: state.laundryQuote?.price ?: "0.00",
-                        state.laundryQuote?.channels.orEmpty()))
-                    val methods = remember(result.channels) {
-                        result.channels.filter { it.laundryUnavailableReason() == null }.map {
-                            FeeMethod(it.method, it.method, it.name, false, 0)
-                        }
-                    }
-                    if (seconds != null) LaundryPaymentCountdown(seconds)
-                    PaymentResultContent(result.phase, result.loading, result.price.toBigDecimal().movePointRight(2).longValueExact(),
-                        result.detail, { if (enabled && isResult) model.dismissLaundryPayment() }, subject = "支付",
-                        retryMethods = methods.takeUnless { closed }.orEmpty(),
-                        selectedRetryId = state.paymentMethod, selectedRetryCode = state.paymentMethod,
-                        onRetrySelection = { model.selectPaymentMethod(it?.id) },
-                        onContinuePayment = { if (enabled && isResult) model.payLaundry(it.id) },
-                        enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
-                        onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
-                        paymentApp = if (state.laundry?.payMethod == "52") "银联" else "支付宝",
-                        retryMethodLabel = { it.name }, preserveError = true)
-                } else {
-                    // Keep display-only form values during the transition; never retain SDK payloads.
-                    val quote = rememberWhileShown(show && !isResult, state.laundryQuote)
-                    val busy = rememberWhileShown(show && !isResult, state.laundryBusy)
-                    val loading = rememberWhileShown(show && !isResult, state.quoteLoading)
-                    val error = rememberWhileShown(show && !isResult, state.error)
-                    val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
-                    val selected = channels.indexOfFirst { it.method == state.paymentMethod }.takeIf { it >= 0 }
-                        ?: channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)
-                    Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
-                        if (loading || busy && quote == null) CircularProgressIndicator(Modifier.size(24.dp).testTag("laundry-payment-loading"))
-                        else Text(quote?.price?.let { "¥${it.toBigDecimal().setScale(2)}" } ?: "—", fontSize = 32.sp,
-                            fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                    }
-                    if (seconds != null) LaundryPaymentCountdown(seconds)
-                    val method = channels.getOrNull(selected)
-                    val reason = if (quote == null || loading) null else if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
-                    val canPay = state.laundry?.let { !it.active || it.phase == LaundryPhase.Paying ||
-                        it.phase == LaundryPhase.Checking && !it.createSent } ?: true
-                    PaymentMethodActions(channels.map { it.name }, selected, { model.selectPaymentMethod(channels[it].method) },
-                        label = if (busy) "正在发起…" else when (method?.method) {
-                            "13" -> "支付宝支付"
-                            "52" -> "银联支付"
-                            else -> "确认支付"
-                        },
-                        onSubmit = { method?.let { model.payLaundry(it.method) } },
-                        enabled = enabled && !isResult && !busy && !loading && state.paymentLaunch == null,
-                        canSubmit = !closed && canPay && method != null && reason == null, error = error ?: reason, preserveError = true,
-                        modifier = Modifier.testTag("laundry-pay-submit"))
-                    if (quote == null && error != null && !loading && !busy) Button(onClick = model::showLaundryPayment,
-                        enabled = enabled && !isResult, modifier = Modifier.fillMaxWidth().testTag("laundry-payment-retry")) { Text("重试") }
+    PaymentSheetPages(show, targetPage, { it == LaundrySheetPage.Result }, title, model::dismissLaundryPayment,
+        Modifier.testTag("laundry-payment-sheet")) { page, enabled ->
+        val resultPage = page == LaundrySheetPage.Result
+        if (resultPage) {
+            val result = rememberWhileShown(show && isResult, LaundryResultDisplay(
+                feedback?.phase ?: RechargePhase.Checking, feedback?.loading == true, feedback?.detail,
+                state.laundry?.price ?: state.laundryQuote?.price ?: "0.00",
+                state.laundryQuote?.channels.orEmpty()))
+            val methods = remember(result.channels) {
+                result.channels.filter { it.laundryUnavailableReason() == null }.map {
+                    FeeMethod(it.method, it.method, it.name, false, 0)
                 }
             }
-        } }
+            if (seconds != null) LaundryPaymentCountdown(seconds)
+            PaymentResultContent(result.phase, result.loading, result.price.toBigDecimal().movePointRight(2).longValueExact(),
+                result.detail, { if (enabled && isResult) model.dismissLaundryPayment() }, subject = "支付",
+                retryMethods = methods.takeUnless { closed }.orEmpty(),
+                selectedRetryId = state.paymentMethod, selectedRetryCode = state.paymentMethod,
+                onRetrySelection = { model.selectPaymentMethod(it?.id) },
+                onContinuePayment = { if (enabled && isResult) model.payLaundry(it.id) },
+                enabled = enabled && isResult && (!state.laundryBusy || result.phase == RechargePhase.Paid),
+                onCheck = { if (enabled && isResult) model.checkLaundryPayment() },
+                paymentApp = if (state.laundry?.payMethod == "52") "银联" else "支付宝",
+                retryMethodLabel = { it.name }, preserveError = true)
+        } else {
+            // Keep display-only form values during the transition; never retain SDK payloads.
+            val quote = rememberWhileShown(show && !isResult, state.laundryQuote)
+            val busy = rememberWhileShown(show && !isResult, state.laundryBusy)
+            val loading = rememberWhileShown(show && !isResult, state.quoteLoading)
+            val error = rememberWhileShown(show && !isResult, state.error)
+            val channels = quote?.channels.orEmpty().filter { it.laundrySupported }
+            val selected = channels.indexOfFirst { it.method == state.paymentMethod }.takeIf { it >= 0 }
+                ?: channels.indexOfFirst { it.laundryUnavailableReason() == null }.coerceAtLeast(0)
+            PaymentFixedAmount(quote?.price?.toBigDecimal()?.setScale(2)?.toPlainString(), loading || busy && quote == null,
+                Modifier.testTag("laundry-payment-loading"))
+            if (seconds != null) LaundryPaymentCountdown(seconds)
+            val method = channels.getOrNull(selected)
+            val reason = if (quote == null || loading) null else if (channels.isEmpty()) "暂无支持的支付方式" else method?.laundryUnavailableReason()
+            val canPay = state.laundry?.let { !it.active || it.phase == LaundryPhase.Paying ||
+                it.phase == LaundryPhase.Checking && !it.createSent } ?: true
+            PaymentMethodActions(channels.map { it.name }, selected, { model.selectPaymentMethod(channels[it].method) },
+                label = if (busy) "正在发起…" else when (method?.method) {
+                    "13" -> "支付宝支付"
+                    "52" -> "银联支付"
+                    else -> "确认支付"
+                },
+                onSubmit = { method?.let { model.payLaundry(it.method) } },
+                enabled = enabled && !isResult && !busy && !loading && state.paymentLaunch == null,
+                canSubmit = !closed && canPay && method != null && reason == null, error = error ?: reason, preserveError = true,
+                modifier = Modifier.testTag("laundry-pay-submit"), onCancel = model::dismissLaundryPayment)
+            if (quote == null && error != null && !loading && !busy) Button(onClick = model::showLaundryPayment,
+                enabled = enabled && !isResult, modifier = Modifier.fillMaxWidth().testTag("laundry-payment-retry")) { Text("重试") }
+        }
     }
 }
 
