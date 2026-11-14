@@ -98,6 +98,10 @@ class Hui798ViewModelTest {
             smsRequests++; smsKey = key; smsFailure?.let { throw it }
         }
         override suspend fun login(phone: String, code: String) = Hui798Account(phone, "new-token", account.userId)
+        override suspend fun accountStatus(token: String): String {
+            if (authFailure) throw Hui798Exception("fixture expired", true)
+            return overviewUserId
+        }
         override suspend fun device(id: String, token: String): Hui798Device {
             deviceQueries += id
             return device.copy(id = id, name = homeName)

@@ -136,8 +136,17 @@ class LifeAccountsViewModelTest {
     private class HuiApi : Hui798Service by hui798ApiFixture("https://fixture.invalid/api", "fixture", { error("Unexpected device request") }) {
         var failDevice = false
         var overviewError: Exception? = null
+        var accountError: Exception? = null
+        var accountReads = 0
+        var overviewReads = 0
         val device = Hui798Device("fixture-device", "用水设备")
+        override suspend fun accountStatus(token: String): String {
+            accountReads++
+            accountError?.let { throw it }
+            return "fixture-user"
+        }
         override suspend fun overview(token: String): Hui798Overview {
+            overviewReads++
             overviewError?.let { throw it }
             return Hui798Overview("fixture-user", listOf(device))
         }
@@ -156,6 +165,56 @@ class LifeAccountsViewModelTest {
         assertTrue(model.state.value.sessions.isEmpty())
         assertNotNull(model.state.value.error)
         assertNotNull(store.owner)
+    }
+
+    @Test fun huiChecksAccountStatusWithoutReadingTheHomePage() = runTest(dispatcher) {
+        val api = HuiApi().apply { overviewError = IOException("home unavailable") }
+        val store = HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))
+        val model = hui(api, store); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error)
+        assertNotNull(model.state.value.error)
+        assertEquals(1, api.accountReads); assertEquals(1, api.overviewReads)
+
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(2, api.accountReads); assertEquals(1, api.overviewReads)
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+    }
+
+    @Test fun huiExpiredAccountIsDetectedBeforeReadingTheHomePage() = runTest(dispatcher) {
+        val api = HuiApi().apply { accountError = Hui798Exception("登录状态已过期", loginExpired = true) }
+        val store = HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))
+        val model = hui(api, store); runCurrent()
+        assertEquals(1, api.accountReads); assertEquals(0, api.overviewReads)
+        assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertNull(store.owner); assertFalse(model.state.value.connected)
+        assertFalse(model.state.value.loginVisible)
+    }
+
+    @Test fun huiAccountReadFailureKeepsCredentialsAndShowsTheReason() = runTest(dispatcher) {
+        val api = HuiApi().apply { accountError = Hui798Exception("账号状态未返回账号信息，请下拉刷新后重试") }
+        val store = HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))
+        val model = hui(api, store); runCurrent()
+        assertEquals(LifeAccountStatus.Unverified, model.accountConnection.value.status)
+        assertEquals(api.accountError?.message, model.accountConnection.value.error)
+        assertNotNull(store.owner); assertEquals(0, api.overviewReads)
+        api.accountError = null
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error)
+    }
+
+    @Test fun huiManualCheckReplacesAFormerSuccessWithExpiry() = runTest(dispatcher) {
+        val api = HuiApi()
+        val store = HuiStore(Hui798Account("13800000000", "old-token", "fixture-user"))
+        val model = hui(api, store); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        api.accountError = Hui798Exception("登录状态已过期", loginExpired = true)
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertNull(store.owner); assertFalse(model.state.value.connected)
+        assertFalse(model.state.value.loginVisible)
+        assertEquals(2, api.accountReads); assertEquals(1, api.overviewReads)
     }
 
     @Test fun huiActivityAllowsRemovalAndClearsLocalProgress() = runTest(dispatcher) {

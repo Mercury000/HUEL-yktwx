@@ -40,6 +40,7 @@ https://cloud.hnkzy.com/h5/?atype=1&id=123456789012345#/pages/app/index
 | 图形验证码 | GET `/captcha/` | 查询 `s`、`r`；返回图片字节 |
 | 发送短信 | POST `/acc/login/code` | JSON：`un`、`authCode`、`s` |
 | 登录 | POST `/acc/login?sign=...` | JSON：`authCode`、`un`；Token：`data.al.token`；账号：`data.al.uid` |
+| 账号核验 | GET `/acc/stat` | Authorization；账号：`data.al.uid`；明确失效返回 `-99/-21` |
 | 应用主页 | GET `/ui/app/master` | `ad=true`；账号：`data.account.id`；候选设备：`data.favos[].id/name` |
 | 设备主页 | GET `/ui/app/dev/home/1` | `did`、`apply=6`；名称：`data.device.name`；订单标记：`data.device.gene.time`；当前使用人：`data.user.id`；运行与结束随后查状态接口 |
 | 设备状态 | GET `/ui/app/dev/status` | `did`、`more=false`；状态：`data.device.gene.status/time` |
@@ -54,7 +55,7 @@ https://cloud.hnkzy.com/h5/?atype=1&id=123456789012345#/pages/app/index
 
 2026-11-05 离线核对两份 11 月 2 日接水 HAR：主动结束前的两次状态查询均相隔约 6.1 秒；启动、结束命令后的首次查询约在 3.1 秒后，结束尚未确认时继续约每 3.1 秒查询。APP 据此采用运行中每 6 秒、启动与结束确认每 3 秒的等待间隔，请求耗时另计。命令后的首次确认也等待 3 秒；确认循环保留约 30 秒的等待上限，超时后仍可在前台继续查询。恢复前台立即核对一次，后台暂停自动轮询。
 
-同日核对新提供的 `798.har`：`/acc/stat.data.al.uid` 与主页 `account.id` 相同，运行设备主页的 `user.id` 也匹配该账号。启动后主页 `favos` 出现正在使用的设备，可用于发现候选；`favos[].owner.id` 不等于该账号，不能当作使用人。普通 `/dev/status` 不提供使用人，因此恢复、返回前台和停止前使用设备主页核对，其余运行轮询使用状态接口。无需签名规则尚未核定的 `/acc/stat`，不读取历史账单判断本次用水。
+同日核对新提供的 `798.har`：`/acc/stat.data.al.uid` 与主页 `account.id` 相同，运行设备主页的 `user.id` 也匹配该账号。启动后主页 `favos` 出现正在使用的设备，可用于发现候选；`favos[].owner.id` 不等于该账号，不能当作使用人。普通 `/dev/status` 不提供使用人，因此恢复、返回前台和停止前使用设备主页核对，其余运行轮询使用状态接口，不读取历史账单判断本次用水。当时尚未接入 `/acc/stat`；2026-11-14 账号核验改为直接使用该接口，主页仅负责设备发现。历史官方抓包的 `/acc/stat` 带 `sign`，本次无签名请求已核对无效凭据返回 `-99`；正常账号是否接受无签名请求尚需本人账号联调，没有据此猜测签名规则。
 
 2026-11-05 核对 `ProxyPin11-5_19_57_43.har`：启动约3.1秒后状态接口返回 `1`；再次进入应用时主页候选设备的 `gene.status=10`，随后设备主页也返回 `10`，但设备主页 `user.id` 匹配本账号，`gene.time` 与全部运行状态查询一致，主动结束后状态接口才变为 `99`。旧实现把设备主页交给只接受 `1/99` 的状态解析器，导致核对报错和重启恢复记录被丢弃；本次改为由专门的状态接口决定生命周期。该抓包没有短信登录请求，不能用于判断登录验签失败原因。另有 `ptype=21`、`cnt=1` 及带签名的启停请求，与此前核定的 `ptype=91` 不同，本次没有据此猜测或改写支付与控制签名。
 
