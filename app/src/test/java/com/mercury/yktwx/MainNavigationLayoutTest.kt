@@ -8,11 +8,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import com.mercury.yktwx.data.PaymentAccount
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.MainNavigationScaffold
@@ -35,6 +38,7 @@ class MainNavigationLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private lateinit var settings: ThemeSettings
     private var density = 1f
+    private var windowSize by mutableStateOf<IntSize?>(null)
     private val payment = PaymentUiState(needsLogin = false, username = "fake-user",
         account = PaymentAccount("fake-card", "fake-payacc", "1", "统一账户", 12860),
         code = "00000000000000000000", secondsLeft = 60)
@@ -51,8 +55,16 @@ class MainNavigationLayoutTest {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     density = LocalDensity.current.density
+                    val actualWindow = LocalWindowInfo.current
+                    val window = remember(actualWindow) {
+                        object : WindowInfo by actualWindow {
+                            override val containerSize get() = windowSize ?: actualWindow.containerSize
+                        }
+                    }
                     var selected by remember { mutableIntStateOf(0) }
-                    MainNavigationScaffold(settings, selected, { selected = it }, content = page)
+                    CompositionLocalProvider(LocalWindowInfo provides window) {
+                        MainNavigationScaffold(settings, selected, { selected = it }, content = page)
+                    }
                 }
             }
         }
@@ -113,19 +125,12 @@ class MainNavigationLayoutTest {
 
     @Test
     @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
-    fun landscapeUsesRailAndFloatingModesStayCentered() {
+    fun landscapeKeepsRailWithEitherFloatingBarStyle() {
         content()
         assertRail(expanded = false)
         for (style in 0..1) {
             compose.runOnIdle { settings.setFloating(true); settings.setFloatingStyle(style) }
-            compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
-            val bar = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot
-            val tabs = compose.onAllNodes(isSelectable()).fetchSemanticsNodes().map { it.boundsInRoot }
-            assertEquals(4, tabs.size)
-            val left = tabs.minOf { it.left }
-            val right = tabs.maxOf { it.right }
-            assertTrue("Floating pill must stay compact on wide windows", right - left <= 400f * density)
-            assertEquals("Floating pill must be centered", bar.center.x, (left + right) / 2f, 2f)
+            assertRail(expanded = false)
         }
         compose.runOnIdle { settings.setFloating(false) }
         assertRail(expanded = false)
@@ -151,6 +156,30 @@ class MainNavigationLayoutTest {
     fun largeWindowUsesExpandedRail() {
         content()
         assertRail(expanded = true)
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
+    fun resizingAdaptsRailWithoutRecreatingContentOrReadingOldExpansionPreference() {
+        settings.setNavigationRailExpanded(true)
+        var compositions = 0
+        content {
+            remember { compositions++ }
+            Box(Modifier.fillMaxSize().testTag("navigation-content"))
+        }
+        val originalId = compose.onNodeWithTag("navigation-content").fetchSemanticsNode().id
+        assertRail(expanded = false)
+        for (width in listOf(1280, 900, 500, 700)) {
+            compose.runOnIdle { windowSize = IntSize((width * density).toInt(), (500 * density).toInt()) }
+            if (width >= 600) assertRail(expanded = width >= 1200)
+            else {
+                compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
+                compose.onNodeWithTag("main-bottom-navigation").assertExists()
+            }
+            assertEquals("Resizing must retain the page's composition", 1, compositions)
+            assertEquals("Resizing must retain the content node", originalId,
+                compose.onNodeWithTag("navigation-content").fetchSemanticsNode().id)
+        }
     }
 
     private fun assertRail(expanded: Boolean) {
