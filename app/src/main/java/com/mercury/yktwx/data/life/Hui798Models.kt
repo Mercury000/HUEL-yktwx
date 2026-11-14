@@ -11,10 +11,17 @@ enum class LifeProvider(val displayName: String, val services: String, val tag: 
 }
 data class DeviceScanRoute(val provider: LifeProvider, val feature: LifeFeature, val code: String)
 
-/** Bare SN/NQT keep their existing meaning. Other providers require an explicit QR identity. */
+/** Camera QR identity and manual device numbers use separate routing rules. */
 object UnifiedDeviceCode {
-    fun identifyManual(raw: String): DeviceScanRoute? = identify(raw)
-        ?: HellobikeDeviceCode.manual(raw)?.let { DeviceScanRoute(LifeProvider.Hellobike, LifeFeature.Ride, it) }
+    fun manualCandidates(raw: String): List<DeviceScanRoute> = listOfNotNull(
+        LifeDeviceCode.manual(raw)?.let { DeviceScanRoute(LifeProvider.Panggui, it.first, it.second) },
+        Hui798DeviceCode.manual(raw)?.let { DeviceScanRoute(LifeProvider.Hui798, LifeFeature.Water, it) },
+        HellobikeDeviceCode.manual(raw)?.let { DeviceScanRoute(LifeProvider.Hellobike, LifeFeature.Ride, it) },
+    )
+    fun identifyManual(raw: String, provider: LifeProvider? = null): DeviceScanRoute? {
+        val candidates = manualCandidates(raw)
+        return if (provider == null) candidates.singleOrNull() else candidates.singleOrNull { it.provider == provider }
+    }
     fun identify(raw: String): DeviceScanRoute? {
         val panggui = LifeDeviceCode.identify(raw)?.let { DeviceScanRoute(LifeProvider.Panggui, it.first, it.second) }
         val hui = Hui798DeviceCode.parse(raw)?.let { DeviceScanRoute(LifeProvider.Hui798, LifeFeature.Water, it) }
@@ -25,6 +32,7 @@ object UnifiedDeviceCode {
 
 object Hui798DeviceCode {
     private val number = Regex("[0-9]{8,32}")
+    fun manual(raw: String): String? = raw.trim().takeIf(number::matches)
     fun parse(raw: String): String? = runCatching {
         val uri = URI(raw.trim())
         if (uri.scheme != "https" || uri.userInfo != null || uri.port !in setOf(-1, 443)) return null
