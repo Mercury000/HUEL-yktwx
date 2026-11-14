@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0-beta.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0-beta...v1.5.0-beta.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **update:** 修复双渠道检查等待与更新结果反馈 ([1b1e213](https://github.com/Mercury000/HUEL-yktwx/commit/1b1e213847f1c8ecb1dce8cc961762d67d25f65f))
+
 ## [1.5.0-beta](https://github.com/Mercury000/HUEL-yktwx/compare/1efc687c78bce3d077f6ecca687f5756d2f5dd8d...v1.5.0-beta) (2026-11-14)
 
 
