@@ -26,6 +26,7 @@ internal fun AppSettingsContent(
     onTheme: () -> Unit, accounts: List<ManagedLifeAccount>, active: Boolean, onLogout: () -> Unit,
     onCheckAccount: (LifeProvider) -> Unit, onLoginAccount: (LifeProvider) -> Unit,
     onRemoveAccount: (LifeProvider) -> Unit, scrollBehavior: ScrollBehavior? = null,
+    onOpenHellobikeAccount: (() -> Unit)? = null,
 ) {
     var selected by rememberSaveable { mutableStateOf<LifeProvider?>(null) }
     var selectedOwner by rememberSaveable { mutableStateOf<String?>(null) }
@@ -48,7 +49,8 @@ internal fun AppSettingsContent(
         item {
             Box(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
                 LifeAccountsSettingsCard(accounts, active) { account ->
-                    if (!account.connection.hasAccount || account.connection.status == LifeAccountStatus.Expired)
+                    if (account.provider == LifeProvider.Hellobike && onOpenHellobikeAccount != null) onOpenHellobikeAccount()
+                    else if (!account.connection.hasAccount || account.connection.status == LifeAccountStatus.Expired)
                         onLoginAccount(account.provider)
                     else { selected = account.provider; selectedOwner = account.owner }
                 }

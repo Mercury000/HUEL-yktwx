@@ -24,13 +24,14 @@ internal object HellobikeProtocol {
     // Published by the official wait-pay H5, rather than the prototype's dummy signature.
     const val LbsSigningKey = "eabd21e6da6fa1c0f0d6621c2f498a7a"
     const val PaymentSdkVersion = "2.4.4"
+    const val NativePaymentSdkVersion = "1.55.0"
     const val NativeVersion = "7.0.75"
     // Walle signing-block channel from the supplied, SHA-256 identified official APK.
     const val NativeChannel = "a0010005"
     // Official AppHelloMiniBrand HTML and scripts fetched on 2026-11-13.
     const val RideH5Version = "7.0.70"
     private val rideActions = setOf("user.tw.order.check", "user.ride.order.status",
-        "tw.end.module.info", "tw.bike.unlock.page.basic.info", "user.ride.pre.ride", "user.ride.create", "ride.hub.pre.close")
+        "tw.bike.unlock.page.basic.info", "user.ride.pre.ride", "user.ride.create", "ride.hub.pre.close")
     private val payActions = setOf("com.alphapay.getPayChannel", "com.alphapay.paymentOrder.pay", "com.alphapay.facade.orderSingleQuery")
     fun endpoint(action: String): String = when {
         action == "user.account.login" -> "https://api.hellobike.com/auth"
@@ -38,12 +39,13 @@ internal object HellobikeProtocol {
         action == "hello.lbs.code.regeo" -> "https://hello-location-based-services.hellobike.com/api?$action"
         action == "user.artemis.pay.page.order.detail" -> "https://bike.hellobike.com/api"
         action == "user.ride.bikeCheck" -> "https://bike.hellobike.com/api"
+        action in setOf("student.audit.info", "student.card.get.v3", "tw.standard.preOrder", "tw.ridecard.user.list", "tw.ridecard.commodity") -> "https://bike.hellobike.com/api"
         action in payActions -> "https://api.hellobike.com/api?$action"
         action in rideActions -> {
             val host = if (action.startsWith("user.tw.") || action == "user.ride.order.status") "ebike" else "bike"
             val path = when (action) {
                 "user.ride.pre.ride", "tw.bike.unlock.page.basic.info" -> "/api/$action"
-                "tw.end.module.info", "user.ride.create", "ride.hub.pre.close" -> "/api?$action"
+                "user.ride.create", "ride.hub.pre.close" -> "/api?$action"
                 else -> "/api"
             }
             "https://$host.hellobike.com$path"
@@ -61,6 +63,14 @@ internal object HellobikeProtocol {
     fun paymentFields(account: HellobikeAccount) = jsonObjectOf("token" to account.token,
         "ticket" to account.ticket.takeIf(String::isNotBlank), "systemCode" to account.systemCode,
         "from" to "h5", "currentSdkVersion" to PaymentSdkVersion)
+    fun cardFields(account: HellobikeAccount, myCards: Boolean = false, studentAudit: Boolean = false) = jsonObjectOf(
+        "token" to account.token, "ticket" to account.ticket.takeIf(String::isNotBlank), "from" to "h5",
+        "version" to if (myCards) "7.0.75" else "7.0.65", "systemCode" to if (studentAudit) JsonPrimitive(63) else JsonPrimitive("62"),
+        "osSystemCode" to if (myCards) null else 62, "platform" to if (myCards) JsonPrimitive(4) else JsonPrimitive("0"),
+        "os" to if (myCards) "Android" else null)
+    fun nativePaymentFields(account: HellobikeAccount) = jsonObjectOf("token" to account.token,
+        "ticket" to account.ticket.takeIf(String::isNotBlank), "systemCode" to account.systemCode, "version" to NativeVersion,
+        "clientId" to account.clientId, "currentSdkOS" to "Android", "currentSdkVersion" to NativePaymentSdkVersion)
     fun lbsFields(position: HellobikePosition, timestamp: Long, signingKey: String = LbsSigningKey): JsonObject {
         val arg0 = jsonObjectOf("locations" to jsonArrayOf(listOf(jsonObjectOf("lat" to position.lat, "lng" to position.lng))), "extensions" to "all")
         val signature = MessageDigest.getInstance("MD5").digest((arg0.toString() + timestamp + signingKey).toByteArray(Charsets.UTF_8))
@@ -116,12 +126,16 @@ class HellobikeApi internal constructor(
     private val apkSignHash: String = HellobikeProtocol.ApkSignHash,
     private val userAgent: () -> String = { "" },
     private val ssid: () -> String = { UUID.randomUUID().toString().replace("-", "") },
+    private val alipayInstalled: () -> Boolean = { false },
+    private val clientIp: () -> String = { "" },
 ) : HellobikeService {
     private val loginSsid by lazy { ssid() }
     private suspend fun request(action: String, fields: JsonObject): JsonObject {
         val body = fields.withField("action", action)
-        val plain = action.startsWith("com.alphapay.") || action == "hello.lbs.code.regeo"
-        val req = AppHttp.request(HellobikeProtocol.endpoint(action)).header("inner_action", action)
+        val nativePayment = action.startsWith("com.alphapay.") && fields.hbText("currentSdkOS") == "Android"
+        val plain = action.startsWith("com.alphapay.") && !nativePayment || action == "hello.lbs.code.regeo"
+        val endpoint = HellobikeProtocol.endpoint(action).let { if (nativePayment) it.substringBefore('?') else it }
+        val req = AppHttp.request(endpoint).header("inner_action", action)
             .apply { userAgent().takeIf(String::isNotBlank)?.let { header("User-Agent", it) } }
             .post(body.toString().toRequestBody((if (plain) "text/plain; charset=utf-8" else "application/json; charset=utf-8").toMediaType())).build()
         return client.readResponse(req) { response ->
@@ -277,15 +291,6 @@ class HellobikeApi internal constructor(
             HellobikeProtocol.message(data))
     }
     override suspend fun orderEnded(account: HellobikeAccount, rideGuid: String): Boolean = orderState(account, rideGuid).ended
-    override suspend fun endInfo(account: HellobikeAccount, rideGuid: String): HellobikeEndInfo {
-        val data = ride("tw.end.module.info", account, jsonObjectOf("rideGuid" to rideGuid, "bizType" to 0))
-        data.checkRideIdentity(rideGuid)
-        val trade = data.objectOrNull("tradeRegionInfo")
-        val region = data.objectOrNull("rideRegionInfo")
-        return HellobikeEndInfo(rideGuid, trade?.hbInt("orderStatus") == 2,
-            trade?.objectOrNull("orderInfo")?.hbText("payAmount")?.let(HellobikeProtocol::money),
-            region?.hbText("rideDuration")?.toLongOrNull()?.takeIf { it >= 0 }, region?.hbText("rideDistance"))
-    }
     override suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition, region: HellobikeRegion,
         poll: Boolean, commit: Boolean): HellobikeCloseReading {
         val data = ride("ride.hub.pre.close", account, JsonObject(location(region, position) + jsonObjectOf("orderGuid" to session.rideGuid,
@@ -323,60 +328,93 @@ class HellobikeApi internal constructor(
     }
     override suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail): List<HellobikePayOption> {
         if (detail.settlement != HellobikeSettlement.Pending || detail.orders.isEmpty()) return emptyList()
-        val single = detail.orders.singleOrNull()
-        val data = request("com.alphapay.getPayChannel", JsonObject(HellobikeProtocol.paymentFields(account) + jsonObjectOf(
-            "businessType" to "1", "scene" to "407", "adCode" to session.region?.adCode, "cityCode" to session.region?.cityCode,
-            "amount" to detail.amount, "waitPayGuid" to single?.guid, "orderId" to single?.orderId?.takeIf(String::isNotBlank),
-            "voucherNos" to if (single == null) jsonArrayOf(detail.orders.map { it.guid }) else null,
+        return standardPayChannels(account, session.region, detail.orders, detail.amount, "1", "407")
+    }
+    private suspend fun standardPayChannels(account: HellobikeAccount, region: HellobikeRegion?, orders: List<HellobikePayOrder>,
+        totalAmount: String?, businessType: String, scene: String, native: Boolean = false): List<HellobikePayOption> {
+        val single = orders.singleOrNull()
+        val fields = if (native) HellobikeProtocol.nativePaymentFields(account) else HellobikeProtocol.paymentFields(account)
+        val data = request("com.alphapay.getPayChannel", JsonObject(fields + jsonObjectOf(
+            "businessType" to businessType, "scene" to scene, "adCode" to region?.adCode, "cityCode" to region?.cityCode,
+            "amount" to if (native) "" else totalAmount, "waitPayGuid" to single?.guid, "orderId" to single?.orderId?.takeIf(String::isNotBlank),
+            "alipayInstallFlag" to if (native) (if (alipayInstalled()) "1" else "0") else null,
+            "clientStyleType" to if (native) "" else null, "locale" to if (native) "zh-CN" else null,
+            "voucherNos" to if (single == null) jsonArrayOf(orders.map { it.guid }) else null,
             "actionOrigin" to "StandardCashier", "tenantId" to "t_cn_hb")))
-        return data.arrayOrNull("channelList")?.mapNotNull { item ->
+        fun leafChannels(item: JsonElement, depth: Int = 0): List<JsonElement> {
+            val entry = item as? JsonObject ?: return emptyList()
+            val children = entry.arrayOrNull("subChannelList")
+            return if (children.isNullOrEmpty()) listOf(entry)
+            else if (depth < 4) children.flatMap { leafChannels(it, depth + 1) } else emptyList()
+        }
+        val options = data.arrayOrNull("channelList")?.flatMap { leafChannels(it) }?.mapNotNull { item ->
             val entry = item as? JsonObject ?: return@mapNotNull null
             val code = entry.hbText("channelCode")?.takeIf { it in HellobikeSupportedChannels } ?: return@mapNotNull null
             val name = when (code) { "001" -> "支付宝"; "003" -> "哈啰余额"; else -> "银联" }
-            val amount = entry.hbText("realAmount")?.let(HellobikeProtocol::money) ?: detail.amount ?: return@mapNotNull null
-            // PayTypeBeanExtKt.a only selects a signing channel when one was returned.
-            // BalanceGuideAbility.d/e apply to 013, not to ordinary 001/003/1201.
-            val needsOpen = entry.hbBoolean("supportAgreement") == true && entry.hbBoolean("signState") != true &&
-                !entry.hbText("agreementChannelCode").isNullOrBlank() &&
-                (entry.hbInt("agreementButtonModel") == 1 &&
-                    (entry.objectOrNull("agreementActionInfo")?.hbBoolean("showAgreementTag") != true || entry.hbBoolean("switchStates") == true) ||
-                    entry.hbInt("agreementButtonModel") == 2 && entry.objectOrNull("agreementActionInfo")?.hbBoolean("payGuideSign") == true)
+            val amount = entry.hbText("realAmount")?.let(HellobikeProtocol::money) ?: totalAmount ?: return@mapNotNull null
+            // Signing is an optional route for these ordinary channels. B0 manual selection
+            // does not require an agreement; our ordinary route leaves signing unchecked.
             // PayTypeBean.isBalanceEnough falls back to accountBalance when the flag is absent.
             val balanceEnough = entry.hbBoolean("balanceEnough")
                 ?: (entry.hbText("accountBalance") ?: "0").toBigDecimalOrNull()?.let { it >= amount.toBigDecimal() }
                 ?: false
             val reason = when {
-                needsOpen -> HellobikeProtocol.message(entry) ?: "当前应用尚未接入此支付渠道的签约流程"
-                entry.hbBoolean("enableSelect") == false -> HellobikeProtocol.message(entry)
-                    ?: "com.alphapay.getPayChannel：enableSelect=false，服务端未提供原因"
                 code == "003" && !balanceEnough -> entry.hbText("balanceText")?.takeIf(String::isNotBlank)
-                    ?: HellobikeProtocol.message(entry) ?: "com.alphapay.getPayChannel：余额检查未通过，服务端未提供原因"
-                detail.orders.size != 1 && amount != detail.amount -> HellobikeProtocol.message(entry)
+                    ?: HellobikeProtocol.message(entry) ?: "哈啰余额不足"
+                orders.size != 1 && amount != totalAmount -> HellobikeProtocol.message(entry)
                     ?: "支付渠道返回的组合金额与本笔费用合计不一致"
                 else -> null
             }
-            HellobikePayOption(LifePayChannel(code, name, reason == null, needsOpen, reason), amount,
+            HellobikePayOption(LifePayChannel(code, name, reason == null, false, reason), amount,
                 entry.hbText("marketingActivityId"), entry.hbText("marketingType"), entry.hbText("channelOperationInfoExt"),
-                entry.objectOrNull("extension") ?: JsonObject(emptyMap()))
+                entry.objectOrNull("extension") ?: JsonObject(emptyMap()),
+                JsonObject(listOf("promoType", "payProjectGuid", "frontPageId", "hasBundleSaleInfo", "creditModel",
+                    "alipayOperationInfo", "preConsultId", "channelComposeInfo", "composeInfo", "businessLineCode")
+                    .mapNotNull { key -> (entry[key] ?: data[key])?.takeUnless { it == JsonNull }?.let { key to it } }.toMap()),
+                defaultSelected = if (native) entry.hbBoolean("enableSelect") == true else entry.hbBoolean("enableSelect") != false)
         }?.distinctBy { it.channel.method }.orEmpty()
+        if (!native) return options
+        // PayChannelDataTransfer.f/m/p: explicit default, enableSelect preference,
+        // then d() falls back to the first channel that passes the balance check.
+        val defaultSetting = data.objectOrNull("extraInfos")?.get("defaultChannelSetting")
+        val defaultChannel = (defaultSetting as? JsonObject
+            ?: (defaultSetting as? JsonPrimitive)?.contentOrNull?.let { text ->
+                runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+            })?.hbText("defaultChannel")
+        val available = options.filter { it.channel.available == true }
+        val initial = available.firstOrNull { it.channel.method == defaultChannel }
+            ?: available.firstOrNull { it.defaultSelected } ?: available.firstOrNull()
+        return options.map { it.copy(defaultSelected = it === initial) }
     }
     override suspend fun pay(account: HellobikeAccount, session: HellobikeSession, orders: List<HellobikePayOrder>, option: HellobikePayOption): HellobikePayComponent {
-        if (option.channel.method !in HellobikeSupportedChannels || option.channel.available != true || option.channel.needsOpen == true ||
-            orders.isEmpty() || orders.sumOf { it.amount.toBigDecimal() } != option.amount.toBigDecimal()) throw HellobikeException("付款条件已变化，请刷新费用")
-        val data = request("com.alphapay.paymentOrder.pay", JsonObject(HellobikeProtocol.paymentFields(account) + jsonObjectOf(
-            "amount" to option.amount, "channel" to option.channel.method, "businessType" to "1",
-            "orders" to jsonArrayOf(orders.map { jsonObjectOf("guid" to it.guid, "amount" to it.amount, "type" to "1",
+        return standardPay(account, session.region, orders, option, "1")
+    }
+    private suspend fun standardPay(account: HellobikeAccount, region: HellobikeRegion?, orders: List<HellobikePayOrder>,
+        option: HellobikePayOption, businessType: String, native: Boolean = false,
+        signingFields: JsonObject = JsonObject(emptyMap())): HellobikePayComponent {
+        val signing = native && signingFields.isNotEmpty() && option.channel.method == "102"
+        if ((!signing && option.channel.method !in HellobikeSupportedChannels) || option.channel.available != true || option.channel.needsOpen == true ||
+            orders.isEmpty() || !native && orders.sumOf { it.amount.toBigDecimal() } != option.amount.toBigDecimal()) throw HellobikeException("付款条件已变化，请刷新费用")
+        val fields = if (native) HellobikeProtocol.nativePaymentFields(account) else HellobikeProtocol.paymentFields(account)
+        val data = request("com.alphapay.paymentOrder.pay", JsonObject(fields + (if (native) option.nativeFields else JsonObject(emptyMap())) + jsonObjectOf(
+            "amount" to if (native) JsonPrimitive(orders.sumOf { it.amount.toBigDecimal() }) else JsonPrimitive(option.amount),
+            "channel" to option.channel.method, "businessType" to businessType,
+            "combinedWith" to if (native) "[]" else null, "clientIP" to if (native) clientIp() else null,
+            "locale" to if (native) "zh-CN" else null,
+            "orders" to jsonArrayOf(orders.map { jsonObjectOf("guid" to it.guid,
+                "amount" to if (native) JsonPrimitive(it.amount.toBigDecimal()) else JsonPrimitive(it.amount), "type" to "1",
                 "businessType" to it.businessType, "orderId" to it.orderId.takeIf(String::isNotBlank)) }).toString(),
-            "adCode" to session.region?.adCode, "cityCode" to session.region?.cityCode, "actionOrigin" to "StandardCashier",
+            "adCode" to region?.adCode, "cityCode" to region?.cityCode, "actionOrigin" to "StandardCashier",
             "marketingActivityId" to option.marketingActivityId, "marketingType" to option.marketingType,
-            "channelOperationInfoExt" to option.channelOperationInfoExt, "extension" to option.extension)))
+            "channelOperationInfoExt" to option.channelOperationInfoExt, "extension" to option.extension) + signingFields))
         val returnedOrders = data.arrayOrNull("orders")?.map { item ->
             val entry = item as? JsonObject ?: throw HellobikeException("付款订单返回异常，请查询结果")
             val guid = entry.hbText("guid") ?: throw HellobikeException("付款订单缺少标识，请查询结果")
             val original = orders.singleOrNull { it.guid == guid } ?: throw HellobikeException("付款订单不一致，请在哈啰核对", officialRequired = true)
             val amount = entry.hbText("amount")?.let(HellobikeProtocol::money) ?: original.amount
             val business = entry.hbText("businessType") ?: original.businessType
-            if (amount != original.amount || business != original.businessType) throw HellobikeException("付款金额或业务不一致，请在哈啰核对", officialRequired = true)
+            if (amount != original.amount && (!native || amount != option.amount) || business != original.businessType)
+                throw HellobikeException("付款金额或业务不一致，请在哈啰核对", officialRequired = true)
             val id = entry.hbText("orderId") ?: original.orderId
             if (original.orderId.isNotBlank() && id != original.orderId) throw HellobikeException("付款订单不一致，请在哈啰核对", officialRequired = true)
             original.copy(orderId = id)
@@ -388,13 +426,124 @@ class HellobikeApi internal constructor(
         return HellobikePayComponent(channel, data.hbText("status").orEmpty(), returnedOrders,
             data.objectOrNull("extension") ?: option.extension, payload)
     }
-    override suspend fun paymentPaid(account: HellobikeAccount, order: HellobikePayOrder, extension: JsonObject): Boolean {
-        val data = request("com.alphapay.facade.orderSingleQuery", JsonObject(HellobikeProtocol.paymentFields(account) + jsonObjectOf(
+    override suspend fun studentAudit(account: HellobikeAccount): HellobikeStudentAudit {
+        val data = request("student.audit.info", HellobikeProtocol.cardFields(account, studentAudit = true).withField("userNewId", 0))
+        return HellobikeStudentAudit(data.hbInt("authState"), data.hbInt("userType"))
+    }
+    private fun cardLocation(region: HellobikeRegion?, position: HellobikePosition?) = jsonObjectOf(
+        "cityCode" to region?.cityCode.orEmpty(), "adCode" to region?.adCode.orEmpty(),
+        "lat" to position?.lat?.toString().orEmpty(), "lng" to position?.lng?.toString().orEmpty())
+    override suspend fun userCards(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?,
+        businessType: Int, page: Int): HellobikeUserCardPage {
+        require(businessType in 1..2 && page >= 0)
+        val data = request("tw.ridecard.user.list", JsonObject(HellobikeProtocol.cardFields(account, myCards = true) +
+            cardLocation(region, position) + jsonObjectOf("businessType" to businessType, "pageStart" to page, "pageSize" to 2, "originTag" to 1)))
+        val cards = data.arrayOrNull("rideCards").orEmpty().map { value ->
+            val card = value as? JsonObject ?: throw HellobikeException("我的卡列表格式异常，请重试")
+            HellobikeUserCard(card.hbText("cardGuid") ?: throw HellobikeException("我的卡响应缺少 cardGuid"),
+                card.hbInt("businessType") ?: businessType, card.hbText("name").orEmpty(), card.hbInt("remainDay"),
+                card.hbInt("status"), card.hbText("expireSecond")?.toLongOrNull(), card.hbText("desc").orEmpty(),
+                renewable = card.hbInt("status") == 0 && card.hbInt("canOperateType") != 0 &&
+                    data.hbBoolean(if (businessType == 1) "hasBikePackage" else "hasEvBikePackage") == true)
+        }
+        return HellobikeUserCardPage(cards, data.hbBoolean("hasNext") == true)
+    }
+    override suspend fun campusProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCampusProducts {
+        val data = request("student.card.get.v3", JsonObject(HellobikeProtocol.cardFields(account) + cardLocation(region, position) +
+            jsonObjectOf("needOptPromo" to true)))
+        val products = data.arrayOrNull("cardInfoList").orEmpty().flatMapIndexed { groupIndex, groupValue ->
+            val group = groupValue as? JsonObject ?: throw HellobikeException("校园卡商品列表格式异常，请重试")
+            group.arrayOrNull("packages").orEmpty().mapIndexed { index, value ->
+                val item = value as? JsonObject ?: throw HellobikeException("校园卡商品格式异常，请重试")
+                val price = (item.objectOrNull("actualPrice")?.hbText("finalPrice") ?: item.hbText("purchasePrice"))
+                    ?.let(HellobikeProtocol::money) ?: throw HellobikeException("校园卡商品响应缺少有效价格")
+                val words = item.arrayOrNull("marketingWords").orEmpty().mapNotNull { (it as? JsonObject)?.hbText("wordsValue") }
+                HellobikeCampusProduct("$groupIndex:$index", item.hbText("showName").orEmpty(), price,
+                    (listOfNotNull(item.hbText("commodityDesc")) + words).distinct().joinToString("\n"),
+                    item, group.hbText("tabTitle") ?: group.hbText("headTitle").orEmpty())
+            }
+        }
+        return HellobikeCampusProducts(data.hbText("moduleTitle") ?: "校园骑行卡", products)
+    }
+    override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?,
+        position: HellobikePosition?): HellobikeCardPurchase {
+        if (!product.purchasable) throw HellobikeException(product.unavailableReason ?: "商品信息不完整，请刷新商品")
+        val item = product.raw
+        val actual = item.objectOrNull("actualPrice") ?: throw HellobikeException("商品价格信息不完整，请刷新商品")
+        val packageGuid = item.hbText("packageGuid") ?: throw HellobikeException("商品标识不完整，请刷新商品")
+        val biz = jsonObjectOf("channelCode" to item.hbInt("channelCode"), "businessType" to item.hbInt("businessType"),
+            "totalPrice" to actual.hbText("finalPrice"), "packageList" to jsonArrayOf(listOf(jsonObjectOf(
+                "category" to 1, "packageGuid" to packageGuid, "actualPrice" to actual,
+                "pendingInfos" to item.arrayOrNull("pendingInfos"), "sendAccount" to "",
+                "payChannelDiscountInfo" to if (product.campus) JsonObject(emptyMap()) else null))))
+        if (item.hbInt("businessType") !in 1..2 || item.hbInt("channelCode") == null)
+            throw HellobikeException("商品业务信息不完整，请刷新商品")
+        val data = request("tw.standard.preOrder", JsonObject(HellobikeProtocol.cardFields(account) +
+            (if (product.campus) JsonObject(emptyMap()) else jsonObjectOf("fromTwoWheel" to true)) +
+            jsonObjectOf("bizContent" to biz, "packagePlatform" to "0", "adCode" to region?.adCode.orEmpty(), "cityCode" to region?.cityCode.orEmpty(),
+                "location" to jsonObjectOf("lat" to position?.lat, "lng" to position?.lng))))
+        val business = data.hbText("businessType") ?: throw HellobikeException("预下单响应缺少 businessType，请在哈啰核对订单")
+        val scene = data.hbText("businessScene") ?: throw HellobikeException("预下单响应缺少 businessScene，请在哈啰核对订单")
+        val amount = data.hbText("totalAmount")?.let(HellobikeProtocol::money) ?: throw HellobikeException("预下单响应缺少有效金额，请在哈啰核对订单")
+        val orders = data.arrayOrNull("orderGoPayList").orEmpty().map { value ->
+            val order = value as? JsonObject ?: throw HellobikeException("预下单订单格式异常，请在哈啰核对订单")
+            HellobikePayOrder(order.hbText("payNo") ?: throw HellobikeException("预下单响应缺少 payNo，请在哈啰核对订单"),
+                order.hbText("payPrice")?.let(HellobikeProtocol::money) ?: throw HellobikeException("预下单响应缺少 payPrice，请在哈啰核对订单"),
+                order.hbText("paymentId") ?: throw HellobikeException("预下单响应缺少 paymentId，请在哈啰核对订单"),
+                order.hbText("businessType") ?: business)
+        }
+        if (orders.size != 1 || orders.single().businessType != business || orders.sumOf { it.amount.toBigDecimal() } != amount.toBigDecimal())
+            throw HellobikeException("预下单订单或合计不一致，请在哈啰核对订单", officialRequired = true)
+        val signingFields = if (product.signingRequired) {
+            val period = if (data.hbInt("paySignType") == 1 && data.hbText("periodType") != null &&
+                data.hbText("periodNum") != null && data.hbText("maxDeductAmount") != null) jsonObjectOf(
+                "period_type" to data["periodType"], "period" to data.hbText("periodNum"), "single_amount" to data["maxDeductAmount"]).toString() else null
+            jsonObjectOf("creditModel" to "normal", "actionOrigin" to "RidecardBuying", "periodRuleParams" to period,
+                "returnUrl" to "yktwx://hellobike-pay/paysign/success", "requestFromUrl" to "yktwx://hellobike-pay/paysign/fail")
+        } else JsonObject(emptyMap())
+        return HellobikeCardPurchase(product.name, orders, amount, business, scene, region, signingFields = signingFields)
+    }
+    override suspend fun cardPayChannels(account: HellobikeAccount, purchase: HellobikeCardPurchase): List<HellobikePayOption> =
+        if (purchase.signingFields.isNotEmpty()) listOf(HellobikePayOption(LifePayChannel("102", "支付宝", true, false), purchase.amount))
+        else standardPayChannels(account, purchase.region, purchase.orders, purchase.amount, purchase.businessType, purchase.scene, native = true)
+    override suspend fun payCard(account: HellobikeAccount, purchase: HellobikeCardPurchase, orders: List<HellobikePayOrder>, option: HellobikePayOption): HellobikePayComponent {
+        if (orders.size != 1 || purchase.orders.size != 1 || orders.single() != purchase.orders.single().copy(amount = option.amount))
+            throw HellobikeException("购卡订单或应付金额已变化，请刷新")
+        // ConfirmPayHelper.b/c preserves StandardCashierRequest.payMoney/payList and sends
+        // marketing identifiers separately. Keep the displayed discounted amount in our record.
+        val component = standardPay(account, purchase.region, purchase.orders, option, purchase.businessType, native = true, signingFields = purchase.signingFields)
+        return component.copy(orders = component.orders.map { it.copy(amount = option.amount) })
+    }
+    override suspend fun ordinaryProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): List<HellobikeCampusProduct> {
+        val data = request("tw.ridecard.commodity", JsonObject(HellobikeProtocol.cardFields(account) + cardLocation(region, position) +
+            jsonObjectOf("version" to "7.0.75", "channelCodes" to jsonArrayOf(listOf(101000)), "needOptPromo" to true,
+                "filterParams" to jsonObjectOf("filterCoBranded" to true))))
+        return data.arrayOrNull("packageGroups").orEmpty().flatMapIndexed { groupIndex, value ->
+            val group = value as? JsonObject ?: throw HellobikeException("骑行卡商品格式异常")
+            if (group.hbInt("businessType") != 1) return@flatMapIndexed emptyList()
+            group.arrayOrNull("packages").orEmpty().mapIndexed { index, packageValue ->
+                val item = packageValue as? JsonObject ?: throw HellobikeException("骑行卡商品格式异常")
+                val raw = JsonObject(jsonObjectOf("channelCode" to group.hbInt("channelCode"), "businessType" to group.hbInt("businessType"),
+                    "canBuy" to group.hbInt("canBuy")) + item)
+                val price = item.objectOrNull("actualPrice")?.hbText("finalPrice")?.let(HellobikeProtocol::money)
+                    ?: throw HellobikeException("骑行卡商品缺少有效价格")
+                HellobikeCampusProduct("ordinary:$groupIndex:$index", item.hbText("showName").orEmpty(), price,
+                    item.hbText("commodityDesc").orEmpty(), raw, campus = false)
+            }
+        }
+    }
+    override suspend fun paymentPaid(account: HellobikeAccount, order: HellobikePayOrder, extension: JsonObject) =
+        queryPayment(account, order, extension, native = false)
+    override suspend fun cardPaymentPaid(account: HellobikeAccount, order: HellobikePayOrder, extension: JsonObject) =
+        queryPayment(account, order, extension, native = true)
+    private suspend fun queryPayment(account: HellobikeAccount, order: HellobikePayOrder, extension: JsonObject, native: Boolean): Boolean {
+        val fields = if (native) JsonObject(HellobikeProtocol.nativePaymentFields(account) - "currentSdkVersion") else HellobikeProtocol.paymentFields(account)
+        val data = request("com.alphapay.facade.orderSingleQuery", JsonObject(fields + jsonObjectOf(
             "guid" to order.guid, "orderId" to order.orderId.takeIf(String::isNotBlank), "businessType" to order.businessType, "extension" to extension)))
-        if (data.hbText("guid") != order.guid) throw HellobikeException("付款查询缺少匹配的订单标识，请在哈啰核对", officialRequired = true)
-        if (order.orderId.isNotBlank() && data.hbText("businessId")?.let { it != order.orderId } == true)
-            throw HellobikeException("付款查询订单不一致，请在哈啰核对", officialRequired = true)
-        data.hbText("amount")?.let { if (HellobikeProtocol.money(it) != order.amount) throw HellobikeException("付款查询金额不一致，请在哈啰核对", officialRequired = true) }
+        if (data.hbText("guid")?.let { it != order.guid } == true)
+            throw HellobikeException("付款查询缺少匹配的订单标识，请在哈啰核对", officialRequired = true)
+        // BasePayModule checks the response status for the exact requested payment ID.
+        // businessId and order amount are not extra settlement conditions in that flow.
         val status = data["payStatus"] as? JsonPrimitive
         // The official native query checks an integer 1. Strings and SDK callbacks cannot settle a ride.
         return status != null && !status.isString && status.intOrNull == 1

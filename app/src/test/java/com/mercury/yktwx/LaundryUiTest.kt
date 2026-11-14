@@ -387,8 +387,9 @@ class LaundryUiTest {
             laundryQuote = quote, paymentVisible = true,
             paymentFeedback = LaundryPaymentFeedback("attempt", RechargePhase.Paid)))
         compose.setContent {
+            val modelState by model.state.collectAsState()
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
-                LaundryPaymentSheet(state.paymentVisible, state, model)
+                LaundryPaymentSheet(state.paymentVisible, state.copy(paymentMethod = modelState.paymentMethod), model)
             } } }
         }
         capture("laundry-payment-paid-initial")

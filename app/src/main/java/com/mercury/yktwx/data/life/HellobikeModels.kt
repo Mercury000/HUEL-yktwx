@@ -72,8 +72,6 @@ sealed interface HellobikeRideReading {
     data class Ride(val rideGuid: String, val bikeNo: String, val status: Int, val seconds: Long? = null,
         val userGuid: String? = null) : HellobikeRideReading
 }
-data class HellobikeEndInfo(val rideGuid: String, val ended: Boolean, val amount: String? = null,
-    val seconds: Long? = null, val distance: String? = null)
 data class HellobikeCloseReading(val processing: Boolean, val ready: Boolean, val detail: String? = null, val completed: Boolean = false)
 
 /** user.ride.order.status has its own status space; it is not rideInfo.rideStatus. */
@@ -124,7 +122,8 @@ data class HellobikeOrderReading(val rideStatus: Int?, val subStatus: Int?, val 
 data class HellobikePayDetail(val rideGuid: String, val tradeId: String = "", val amount: String? = null,
     val settlement: HellobikeSettlement, val orders: List<HellobikePayOrder> = emptyList(), val unsupported: String? = null)
 data class HellobikePayOption(val channel: LifePayChannel, val amount: String, val marketingActivityId: String? = null,
-    val marketingType: String? = null, val channelOperationInfoExt: String? = null, val extension: JsonObject = JsonObject(emptyMap()))
+    val marketingType: String? = null, val channelOperationInfoExt: String? = null, val extension: JsonObject = JsonObject(emptyMap()),
+    val nativeFields: JsonObject = JsonObject(emptyMap()), val defaultSelected: Boolean = true)
 data class HellobikePayComponent(val channel: String, val status: String, val orders: List<HellobikePayOrder>,
     val extension: JsonObject = JsonObject(emptyMap()), val payload: String? = null) {
     override fun toString() = "HellobikePayComponent([redacted])"
@@ -135,7 +134,9 @@ class HellobikeException(message: String, val loginExpired: Boolean = false, val
 internal class HellobikeLocationPermissionRequired : Exception()
 
 interface HellobikeLocationService { suspend fun current(): HellobikePosition }
-interface HellobikeService {
+interface HellobikeService : HellobikeCardService {
+    suspend fun cardPaymentPaid(account: HellobikeAccount, order: HellobikePayOrder, extension: JsonObject): Boolean =
+        paymentPaid(account, order, extension)
     suspend fun sendCode(phone: String, region: HellobikeRegion?, clientId: String, offset: Int? = null, challenge: String? = null): HellobikeSmsResult
     suspend fun slider(phone: String, region: HellobikeRegion?, clientId: String): HellobikeSlider
     suspend fun login(phone: String, code: String, region: HellobikeRegion?, clientId: String, loginGuid: String): HellobikeAccount
@@ -145,7 +146,6 @@ interface HellobikeService {
     suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition)
     suspend fun orderState(account: HellobikeAccount, rideGuid: String): HellobikeOrderReading
     suspend fun orderEnded(account: HellobikeAccount, rideGuid: String): Boolean
-    suspend fun endInfo(account: HellobikeAccount, rideGuid: String): HellobikeEndInfo
     suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition, region: HellobikeRegion,
         poll: Boolean, commit: Boolean): HellobikeCloseReading
     suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail
@@ -157,7 +157,8 @@ interface HellobikeService {
 @Serializable data class HellobikeStoredState(val clientId: String = "", val account: HellobikeAccount? = null,
     val ownerGuid: String = "", val maskedPhone: String = "", val region: HellobikeRegion? = null,
     val sessions: List<HellobikeSession> = emptyList(),
-    val retainedSessions: Map<String, List<HellobikeSession>> = emptyMap(), val recoveryRequired: Boolean = false) {
+    val retainedSessions: Map<String, List<HellobikeSession>> = emptyMap(), val recoveryRequired: Boolean = false,
+    val cardPurchases: Map<String, HellobikeCardPurchase> = emptyMap()) {
     override fun toString() = "HellobikeStoredState([redacted])"
 }
 interface HellobikeStore {
@@ -166,6 +167,9 @@ interface HellobikeStore {
     fun saveRegion(region: HellobikeRegion)
     fun saveAccount(account: HellobikeAccount)
     fun saveSessions(ownerGuid: String, sessions: List<HellobikeSession>)
+    fun saveCardPurchase(ownerGuid: String, purchase: HellobikeCardPurchase?) {
+        throw HellobikeException("无法保存购卡订单", storageFailure = true)
+    }
     fun clearAccount()
     fun removeAccount()
     fun recoverUnreadable(clientId: String)
@@ -173,4 +177,4 @@ interface HellobikeStore {
 }
 
 internal val HellobikeSupportedChannels = setOf("001", "003", "1201")
-internal fun String.hellobikeBridgeMethod(): String? = when (this) { "001" -> "13"; "1201" -> "52"; else -> null }
+internal fun String.hellobikeBridgeMethod(): String? = when (this) { "001", "102" -> "13"; "1201" -> "52"; else -> null }

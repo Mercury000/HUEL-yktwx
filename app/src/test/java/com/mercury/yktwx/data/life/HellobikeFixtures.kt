@@ -101,7 +101,6 @@ internal open class FakeHellobikeService : HellobikeService {
             else -> HellobikeOrderReading(null, null)
         }
     }
-    override suspend fun endInfo(account: HellobikeAccount, rideGuid: String) = HellobikeEndInfo(rideGuid, true, "2.00", 300)
     override suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition, region: HellobikeRegion,
         poll: Boolean, commit: Boolean): HellobikeCloseReading {
         if (!commit) { preCloseCalls++; return HellobikeCloseReading(!closeReady, closeReady) }
