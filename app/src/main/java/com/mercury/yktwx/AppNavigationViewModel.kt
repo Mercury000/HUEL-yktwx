@@ -50,6 +50,10 @@ internal class AppNavigationViewModel @Inject constructor(handle: SavedStateHand
         restoredLife = null
         if (backStack.size > 1) backStack.removeLastOrNull()
     }
+    fun returnToMain() {
+        restoredLife = null
+        while (backStack.size > 1) backStack.removeLastOrNull()
+    }
 
     @Serializable private data class NavigationSnapshot(val tab: Int, val routes: List<AppRoute>, val scope: String) {
         val valid get() = scope.length in 1..64 && tab in 0..3 && routes.size in 1..12 && routes.first() == AppRoute.Main &&
