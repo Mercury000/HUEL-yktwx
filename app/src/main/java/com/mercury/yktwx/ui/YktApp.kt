@@ -777,7 +777,7 @@ private fun MainContent(
         tabs.animateToPage(0)
     }
 
-    val useRail = shouldShowMainNavigationRail(settings)
+    val useRail = shouldShowMainNavigationRail()
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val swipeDirection = when {
         !settings.swipeBack.value -> NavSwipeDirection.None
@@ -789,7 +789,12 @@ private fun MainContent(
     CompositionLocalProvider(LocalReadOffline provides (network.online == false)) {
         // Match the demo: the rail stays beside a clipped navigation pane.
         Row(Modifier.fillMaxSize()) {
-            if (useRail) MainNavigationRail(settings, tabs.selectedPage, width >= 1200.dp, tabs::animateToPage)
+            if (useRail) MainNavigationRail(tabs.selectedPage, width >= 1200.dp) { page ->
+                if (isActive) {
+                    navigation.returnToMain()
+                    tabs.animateToPage(page)
+                }
+            }
             Box(Modifier.weight(1f).fillMaxHeight().then(if (useRail) Modifier.clipToBounds() else Modifier)) {
                 NavDisplay(
                     backStack = backStack,
