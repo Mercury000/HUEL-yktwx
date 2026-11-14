@@ -650,10 +650,10 @@ private fun MainContent(
         hellobikeModel.openSession(id)
         navigation.showLife(Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = id, account = hellobikeModel.restorationOwner))
     }
-    fun scannedLifeDevice(raw: String, manual: Boolean = false) {
+    fun scannedLifeDevice(raw: String, manualRoute: DeviceScanRoute? = null) {
         if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() !is Screen.LifeDevice ||
             hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy || hellobikeState.busy || hellobikeState.paymentInFlight) return
-        val route = if (manual) UnifiedDeviceCode.identifyManual(raw) else UnifiedDeviceCode.identify(raw)
+        val route = manualRoute ?: UnifiedDeviceCode.identify(raw)
         when (route?.provider) {
             LifeProvider.Hui798 -> hui798Model.openDevice(route.code)
             LifeProvider.Hellobike -> hellobikeModel.openDevice(route.code)
@@ -996,7 +996,7 @@ private fun MainContent(
                                     LifeProvider.Panggui -> LifeDevicePage(lifeState, settings, lifeModel,
                                         // Read the live stack so camera ownership ends when the pop commits.
                                         active = isActive && backStack.lastOrNull() == screen, onBack = ::close,
-                                        onScanned = { scannedLifeDevice(it) }, onManualScanned = { scannedLifeDevice(it, manual = true) },
+                                        onScanned = { scannedLifeDevice(it) }, onManualScanned = { scannedLifeDevice(it.code, manualRoute = it) },
                                         previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
                                 }
                                 else -> SecondaryPage(
