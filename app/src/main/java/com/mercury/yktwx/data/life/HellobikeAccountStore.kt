@@ -26,6 +26,11 @@ class HellobikeAccountStore internal constructor(private val records: LifeDevice
                 require(value.account == null || value.account.userGuid == value.ownerGuid && value.account.token.isNotBlank())
                 require(value.sessions.isEmpty() || value.ownerGuid.isNotBlank())
                 require(value.retainedSessions.keys.none(String::isBlank))
+                require(value.cardPurchases.keys.none(String::isBlank))
+                value.cardPurchases.values.forEach { purchase ->
+                    require(purchase.orders.isNotEmpty() && purchase.orders.all { it.guid.isNotBlank() && it.orderId.isNotBlank() &&
+                        HellobikeProtocol.money(it.amount) != null })
+                }
                 (value.retainedSessions.values + listOf(value.sessions)).forEach { sessions ->
                     require(sessions.map { it.sessionId }.distinct().size == sessions.size)
                     val knownRides = sessions.map { it.rideGuid }.filter(String::isNotBlank)
@@ -56,6 +61,12 @@ class HellobikeAccountStore internal constructor(private val records: LifeDevice
         write(old.copy(sessions = sessions))
     }
     @Synchronized override fun clearAccount() { write(load().copy(account = null)) }
+    @Synchronized override fun saveCardPurchase(ownerGuid: String, purchase: HellobikeCardPurchase?) {
+        val old = load()
+        if (ownerGuid.isBlank() || old.ownerGuid != ownerGuid || old.account?.userGuid != ownerGuid)
+            throw HellobikeException("购卡订单与账户不一致，请重新登录", storageFailure = true)
+        write(old.copy(cardPurchases = if (purchase == null) old.cardPurchases - ownerGuid else old.cardPurchases + (ownerGuid to purchase)))
+    }
     @Synchronized override fun removeAccount() {
         // Explicit logout clears every owner and does not require decoding old records.
         write(HellobikeStoredState())

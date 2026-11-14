@@ -11,6 +11,10 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
     <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="alipays" />
+        </intent>
         <package android:name="com.jingyao.easybike" />
         <package android:name="com.unionpay" />
         <package android:name="com.unionpay.tsmservice" />
@@ -65,6 +69,15 @@
         <activity android:name=".LifeAlipayActivity" android:exported="false"
             android:theme="@style/Theme.AlipayBridge"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+        <activity android:name=".HellobikePayReturnActivity" android:exported="true"
+            android:theme="@style/Theme.AlipayBridge" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="yktwx" android:host="hellobike-pay" android:pathPrefix="/paysign/" />
+            </intent-filter>
+        </activity>
         <activity android:name=".LifeUnionPayActivity" android:exported="false"
             android:theme="@style/Theme.UnionPayBridge"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />

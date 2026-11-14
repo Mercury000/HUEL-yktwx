@@ -1,6 +1,10 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +14,8 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
@@ -34,11 +40,29 @@ internal val FeeProject.hallTitle: String get() = when (this) {
 
 @Composable
 internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    if (tabs.isEmpty()) return
     ReadLayout(Modifier.fillMaxWidth()) {
-        TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect,
-            colors = if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = DashboardPalette.field,
+        val background = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.surface else DashboardPalette.field
+        val content = MiuixTheme.colorScheme.onSurfaceVariantSummary
+        val colors = if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = background,
                 contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface),
+                selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface)
+        // Miuix scrolls directly to selectedTabIndex. A genuinely unselected list must
+        // not pass -1 to its LazyListState or visually select a different payment method.
+        if (selected !in tabs.indices) {
+            val shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)
+            Row(Modifier.fillMaxWidth().height(TabRowDefaults.TabRowWithContourHeight)
+                .clip(RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius + 5.dp))
+                .background(background).padding(5.dp).selectableGroup()) {
+                tabs.forEachIndexed { index, label ->
+                    Box(Modifier.weight(1f).fillMaxHeight().clip(shape).selectable(false, role = Role.Tab,
+                        interactionSource = remember { MutableInteractionSource() }, indication = rememberPressFeedback(shape = shape),
+                        onClick = { onSelect(index) }), contentAlignment = Alignment.Center) {
+                        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = content)
+                    }
+                }
+            }
+        } else TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect, colors = colors,
             indication = rememberPressFeedback(shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
     }
 }

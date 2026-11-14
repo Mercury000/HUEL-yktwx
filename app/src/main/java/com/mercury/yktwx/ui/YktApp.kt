@@ -34,6 +34,7 @@ import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.Hui798ViewModel
 import com.mercury.yktwx.HellobikeViewModel
+import com.mercury.yktwx.HellobikeCardsState
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.AppUpdateViewModel
 import com.mercury.yktwx.analytics.*
@@ -400,6 +401,7 @@ private fun MainContent(
     val hellobikeModel: HellobikeViewModel = viewModel(key = "hellobike-${state.preview}")
     LaunchedEffect(hellobikeModel, state.preview) { hellobikeModel.initialize(state.preview) }
     val hellobikeState by hellobikeModel.state.collectAsStateWithLifecycle()
+    val hellobikeCardsState by hellobikeModel.cards.state.collectAsStateWithLifecycle()
     val pangguiConnection by lifeModel.accountConnection.collectAsStateWithLifecycle()
     val hui798Connection by hui798Model.accountConnection.collectAsStateWithLifecycle()
     val hellobikeConnection by hellobikeModel.accountConnection.collectAsStateWithLifecycle()
@@ -409,7 +411,7 @@ private fun MainContent(
         ManagedLifeAccount(LifeProvider.Panggui, pangguiConnection, lifeState.restoring,
             lifeState.accountBusy || lifeState.loggingIn, lifeState.accountError, lifeModel.restorationOwner),
         ManagedLifeAccount(LifeProvider.Hellobike, hellobikeConnection, hellobikeState.restoring,
-            hellobikeState.accountBusy || hellobikeState.loggingIn || hellobikeState.paymentInFlight, hellobikeState.accountError,
+            hellobikeState.accountBusy || hellobikeState.loggingIn || hellobikeState.paymentInFlight || hellobikeCardsState.busy || hellobikeCardsState.paymentInFlight, hellobikeState.accountError,
             hellobikeModel.restorationOwner))
     LifePaymentEffect(lifeState.paymentLaunch, isActive && !state.preview && !state.needsLogin,
         lifeModel::claimLaundryPayment, lifeModel::laundryPaymentReturned)
@@ -445,6 +447,8 @@ private fun MainContent(
     val foreground = foregroundState.active
     LifePaymentEffect(hellobikeState.paymentLaunch, foreground && isActive && !state.preview && !state.needsLogin,
         hellobikeModel::claimPayment, hellobikeModel::paymentReturned)
+    LifePaymentEffect(hellobikeCardsState.paymentLaunch, foreground && isActive && !state.preview && !state.needsLogin,
+        hellobikeModel.cards::claimPayment, hellobikeModel.cards::paymentReturned)
     HellobikeLocationPermissionEffect(hellobikeState.locationPermissionRequest,
         foreground && isActive && !state.preview && !state.needsLogin, hellobikeModel)
     val analytics = viewModel<AnalyticsViewModel>().analytics
@@ -496,7 +500,11 @@ private fun MainContent(
     DisposableEffect(lifeModel, hui798Model, hellobikeModel) { onDispose {
         lifeModel.environment(false); hui798Model.environment(false); hellobikeModel.environment(false)
     } }
-    val lifeAccountPageVisible = layers.lastOrNull() == Screen.Settings
+    val hellobikeAccountPageVisible = layers.lastOrNull() == Screen.HellobikeAccount
+    LaunchedEffect(isActive, state.preview, state.needsLogin, network.online, hellobikeAccountPageVisible) {
+        hellobikeModel.cards.pageVisible(isActive && !state.preview && !state.needsLogin && network.online == true && hellobikeAccountPageVisible)
+    }
+    val lifeAccountPageVisible = layers.lastOrNull() == Screen.Settings || hellobikeAccountPageVisible
     LaunchedEffect(foreground, foregroundState.epoch, isActive, state.preview, network.online, lifeAccountPageVisible,
         paymentPageSelected, lifeState.restoring, hui798State.restoring, hellobikeState.restoring) {
         if (foreground && isActive && !state.preview && network.online == true && (lifeAccountPageVisible || paymentPageSelected)) {
@@ -1025,6 +1033,9 @@ private fun MainContent(
                                             }
                                         }
                                     },
+                                    onHellobikeAccount = { open(Screen.HellobikeAccount) },
+                                    hellobikeModel = hellobikeModel, hellobikeCardsState = hellobikeCardsState,
+                                    onChangeHellobike = { manageLifeLogin(LifeProvider.Hellobike, true) },
                                 )
                             }
                         }
@@ -1057,11 +1068,16 @@ private fun SecondaryPage(
     onCheckLifeAccount: (LifeProvider) -> Unit,
     onLoginLifeAccount: (LifeProvider) -> Unit,
     onRemoveLifeAccount: (LifeProvider) -> Unit,
+    onHellobikeAccount: () -> Unit,
+    hellobikeModel: HellobikeViewModel,
+    hellobikeCardsState: HellobikeCardsState,
+    onChangeHellobike: () -> Unit,
 ) {
     var showLogout by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(active) { if (!active) showLogout = false }
     val title = when (screen) {
         Screen.Settings -> stringResource(R.string.settings_title)
+        Screen.HellobikeAccount -> "哈啰"
         Screen.Theme -> stringResource(R.string.theme_title)
         Screen.References -> stringResource(R.string.about_references)
         else -> ""
@@ -1082,7 +1098,10 @@ private fun SecondaryPage(
                     Screen.Settings -> AppSettingsContent(modifier, contentPadding, settings, updateState,
                         onCheckUpdates, onTheme, lifeAccounts, active, onLogout = { showLogout = true },
                         onCheckAccount = onCheckLifeAccount, onLoginAccount = onLoginLifeAccount,
-                        onRemoveAccount = onRemoveLifeAccount, scrollBehavior = scroll)
+                        onRemoveAccount = onRemoveLifeAccount, scrollBehavior = scroll, onOpenHellobikeAccount = onHellobikeAccount)
+                    Screen.HellobikeAccount -> HellobikeAccountContent(modifier, contentPadding,
+                        lifeAccounts.first { it.provider == LifeProvider.Hellobike }, hellobikeCardsState, hellobikeModel, active,
+                        onLogin = { onLoginLifeAccount(LifeProvider.Hellobike) }, onChange = onChangeHellobike, scroll = scroll)
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, contentPadding = contentPadding,
                         themeMode = settings.themeMode, onThemeModeChange = settings::setTheme,

@@ -52,6 +52,8 @@ class PaymentResultUiTest {
         onContinue: (FeeMethod) -> Unit = {},
         onFinish: () -> Unit = {},
         onCheck: (() -> Unit)? = null,
+        cancelled: Boolean = false,
+        onResume: (() -> Unit)? = null,
     ) {
         compose.setContent {
             val density = LocalDensity.current
@@ -61,12 +63,32 @@ class PaymentResultUiTest {
                         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                             .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                             PaymentResultContent(phase, loading, 1000, detail, onFinish, subject,
-                                retryMethods = retryMethods, onContinuePayment = onContinue, onCheck = onCheck)
+                                retryMethods = retryMethods, onContinuePayment = onContinue, onCheck = onCheck,
+                                cancelled = cancelled, onResumePayment = onResume)
                         }
                     }
                 }
             }
         }
+    }
+
+    @Test fun cancelledPaymentCanResumeOriginalOrderButQueryErrorsCannotOfferRepayment() {
+        var resumes = 0
+        var finished = 0
+        var checking by mutableStateOf(false)
+        compose.setContent { AppTheme {
+            Column(Modifier.fillMaxWidth()) {
+                PaymentResultContent(if (checking) RechargePhase.Checking else RechargePhase.Failed, false, 690,
+                    "本次支付操作已取消", { finished++ }, subject = "支付", cancelled = true,
+                    onResumePayment = { resumes++ }, onCheck = {})
+            }
+        } }
+        compose.onNodeWithText("本次支付已取消").assertIsDisplayed()
+        compose.onNodeWithText("继续支付原订单").assertIsEnabled().performClick()
+        compose.onNodeWithText("取消支付").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, resumes); assertEquals(1, finished); checking = true }
+        compose.onNodeWithText("继续支付原订单").assertDoesNotExist()
+        compose.onNodeWithText("查询结果").assertIsDisplayed()
     }
 
     @Test fun scanPaymentSuccessReusesPaidContentAndFinishAction() {

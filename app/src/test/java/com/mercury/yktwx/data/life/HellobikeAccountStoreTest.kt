@@ -4,6 +4,38 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HellobikeAccountStoreTest {
+    @Test fun unidentifiedOpeningAttemptsPersistSeparatelyWithoutInventedOrdersOrPayments() {
+        val records = BikeRecords(); val store = records.store()
+        val pending = fixtureBikeSession.copy(rideGuid = "", phase = HellobikePhase.Opening, uncertain = true)
+        val second = pending.copy(sessionId = "another-local-attempt")
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(pending, second))
+        assertEquals(listOf(pending, second), store.load().sessions)
+        store.clearAccount(); store.saveAccount(fixtureBikeAccount)
+        assertEquals(listOf(pending, second), store.load().sessions)
+    }
+    @Test fun confirmedCloudPagesPersistWithoutImposingAnOrderIdOrPhaseGate() {
+        val store = BikeRecords().store()
+        val riding = fixtureBikeSession.copy(rideGuid = "", phase = HellobikePhase.Riding, unlockConfirmed = true)
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(riding))
+        assertEquals(riding, store.load().sessions.single())
+        val ended = riding.copy(phase = HellobikePhase.Ended, endedAtMillis = 900_000)
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(ended))
+        assertEquals(ended, store.load().sessions.single())
+    }
+    @Test fun cardPurchaseSurvivesExpiryAndAccountSwitchAndLogoutErasesIt() {
+        val store = BikeRecords().store()
+        val purchase = HellobikeCardPurchase("校园月卡", listOf(HellobikePayOrder("pay-no", "6.90", "payment-id", "28")), "6.90", "28", "2801", fixtureBikeRegion)
+        store.saveCardPurchase(fixtureBikeAccount.userGuid, purchase)
+        store.clearAccount()
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        val other = fixtureBikeAccount.copy(userGuid = "other-owner")
+        store.saveAccount(other)
+        try { store.saveCardPurchase(fixtureBikeAccount.userGuid, purchase); fail("Old owner cannot overwrite card purchase") }
+        catch (e: HellobikeException) { assertTrue(e.storageFailure) }
+        store.saveAccount(fixtureBikeAccount)
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        store.removeAccount(); assertTrue(store.load().cardPurchases.isEmpty())
+    }
     @Test fun pendingRecordsSurviveExpiryAndOwnerRoundTripsWithoutExposingOtherOwners() {
         val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession))
         store.clearAccount()

@@ -50,6 +50,320 @@ class HellobikeViewModelTest {
     }
     private fun riding() = HellobikeRideReading.Ride(fixtureBikeSession.rideGuid, fixtureBikeSession.bikeNo, 0, userGuid = fixtureBikeAccount.userGuid)
 
+    @Test fun noOrderNeverEntersTheRidingPageOrChangesTheAccountStatus() = bikeTest {
+        var ridingCalls = 0
+        val api = object : FakeHellobikeService() {
+            override suspend fun ridingInfo(account: HellobikeAccount): HellobikeRideReading {
+                ridingCalls++
+                throw HellobikeException("无骑行中订单", rejected = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(0, ridingCalls)
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNull(model.state.value.error)
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(0, ridingCalls); assertNull(model.accountConnection.value.error)
+        assertNotNull(store.load().account); assertTrue(model.state.value.sessions.isEmpty())
+    }
+
+    @Test fun lateRidingPageFailureCannotOverwriteACompletedExpiryCheck() = bikeTest {
+        val gate = CompletableDeferred<Unit>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun ridingInfo(account: HellobikeAccount): HellobikeRideReading {
+                gate.await()
+                throw HellobikeException("无骑行中订单", rejected = true)
+            }
+        }.apply { reading = riding() }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        gate.complete(Unit); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNotNull(store.load().account)
+    }
+
+    @Test fun accountProbeFailureDoesNotPublishRideOrNetworkErrorsAsAccountFailures() = bikeTest {
+        var failed = true
+        val api = object : FakeHellobikeService() {
+            override suspend fun checkAccount(account: HellobikeAccount) {
+                if (failed) throw IOException("probe unavailable")
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Unverified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNotNull(store.load().account)
+        failed = false
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error)
+    }
+
+    @Test fun explicitAccountExpiryStillClearsCredentialsAndCannotBecomeARecoverySuccess() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun checkAccount(account: HellobikeAccount) {
+                throw HellobikeException("官方登录已过期", loginExpired = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertEquals("官方登录已过期", model.accountConnection.value.error)
+        assertNull(store.load().account); assertFalse(model.state.value.connected)
+    }
+
+    @Test fun officialSkipConfirmReturnSubmitsAfterTheReturnTapWithoutASecondConfirmation() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,
+                region: HellobikeRegion, poll: Boolean, commit: Boolean): HellobikeCloseReading =
+                super.preClose(account, session, position, region, poll, commit).copy(skipConfirmation = !commit)
+        }.apply { reading = riding() }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession)); val model = model(api, store)
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkClose(); runCurrent()
+        assertEquals(1, api.preCloseCalls); assertEquals(1, api.closeCalls)
+        assertNull(model.state.value.closeProof); assertEquals(HellobikePhase.Ended, store.load().sessions.single().phase)
+    }
+    @Test fun temporaryLockUsesTheConfirmedEligibilityWithoutExtraRideOrLocationChecks() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true) }
+        val location = FakeBikeLocation(); val store = BikeRecords().store(sessions = listOf(fixtureBikeSession))
+        val model = model(api, store, location); ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        val reads = api.readCalls
+        model.checkTemporaryLock(); runCurrent()
+        assertEquals(reads, api.readCalls); assertEquals(1, api.temporaryVerifyCalls)
+        val positions = location.calls
+        location.failure = IOException("no new location after confirmation")
+        model.commitTemporaryLock(); runCurrent()
+        assertEquals(listOf(false), api.temporaryCommands); assertEquals(1, api.temporaryVerifyCalls)
+        assertEquals(reads, api.readCalls); assertEquals(positions, location.calls)
+    }
+    @Test fun paymentSubmitsTheDisplayedCloudRequestWithoutAnExtraLocalPriceDecision() = bikeTest {
+        val api = FakeHellobikeService()
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended,
+            settlement = HellobikeSettlement.Pending)))
+        val model = model(api, store); ended(model)
+        api.detailFailure = IOException("a new preflight would fail")
+        model.pay("001"); runCurrent()
+        assertEquals(1, api.payCalls); assertNotNull(model.state.value.paymentLaunch)
+    }
+
+    @Test fun serverUnlockWithoutAnIdChecksOrderStatusBeforeEnteringTheOfficialRidingPage() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                reading = riding().copy(rideGuid = "actual-server-order")
+                return super.prepare(account, bikeNo, region, position).copy(orderGuid = "", skipConfirmation = true, serverUnlockStarted = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model); model.openDevice(fixtureBikeSession.bikeNo); runCurrent()
+        assertEquals("actual-server-order", model.state.value.session?.rideGuid)
+        assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+        assertEquals("actual-server-order", store.load().sessions.single().rideGuid)
+        assertNull(model.state.value.precheck); assertNull(model.state.value.error)
+        assertEquals(0, api.createCalls); assertEquals(1, api.prepareCalls)
+        assertEquals(listOf(""), api.queriedRideGuids)
+    }
+    @Test fun confirmedUnlockDisplaysTheCloudRidingPageWithoutInventingMissingFields() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                reading = HellobikeRideReading.Ride("", "", null)
+                orderReading = HellobikeOrderReading(20, 0)
+                return super.prepare(account, bikeNo, region, position).copy(orderGuid = "", skipConfirmation = true, serverUnlockStarted = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model); model.openDevice(fixtureBikeSession.bikeNo); runCurrent()
+        assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+        assertEquals("", store.load().sessions.single().rideGuid); assertNull(model.state.value.error)
+        assertEquals(listOf(""), api.queriedRideGuids); assertEquals(0, api.createCalls)
+    }
+    @Test fun serverUnlockWaitsForTheOrderWithoutShowingAnErrorOrOfferingAnotherUnlock() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition) =
+                super.prepare(account, bikeNo, region, position).copy(orderGuid = "", skipConfirmation = true, serverUnlockStarted = true)
+        }
+        val store = BikeRecords().store(); val model = model(api, store); ready(model); model.openDevice(fixtureBikeSession.bikeNo); runCurrent()
+        assertTrue(model.state.value.busy); assertEquals(HellobikePhase.Opening, model.state.value.session?.phase)
+        assertEquals("", store.load().sessions.single().rideGuid)
+        assertNull(model.state.value.error); assertNull(model.state.value.precheck)
+        api.reading = riding(); api.orderReading = HellobikeOrderReading(20, 0); advanceTimeBy(1001); runCurrent()
+        assertEquals(HellobikePhase.Riding, model.state.value.session?.phase); assertEquals(0, api.createCalls)
+        assertEquals(fixtureBikeSession.rideGuid, store.load().sessions.single().rideGuid)
+    }
+    @Test fun temporaryLockVerifiesThenConfirmsAndResumesTheSameRide() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true) }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession)); val model = model(api, store)
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkTemporaryLock(); runCurrent()
+        assertEquals(600, model.state.value.temporaryLockProof?.canPauseSeconds)
+        assertTrue(api.temporaryCommands.isEmpty()); assertFalse(store.load().sessions.single().temporarilyLocked)
+        api.beforeTemporary = { assertNotNull(store.load().sessions.single().temporaryAction) }
+        model.commitTemporaryLock(); model.commitTemporaryLock(); runCurrent()
+        assertEquals(listOf(false), api.temporaryCommands)
+        assertEquals(1, api.temporaryVerifyCalls)
+        assertEquals(HellobikeTemporaryAction.Lock, store.load().sessions.single().temporaryAction)
+        advanceTimeBy(3001); runCurrent()
+        assertTrue(store.load().sessions.single().temporarilyLocked); assertNull(store.load().sessions.single().temporaryAction)
+        assertEquals(fixtureBikeSession.startedAtMillis, store.load().sessions.single().startedAtMillis)
+        model.resumeRide(); model.resumeRide(); runCurrent(); advanceTimeBy(3001); runCurrent()
+        assertEquals(listOf(false, true), api.temporaryCommands)
+        assertFalse(store.load().sessions.single().temporarilyLocked); assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+        assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls)
+        assertEquals(fixtureBikeSession.rideGuid, model.state.value.session?.rideGuid)
+    }
+    @Test fun lostTemporaryLockResponseOnlyQueriesAndRestoresTheAcceptedLock() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true); temporaryFailure = IOException("response lost") }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession)); val model = model(api, store)
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkTemporaryLock(); runCurrent(); model.commitTemporaryLock(); runCurrent()
+        assertTrue(store.load().sessions.single().uncertain)
+        assertEquals(HellobikeTemporaryAction.Lock, store.load().sessions.single().temporaryAction)
+        model.checkTemporaryLock(); model.resumeRide(); runCurrent(); assertEquals(listOf(false), api.temporaryCommands)
+        api.reading = riding().copy(status = 1, temporaryLockSupported = true)
+        model.refreshState(); runCurrent()
+        assertTrue(model.state.value.session!!.temporarilyLocked); assertNull(model.state.value.session!!.temporaryAction)
+        assertNull(model.state.value.error); assertEquals(listOf(false), api.temporaryCommands)
+    }
+    @Test fun temporaryLockEligibilityFailureNeverSubmitsALockAndPausedRestoreCanReturn() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true)
+            temporaryVerifyFailure = HellobikeException("禁停区内无法进入临时锁车", rejected = true) }
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession)))
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkTemporaryLock(); runCurrent(); model.commitTemporaryLock(); runCurrent()
+        assertNull(model.state.value.temporaryLockProof); assertTrue(api.temporaryCommands.isEmpty())
+        api.reading = riding().copy(status = 1, temporaryLockSupported = true)
+        model.refreshState(); runCurrent(); assertTrue(model.state.value.session!!.temporarilyLocked)
+        model.checkClose(); runCurrent(); assertNotNull(model.state.value.closeProof)
+        api.reading = riding().copy(temporaryLockSupported = true)
+        model.refreshState(); runCurrent(); assertFalse(model.state.value.session!!.temporarilyLocked)
+        assertEquals(fixtureBikeSession.startedAtMillis, model.state.value.session?.startedAtMillis)
+    }
+    @Test fun deniedTemporaryLockLocationRetriesEligibilityWithoutReturningTheBike() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true) }
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession)), location)
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkTemporaryLock(); runCurrent()
+        val request = model.state.value.locationPermissionRequest!!
+        model.locationPermissionReturned(request, granted = false, permanentlyDenied = true)
+        assertTrue(api.temporaryCommands.isEmpty()); assertEquals(0, api.preCloseCalls)
+        model.retryDeviceCheck(); runCurrent()
+        location.failure = null
+        model.locationPermissionReturned(model.state.value.locationPermissionRequest!!, granted = true)
+        runCurrent()
+        assertNotNull(model.state.value.temporaryLockProof)
+        assertTrue(api.temporaryCommands.isEmpty()); assertEquals(0, api.preCloseCalls)
+    }
+    @Test fun temporaryLockTimeoutPreservesOneOperationAndQueriesStayInsideTheOfficialWindow() = bikeTest {
+        val queryTimes = mutableListOf<Long>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun temporaryLockState(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,
+                region: HellobikeRegion): Int {
+                queryTimes += dispatcher.scheduler.currentTime
+                throw IOException("temporary query interrupted")
+            }
+        }.apply { reading = riding().copy(temporaryLockSupported = true); holdTemporary = true }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession)); val model = model(api, store)
+        ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkTemporaryLock(); runCurrent(); model.commitTemporaryLock(); runCurrent()
+        advanceTimeBy(35_001); runCurrent()
+        assertTrue(queryTimes.isNotEmpty()); assertTrue(queryTimes.all { it < 35_000 })
+        assertTrue(store.load().sessions.single().uncertain)
+        assertEquals(HellobikeTemporaryAction.Lock, store.load().sessions.single().temporaryAction)
+        assertEquals(listOf(false), api.temporaryCommands)
+        assertFalse(model.state.value.busy)
+    }
+    @Test fun aMissingIdDoesNotUseTheRidingPageAsAFallbackBeforeUnlockSuccess() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                reading = riding().copy(bikeNo = "another-bike")
+                orderReading = HellobikeOrderReading(null, null)
+                return super.prepare(account, bikeNo, region, position).copy(orderGuid = "", skipConfirmation = true, serverUnlockStarted = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model); model.openDevice(fixtureBikeSession.bikeNo); runCurrent()
+        assertNull(model.state.value.error); assertEquals(listOf(""), api.queriedRideGuids)
+        advanceTimeBy(35_001); runCurrent()
+        assertEquals("", store.load().sessions.single().rideGuid)
+        assertTrue(store.load().sessions.single().uncertain)
+        assertTrue(api.queriedRideGuids.all(String::isBlank)); assertEquals(0, api.createCalls)
+    }
+
+    @Test fun endedOriginalOrderFinishesDespiteStaleRideDiscoveryAndDelayedBilling() = bikeTest {
+        for (billFailure in listOf(false, true)) {
+            val api = FakeHellobikeService().apply { reading = riding(); holdClose = true }
+            val store = BikeRecords().store(sessions = listOf(fixtureBikeSession))
+            val model = model(api, store); ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+            model.checkClose(); runCurrent(); model.commitClose(); runCurrent()
+            api.endedOrder = true
+            if (billFailure) api.detailFailure = IOException("费用暂未生成")
+            advanceTimeBy(1801); runCurrent()
+            assertEquals(HellobikePhase.Ended, store.load().sessions.single().phase)
+            assertFalse(store.load().sessions.single().uncertain)
+            assertFalse(model.state.value.officialRequired)
+            if (billFailure) assertEquals("费用待确认", store.load().sessions.single().title) else assertNull(model.state.value.error)
+            assertEquals(2, api.closeCalls)
+            model.environment(false); model.environment(true); runCurrent()
+            assertEquals("Resume cannot resurrect a returned ride", HellobikePhase.Ended, store.load().sessions.single().phase)
+            model.environment(false); models.clear(); runCurrent()
+        }
+    }
+    @Test fun explicitP10SuccessFinishesBeforeRideDiscoveryUpdates() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,
+                region: HellobikeRegion, poll: Boolean, commit: Boolean) =
+                super.preClose(account, session, position, region, poll, commit).copy(completed = commit)
+        }.apply { reading = riding(); holdClose = true }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession))
+        val model = model(api, store); ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        model.checkClose(); runCurrent(); model.commitClose(); runCurrent()
+        assertEquals(HellobikePhase.Ended, store.load().sessions.single().phase)
+        assertNull(model.state.value.error); assertEquals(1, api.closeCalls)
+    }
+    @Test fun noActiveRideAloneNeverSettlesAnUnconfirmedOriginalOrder() = bikeTest {
+        val api = FakeHellobikeService().apply { reading = HellobikeRideReading.NoRide; endedOrder = false }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Closing)))
+        val model = model(api, store); ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        assertEquals(HellobikePhase.Closing, store.load().sessions.single().phase)
+        assertEquals(0, api.closeCalls); assertFalse(model.state.value.officialRequired)
+    }
+
+    @Test fun campusLogoutWaitsForOldRequestAndErasesItsRecordWithoutOpeningLoginDuringPurchase() = bikeTest {
+        val gate = CompletableDeferred<Unit>()
+        val purchase = HellobikeCardPurchase("校园卡", listOf(HellobikePayOrder("pay-no", "6.90", "payment-id", "28")), "6.90", "28", "2801", fixtureBikeRegion)
+        val product = HellobikeCampusProduct("product", "校园卡", "6.90", "官方说明", com.mercury.yktwx.data.jsonObjectOf("businessType" to 1))
+        val api = object : FakeHellobikeService() {
+            override suspend fun studentAudit(account: HellobikeAccount) = HellobikeStudentAudit(2, 1)
+            override suspend fun userCards(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?, businessType: Int, page: Int) = HellobikeUserCardPage(emptyList(), false)
+            override suspend fun campusProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?) = HellobikeCampusProducts("校园卡", listOf(product))
+            override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCardPurchase = withContext(NonCancellable) { gate.await(); purchase }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        model.cards.choose("product"); runCurrent()
+        assertTrue(model.cards.state.value.busy); assertFalse(model.manageLogin(true))
+        assertTrue(model.removeAccount()); runCurrent()
+        gate.complete(Unit); runCurrent()
+        assertNull(store.load().account); assertTrue(store.load().cardPurchases.isEmpty())
+        assertNull(model.cards.state.value.purchase); assertFalse(model.cards.state.value.busy)
+        assertEquals(0, api.payCalls)
+    }
+    @Test fun expiredCampusAuditClearsAccountButPreservesOriginalPurchaseForRelogin() = bikeTest {
+        val purchase = HellobikeCardPurchase("校园卡", listOf(HellobikePayOrder("pay-no", "6.90", "payment-id", "28")), "6.90", "28", "2801", fixtureBikeRegion)
+        val store = BikeRecords().store().also { it.saveCardPurchase(fixtureBikeAccount.userGuid, purchase) }
+        val api = object : FakeHellobikeService() {
+            override suspend fun studentAudit(account: HellobikeAccount): HellobikeStudentAudit = throw HellobikeException("官方登录已过期", loginExpired = true)
+        }
+        val model = model(api, store); runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        assertNull(store.load().account); assertFalse(model.state.value.connected)
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertNull(model.cards.state.value.purchase)
+    }
+
     @Test fun uncertainAndFailedRideRecordsCanBeDeletedWithoutSendingCommands() = bikeTest {
         val api = FakeHellobikeService().apply { onRead = { throw IOException("status unavailable") } }
         for (session in listOf(fixtureBikeSession, fixtureBikeSession.copy(phase = HellobikePhase.Closing, uncertain = true),
@@ -484,7 +798,18 @@ class HellobikeViewModelTest {
         assertEquals("0987654321", model.state.value.precheck?.bikeNo)
         assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls)
     }
-
+    @Test fun ordinaryCardPermissionRetryCannotReplaceAnOutstandingRequest() = bikeTest {
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        val model = model(FakeHellobikeService(), BikeRecords().store(), location)
+        runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        model.cards.expandOrdinary(); runCurrent(); model.cards.requestOrdinaryLocation()
+        val id = model.state.value.locationPermissionRequest!!
+        assertTrue(model.claimLocationPermission(id))
+        model.cards.requestOrdinaryLocation()
+        assertEquals(id, model.state.value.locationPermissionRequest)
+        model.locationPermissionReturned(id, false); runCurrent()
+        assertNull(model.state.value.locationPermissionRequest)
+    }
     @Test fun rideEndingElsewhereClearsAnObsoleteLocationRequirement() = bikeTest {
         for (deniedBeforeReturn in listOf(false, true)) {
             val api = FakeHellobikeService().apply { reading = riding() }
@@ -506,8 +831,38 @@ class HellobikeViewModelTest {
             model.environment(false)
         }
     }
-
-
+    @Test fun accountCardLocationAuthorizationRefreshesCardsWithoutOpeningTheRidePage() = bikeTest {
+        val requests = mutableListOf<HellobikePosition?>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun ordinaryProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): List<HellobikeCampusProduct> {
+                requests += position
+                return emptyList()
+            }
+        }
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        val model = model(api, BikeRecords().store(), location)
+        runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        model.cards.expandOrdinary(); runCurrent(); assertEquals(listOf<HellobikePosition?>(null), requests)
+        model.cards.requestOrdinaryLocation(); runCurrent()
+        val id = model.state.value.locationPermissionRequest!!
+        model.pageVisible(false)
+        assertTrue(model.claimLocationPermission(id)); assertFalse(model.claimLocationPermission(id))
+        location.failure = null; model.locationPermissionReturned(id, true); runCurrent()
+        assertEquals(listOf(null, fixtureBikePosition), requests)
+        assertNull(model.cards.state.value.ordinaryLocationError)
+        assertNull(model.state.value.locationPermissionRequest); assertEquals(0, api.createCalls)
+    }
+    @Test fun denyingAccountCardLocationAuthorizationKeepsTheCardNotice() = bikeTest {
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        val model = model(FakeHellobikeService(), BikeRecords().store(), location)
+        runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        model.cards.expandOrdinary(); runCurrent(); model.cards.requestOrdinaryLocation()
+        val id = model.state.value.locationPermissionRequest!!
+        model.claimLocationPermission(id); model.locationPermissionReturned(id, false); runCurrent()
+        assertTrue(model.cards.state.value.ordinaryLocationPermissionRequired)
+        assertNotNull(model.cards.state.value.ordinaryLocationError)
+        assertNull(model.state.value.error); assertNull(model.state.value.locationPermissionRequest)
+    }
     @Test fun deniedScanLocationRetriesAuthorizationAndSettingsReturnResumesTheSameBike() = bikeTest {
         val api = FakeHellobikeService()
         val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
@@ -535,7 +890,20 @@ class HellobikeViewModelTest {
         assertFalse(model.state.value.locationPermissionRequired); assertFalse(model.state.value.locationPermissionBlocked)
         assertNull(model.state.value.error); assertEquals(0, api.createCalls)
     }
-
+    @Test fun cardSettingsReturnWithoutGrantKeepsPermissionRecoveryAvailable() = bikeTest {
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        val model = model(FakeHellobikeService(), BikeRecords().store(), location)
+        runCurrent(); model.environment(true); model.cards.pageVisible(true); runCurrent()
+        model.cards.expandOrdinary(); runCurrent(); model.cards.requestOrdinaryLocation()
+        val id = model.state.value.locationPermissionRequest!!
+        model.claimLocationPermission(id); model.locationSettingsOpening(id)
+        model.environment(false); model.environment(true); runCurrent()
+        model.locationPermissionReturned(id, false, permanentlyDenied = true); runCurrent()
+        assertTrue(model.state.value.locationPermissionBlocked)
+        assertTrue(model.cards.state.value.ordinaryLocationPermissionRequired)
+        assertNotNull(model.cards.state.value.ordinaryLocationError)
+        model.cards.requestOrdinaryLocation(); assertNotNull(model.state.value.locationPermissionRequest)
+    }
     @Test fun smsSliderKeepsTheChallengeAndLoginContinuesScanningWithoutOpening() = bikeTest {
         val api = FakeHellobikeService().apply { sms = HellobikeSmsResult(true, "challenge") }
         val location = FakeBikeLocation()
