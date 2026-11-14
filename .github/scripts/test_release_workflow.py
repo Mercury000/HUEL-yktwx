@@ -1,9 +1,11 @@
 """Exercise the actual publication step with fake GitHub calls and local APK bytes."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 
@@ -17,6 +19,32 @@ else:
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
+    def test_signing_runs_after_skipped_release_preparation_only_for_successful_release_builds(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        release = source.split("\n  release:\n", 1)[1].split("\n  publish-updates:\n", 1)[0]
+        condition = next(line.strip()[4:] for line in release.splitlines() if line.strip().startswith("if: "))
+        # Actions adds success() unless the condition explicitly checks job status.
+        explicit_status = re.search(r"\b(always|success|failure|cancelled)\s*\(", condition)
+        expression = condition.replace("&&", " and ").replace("||", " or ")
+        cases = [("workflow_dispatch", "release", "success", "skipped", True),
+                 ("workflow_dispatch", "debug", "success", "skipped", False),
+                 ("pull_request", "release", "success", "skipped", False),
+                 ("push", "release", "success", "success", True),
+                 ("push", "debug", "success", "success", False),
+                 ("workflow_dispatch", "release", "failure", "skipped", False),
+                 ("workflow_dispatch", "release", "cancelled", "skipped", False),
+                 ("workflow_dispatch", "release", "skipped", "skipped", False)]
+        for event, build_type, build_result, preparation_result, expected in cases:
+            with self.subTest(event=event, build_type=build_type, build_result=build_result,
+                              preparation_result=preparation_result):
+                ancestors_succeeded = build_result == preparation_result == "success"
+                context = dict(always=lambda: True,
+                               needs=SimpleNamespace(build=SimpleNamespace(
+                                   result=build_result, outputs=SimpleNamespace(build_type=build_type))),
+                               github=SimpleNamespace(event_name=event))
+                runs = bool(explicit_status or ancestors_succeeded) and eval(expression, {"__builtins__": {}}, context)
+                self.assertEqual(expected, runs)
+
     def preparation_step(self, name):
         source = WORKFLOW.read_text(encoding="utf-8").split("\n  build:\n", 1)[0]
         step = source.split(f"      - name: {name}\n", 1)[1]
