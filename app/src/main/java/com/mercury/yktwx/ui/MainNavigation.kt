@@ -28,16 +28,15 @@ private val mainNavigationIcons = listOf(MiuixIcons.Scan, MiuixIcons.GridView, A
 private val mainNavigationLabels = listOf("付款", "大厅", "账单", "我的")
 
 @Composable
-internal fun shouldShowMainNavigationRail(settings: ThemeSettings): Boolean {
+internal fun shouldShowMainNavigationRail(): Boolean {
     val windowSize = LocalWindowInfo.current.containerSize
     val (width, height) = with(LocalDensity.current) {
         windowSize.width.toDp() to windowSize.height.toDp()
     }
-    return !settings.floatingBottomBar.value &&
-        (width >= 840.dp || (width >= 600.dp && height / width < 1.2f))
+    return width >= 840.dp || (width >= 600.dp && height / width < 1.2f)
 }
 
-/** SonyPods' window rules; floating bars keep their centered, content-sized layout. */
+/** Keep page content at one composition location as the demo's adaptive chrome changes. */
 @Composable
 internal fun MainNavigationScaffold(
     settings: ThemeSettings,
@@ -47,28 +46,25 @@ internal fun MainNavigationScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    if (shouldShowMainNavigationRail(settings)) {
-        if (railOutside) {
-            Scaffold(content = content)
-        } else {
-            Row(Modifier.fillMaxSize()) {
-                MainNavigationRail(settings, selected, width >= 1200.dp, onSelected)
-                Scaffold(Modifier.weight(1f).fillMaxHeight(), content = content)
-            }
+    val useRail = shouldShowMainNavigationRail()
+    Row(Modifier.fillMaxSize()) {
+        if (useRail && !railOutside) {
+            MainNavigationRail(selected, width >= 1200.dp, onSelected)
         }
-    } else {
-        Scaffold(bottomBar = { BottomNavigation(settings, selected, onSelected) }, content = content)
+        Scaffold(
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            bottomBar = { if (!useRail) BottomNavigation(settings, selected, onSelected) },
+            content = content,
+        )
     }
 }
 
 @Composable
-internal fun MainNavigationRail(settings: ThemeSettings, selected: Int, expanded: Boolean, onSelected: (Int) -> Unit) {
-    // Keep the user's choice when rotation temporarily replaces the rail with a bottom bar.
-    val initiallyExpanded = remember { settings.getNavigationRailExpanded(expanded) }
+internal fun MainNavigationRail(selected: Int, expanded: Boolean, onSelected: (Int) -> Unit) {
     val state = rememberNavigationRailState(
-        initialValue = if (initiallyExpanded) NavigationRailValue.Expanded else NavigationRailValue.Collapsed,
+        initialValue = if (expanded) NavigationRailValue.Expanded else NavigationRailValue.Collapsed,
     )
-    LaunchedEffect(state.currentValue) { settings.setNavigationRailExpanded(state.isExpanded) }
+    LaunchedEffect(expanded) { if (expanded) state.expand() else state.collapse() }
     NavigationRail(state = state, modifier = Modifier.fillMaxHeight().testTag("main-navigation-rail")) {
         mainNavigationIcons.forEachIndexed { index, icon ->
             NavigationRailItem(selected = selected == index, onClick = { onSelected(index) },

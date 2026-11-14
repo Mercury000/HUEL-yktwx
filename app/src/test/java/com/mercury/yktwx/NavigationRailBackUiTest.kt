@@ -5,9 +5,17 @@ import android.content.Context
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.WindowInfo
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,6 +35,17 @@ import org.robolectric.annotation.GraphicsMode
 class NavigationRailBackUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
+    private fun awaitMainNavigation() {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodesWithTag("main-navigation-rail").fetchSemanticsNodes().size == 1
+        }
+    }
+
+    private fun openSettings() {
+        compose.onNodeWithTag("my-page-list").performScrollToNode(hasText("应用设置"))
+        compose.onNodeWithText("应用设置").performClick()
+    }
+
     @Test fun collapsedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
 
     @Test fun aospCardReturnKeepsTheRailFixedThroughCancelAndCommit() = verifyPredictiveReturn(style = 1)
@@ -34,6 +53,83 @@ class NavigationRailBackUiTest {
     @Test
     @Config(qualifiers = "zh-rCN-w1280dp-h800dp-xhdpi")
     fun expandedRailStaysContinuousThroughPredictiveCancelAndCommit() = verifyPredictiveReturn()
+
+    @Test fun railSelectionReturnsFromNestedPagesBeforeSwitchingTabs() = verifyRailSelection()
+
+    @Test fun aospRailSelectionReturnsFromNestedPagesBeforeSwitchingTabs() = verifyRailSelection(style = 1)
+
+    private fun verifyRailSelection(style: Int = 0) {
+        compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        val settings = themeSettingsFixture(compose.activity).apply { setNavTransitionStyle(style) }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
+        }
+        awaitMainNavigation()
+        val rail = compose.onNodeWithTag("main-navigation-rail")
+        val originalId = rail.fetchSemanticsNode().id
+        for (label in listOf("我的", "付款")) {
+            compose.onNode(hasText("我的") and isSelectable()).performClick()
+            openSettings()
+            compose.onNodeWithText("主题").performClick()
+            compose.onNodeWithText(compose.activity.getString(R.string.swipe_back)).assertExists()
+            compose.onNode(hasText(label) and isSelectable()).performClick()
+            compose.onNode(hasText(label) and isSelectable()).assertIsSelected()
+            compose.onNodeWithText(compose.activity.getString(R.string.swipe_back)).assertDoesNotExist()
+            compose.onNodeWithTag("settings-page-list").assertDoesNotExist()
+            assertEquals("Selecting a tab must retain the rail", originalId, rail.fetchSemanticsNode().id)
+            if (label == "我的") {
+                compose.onNodeWithText("应用设置").assertIsDisplayed()
+            } else {
+                compose.onNodeWithContentDescription("付款条形码").assertIsDisplayed()
+                compose.runOnIdle {
+                    assertFalse("Rail selection must remove the entire secondary stack",
+                        compose.activity.onBackPressedDispatcher.hasEnabledCallbacks())
+                }
+            }
+        }
+    }
+
+    @Test fun resizingWithASecondaryPageKeepsItsScrollAndComposition() {
+        compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        val settings = themeSettingsFixture(compose.activity)
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
+        var windowSize by mutableStateOf<IntSize?>(null)
+        var density = 1f
+        compose.setContent {
+            val actualWindow = LocalWindowInfo.current
+            density = LocalDensity.current.density
+            val window = remember(actualWindow) {
+                object : WindowInfo by actualWindow {
+                    override val containerSize get() = windowSize ?: actualWindow.containerSize
+                }
+            }
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalWindowInfo provides window) {
+                YktApp(settings, payments, bills)
+            }
+        }
+        awaitMainNavigation()
+        compose.onNode(hasText("我的") and isSelectable()).performClick()
+        openSettings()
+        val page = compose.onNodeWithTag("settings-page-list")
+        page.performScrollToIndex(2)
+        val originalId = page.fetchSemanticsNode().id
+        val originalScroll = page.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+        assertTrue("The fixture must have scrolled before resizing", originalScroll > 0f)
+        for (width in listOf(500, 1280, 900, 700)) {
+            compose.runOnIdle { windowSize = IntSize((width * density).toInt(), (500 * density).toInt()) }
+            if (width >= 600) compose.onNodeWithTag("main-navigation-rail").assertIsDisplayed()
+            else compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
+            assertEquals("Resizing must retain the secondary page", originalId, page.fetchSemanticsNode().id)
+            assertEquals("Resizing must retain the scroll position", originalScroll,
+                page.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value(), 1f)
+        }
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNodeWithText("应用设置").assertIsDisplayed()
+    }
 
     private fun verifyPredictiveReturn(style: Int = 0) {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
@@ -43,6 +139,7 @@ class NavigationRailBackUiTest {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }
+        awaitMainNavigation()
         compose.onNode(hasText("我的") and isSelectable()).performClick()
         val rail = compose.onNodeWithTag("main-navigation-rail")
         val originalId = rail.fetchSemanticsNode().id
