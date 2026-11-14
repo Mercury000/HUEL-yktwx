@@ -81,6 +81,11 @@ class Hui798Api(
         if (token.isBlank()) throw Hui798Exception("登录未返回账号信息，请重试")
         return Hui798Account(phone, token, login?.identifier("uid"))
     }
+    override suspend fun accountStatus(token: String): String {
+        val response = request("/acc/stat", token) as JsonObject
+        return response.objectOrNull("data")?.objectOrNull("al")?.identifier("uid")
+            ?: throw Hui798Exception("账号状态未返回账号信息，请下拉刷新后重试")
+    }
     override suspend fun device(id: String, token: String): Hui798Device {
         val data = request("/ui/app/dev/home/1", token, query = mapOf("did" to id, "apply" to "6")) as JsonObject
         val name = data.objectOrNull("data")?.objectOrNull("device")?.stringOrDefault("name").orEmpty()
@@ -93,7 +98,7 @@ class Hui798Api(
     override suspend fun overview(token: String): Hui798Overview {
         val data = (request("/ui/app/master", token, query = mapOf("ad" to "true")) as JsonObject).objectOrNull("data")
         val userId = data?.objectOrNull("account")?.identifier("id")
-            ?: throw Hui798Exception("暂时无法核对慧生活798账号，请重试")
+            ?: throw Hui798Exception("暂时无法读取用水设备，请刷新")
         val devices = data.arrayOrNull("favos") ?: jsonArrayOf()
         return Hui798Overview(userId, (0 until devices.size).mapNotNull { index ->
             val device = devices.objectOrNull(index) ?: return@mapNotNull null

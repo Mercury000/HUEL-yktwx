@@ -27,6 +27,36 @@ class Hui798ApiTest {
         override fun requestBodyStream() = sent
 
     }
+    @Test fun accountStatusUsesTheAuthenticatedEndpointAndCapturedIdentityField() = runBlocking {
+        val calls = mutableListOf<Response>()
+        for (uid in listOf("\"fixture-user\"", "123456")) {
+            val api = fixtureHui798Api("https://fixture.test/api/v1", "", { url ->
+                Response(url, """{"code":0,"data":{"al":{"uid":$uid,"token":"ignored-token"}}}""").also(calls::add)
+            })
+            assertEquals(uid.trim('"'), api.accountStatus("fixture-token"))
+        }
+        calls.forEach {
+            assertEquals("/api/v1/acc/stat", it.url.path)
+            assertEquals("GET", it.request.method)
+            assertEquals("fixture-token", it.request.header("Authorization"))
+        }
+    }
+    @Test fun accountStatusReportsExpiryAndRejectsMissingIdentity() = runBlocking {
+        for (code in listOf(-99, -21)) {
+            val api = fixtureHui798Api("https://fixture.test/api/v1", "", { url ->
+                Response(url, """{"code":$code,"msg":"登录状态已过期"}""")
+            })
+            val failure = runCatching { api.accountStatus("fixture-token") }.exceptionOrNull() as Hui798Exception
+            assertTrue(failure.loginExpired)
+            assertEquals("慧生活798登录已失效，请重新登录", failure.message)
+        }
+        for (data in listOf("{}", """{"al":{"uid":null}}""", """{"al":{"uid":""}}""", """{"account":{"id":"unrelated"}}""")) {
+            val api = fixtureHui798Api("https://fixture.test/api/v1", "", { url -> Response(url, """{"code":0,"data":$data}""") })
+            val failure = runCatching { api.accountStatus("fixture-token") }.exceptionOrNull() as Hui798Exception
+            assertFalse(failure.loginExpired)
+            assertEquals("账号状态未返回账号信息，请下拉刷新后重试", failure.message)
+        }
+    }
     @Test fun appLoginAndSmsUseIndependentJsonAndSignedLoginFields() = runBlocking {
         val calls = mutableListOf<Response>()
         val api = fixtureHui798Api("https://fixture.test/api/v1", "fixture-salt", { url ->
