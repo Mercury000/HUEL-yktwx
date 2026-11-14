@@ -44,6 +44,12 @@ internal fun AppUpdateEffect(model: AppUpdateViewModel, reminders: Boolean, allo
                     UpdateFeedback.NoRelease -> R.string.update_no_release
                     UpdateFeedback.Incompatible -> R.string.update_incompatible
                     UpdateFeedback.Network -> R.string.update_network_failed
+                    UpdateFeedback.Service -> R.string.update_service_unavailable
+                    UpdateFeedback.StableUnavailable -> R.string.update_stable_unavailable
+                    UpdateFeedback.BetaUnavailable -> R.string.update_beta_unavailable
+                    UpdateFeedback.StaleMetadata -> R.string.update_metadata_stale
+                    UpdateFeedback.ConflictingMetadata -> R.string.update_metadata_conflict
+                    UpdateFeedback.InvalidMetadata -> R.string.update_metadata_invalid
                     UpdateFeedback.Failed -> R.string.update_failed
                     UpdateFeedback.Preview -> R.string.update_preview
                 }

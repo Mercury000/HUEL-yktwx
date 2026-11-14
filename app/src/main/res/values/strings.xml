@@ -40,6 +40,12 @@
     <string name="update_incompatible">No update is available for this device</string>
     <string name="update_failed">Could not check for updates. Please try again later.</string>
     <string name="update_network_failed">Network connection failed. Please try again later.</string>
+    <string name="update_service_unavailable">The update service is temporarily unavailable. Please try again later.</string>
+    <string name="update_stable_unavailable">Beta check completed; stable updates could not be checked.</string>
+    <string name="update_beta_unavailable">Stable check completed; beta updates could not be checked.</string>
+    <string name="update_metadata_stale">Update information is out of date. Please try again later.</string>
+    <string name="update_metadata_conflict">Update information is inconsistent. Please try again later.</string>
+    <string name="update_metadata_invalid">Update information could not be verified. Please try again later.</string>
     <string name="update_preview">Updates are not checked in UI preview</string>
     <string name="update_found">New Version %1$s Available</string>
     <string name="update_later">Later</string>

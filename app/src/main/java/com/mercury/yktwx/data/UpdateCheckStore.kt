@@ -20,10 +20,14 @@ internal class UpdateCheckStore(
     suspend fun checked(now: Long, successful: Boolean, channel: String = this.channel,
         result: UpdateCheckResult? = null) {
         val key = key(channel)
+        val expectedChannels = if (channel == "beta") setOf("stable", "beta") else setOf("stable")
+        val fullyChecked = result?.reason != UpdateCheckReason.PartiallyChecked &&
+            (result?.resolvedChannels == null || result.resolvedChannels.containsAll(expectedChannels))
         repository.update { data ->
             val old = data.reminders[key] ?: UpdateReminder()
             val policies = if (successful && result != null) {
-                val checkedChannels = if (channel == "beta") setOf("stable", "beta") else setOf("stable")
+                val checkedChannels = result.resolvedChannels ?:
+                    if (channel == "beta") setOf("stable", "beta") else setOf("stable")
                 val available = result.availableChannels ?: setOfNotNull(result.release?.channel)
                 data.policies.mapValues { (policyKey, policy) ->
                     val policyChannel = policyKey.substringAfterLast(':')
@@ -33,7 +37,8 @@ internal class UpdateCheckStore(
                 }
             } else data.policies
             data.copy(policies = policies,
-                reminders = data.reminders + (key to old.copy(checkedAt = now, checkInterval = if (successful) DAY else HOUR)))
+                reminders = data.reminders + (key to old.copy(checkedAt = now,
+                    checkInterval = if (successful && fullyChecked) DAY else HOUR)))
         }
     }
     fun canNotify(version: Int, now: Long): Boolean = repository.snapshot().skippedVersions[packageName] != version &&
@@ -53,10 +58,12 @@ internal class UpdateCheckStore(
         repository.update { data ->
             val previous = data.policies[key]
             if (previous != null) {
-                require(release.policyRevision >= previous.revision) { "拒绝过期更新策略" }
-                if (release.policyRevision == previous.revision) require(previous.digest == digest) { "更新策略存在冲突" }
-                require(release.maxForcedVersionCode >= previous.forcedBoundary) { "强制更新边界不能回退" }
-                require(release.versionCode >= previous.versionCode) { "更新版本不能回退" }
+                if (release.policyRevision < previous.revision || release.versionCode < previous.versionCode)
+                    throw UpdateMetadataRejected(UpdateMetadataRejection.Stale, "拒绝过期更新策略")
+                if (release.policyRevision == previous.revision && previous.digest != digest)
+                    throw UpdateMetadataRejected(UpdateMetadataRejection.Conflict, "更新策略存在冲突")
+                if (release.maxForcedVersionCode < previous.forcedBoundary)
+                    throw UpdateMetadataRejected(UpdateMetadataRejection.Conflict, "强制更新边界不能回退")
             }
             data.copy(policies = data.policies + (key to AcceptedUpdatePolicy(release.policyRevision, digest,
                 release.maxForcedVersionCode, release.versionCode, release.signedManifest,
