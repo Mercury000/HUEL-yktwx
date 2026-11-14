@@ -76,9 +76,10 @@ class LifeDeviceException(message: String, val loginExpired: Boolean = false,
 
 /** Accept literal captured SNs or explicit SN query fields; never guess numbers in arbitrary QR text. */
 object DeviceSerial {
+    fun manual(raw: String): String? = raw.trim().takeIf { it.matches(Regex("[0-9]{15}")) }
     fun parse(raw: String): String? {
         val value = raw.trim()
-        if (value.matches(Regex("[0-9]{15}"))) return value
+        manual(value)?.let { return it }
         return runCatching {
             val uri = URI(value)
             if (uri.scheme != "https" || uri.host != "h5.qiekj.com" || uri.path != "/skip") return null
