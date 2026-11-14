@@ -92,7 +92,7 @@ internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, on
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis,
     onScanned: (String) -> Unit = model::scanned, previewStartAllowed: Boolean = true,
-    onManualScanned: (String) -> Unit = onScanned) {
+    onManualScanned: (DeviceScanRoute) -> Unit = { onScanned(it.code) }) {
     var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
     var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
@@ -201,7 +201,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
         onValue = { serial = it },
-        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(serial) })
+        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
     LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
     LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
@@ -445,18 +445,33 @@ internal fun LifeDeviceActionFooter(tag: String, content: @Composable ColumnScop
 
 @Composable
 private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, serial: String,
-    onValue: (String) -> Unit, onDismiss: () -> Unit, onIdentify: () -> Unit) {
+    onValue: (String) -> Unit, onDismiss: () -> Unit, onIdentify: (DeviceScanRoute) -> Unit) {
     if (!rememberOverlayMounted(show)) return
     OverlayBottomSheet(show = show, startAction = { SheetTitle("输入设备编号") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val value = rememberWhileShown(show, serial)
+        val candidates = remember(value) { UnifiedDeviceCode.manualCandidates(value) }
+        var selectedProvider by rememberSaveable(show, serial) { mutableStateOf<LifeProvider?>(null) }
+        val route = UnifiedDeviceCode.identifyManual(serial, selectedProvider)
+        val identify = { if (show && !state.loadingDevice) route?.let(onIdentify); Unit }
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("填写设备显示屏或贴纸上的编号；哈啰单车可输入10位车号。识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            val identify = { if (show && UnifiedDeviceCode.identifyManual(serial) != null) onIdentify() }
-            DeviceCodeTextField(value, onValue, label = "设备码 / 二维码内容", enabled = show && !state.loadingDevice,
+            Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+            DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
                 modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
+            if (candidates.size > 1) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("选择设备上的平台", fontSize = 12.sp, color = DashboardPalette.muted)
+                    candidates.forEach { candidate ->
+                        PaymentSelectionCard(selected = selectedProvider == candidate.provider,
+                            onClick = { selectedProvider = candidate.provider }, enabled = show && !state.loadingDevice,
+                            modifier = Modifier.testTag("life-manual-provider-${candidate.provider.tag}")) {
+                            Text(candidate.provider.displayName, fontSize = 13.sp, color = it)
+                        }
+                    }
+                }
+            }
             InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
-                Button(onClick = onIdentify, enabled = show && !state.loadingDevice && UnifiedDeviceCode.identifyManual(serial) != null,
+                Button(onClick = identify, enabled = show && !state.loadingDevice && route != null,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
                     Text(if (state.loadingDevice) "正在识别…" else "识别设备")
                 }
@@ -472,7 +487,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
         val display = rememberWhileShown(show, state)
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。哈啰可手动输入10位车号；798 请填写完整二维码链接。已有服务进度可从付款页的状态卡查看。"
+            Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。也可手动输入设备编号；出现平台选项时，选择设备上的平台。已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"
                 else "扫码后核对机器、程序和价格，按设备说明放入衣物并关好门。支付后会读取设备启动结果；离开页面不会停止洗衣，完成后可从付款页返回进度。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)

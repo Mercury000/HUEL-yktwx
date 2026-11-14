@@ -11,6 +11,11 @@ import kotlinx.serialization.SerialName
 /** Device codes use explicit fields; a UUID is the observed laundry NQT, not an IMEI. */
 object LifeDeviceCode {
     private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    fun manual(raw: String): Pair<LifeFeature, String>? {
+        val value = raw.trim()
+        DeviceSerial.manual(value)?.let { return LifeFeature.Water to it }
+        return value.takeIf(uuid::matches)?.let { LifeFeature.Laundry to it }
+    }
     fun identify(raw: String): Pair<LifeFeature, String>? = LifeFeature.entries.mapNotNull { feature ->
         parse(raw, feature)?.let { feature to it }
     }.singleOrNull()
