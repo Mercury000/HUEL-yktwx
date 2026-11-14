@@ -78,6 +78,7 @@ interface Hui798Service {
     suspend fun captcha(key: String): ByteArray
     suspend fun sendCode(phone: String, imageCode: String, key: String)
     suspend fun login(phone: String, code: String): Hui798Account
+    suspend fun accountStatus(token: String): String
     suspend fun device(id: String, token: String): Hui798Device
     suspend fun overview(token: String): Hui798Overview
     suspend fun deviceUse(id: String, token: String): Hui798DeviceUse

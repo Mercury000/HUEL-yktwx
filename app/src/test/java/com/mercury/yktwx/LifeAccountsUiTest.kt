@@ -102,7 +102,13 @@ class LifeAccountsUiTest {
         val app = compose.activity.application
         val pg = lifeDevicesViewModelFixture(app, fixtureLifeDeviceApi("test-secret", { reply(it, 126) }), pgStore, Dispatchers.Unconfined)
             .also { models.put("pg", it) }
-        val hui = hui798ViewModelFixture(app, fixtureHui798Api("https://fixture.invalid/api", "test-salt", { reply(it, -99) }), huiStore, Dispatchers.Unconfined)
+        val huiReads = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val hui = hui798ViewModelFixture(app, fixtureHui798Api("https://fixture.invalid/api", "test-salt", { url ->
+            huiReads += url.path
+            if (url.path.endsWith("/master")) object : HttpFixture(url) {
+                override fun bodyStream() = ByteArrayInputStream("""{"code":0,"data":{"ads":[]}}""".toByteArray())
+            } else reply(url, -99)
+        }), huiStore, Dispatchers.Unconfined)
             .also { models.put("hui", it) }
         val bike = HellobikeViewModel(HellobikeApi(fixtureHttp { reply(it, 103) }), bikeStore, FakeBikeLocation(),
             io = Dispatchers.Unconfined, analytics = AnalyticsFixtures.from(app)).also { models.put("bike", it) }
@@ -147,6 +153,7 @@ class LifeAccountsUiTest {
             compose.onNodeWithTag("$it-dismiss").assertDoesNotExist()
         }
         compose.runOnIdle {
+            assertEquals(listOf("/api/acc/stat"), huiReads.toList())
             assertEquals(LifeProvider.Hellobike, login)
             assertNull(pgStore.account()); assertNull(huiStore.account()); assertNull(bikeStore.load().account)
             assertFalse(pg.state.value.loginVisible); assertFalse(hui.state.value.loginVisible); assertFalse(bike.state.value.loginVisible)
