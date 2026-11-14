@@ -1,8 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -11,7 +9,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.FeeStage
@@ -22,7 +19,6 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.state.FeeFormDraft
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -132,117 +128,111 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     val currentDraft by rememberUpdatedState(draft)
     val currentReady by rememberUpdatedState(ready)
     val currentPage by rememberUpdatedState(page)
-    PaymentSheet(show = visible && state.stage != FeeStage.Password,
-        title = title, onDismissRequest = {
-        if (state.stage == FeeStage.Result) onFinish() else onDismiss()
-    }, insideMargin = DpSize(20.dp, 12.dp)) {
+    PaymentSheetPages(visible && state.stage != FeeStage.Password, currentPage, { it == HallFeePage.Result },
+        title, { if (state.stage == FeeStage.Result) onFinish() else onDismiss() },
+        Modifier.testTag("hall-payment-content")) { shownPage, interactive ->
         val state = currentState
         val form = currentForm
         val config = form.config
         val draft = currentDraft
         val ready = currentReady
-        val page = currentPage
-        key(session) { SheetPageContent(page, Modifier.testTag("hall-payment-content").bottomSheetSafeArea()) { shownPage, interactive ->
         val active = interactive && visible && state.stage != FeeStage.Password
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            when (shownPage) {
-                HallFeePage.Target -> {
-                    ReadContent(config == null && form.loading, Modifier.fillMaxWidth(), pending = { it }) { reading ->
-                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (reading) {
-                                HallFeeTargetPlaceholder(showRoomBinding = !saveOnly && displayProject in bindingProjects)
-                            } else if (config == null) {
-                                AnimatedInlineError(form.error)
-                                if (form.error != null) TextButton("重试", onRetry, enabled = active)
-                            } else {
-                                val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
-                                    state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
-                                HallFeeTargetOptions(form, onSelect, onMeterKind, targetEnabled)
-                                if (form.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
-                                    val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
-                                        .filter { !saveOnly || it in bindingProjects }
-                                    if (projects.size > 1) FeeMeterTypeSelector("缴费类型",
-                                        projects.map { if (it == FeeProject.FamilyElectric) "电费" else "水费" },
-                                        projects.indexOf(displayProject).coerceAtLeast(0), targetEnabled) { index ->
-                                        if (projects[index] != displayProject) onProject(projects[index])
-                                    }
+        when (shownPage) {
+            HallFeePage.Target -> {
+                ReadContent(config == null && form.loading, Modifier.fillMaxWidth(), pending = { it }) { reading ->
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (reading) {
+                            HallFeeTargetPlaceholder(showRoomBinding = !saveOnly && displayProject in bindingProjects)
+                        } else if (config == null) {
+                            AnimatedInlineError(form.error)
+                            if (form.error != null) TextButton("重试", onRetry, enabled = active)
+                        } else {
+                            val targetEnabled = active && !state.loading && !state.selecting && !state.roomBusy &&
+                                state.roomDialog == null && state.switchingProject == null && state.switchingMeterKind == null
+                            HallFeeTargetOptions(form, onSelect, onMeterKind, targetEnabled)
+                            if (form.currentRoom != null && displayProject in listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)) {
+                                val projects = listOf(FeeProject.FamilyElectric, FeeProject.FamilyWater)
+                                    .filter { !saveOnly || it in bindingProjects }
+                                if (projects.size > 1) FeeMeterTypeSelector("缴费类型",
+                                    projects.map { if (it == FeeProject.FamilyElectric) "电费" else "水费" },
+                                    projects.indexOf(displayProject).coerceAtLeast(0), targetEnabled) { index ->
+                                    if (projects[index] != displayProject) onProject(projects[index])
                                 }
-                                InlineErrorGroup(form.error, 16.dp) {
-                                    if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(state = if (draft.saveCommon) ToggleableState.On else ToggleableState.Off,
-                                            onClick = { change(draft.copy(saveCommon = !draft.saveCommon)) }, enabled = targetEnabled && ready)
-                                        Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
-                                    }
-                                    Button(onClick = {
-                                        if (targetEnabled && ready) {
-                                            if ((saveOnly || draft.saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
-                                                change(draft.copy(bindingPending = true)); onRoomAction()
-                                            } else if (saveOnly) onDismiss() else change(draft.copy(amountStep = true))
-                                        }
-                                    }, enabled = targetEnabled && ready && state.currentRoom != null &&
-                                        (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (form.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
-                                    if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            }
+                            InlineErrorGroup(form.error, 16.dp) {
+                                if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(state = if (draft.saveCommon) ToggleableState.On else ToggleableState.Off,
+                                        onClick = { change(draft.copy(saveCommon = !draft.saveCommon)) }, enabled = targetEnabled && ready)
+                                    Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                                 }
+                                Button(onClick = {
+                                    if (targetEnabled && ready) {
+                                        if ((saveOnly || draft.saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
+                                            change(draft.copy(bindingPending = true)); onRoomAction()
+                                        } else if (saveOnly) onDismiss() else change(draft.copy(amountStep = true))
+                                    }
+                                }, enabled = targetEnabled && ready && state.currentRoom != null &&
+                                    (!saveOnly || config.roomBindingEnabled && state.roomBindingKnown), modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColorsPrimary()) { Text(if (form.roomBusy) "正在保存…" else if (saveOnly) "绑定房间" else "下一步") }
+                                if (saveOnly && !config.roomBindingEnabled) Text("此项目不支持绑定", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                             }
                         }
                     }
                 }
-                HallFeePage.Amount -> {
-                    HallFeeSummary(form, Modifier.testTag("hall-payment-target"), draft.targetSelected,
-                        { change(draft.copy(targetSelected = !draft.targetSelected)) }, active && !state.loading && !state.selecting,
-                    )
-                    val codes = if (form.project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
-                    // A fixed room is verified across several requests. Configuration can
-                    // arrive halfway through the sheet's entrance: keep the geometry template
-                    // until that first lookup settles, then retain the mounted form on refresh.
-                    var presented by remember(session, form.project, fixedTarget) { mutableStateOf(false) }
-                    val showForm = config != null && (!form.queryPending || presented)
-                    SideEffect { if (showForm) presented = true }
-                    PaymentFormContent(form.loading && !showForm) {
-                        if (config != null) PaymentAmountForm(config.amountRules, draft.amount, { change(draft.copy(amount = it)) },
-                            codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(draft.methodCode).coerceAtLeast(0),
-                            { change(draft.copy(methodCode = codes[it])) }, form.loading || form.selecting || form.roomBusy,
-                            active && ready && draft.targetSelected && !state.preview, form.error, { onCreate(it, draft.methodCode) }, onRetry,
-                            enabled = active, onInputEdited = onInputEdited,
-                            submitting = state.loading && state.order != null &&
-                                state.resultPhase == RechargePhase.Creating)
-                        else {
-                            AnimatedInlineError(form.error)
-                            if (form.error != null) TextButton("重试", onRetry, enabled = active)
-                        }
-                    }
-                }
-                HallFeePage.Result -> {
-                    // Unavailable methods reuse the same choices without creating another order.
-                    val choosingMethod = state.stage == FeeStage.Methods
-                    val resultActive = active && (choosingMethod || state.stage == FeeStage.Result)
-                    // Dismissal clears the live state before the exit animation ends.
-                    // Retain only display values inside this page, never the order or password data.
-                    var display by remember { mutableStateOf<HallFeeResultDisplay?>(null) }
-                    if (resultActive) display = HallFeeResultDisplay(
-                        phase = if (choosingMethod) {
-                            if (state.loading) RechargePhase.Creating else RechargePhase.Failed
-                        } else state.resultPhase,
-                        loading = state.loading, amountCents = orderAmount, detail = state.error,
-                        methods = if (choosingMethod) state.order?.methods.orEmpty()
-                            else if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
-                    )
-                    display?.let { result ->
-                        PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
-                            { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
-                            subject = "充值", retryMethods = result.methods, enabled = resultActive, onCheck = onCheck,
-                            selectedRetryId = currentDraft.retryMethodId, selectedRetryCode = currentDraft.retryMethodCode,
-                            onRetrySelection = { method -> change(currentDraft.copy(retryMethodId = method?.id, retryMethodCode = method?.code)) },
-                            loadingTitle = "准备中".takeIf { choosingMethod && result.loading },
-                            onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
+            }
+            HallFeePage.Amount -> {
+                HallFeeSummary(form, Modifier.testTag("hall-payment-target"), draft.targetSelected,
+                    { change(draft.copy(targetSelected = !draft.targetSelected)) }, active && !state.loading && !state.selecting,
+                )
+                val codes = if (form.project?.network == true) listOf("ACCOUNTTSM") else listOf("ACCOUNTTSM", "TSM")
+                // A fixed room is verified across several requests. Configuration can
+                // arrive halfway through the sheet's entrance: keep the geometry template
+                // until that first lookup settles, then retain the mounted form on refresh.
+                var presented by remember(session, form.project, fixedTarget) { mutableStateOf(false) }
+                val showForm = config != null && (!form.queryPending || presented)
+                SideEffect { if (showForm) presented = true }
+                PaymentFormContent(form.loading && !showForm) {
+                    if (config != null) PaymentAmountForm(config.amountRules, draft.amount, { change(draft.copy(amount = it)) },
+                        codes.map { if (it == "TSM") "微信" else "一卡通" }, codes.indexOf(draft.methodCode).coerceAtLeast(0),
+                        { change(draft.copy(methodCode = codes[it])) }, form.loading || form.selecting || form.roomBusy,
+                        active && ready && draft.targetSelected && !state.preview, form.error, { onCreate(it, draft.methodCode) }, onRetry,
+                        enabled = active, onInputEdited = onInputEdited,
+                        submitting = state.loading && state.order != null &&
+                            state.resultPhase == RechargePhase.Creating)
+                    else {
+                        AnimatedInlineError(form.error)
+                        if (form.error != null) TextButton("重试", onRetry, enabled = active)
                     }
                 }
             }
+            HallFeePage.Result -> {
+                // Unavailable methods reuse the same choices without creating another order.
+                val choosingMethod = state.stage == FeeStage.Methods
+                val resultActive = active && (choosingMethod || state.stage == FeeStage.Result)
+                // Dismissal clears the live state before the exit animation ends.
+                // Retain only display values inside this page, never the order or password data.
+                var display by remember { mutableStateOf<HallFeeResultDisplay?>(null) }
+                if (resultActive) display = HallFeeResultDisplay(
+                    phase = if (choosingMethod) {
+                        if (state.loading) RechargePhase.Creating else RechargePhase.Failed
+                    } else state.resultPhase,
+                    loading = state.loading, amountCents = orderAmount, detail = state.error,
+                    methods = if (choosingMethod) state.order?.methods.orEmpty()
+                        else if (state.canContinuePayment) state.paymentRetry!!.methods else emptyList(),
+                )
+                display?.let { result ->
+                    PaymentResultContent(result.phase, result.loading, result.amountCents, result.detail,
+                        { if (resultActive) { if (choosingMethod) onCancelPayment() else onFinish() } },
+                        subject = "充值", retryMethods = result.methods, enabled = resultActive, onCheck = onCheck,
+                        selectedRetryId = currentDraft.retryMethodId, selectedRetryCode = currentDraft.retryMethodCode,
+                        onRetrySelection = { method -> change(currentDraft.copy(retryMethodId = method?.id, retryMethodCode = method?.code)) },
+                        loadingTitle = "准备中".takeIf { choosingMethod && result.loading },
+                        onContinuePayment = { if (resultActive) { if (choosingMethod) onMethod(it) else onContinuePayment(it) } })
+                }
+            }
         }
-        } }
     }
+
     FeePasswordDialog(show = visible && state.stage == FeeStage.Password,
         amountCents = orderAmount, preparation = state.preparation, loading = state.loading, error = state.error,
         onDismiss = onCancelPayment, onPay = onPayAccount, onInputEdited = onInputEdited,

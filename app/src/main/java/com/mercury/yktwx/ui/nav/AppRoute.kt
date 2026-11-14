@@ -16,6 +16,7 @@ internal sealed interface AppRoute : NavKey {
     @Serializable data object Account : AppRoute
     @Serializable data object About : AppRoute
     @Serializable data object Settings : AppRoute
+    @Serializable data object HellobikeAccount : AppRoute
     @Serializable data object Theme : AppRoute
     @Serializable data object References : AppRoute
     @Serializable data class BillDetail(val bill: BillReference) : AppRoute
@@ -43,6 +44,7 @@ internal fun NavEntryBuilder.appEntries(swipe: NavSwipeDirection, content: @Comp
     entry<AppRoute.Account>(swipeDismiss = swipe, content = content)
     entry<AppRoute.About>(swipeDismiss = swipe, content = content)
     entry<AppRoute.Settings>(swipeDismiss = swipe, content = content)
+    entry<AppRoute.HellobikeAccount>(swipeDismiss = swipe, content = content)
     entry<AppRoute.Theme>(swipeDismiss = swipe, content = content)
     entry<AppRoute.References>(swipeDismiss = swipe, content = content)
     entry<AppRoute.BillDetail>(swipeDismiss = swipe, content = content)

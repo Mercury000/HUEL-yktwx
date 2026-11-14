@@ -132,6 +132,25 @@ class HallNeutralTabsUiTest {
         }
     }
 
+    @Test fun absentOrStaleSelectionKeepsAllMethodsUnselectedUntilClicked() {
+        val choices = mutableStateOf(emptyList<String>())
+        var selected by mutableIntStateOf(-1)
+        content { Box(Modifier.fillMaxWidth().testTag("tabs")) { HallNeutralTabs(choices.value, selected) { selected = it } } }
+        compose.runOnIdle { choices.value = listOf("支付宝", "哈啰余额") }
+        frames(24)
+        val bounds = compose.onNodeWithTag("tabs").getUnclippedBoundsInRoot()
+        compose.onNode(hasText("支付宝") and hasClickAction()).assertIsNotSelected().performClick()
+        frames(24)
+        compose.onNode(hasText("支付宝") and hasClickAction()).assertIsSelected()
+        assertEquals(bounds, compose.onNodeWithTag("tabs").getUnclippedBoundsInRoot())
+        compose.runOnIdle { selected = 9 }
+        frames(24)
+        compose.onNode(hasText("支付宝") and hasClickAction()).assertIsNotSelected()
+        compose.onNode(hasText("哈啰余额") and hasClickAction()).assertIsNotSelected().performClick()
+        frames(24)
+        compose.onNode(hasText("哈啰余额") and hasClickAction()).assertIsSelected()
+    }
+
     @Test fun paymentSkeletonReplacesWithMatchingHeightAndNoHiddenInteractiveMethods() {
         var pending by mutableStateOf(true)
         val config = RechargeConfiguration("electric", "demo", listOf(1000, 5000, 10000), null, null, true, false)

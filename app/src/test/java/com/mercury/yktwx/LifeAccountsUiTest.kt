@@ -217,13 +217,38 @@ class LifeAccountsUiTest {
     @Composable
     private fun SettingsFixture(accounts: List<ManagedLifeAccount>, dark: Boolean = false,
         onCheck: (LifeProvider) -> Unit = {}, onLogin: (LifeProvider) -> Unit = {},
-        onRemove: (LifeProvider) -> Unit = {}) {
+        onRemove: (LifeProvider) -> Unit = {}, onHellobike: (() -> Unit)? = null) {
         AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
             Scaffold(topBar = { DashboardTopBar("设置") }) { padding ->
                 AppSettingsContent(Modifier.fillMaxSize(), PaddingValues(top = padding.calculateTopPadding(), bottom = 28.dp),
-                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove)
+                    settings(), AppUpdateUiState(), {}, {}, accounts, true, {}, onCheck, onLogin, onRemove,
+                    onOpenHellobikeAccount = onHellobike)
             }
         }
+    }
+
+    @Test fun hellobikeSettingsRowOpensAccountDetailInsteadOfLogoutDialog() {
+        var opened = 0
+        var detail by mutableStateOf(false)
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("bike", it) }
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection("138****0000", LifeAccountStatus.Verified))
+        compose.setContent {
+            if (!detail) SettingsFixture(listOf(account), onHellobike = { opened++; detail = true })
+            else AppTheme(ColorSchemeMode.Light) {
+                val state by bike.state.collectAsState()
+                LaunchedEffect(Unit) { bike.initialize(false) }
+                if (!state.restoring) HellobikeAccountContent(Modifier.fillMaxSize(), PaddingValues(16.dp), account,
+                    HellobikeCardsState(audit = HellobikeStudentAudit(0, 1)), bike, true, {}, {})
+            }
+        }
+        val settingsTitleStart = compose.onNodeWithText("生活服务账户").fetchSemanticsNode().boundsInRoot.left
+        compose.onNodeWithTag("hellobike-account-row").performClick()
+        assertEquals(1, opened)
+        compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
+        val cardTitleStart = compose.onNodeWithText("我的卡").fetchSemanticsNode().boundsInRoot.left
+        assertEquals(settingsTitleStart, cardTitleStart, .1f)
+        assertEquals(settingsTitleStart, compose.onNodeWithText("校园骑行卡").fetchSemanticsNode().boundsInRoot.left, .1f)
     }
 
     @Test @Config(qualifiers = "+zh-rCN")

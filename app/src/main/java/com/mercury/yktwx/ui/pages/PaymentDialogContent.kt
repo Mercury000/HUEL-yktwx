@@ -3,6 +3,8 @@ package com.mercury.yktwx.ui.pages
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,6 +48,10 @@ import com.mercury.yktwx.ui.components.LocalReadMotionEnabled
 import com.mercury.yktwx.ui.components.SheetTitle
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.ReadLayout
+import com.mercury.yktwx.ui.components.SheetPageContent
+import com.mercury.yktwx.ui.components.bottomSheetSafeArea
+import com.mercury.yktwx.ui.components.rememberOverlayMounted
+import com.mercury.yktwx.ui.components.rememberWhileShown
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -60,16 +66,56 @@ internal fun PaymentSheet(show: Boolean, title: String?, onDismissRequest: () ->
         onDismissRequest = onDismissRequest, renderInRootScaffold = true, insideMargin = insideMargin) { content() }
 }
 
+/** One host for payment forms and results: lifecycle, page motion, scroll, insets and spacing. */
+@Composable
+internal fun <T : Enum<T>> PaymentSheetPages(show: Boolean, page: T, isResultPage: (T) -> Boolean,
+    title: String?, onDismissRequest: () -> Unit, modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.(T, Boolean) -> Unit) {
+    if (!rememberOverlayMounted(show)) return
+    val session = rememberOverlaySession(show)
+    val targetPage = rememberWhileShown(show, page)
+    val currentPage by rememberUpdatedState(targetPage)
+    val displayTitle = rememberWhileShown(show, title)
+    val currentContent by rememberUpdatedState(content)
+    val currentShowing by rememberUpdatedState(show)
+    PaymentSheet(show, displayTitle, onDismissRequest, insideMargin = DpSize(0.dp, 0.dp)) {
+        key(session) { SheetPageContent(currentPage, Modifier.bottomSheetSafeArea()) { shownPage, interactive ->
+            Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .then(if (isResultPage(shownPage)) Modifier.padding(horizontal = 24.dp)
+                    else Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                currentContent(shownPage, currentShowing && interactive)
+            }
+        } }
+    }
+}
+
+@Composable
+internal fun PaymentFixedAmount(amount: String?, loading: Boolean, modifier: Modifier = Modifier, detail: String? = null) {
+    if (!detail.isNullOrBlank()) Text(detail, Modifier.fillMaxWidth(), fontSize = 13.sp,
+        textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+        if (loading) CircularProgressIndicator(modifier.size(24.dp))
+        else Text(amount?.let { "¥$it" } ?: "—", fontSize = 32.sp,
+            fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+    }
+}
+
 /** Method selection and submit behavior shared by fixed-price services and amount-entry payments. */
 @Composable
 internal fun PaymentMethodActions(methods: List<String>, selected: Int, onSelect: (Int) -> Unit,
     label: String, onSubmit: () -> Unit, enabled: Boolean, canSubmit: Boolean,
-    error: String? = null, modifier: Modifier = Modifier, preserveError: Boolean = false) {
+    error: String? = null, modifier: Modifier = Modifier, preserveError: Boolean = false,
+    onCancel: (() -> Unit)? = null, cancelModifier: Modifier = Modifier) {
     InlineErrorGroup(error, 16.dp, preserveMessage = preserveError) {
         Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         if (methods.isNotEmpty()) HallNeutralTabs(methods, selected) { if (enabled && it != selected) onSelect(it) }
-        Button(onClick = { if (enabled && canSubmit) onSubmit() }, enabled = enabled && canSubmit,
-            modifier = modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
+        if (onCancel != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onCancel, enabled = enabled, modifier = cancelModifier.weight(1f)) { Text("取消支付") }
+            Button(onClick = { if (enabled && canSubmit) onSubmit() }, enabled = enabled && canSubmit,
+                modifier = modifier.weight(1f), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
+        } else Button(onClick = { if (enabled && canSubmit) onSubmit() }, enabled = enabled && canSubmit,
+                modifier = modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) { Text(label) }
     }
 }
 
@@ -268,6 +314,8 @@ internal fun PaymentResultContent(
     selectedRetryCode: String? = null,
     onRetrySelection: ((FeeMethod?) -> Unit)? = null,
     preserveError: Boolean = false,
+    cancelled: Boolean = false,
+    onResumePayment: (() -> Unit)? = null,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -282,7 +330,7 @@ internal fun PaymentResultContent(
     }
     val title = loadingTitle.takeIf { loading } ?: when (phase) {
         RechargePhase.Paid -> subject + "成功"
-        RechargePhase.Failed -> subject + "失败"
+        RechargePhase.Failed -> if (cancelled) "本次支付已取消" else subject + "失败"
         RechargePhase.TimedOut -> "支付超时"
         RechargePhase.Checking -> if (loading) "正在查询结果" else "支付结果"
         RechargePhase.Creating -> "正在发起" + subject
@@ -290,7 +338,7 @@ internal fun PaymentResultContent(
     }
     val color = when (phase) {
         RechargePhase.Paid -> MiuixTheme.colorScheme.primary
-        RechargePhase.Failed -> MiuixTheme.colorScheme.error
+        RechargePhase.Failed -> if (cancelled) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.error
         else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
     Column(
@@ -323,7 +371,14 @@ internal fun PaymentResultContent(
                 fontSize = 13.sp, textAlign = TextAlign.Center,
             )
         }
-        if (canContinue) {
+        if (failed && onResumePayment != null) {
+            Spacer(Modifier.height(28.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onFinish, enabled = enabled, modifier = Modifier.weight(1f)) { Text("取消支付") }
+                Button(onClick = onResumePayment, enabled = enabled, modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColorsPrimary()) { Text("继续支付原订单") }
+            }
+        } else if (canContinue) {
             Spacer(Modifier.height(20.dp))
             Text("可选择以下方式重新支付", fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.Center)
