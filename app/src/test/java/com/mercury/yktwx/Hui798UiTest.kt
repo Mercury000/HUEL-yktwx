@@ -160,8 +160,8 @@ class Hui798UiTest {
         compose.onAllNodes(hasText("¥", substring = true)).assertCountEquals(0)
         val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
         assertEquals("Water identity uses the shared centered layout", hero.center.x,
-            compose.onNodeWithTag("life-device-glyph").fetchSemanticsNode().boundsInRoot.center.x, 1f)
-        assertEquals(hero.center.x, compose.onNodeWithTag("life-device-name").fetchSemanticsNode().boundsInRoot.center.x, 1f)
+            compose.onNodeWithTag("life-device-glyph", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center.x, 1f)
+        assertEquals(hero.center.x, compose.onNodeWithTag("life-device-name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center.x, 1f)
         capture("ready-${if (dark) "dark-large" else "light"}")
         val session = Hui798Session(device, WaterPhase.Running, attemptedAtMillis = 100_000, startAcknowledged = true,
             serverTime = 100_000, startedAtMillis = 100_000, sessionId = "session")
@@ -172,9 +172,10 @@ class Hui798UiTest {
         compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
         compose.onNodeWithTag("hui798-elapsed").assertDoesNotExist()
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
-        val indicator = compose.onNodeWithTag("hui798-device-loading").fetchSemanticsNode().boundsInRoot
-        val message = compose.onNodeWithText("正在启动设备").fetchSemanticsNode().boundsInRoot
-        assertTrue("Spinner leaves space before the startup message", indicator.right < message.left)
+        compose.onNodeWithTag("hui798-device-loading", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("hui798-action-progress", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo),
+            useUnmergedTree = true).assertCountEquals(1)
         assertTrue("Startup notice stays above the fixed footer",
             compose.onNodeWithTag("hui798-usage-notice").fetchSemanticsNode().boundsInRoot.bottom <
                 compose.onNodeWithTag("hui798-action-footer").fetchSemanticsNode().boundsInRoot.top)
@@ -182,6 +183,7 @@ class Hui798UiTest {
         compose.runOnIdle { state = state.copy(error = "设备响应较慢，请刷新状态") }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithTag("hui798-device-loading").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("hui798-primary-action").assertIsEnabled().assertTextContains("刷新状态")
         compose.onNodeWithTag("hui798-elapsed").assertDoesNotExist()
         capture("starting-failed-${if (dark) "dark-large" else "light"}")
@@ -224,7 +226,10 @@ class Hui798UiTest {
         } } }
         compose.onNodeWithText(id).assertIsDisplayed()
         compose.onNodeWithText("生活用水设备").assertIsDisplayed()
-        compose.onNodeWithTag("hui798-device-loading").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-device-loading", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("hui798-action-progress", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo),
+            useUnmergedTree = true).assertCountEquals(1)
         compose.onNodeWithTag("hui798-primary-action").assertIsNotEnabled().assertTextContains("正在查询…")
         capture("querying-${if (dark) "dark" else "light"}")
         compose.runOnIdle { state = state.copy(loadingDevice = false, error = "连接失败，请稍后重试") }

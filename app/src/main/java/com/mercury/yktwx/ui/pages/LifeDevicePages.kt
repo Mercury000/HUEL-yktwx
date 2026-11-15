@@ -102,7 +102,9 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         if (!state.scanning || !active) manual = false
         if (!active) help = false
     }
-    val scanning = state.scanning || state.loadingDevice && state.device == null
+    val scanning = state.scanning
+    val retryFeedback = rememberRetryFeedbackState(model.restorationOwner to
+        (state.laundry?.sessionId ?: state.scannedSerial ?: state.device?.id))
     if (state.feature == LifeFeature.Water && !scanning) {
         PangguiWaterDevicePage(state, settings, model, active, onBack, nowMillis)
         return
@@ -138,7 +140,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                         Text(if (state.restoring) "正在恢复账号…" else "登录并继续")
                     }
                     Button(onClick = model::scan, enabled = active, modifier = Modifier.fillMaxWidth()) { Text("重新扫码") }
-                } else LaundryActions(state, model, active, onBack, nowMillis)
+                } else LaundryActions(state, model, active, onBack, nowMillis, retryFeedback)
             }
         }) { padding ->
         val stage = when {
@@ -195,14 +197,14 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                             fontSize = 13.sp, color = DashboardPalette.muted)
                     }
                 } }
-            } else laundryContent(state, model, stageActive, nowMillis)
+            } else laundryContent(state, model, stageActive, nowMillis, retryFeedback)
         }
         }
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
         onValue = { serial = it },
         onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
-    LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false })
+    LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false }, retryFeedback = retryFeedback)
     LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
 
@@ -390,12 +392,14 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         restoringAccount -> "正在恢复账号…"
         loginRequired -> "登录并继续"
         state.loadingDevice -> "正在识别…"
+        phase == WaterPhase.Ready && state.error != null -> "重新检查设备"
         exceptional && !state.waterBusy -> "重新扫码"
         failedCommand && !state.waterBusy -> "重试"
         phase == WaterPhase.Starting -> "正在启动…"
         phase == WaterPhase.Stopping -> "正在结束…"
-        phase == WaterPhase.Running -> "结束$action"
         phase == WaterPhase.Ended && water?.finalized != true -> "正在处理…"
+        state.waterBusy -> "正在检查…"
+        phase == WaterPhase.Running -> "结束$action"
         phase == WaterPhase.Ended -> "再次扫码$action"
         else -> "开始$action"
     }
@@ -404,18 +408,20 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         phase = phase, startedAtMillis = water?.startedAtMillis, endedAtMillis = water?.endedAtMillis,
         paymentMethod = device?.alipay?.name,
         supportsFinish = if (exceptional) null else device?.supportsFinish, error = state.error ?: water?.fault, shower = device?.isShower == true,
+        checking = state.loadingDevice || state.waterBusy,
         status = when {
-            restoringAccount -> WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备", true)
+            restoringAccount -> WaterDeviceStatus("正在恢复账号", "恢复完成后继续查询设备")
             exceptional -> WaterDeviceStatus(water.fault ?: "启动结果未知", "可移除本条提醒或重新扫码")
             else -> null
         })
     val primary = WaterDeviceAction(label, !loading && when {
         loginRequired -> true
-        phase == WaterPhase.Ready -> state.device != null && state.selectedSkuId.isNotBlank()
+        phase == WaterPhase.Ready -> state.error != null || state.device != null && state.selectedSkuId.isNotBlank()
         else -> true
     }) {
         when {
             loginRequired -> model.connectAccount(clearPending = false)
+            phase == WaterPhase.Ready && state.error != null -> model.refreshDevice()
             exceptional -> model.rescanWaterException()
             failedCommand -> model.retryWater()
             phase == WaterPhase.Running -> model.stopWater()
@@ -428,8 +434,15 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
         refreshAction = WaterDeviceAction("刷新设备", !state.restoring && !loginRequired && !state.waterBusy && !state.loadingDevice, model::refreshDevice),
         onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
         loginAction = if (loginRequired) WaterDeviceAction("登录并继续", true) { model.connectAccount(clearPending = false) } else null,
-        retryAction = if (phase == WaterPhase.Running && state.error != null && !exceptional)
-            WaterDeviceAction("刷新状态", !state.waterBusy, model::retryWater) else null,
+        retryAction = when {
+            loginRequired || exceptional -> null
+            water == null -> WaterDeviceAction("重新检查", !state.loadingDevice, model::refreshDevice)
+            phase == WaterPhase.Running -> WaterDeviceAction("刷新状态", !state.waterBusy, model::retryWater)
+            else -> null
+        },
+        feedbackIdentity = model.restorationOwner to (water?.sessionId ?: display.deviceId),
+        primaryReadsState = !loginRequired && !exceptional && (phase == WaterPhase.Ready && state.error != null || failedCommand),
+        primaryLoading = loading,
         paymentContent = if (device?.alipay == null) null else { enabled -> WaterPaymentDetails(device,
             showOptions = phase in setOf(WaterPhase.Ready, WaterPhase.Starting), state = state, onSelect = model::selectSku,
             enabled = enabled && !state.waterBusy && !state.loadingDevice) })
@@ -481,7 +494,8 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
 }
 
 @Composable
-private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit) {
+private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit,
+    retryFeedback: RetryFeedbackState) {
     if (!rememberOverlayMounted(show)) return
     OverlayBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
         val display = rememberWhileShown(show, state)
@@ -499,7 +513,8 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
                 if ((if (display.feature == LifeFeature.Water) display.water?.active != true && display.water?.phase != WaterPhase.Ended else display.laundry == null)) Row(
                     Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = { onDismiss(); model.scan() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy) { Text("重新扫码") }
-                    Button(onClick = { onDismiss(); model.refreshDevice() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy && !display.loadingDevice) { Text("刷新设备") }
+                    Button(onClick = { onDismiss(); retryFeedback.dispatch(model::refreshDevice) }, modifier = Modifier.weight(1f),
+                        enabled = show && !display.waterBusy && !display.laundryBusy && !display.loadingDevice && !retryFeedback.dispatching) { Text("刷新设备") }
                 }
             }
             Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), enabled = show,
