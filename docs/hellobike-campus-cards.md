@@ -29,6 +29,8 @@
 
 商品列表保留各组返回的商品，不按名称筛选。校园新版H5的Q/H/R分支没有button.canClick或appLimit禁购条件，单车与助力车商品均可点击，资格交给官方预下单接口判断。普通商品只按官方canBuy>1禁购：2停止购卡、3卡数量上限，不能把1当成禁购。paymentLimit不是通用禁购字段。普通预下单传fromTwoWheel=true并保留原促销对象。说明中的marketingWords读取wordsValue列表，cardText数值不冒充使用说明。
 
+普通单车列表另经REA从官方7.0.75钱包入口追到当前在线购卡页面，核对101000、platform=0、filterCoBranded=true及完整商品列表规则；不使用抓包商品名称或数量构造白名单。普通商品价格按官方formatCard在缺少actualPrice时回退purchasePrice，并保留供预下单使用的实际价格对象。来源、规则与定向验证见[普通单车REA核对](hellobike-ordinary-logic-rea.md)。
+
 paymentLimit=1使用官方连续包月路径：预下单后取paySignType、periodType、periodNum、maxDeductAmount构成periodRuleParams，signChannel=alipay经原生映射为102；设置creditModel=normal、actionOrigin=RidecardBuying，使用原订单金额及支付宝payV2。付款页明确显示自动续费签约，不以单次购买替代。其他paymentLimit不再整体拦截；它们的专属补贴、抖音或银联签约分支并未全部接入，不能因商品按钮可点击就宣称这些分支已经在线可用。
 
 我的卡续费按钮按官方条件显示：status=0、hasBikePackage/hasEvBikePackage=true、canOperateType!=0。官方buyCard只通知业务类型并进入购卡页，不拿旧cardGuid直接续期。本应用单车续费展开普通商品并滚动至购买区，电动车续费进入哈啰。

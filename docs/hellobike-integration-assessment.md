@@ -1,5 +1,7 @@
 # 哈啰单车接入评估
 
+2026-11-16扫码补核：下文“不自动开锁”是早期方案，当前按官方默认H5的canSkip处理；普通结果等待确认，SERVER结果查单，APP跳过确认分支创建。见[完整扫码链核对](hellobike-scan-chain-rea.md)。
+
 **实施更新（2026-11-13）：** 已在独立目录 `D:/mercu/Desktop/yktwx-hellobike`、`feature/hellobike` 分支完成普通单车网络骑行及普通付款适配。共用入口、账户、设备展示与支付界面的当前行为见[实施说明](life-devices-hellobike.md)。下面保留 2026-11-12 的评估背景与原型缺口，不代表当前实现仍缺少这些能力；真实车辆和扣款尚未核验。
 
 评估日期：2026-11-12。来源为 `D:/mercu/Desktop/hellobike` 的当前有效源码、Gradle、清单、测试源码和说明文档；目标为财小通当前工作区，包含尚未提交的统一 OkHttp 网络层。后续使用 REA 对照 `D:/mercu/Downloads/哈啰_7.0.75.apk` 的支付、结算入口及车号规则，范围见[支付分析](hellobike-payment-analysis.md)。最新[接入补证](hellobike-integration-evidence.md)增加了官方登录、银联SDK和公开H5单车付款参数来源，并按用户要求将支付范围收窄为余额、支付宝和普通银联，排除微信SDK渠道。未读取账号文件、重放凭据或请求真实业务接口，未执行构建和测试；仅额外读取官方公开静态页面和脚本。

@@ -4,7 +4,7 @@
 
 ## 输入识别与官方提示
 
-10位数字是统一手填入口识别哈啰车号的格式规则，进入骑行页不代表设备存在或可以开锁。`user.ride.pre.ride` 确实是官方预检接口，原生 `PreRideCreateApiModel` 和公开官方H5都有调用。预检通过条件为 `result=true OR causeType=1100`；拒绝原因读取原生cause、causeContent及H5的causeDesc。缺少原因不解释成“未通过校验”。
+10位数字是统一手填入口识别哈啰车号的格式规则，进入骑行页不代表设备存在或可以开锁。`user.ride.pre.ride`存在且可能服务端开锁。此前`result=true OR causeType=1100`来自原生备用链，不能代表7.0.75默认H5；当前以[完整扫码链核对](hellobike-scan-chain-rea.md)的入口、canSkip、确认及弹窗／导航条件为准。拒绝原因保留cause、causeContent及causeDesc，缺少原因不自行解释。
 
 失败时优先展示原始官方原因；标题、正文、URL、设备／订单编号、换行和长文本不截断、不脱敏替换。确实没有原因时，显示“服务端未提供原因”及接口／返回码，不自行解释成车辆、地区、余额或登录异常。输入路由的10位格式规则保持为入口识别，设备许可由预检／创建接口决定。
 
@@ -21,7 +21,7 @@
 
 哈啰整包REA因Java堆不足未完成，改用原始classes18、classes8、classes7的APK分析切片。胖乖使用原始classes4、classes11、classes12的分析切片。独立重新打开两份原APK，将7份切片的每个ZIP条目与原APK逐字节比较，全部一致；记录原APK、切片及各DEX／manifest／resources的哈希。切片仅用于静态分析，不是修改后的可安装客户端。不同DEX之间的引用查询有边界；“未发现调用”不等于证明整个客户端绝不存在其他路径。
 
-哈啰预检链条：原始DEX → `PreRideCreateApiModel.<init>`（`hello-pre-fields`，action=`user.ride.pre.ride`）→ `preRideCreateCheck$3.invokeSuspend`（`hello-pre-response`）→ `BikePreRideCreateAction.S/R/z0` → result模型cause/causeContent/popup/notices → 当前 `HellobikeApi.prepare` → `HellobikePrecheck.notice`／异常 → 设备页。核心S方法ID为 `ev_1a734e09efced7e11214ce3dde39b6686bf174b17672e040e1be9dd83c185f18`。
+此处原生预检证据是备用路径：`PreRideCreateApiModel.<init> → preRideCreateCheck$3.invokeSuspend → BikePreRideCreateAction.S/R/z0`，核心S方法ID为`ev_1a734e09efced7e11214ce3dde39b6686bf174b17672e040e1be9dd83c185f18`。默认入口经H5Route.F及固定true开关进入新版H5，当前HellobikeApi.prepare按该页分支处理；完整入口、原DEX身份及源码见[新证据归档](evidence/hellobike-scan-chain.json)。
 
 胖乖链条：原APK classes11.dex的Retrofit注解 → `ApiService` 返回类型／方法清单 → VM调用 → Activity／Fragment观察器 → 当前API／ViewModel。`original_panggui_api_annotations` 保存注解偏移、方法索引、原DEX哈希，不把抽象接口没有方法体的情况说成已反编译出业务实现。例如msgSync的 `machine/msg/sync` 返回MsgSyncBean，orderSync的 `order/sync` 返回OrderSync；结束接口 `goods/endWater`、`shower/goods/remoteEnd` 返回Boolean；健康检查 `trade/check_device_status` 返回HealthCheckBean。
 
