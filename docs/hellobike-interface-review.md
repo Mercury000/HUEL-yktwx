@@ -11,9 +11,9 @@
 | user.account.login | APK登录/签名/渠道/失效证据：7.0.75、真实签名摘要和渠道；token/guid创建账号，clientId未初始化用官方空值回退。 |
 | hello.lbs.code.regeo | 官方H5反查及签名算法：按响应取地区，未伪造城市；位置转换和授权分别验证。 |
 | user.ride.bikeCheck | APK模型及RidingOrderRepository、官方H5bikeTravelCheck：原生字段/bike主机；无订单不作为设置错误，本地待查记录继续查原单；已结束记录不能复活。 |
-| user.ride.pre.ride | 官方预骑行调用：result/causeType成功分支，保留特殊交互要求；设备号格式不能替代服务端校验。 |
+| user.ride.pre.ride | 默认新版H5扫码调用；canSkip按SERVER／APP处理，普通确认另检查完整交互条件。可能服务端开锁，发送前保留本地恢复记录。见[完整链条](hellobike-scan-chain-rea.md)。 |
 | tw.bike.unlock.page.basic.info | 官方开锁页调用：取得计费说明；缺少文字不额外否定成功预检。 |
-| user.ride.create | 官方请求和结果：先保存Opening，单次提交，后续查询原单，防账号/取消竞态。 |
+| user.ride.create | 普通／APP分支先保存Opening、单次提交并采用实际rideId；SERVER跳过create。省略H5未定义的orderGuid／scanReqId，恢复只查单。 |
 | user.ride.order.status | 官方H5orderStatusCheck、APK原单查询及RideOrderStatus：20/subStatus判断开锁，30结束，区别于bikeCheck状态空间；Closing优先查原单。 |
 | ride.hub.pre.close | 官方P10：operateType0检查、2提交；1102/1103按skipConfirm决定是否显示第二次确认；1101/1108按相同operateType/poll继续P10。firstOperate跟随操作变化，阶段窗口40秒；1100先持久化Ended再读费用。 |
 | user.tw.ride.check | 官方骑行页：originGuid原样映射；非空rideInfo且rideStatus!=2显示骑行，不新增标识/车号/状态齐全门槛。与原单开锁查询区分，不作缺ID提前兜底。 |
