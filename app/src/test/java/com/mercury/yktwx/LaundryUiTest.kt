@@ -38,7 +38,7 @@ class LaundryUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
     private val models = ViewModelStore()
     @After fun cleanup() { models.clear() }
-    private fun model(): LifeDevicesViewModel {
+    private fun model(initialLaundry: LaundrySession? = null): LifeDevicesViewModel {
         val store = object : LifeDeviceStore {
             override fun account(): LifeAccount? = null
             override fun session(): WaterSession? = null
@@ -46,6 +46,7 @@ class LaundryUiTest {
             override fun saveSession(session: WaterSession) { error("No device control") }
             override fun clearAccount() {}
             override fun clearSession() {}
+            override fun laundrySessions() = listOfNotNull(initialLaundry)
         }
         return lifeDevicesViewModelFixture(compose.activity.application, fixtureLifeDeviceApi("test-secret", { error("No live requests") }), store)
             .also { models.put("life", it) }
@@ -103,12 +104,33 @@ class LaundryUiTest {
         compose.onNodeWithTag("laundry-program-quick").assertIsNotEnabled()
         assertEquals(before, compose.onNodeWithTag("laundry-primary-action").fetchSemanticsNode().boundsInRoot)
         repeat(20) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-        compose.onNodeWithText(message).assertDoesNotExist()
+        compose.onNodeWithText(message).assertIsDisplayed()
+        compose.onNodeWithTag("laundry-device-retry").assertIsNotEnabled()
+        compose.onNodeWithText("正在检查").assertIsDisplayed()
         compose.runOnIdle { state = state.copy(loadingDevice = false, error = message) }
         compose.mainClock.advanceTimeBy(400)
         compose.onNodeWithTag("laundry-primary-action").assertIsEnabled().assertTextContains("重试")
         compose.onNodeWithTag("laundry-action-progress", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText(message).assertIsDisplayed()
+    }
+    @Test fun missingWaterAndLaundryDeviceKeepTheDevicePageWhileRechecking() {
+        val model = model(); val settings = themeSettingsFixture(compose.activity.application)
+        var state by mutableStateOf(LifeDevicesUiState(restoring = false, connectedPhone = "fixture-account",
+            feature = LifeFeature.Water, scannedSerial = "fixture-serial", error = "设备查询失败"))
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            LifeDevicePage(state, settings, model, active = true, onBack = {})
+        } } } }
+        for ((feature, retryTag) in listOf(LifeFeature.Water to "water-retry", LifeFeature.Laundry to "laundry-device-retry")) {
+            compose.runOnIdle { state = state.copy(feature = feature, loadingDevice = false, error = "设备查询失败") }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            compose.onNodeWithTag(retryTag).performScrollTo().assertIsEnabled()
+            compose.runOnIdle { state = state.copy(loadingDevice = true, error = null) }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            compose.onNodeWithTag(retryTag).performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText("正在检查").assertIsDisplayed()
+            compose.onNodeWithText("设备查询失败").assertIsDisplayed()
+            compose.onNodeWithText("fixture-serial").assertExists()
+        }
     }
     @Test fun unknownCreationShowsNoIneffectiveRetryOrEndlessBusyIndicator() {
         val model = model(); val settings = themeSettingsFixture(compose.activity.application)
@@ -319,7 +341,8 @@ class LaundryUiTest {
             selectedSkuId = quote.skuId, laundryQuote = quote)
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
-                LaundryPaymentSheet(true, state, model)
+                val interactive by model.state.collectAsState()
+                LaundryPaymentSheet(true, state.copy(paymentMethod = interactive.paymentMethod), model)
             } } }
         }
         compose.onNodeWithTag("laundry-payment-sheet").assertIsDisplayed()
@@ -475,16 +498,17 @@ class LaundryUiTest {
         capture("laundry-payment-timeout")
     }
     @Test fun pendingOrderCancellationRequiresConfirmationAndDisappearsWhenOrderIsNoLongerPayable() {
-        val model = model()
         val device = LifeDevice("77", "test-serial", "77", "00", "22", "22", "shop", "imei", "学校", "",
             "before", false, false, null, listOf(LifeSku("quick", "快洗", true, "2.50")), emptyList())
         val pending = LaundrySession(device, "quick", "2.50", "13", LaundryPhase.Paying,
             orderNo = "test-order", orderId = "test-order-id")
+        val model = model(pending)
         val settings = themeSettingsFixture(compose.activity.application)
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Laundry,
             device = device, laundry = pending))
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
-            LifeDevicePage(state, settings, model, active = true, onBack = {})
+            val interactive by model.state.collectAsState()
+            LifeDevicePage(state.copy(cancelOrderConfirmation = interactive.cancelOrderConfirmation), settings, model, active = true, onBack = {})
         } } } }
         compose.onNodeWithTag("laundry-cancel-order").assertIsDisplayed().assertIsEnabled().performClick()
         compose.mainClock.advanceTimeBy(600)

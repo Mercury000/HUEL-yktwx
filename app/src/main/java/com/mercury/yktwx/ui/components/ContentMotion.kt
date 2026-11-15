@@ -9,6 +9,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -179,7 +180,8 @@ internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -
     val owner = LocalReadLayoutMotion.current ?: remember { ReadLayoutMotion() }
     // While a notice expands, use its measured frames directly instead of chasing them
     // with another height animation. Other response-driven layout changes still animate.
-    val sized = if (LocalReadLayoutManaged.current || !LocalReadMotionEnabled.current) modifier else modifier.readContentSize(animate = owner.feedbackTransitions == 0)
+    val sized = if (LocalReadLayoutManaged.current || !LocalReadMotionEnabled.current || owner.feedbackTransitions > 0) modifier
+        else modifier.readContentSize()
     Box(sized) {
         CompositionLocalProvider(LocalReadLayoutManaged provides true, LocalReadLayoutMotion provides owner) { content() }
     }
@@ -188,10 +190,18 @@ internal fun ReadLayout(modifier: Modifier = Modifier, content: @Composable () -
 /** Shared skeleton/empty/content transition; cached content does not replay entry on navigation. */
 @Composable
 internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey: (T) -> Any? = { it },
-    animate: Boolean = true, animateSize: Boolean = false, content: @Composable (T) -> Unit) {
+    animate: Boolean = true, animateSize: Boolean = false, ownsSizeAnimation: Boolean = false,
+    content: @Composable (T) -> Unit) {
     val switchActive = LocalContentSwitchActive.current
-    val resize = animateSize && !LocalReadLayoutManaged.current
-    AnimatedContent(targetState = ContentFadeTarget(state, LocalReadSnapshotRestored.current),
+    val resize = animateSize && (ownsSizeAnimation || !LocalReadLayoutManaged.current)
+    val transition = updateTransition(ContentFadeTarget(state, LocalReadSnapshotRestored.current), label = "ContentFade")
+    val layout = LocalReadLayoutMotion.current
+    val moving = ownsSizeAnimation && resize && (transition.isRunning || transition.currentState != transition.targetState)
+    DisposableEffect(layout, moving) {
+        if (moving && layout != null) layout.feedbackTransitions++
+        onDispose { if (moving && layout != null) layout.feedbackTransitions-- }
+    }
+    transition.AnimatedContent(
         modifier = modifier, transitionSpec = {
         // A newly restored snapshot replaces pending paint immediately. Keep the
         // composition alive so controls and their selection/scroll state survive.
@@ -202,7 +212,7 @@ internal fun <T> ContentFade(state: T, modifier: Modifier = Modifier, contentKey
                 tween(ContentMotion.Layout, easing = ContentMotion.Easing)
             } else null,
         )
-    }, label = "ContentFade", contentKey = { contentKey(it.value) }) {
+    }, contentKey = { contentKey(it.value) }) {
         CompositionLocalProvider(LocalReadLayoutManaged provides (LocalReadLayoutManaged.current || resize)) { content(it.value) }
     }
 }

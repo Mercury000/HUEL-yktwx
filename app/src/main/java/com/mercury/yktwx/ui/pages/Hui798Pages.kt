@@ -134,11 +134,13 @@ internal fun Hui798DevicePage(state: Hui798UiState, settings: ThemeSettings, mod
     val display = WaterDeviceUiState(LifeProvider.Hui798, device?.name.orEmpty(), deviceId = device?.id ?: state.scannedDeviceId,
         phase = phase, startedAtMillis = session?.startedAtMillis, endedAtMillis = session?.endedAtMillis,
         status = if (phase == WaterPhase.Ready && !occupied) WaterDeviceStatus(title, subtitle, querying) else null,
-        error = state.error ?: "设备正在使用，请结束后刷新状态".takeIf { occupied })
+        error = state.error ?: "设备正在使用，请结束后刷新状态".takeIf { occupied }, checking = state.loadingDevice || state.busy)
     val refresh = WaterDeviceAction("刷新状态", !state.restoring && state.connected && !state.busy && !state.loadingDevice && phase != WaterPhase.Ended, model::refreshState)
     WaterDevicePage(display, settings, active, primary,
         scanAction = WaterDeviceAction("重新扫码", !state.busy, onScan), refreshAction = refresh,
         onBack = onBack, footerNote = display.feeNotice, nowMillis = nowMillis,
         loginAction = if (!state.restoring && !state.connected) WaterDeviceAction("登录并继续", true) { model.connectAccount(false) } else null,
-        retryAction = refresh.takeIf { state.connected && (exceptional || state.error != null && phase == WaterPhase.Running) }, showRescan = true)
+        retryAction = refresh.takeIf { state.connected && phase != WaterPhase.Ended }, showRescan = true,
+        feedbackIdentity = model.restorationOwner to (state.selectedSessionId ?: display.deviceId),
+        primaryReadsState = state.connected && !exceptional && (retryDevice || failed))
 }

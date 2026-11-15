@@ -36,6 +36,7 @@ internal data class WaterDeviceUiState(
     val phase: WaterPhase = WaterPhase.Ready, val startedAtMillis: Long? = null, val endedAtMillis: Long? = null,
     val paymentMethod: String? = null, val supportsFinish: Boolean? = true,
     val status: WaterDeviceStatus? = null, val error: String? = null, val shower: Boolean = false,
+    val checking: Boolean = false,
 ) {
     val action: String get() = if (shower) "淋浴" else if (provider == LifeProvider.Panggui) "接水" else "用水"
     val providerName: String get() = if (provider == LifeProvider.Panggui) "胖乖生活" else "慧生活798"
@@ -67,8 +68,15 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
     primaryAction: WaterDeviceAction, scanAction: WaterDeviceAction, refreshAction: WaterDeviceAction,
     onBack: () -> Unit, footerNote: String, nowMillis: () -> Long = System::currentTimeMillis,
     loginAction: WaterDeviceAction? = null, retryAction: WaterDeviceAction? = null, showRescan: Boolean = false,
+    feedbackIdentity: Any? = state.provider to state.deviceId,
+    primaryReadsState: Boolean = primaryAction == retryAction,
     paymentContent: (@Composable (Boolean) -> Unit)? = null) {
     var help by rememberSaveable { mutableStateOf(false) }
+    val retryFeedback = rememberRetryFeedbackState(feedbackIdentity)
+    val checking = state.checking || retryFeedback.dispatching
+    val primary = primaryAction.copy(enabled = primaryAction.enabled && !retryFeedback.dispatching,
+        label = if (retryFeedback.dispatching && !state.checking) "正在检查…" else primaryAction.label,
+        onClick = { if (primaryReadsState) retryFeedback.dispatch(primaryAction.onClick) else primaryAction.onClick() })
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val title = when (state.phase) {
         WaterPhase.Ended -> "${state.action}结束"
@@ -76,7 +84,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
         else -> "扫码${state.action}"
     }
     LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true,
-        footer = { WaterDeviceActions(state, active, primaryAction, scanAction, onBack, footerNote, showRescan) }) { padding ->
+        footer = { WaterDeviceActions(state.copy(checking = checking), active, primary, scanAction, onBack, footerNote, showRescan) }) { padding ->
         AnimatedContent(WaterDevicePresentation(state, paymentContent), contentKey = { it.state.phase.pageStage },
             modifier = Modifier.fillMaxSize(), transitionSpec = {
             ((fadeIn(tween(ContentMotion.Append, delayMillis = 120)) +
@@ -115,10 +123,13 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
                             item { WaterUsageNotice(display) }
                     }
                 }
-                item { InlineErrorGroup(display.error, 12.dp, preserveMessage = display.provider == LifeProvider.Panggui) {
-                    if (retryAction != null) TextButton(retryAction.label, retryAction.onClick,
-                        enabled = stageActive && retryAction.enabled, modifier = Modifier.testTag("${display.tag}-retry"))
-                } }
+                item(key = "${display.tag}-device-error-slot") {
+                    if (retryAction != null) InlineRetryFeedback(display.error, display.checking, retryAction.label, retryAction.onClick,
+                        Modifier.testTag("${display.tag}-device-error"), enabled = stageActive && retryAction.enabled,
+                        actionModifier = Modifier.testTag("${display.tag}-retry"), identity = feedbackIdentity,
+                        retryFeedback = retryFeedback, showProgress = false)
+                    else AnimatedInlineError(display.error, preserveMessage = true)
+                }
             }
         }
     }
@@ -129,7 +140,8 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
             Text(state.help, fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button({ help = false; scanAction.onClick() }, Modifier.weight(1f), enabled = active && scanAction.enabled) { Text(scanAction.label) }
-                Button({ help = false; refreshAction.onClick() }, Modifier.weight(1f), enabled = active && refreshAction.enabled) { Text(refreshAction.label) }
+                Button({ help = false; retryFeedback.dispatch(refreshAction.onClick) }, Modifier.weight(1f),
+                    enabled = active && refreshAction.enabled && !retryFeedback.dispatching) { Text(refreshAction.label) }
             }
             Button({ help = false }, Modifier.fillMaxWidth(), enabled = active && help, colors = ButtonDefaults.buttonColorsPrimary()) { Text("知道了") }
         }
@@ -156,7 +168,7 @@ private fun WaterDeviceFacts(state: WaterDeviceUiState, paymentEnabled: Boolean 
 @Composable
 private fun WaterUsageNotice(state: WaterDeviceUiState) {
     val running = state.phase in setOf(WaterPhase.Running, WaterPhase.Stopping)
-    val status = state.status ?: if (state.phase == WaterPhase.Starting) WaterDeviceStatus(
+    val status = if (state.checking) WaterDeviceStatus("正在检查设备", "请稍候", true) else state.status ?: if (state.phase == WaterPhase.Starting) WaterDeviceStatus(
         if (state.error == null) "正在启动设备" else "暂未确认设备状态",
         "请等待设备响应，留意现场出水情况", state.error == null) else null
     Card(Modifier.fillMaxWidth().testTag("${state.tag}-usage-notice"), cornerRadius = 24.dp) {
@@ -200,8 +212,12 @@ private fun WaterDeviceActions(state: WaterDeviceUiState, active: Boolean, prima
             Text("请按设备说明结束${state.action}", Modifier.fillMaxWidth(), fontSize = 13.sp, textAlign = TextAlign.Center, color = DashboardPalette.muted)
         } else Button(primary.onClick, enabled = active && primary.enabled,
             modifier = Modifier.fillMaxWidth().testTag("${state.tag}-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
-            AnimatedContent(primary.label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
-                label = "water-button-label") { Text(it) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.checking) CircularProgressIndicator(size = 16.dp, strokeWidth = 2.dp,
+                    modifier = Modifier.testTag("${state.tag}-action-progress"))
+                AnimatedContent(primary.label, transitionSpec = { fadeIn(tween(120, delayMillis = 100)) togetherWith fadeOut(tween(100)) },
+                    label = "water-button-label") { Text(it) }
+            }
         }
         if (showRescan && state.phase == WaterPhase.Ready) DashboardLink(scan.label, scan.onClick,
             enabled = active && scan.enabled, modifier = Modifier.testTag("${state.tag}-rescan"), arrow = false, color = DashboardPalette.muted)

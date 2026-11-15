@@ -80,9 +80,13 @@ class LifeDevicesViewModelTest {
         var afterPayExpired = false
         var waterFailure = false
         var waterGate: CompletableDeferred<Unit>? = null
+        var deviceFailure: Exception? = null
+        var deviceGate: CompletableDeferred<Unit>? = null
         override suspend fun sendCode(phone: String) {}
         override suspend fun login(phone: String, code: String): LifeAccount { loginCalls++; return LifeAccount(phone, "test-token") }
-        override suspend fun device(serial: String, token: String): LifeDevice { deviceCalls++; return returnedDevice }
+        override suspend fun device(serial: String, token: String): LifeDevice {
+            deviceCalls++; deviceGate?.await(); deviceFailure?.let { throw it }; return returnedDevice
+        }
         override suspend fun selectAfterPay(token: String) {
             if (afterPayExpired) throw LifeDeviceException("fixture expired", true)
         }
@@ -127,6 +131,22 @@ class LifeDevicesViewModelTest {
     private fun model(api: Api, store: Store): LifeDevicesViewModel = lifeDevicesViewModelFixture(
         ApplicationProvider.getApplicationContext<Application>(), api, store, dispatcher, { 100_000L }
     ).also { viewModels.put("model", it) }
+
+    @Test fun failedScanStaysOnTheDevicePageAndRetryPublishesProgressImmediately() = runTest(dispatcher) {
+        val api = Api().apply { deviceFailure = java.io.IOException("设备查询失败") }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        runCurrent(); model.pageVisible(true); model.scan(); model.scanned(device.serial); runCurrent()
+        assertNotNull(model.state.value.error); assertFalse(model.state.value.scanning)
+        assertEquals(device.serial, model.state.value.scannedSerial)
+        api.deviceFailure = null; api.deviceGate = CompletableDeferred()
+        model.refreshDevice()
+        assertTrue(model.state.value.loadingDevice); assertNull(model.state.value.error)
+        runCurrent(); assertEquals(2, api.deviceCalls)
+        model.refreshDevice(); runCurrent(); assertEquals(2, api.deviceCalls)
+        api.deviceGate!!.complete(Unit); runCurrent()
+        assertFalse(model.state.value.loadingDevice); assertFalse(model.state.value.scanning)
+        assertEquals(device, model.state.value.device); assertEquals(0, api.unlockCalls)
+    }
 
     @Test fun restoredRouteRequeriesTheSelectedOutletWithoutUnlocking() = runTest(dispatcher) {
         val api = Api().apply { returnedDevice = device.copy(skus = listOf(LifeSku("first", "一号", true), LifeSku("saved", "二号", true))) }
