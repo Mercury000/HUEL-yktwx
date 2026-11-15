@@ -277,14 +277,17 @@ class Hui798ViewModel internal constructor(
         if (!mutable.value.restoring && account != null) loadDevice(id)
     }
     internal val restorationOwner: String? get() = ownerPhone.takeIf(String::isNotBlank)
-    fun refreshDevice() { if (!mutable.value.busy && !mutable.value.loadingDevice) pendingDeviceId?.let(::loadDevice) }
+    fun refreshDevice() {
+        if (mutable.value.busy || mutable.value.loadingDevice || mutable.value.accountBusy) return
+        (mutable.value.scannedDeviceId ?: pendingDeviceId)?.let(::loadDevice)
+    }
     private fun loadDevice(id: String) {
         if (mutable.value.restoring) return
         val owner = account ?: return
         val request = ++generation
         deviceTask?.cancel()
+        mutable.update { it.copy(loadingDevice = true, deviceReady = false, deviceInUse = false, error = null) }
         deviceTask = viewModelScope.launch {
-            mutable.update { it.copy(loadingDevice = true, deviceReady = false, deviceInUse = false, error = null) }
             try {
                 val device = api.device(id, owner.token)
                 if (request != generation || account?.token != owner.token) return@launch

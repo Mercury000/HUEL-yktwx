@@ -152,6 +152,7 @@ class LaundryViewModelTest {
         var machineReadyAfter = 1
         var deviceReads = 0
         var deviceGate: CompletableDeferred<Unit>? = null
+        var deviceFailure: Exception? = null
         var quoteGate: CompletableDeferred<Unit>? = null
         var quoteFailure: Exception? = null
         var channelsGate: CompletableDeferred<Unit>? = null
@@ -187,6 +188,7 @@ class LaundryViewModelTest {
         override suspend fun syncOrder(orderNo: String, token: String) { error("No after pay sync") }
         override suspend fun laundryDevice(code: String, token: String): LifeDevice {
             deviceReads++; deviceGate?.await()
+            deviceFailure?.let { throw it }
             return devices[code] ?: device
         }
         override suspend fun laundryQuote(device: LifeDevice, skuId: String, token: String): LaundryQuote {
@@ -264,6 +266,20 @@ class LaundryViewModelTest {
         assertNull(model.state.value.laundryQuote)
         model.showLaundryPayment(); runCurrent()
         assertNotNull(model.state.value.laundryQuote)
+    }
+    @Test fun missingLaundryDeviceRetryRechecksTheScanInsteadOfOpeningAnEmptyPaymentForm() = runTest(dispatcher) {
+        val api = Api().apply { deviceFailure = java.io.IOException("洗衣设备查询失败") }
+        val model = model(api, Store())
+        runCurrent(); model.open(LifeFeature.Laundry); model.pageVisible(true); model.scanned(device.serial); runCurrent()
+        assertNull(model.state.value.device); assertNotNull(model.state.value.error); assertFalse(model.state.value.scanning)
+        api.deviceFailure = null; api.deviceGate = CompletableDeferred()
+        model.retryLaundry()
+        assertTrue(model.state.value.loadingDevice)
+        runCurrent(); assertEquals(2, api.deviceReads)
+        api.deviceGate!!.complete(Unit); runCurrent()
+        assertEquals(device, model.state.value.device); assertNull(model.state.value.error)
+        assertFalse(model.state.value.paymentVisible); assertTrue(api.quotedSkus.isEmpty())
+        assertEquals(0, api.creates); assertEquals(0, api.balancePays)
     }
     @Test fun unifiedLaundryScanBeforeLoginContinuesTheSameDeviceWithoutQuotingOrCreatingAnOrder() = runTest(dispatcher) {
         val api = Api(); val store = Store(washing = LaundrySession(device, "clean", "0.00", "2",

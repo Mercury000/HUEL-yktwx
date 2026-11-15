@@ -33,7 +33,7 @@ internal fun SectionTitle(title: String) {
     )
 }
 
-/** One single-line error in the current form. Empty errors occupy no space. */
+/** Inline error with an optional trailing action. Empty errors occupy no space. */
 @Composable
 internal fun InlineError(
     message: String?, modifier: Modifier = Modifier, maxLines: Int = 1, preserveMessage: Boolean = false,

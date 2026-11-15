@@ -280,7 +280,8 @@ class LifeDeviceUiTest {
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("正在启动设备").assertIsDisplayed()
         compose.onAllNodesWithText("服务提供方").assertCountEquals(1)
-        compose.onNodeWithTag("water-device-loading").assertIsDisplayed()
+        compose.onNodeWithTag("water-device-loading", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("water-action-progress", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("water-primary-action").assertIsNotEnabled().assertTextContains("正在启动…")
         compose.onNodeWithTag("water-elapsed").assertDoesNotExist()
         assertEquals("Starting keeps the shared device identity in place", hero,

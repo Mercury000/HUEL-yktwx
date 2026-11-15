@@ -1,12 +1,5 @@
 package com.mercury.yktwx.ui.components
 
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
-
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -16,10 +9,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 /** The slot owns its spacing and remains mounted long enough to finish disappearance. */
 @Composable
@@ -45,12 +44,10 @@ internal fun FeedbackTransition(showing: Boolean, modifier: Modifier = Modifier,
 
 @Composable
 internal fun AnimatedInlineError(message: String?, modifier: Modifier = Modifier,
-    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 0.dp, preserveMessage: Boolean = false) {
-    val showing = !message.isNullOrBlank()
-    val displayed = rememberWhileShown(showing, message.orEmpty())
-    FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = bottomSpacing) {
-        // Only text transitions: credentials and live request objects never enter animation state.
-        ContentFade(displayed) { InlineError(it, modifier, preserveMessage = preserveMessage) }
+    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 0.dp, preserveMessage: Boolean = false,
+    trailingContent: (@Composable () -> Unit)? = null) {
+    AnimatedInlineFeedback(message, Unit, modifier, topSpacing, bottomSpacing, preserveMessage) { _, _ ->
+        trailingContent?.invoke()
     }
 }
 
@@ -63,7 +60,7 @@ private fun <T> AnimatedInlineFeedback(message: String?, action: T, modifier: Mo
     val target = rememberWhileShown(showing, message.orEmpty() to action)
     FeedbackTransition(showing, topSpacing = topSpacing, bottomSpacing = bottomSpacing) {
         // Only display values transition; outgoing actions cannot dispatch another retry.
-        ContentFade(target, animateSize = true) { displayed ->
+        ContentFade(target, animateSize = true, ownsSizeAnimation = true) { displayed ->
             val current = displayed == target
             InlineError(displayed.first, modifier.then(if (current) Modifier else Modifier.clearAndSetSemantics {}),
                 preserveMessage = preserveMessage, trailingContent = { trailingContent(displayed.second, current) })
