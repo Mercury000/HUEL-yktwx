@@ -83,6 +83,23 @@ class HellobikeApiTest {
         assertTrue(api("""{"code":0,"data":{"guid":"pay-no","businessId":"payment-id","amount":4.9,"payStatus":1}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
         rejected { api("""{"code":0,"data":{"guid":"other","payStatus":1}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())) }
     }
+    @Test fun ordinaryListKeepsEveryServerBicyclePackageAndUsesOfficialPriceFallback() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val packages = (0..22).joinToString(",") { index ->
+            """{"showName":"服务端商品$index","packageGuid":"server-package-$index","purchasePrice":"2.50"}"""
+        }
+        val products = api("""{"code":0,"data":{"packageGroups":[{"channelCode":101000,"businessType":1,"exposureNum":4,"canBuy":0,"packages":[$packages]},{"channelCode":101000,"businessType":1,"canBuy":2,"packages":[{"showName":"停售商品仍展示","actualPrice":{"promo":{"id":"keep"}}}]},{"channelCode":102000,"businessType":2,"packages":[{"showName":"助力车","actualPrice":{"finalPrice":2}}]}]}}""", calls)
+            .ordinaryProducts(fixtureBikeAccount, null, null)
+        assertEquals(24, products.size)
+        assertEquals((0..22).map { "服务端商品$it" } + "停售商品仍展示", products.map { it.name })
+        assertEquals("2.50", products.first().price)
+        assertEquals("2.50", products.first().raw.objectOrNull("actualPrice")!!.hbText("finalPrice"))
+        assertEquals("0.00", products.last().price)
+        assertEquals("keep", products.last().raw.objectOrNull("actualPrice")!!.objectOrNull("promo")!!.hbText("id"))
+        assertFalse(products.last().purchasable)
+        assertEquals(listOf(JsonPrimitive(101000)), calls.single().json.arrayOrNull("channelCodes"))
+        assertEquals(true, calls.single().json.objectOrNull("filterParams")!!.hbBoolean("filterCoBranded"))
+    }
     @Test fun ordinaryCardsKeepPromotionsAndUseSubscriptionsSigningRoute() = runBlocking {
         val calls = mutableListOf<Reply>()
         val products = api("""{"code":0,"data":{"packageGroups":[{"channelCode":101000,"businessType":1,"canBuy":0,"packages":[{"showName":"普通90天卡","packageGuid":"ordinary-package","actualPrice":{"finalPrice":19.9,"promo":{"id":"keep"}},"pendingInfos":[{"id":"keep"}],"paymentLimit":0},{"showName":"连续包月","actualPrice":{"finalPrice":9.9},"paymentLimit":1}]}]}}""", calls)
@@ -240,20 +257,23 @@ class HellobikeApiTest {
             assertEquals(status, ride.status)
         }
     }
-    @Test fun precheckAndCreateReuseTheOfficialScanIdAndTheirOwnPlatformValues() = runBlocking {
+    @Test fun precheckAndCreateUseTheOfficialH5FieldsAndTheirOwnPlatformValues() = runBlocking {
         val calls = mutableListOf<Reply>()
         val replies = listOf("""{"code":0,"data":{"result":true,"causeType":1100,"bikeType":0,"orderGuid":"${fixtureBikeSession.rideGuid}"}}""",
-            """{"code":0,"data":{"ridePriceInfo":{"priceRule":"30分钟2元"}}}""",
             """{"code":0,"data":{"result":true,"rideId":"${fixtureBikeSession.rideGuid}"}}""")
         val client = HellobikeApi(fixtureHttp { url -> Reply(url, replies[calls.size]).also(calls::add) }, { 1_000_000 }, { 50_000 })
         val check = client.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
         client.create(fixtureBikeAccount, check, fixtureBikePosition)
-        val pre = calls[0].json; val create = calls[2].json
+        val pre = calls[0].json; val create = calls[1].json
         assertTrue(check.scanReqId.matches(Regex("${Regex.escape(fixtureBikeAccount.userGuid)}_${Regex.escape(fixtureBikeSession.bikeNo)}_[0-9]{14}_mini_[0-9]{4}")))
         assertEquals(check.scanReqId, pre.hbText("scanReqId")); assertEquals(check.scanReqId, pre.hbText("scan_req_id"))
-        assertEquals(check.scanReqId, create.hbText("scanReqId"))
+        assertFalse(create.containsKey("scanReqId")); assertFalse(create.containsKey("scan_req_id"))
         assertEquals(1, pre.hbInt("force")); assertEquals(0, pre.hbInt("platform")); assertEquals(2, create.hbInt("platform"))
+        assertEquals(1, pre.hbInt("openBluetooth"))
+        assertEquals(0, pre.hbInt("bleStatus")); assertEquals(false, pre.hbBoolean("userConfirmContinueRide"))
+        assertFalse(create.containsKey("orderGuid"))
         assertEquals("7.0.70", create.hbText("h5Version")); assertEquals("ohoSaaS", create.hbText("sourceMarkup"))
+        assertEquals("7.0.75", create.hbText("version"))
         assertNull(create.hbText("releaseVersion"))
     }
     @Test fun aMismatchedRideOrPaymentCannotBeConfirmed() = runBlocking {
@@ -351,9 +371,9 @@ class HellobikeApiTest {
         catch (e: HellobikeException) { assertEquals("车辆已被使用\n$text", e.message) }
         assertEquals(1, calls.size)
     }
-    @Test fun precheckUsesTheOfficialOrConditionAndKeepsNoticesWithoutInventingVehicleRestrictions() = runBlocking {
+    @Test fun h5PrecheckKeepsSuccessfulNoticesWithoutInventingVehicleRestrictions() = runBlocking {
         for (result in listOf(jsonObjectOf("result" to true, "causeType" to 1105, "missBike" to true),
-            jsonObjectOf("result" to false, "causeType" to 1100))) {
+            jsonObjectOf("result" to true, "causeType" to 1100))) {
             val calls = mutableListOf<Reply>()
             val pre = result.withField("orderGuid", fixtureBikeSession.rideGuid).withField("cause", "官方提示")
             val replies = listOf(jsonObjectOf("code" to 0, "data" to pre).toString(),
@@ -361,7 +381,8 @@ class HellobikeApiTest {
             val service = HellobikeApi(fixtureHttp { url -> Reply(url, replies[calls.size]).also(calls::add) }, elapsed = { 50_000 })
             val check = service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
             assertEquals("官方提示", check.notice)
-            assertEquals("30分钟2元", check.priceRule)
+            assertEquals("", check.priceRule)
+            assertEquals(1, calls.size)
             assertTrue(calls[0].json.hbBoolean("isHandleTag") == true)
         }
     }
@@ -384,7 +405,7 @@ class HellobikeApiTest {
                 assertEquals(1, calls.size)
             } else {
                 assertEquals("", service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition).priceRule)
-                assertEquals(2, calls.size)
+                assertEquals(1, calls.size)
             }
         }
     }
@@ -393,10 +414,75 @@ class HellobikeApiTest {
             .prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition); fail() }
         catch (e: HellobikeException) { assertTrue(e.officialRequired); assertFalse(e.rejected); assertEquals("请完成官方认证", e.message) }
         val calls = mutableListOf<Reply>()
-        val replies = listOf("""{"code":0,"data":{"result":true,"causeType":1226,"orderGuid":"${fixtureBikeSession.rideGuid}","notices":[{"warnType":1213,"warnTitle":"官方告知","warnContent":"请阅读后继续"},{"warnType":1226,"warnTitle":"普通提示"}]}}""",
+        val replies = listOf("""{"code":0,"data":{"result":true,"causeType":1226,"orderGuid":"${fixtureBikeSession.rideGuid}","notices":[{"warnType":1214,"warnTitle":"官方告知","warnContent":"请阅读后继续"},{"warnType":1226,"warnTitle":"普通提示"}]}}""",
             """{"code":0,"data":{}}""")
         val service = HellobikeApi(fixtureHttp { url -> Reply(url, replies[calls.size]).also(calls::add) }, elapsed = { 50_000 })
         assertEquals("官方告知\n请阅读后继续\n普通提示", service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition).notice)
+    }
+    @Test fun scanInspectionCannotSendPreRideOrCreateAndHasNoCloudOrderYet() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val service = api("""{"code":0,"data":{"ridePriceInfo":{"priceRule":"30分钟2元"}}}""", calls)
+        val inspection = service.inspectBike(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+        assertEquals("30分钟2元", inspection.priceRule); assertEquals("", inspection.orderGuid)
+        assertEquals("tw.bike.unlock.page.basic.info", calls.single().json.hbText("action"))
+        rejected { service.create(fixtureBikeAccount, inspection, fixtureBikePosition) }
+        assertEquals(1, calls.size)
+    }
+    @Test fun serverSkipConfirmUsesTheReturnedRideAndCannotSendADuplicateCreate() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val service = api("""{"code":0,"data":{"result":true,"causeType":1100,"rideGuid":"${fixtureBikeSession.rideGuid}","skipConfirmResult":{"canSkip":true,"executor":1}}}""", calls)
+        val prepared = service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+        assertTrue(prepared.serverUnlockStarted); assertTrue(prepared.skipConfirmation); assertEquals(fixtureBikeSession.rideGuid, prepared.orderGuid)
+        service.create(fixtureBikeAccount, prepared, fixtureBikePosition)
+        assertEquals(1, calls.size); assertEquals("user.ride.pre.ride", calls.single().json.hbText("action"))
+    }
+    @Test fun ordinaryPreRideNeedsNoOrderIdAndCreateUsesItsActualReturnedRide() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val replies = listOf("""{"code":0,"data":{"result":true,"causeType":1100}}""",
+            """{"code":0,"data":{"rideId":"actual-created-ride"}}""")
+        val service = HellobikeApi(fixtureHttp { url -> Reply(url, replies[calls.size]).also(calls::add) }, elapsed = { 50_000 })
+        val prepared = service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+        assertEquals("", prepared.orderGuid); assertFalse(prepared.skipConfirmation)
+        assertEquals("actual-created-ride", service.create(fixtureBikeAccount, prepared, fixtureBikePosition))
+        assertFalse(calls[1].json.containsKey("orderGuid"))
+    }
+    @Test fun newH5GatesIncludeItsDialogsAndDoNotUseTheNativeOrCondition() = runBlocking {
+        val special = listOf(
+            jsonObjectOf("directGoto" to jsonObjectOf("directGotoCode" to 30005)),
+            jsonObjectOf("canFaceRecognition" to 1),
+            jsonObjectOf("canFaceRecognition" to true),
+            jsonObjectOf("recommendProperties" to jsonObjectOf("recommendSwitch" to true)),
+            jsonObjectOf("popups" to jsonArrayOf(listOf(jsonObjectOf("popupLocation" to 1)))),
+            jsonObjectOf("notices" to jsonArrayOf(listOf(jsonObjectOf("warnType" to 1213)))),
+            jsonObjectOf("popupPromptType" to 3))
+        for (fields in special) {
+            val calls = mutableListOf<Reply>()
+            val data = JsonObject(jsonObjectOf("result" to true, "causeType" to 1100, "cause" to "官方交互说明") + fields)
+            try {
+                api(jsonObjectOf("code" to 0, "data" to data).toString(), calls)
+                    .prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+                fail("An unimplemented official interaction cannot silently create a ride")
+            } catch (e: HellobikeException) { assertTrue(e.officialRequired); assertFalse(e.rejected); assertEquals("官方交互说明", e.message) }
+            assertEquals(1, calls.size)
+        }
+        for (cause in listOf(1100, 1204, 1235, 1231, 1109, 1115)) {
+            try {
+                api("""{"code":0,"data":{"result":false,"causeType":$cause,"cause":"官方拒绝说明"}}""")
+                    .prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+                fail("The native causeType=1100 OR rule does not authorize this H5 result")
+            } catch (e: HellobikeException) { assertTrue(e.rejected); assertEquals("官方拒绝说明", e.message) }
+        }
+    }
+    @Test fun h5ContinueRideFlagComesFromTheReleasedUnpaidEntrance() = runBlocking {
+        for (mode in listOf(0, 1, 2, 3)) {
+            val calls = mutableListOf<Reply>()
+            val replies = listOf("""{"code":0,"data":{"result":true,"causeType":1100,"unpaidEntranceMode":$mode}}""",
+                """{"code":0,"data":{"rideId":"created-ride"}}""")
+            val service = HellobikeApi(fixtureHttp { url -> Reply(url, replies[calls.size]).also(calls::add) }, elapsed = { 50_000 })
+            val pre = service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+            service.create(fixtureBikeAccount, pre, fixtureBikePosition)
+            assertEquals(mode in setOf(2, 3), calls[1].json.hbBoolean("userConfirmContinueRide"))
+        }
     }
     @Test fun successfulLoginDoesNotRejectMobileFlagsOrInventTokenLengthRules() = runBlocking {
         val owner = api("""{"code":0,"data":{"token":"token","guid":"user","unavailableMobile":true,"needRebindMobile":"1"}}""")

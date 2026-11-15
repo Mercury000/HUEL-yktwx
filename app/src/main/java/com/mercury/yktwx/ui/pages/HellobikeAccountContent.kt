@@ -174,26 +174,38 @@ internal fun HellobikeAccountContent(modifier: Modifier, padding: PaddingValues,
                             }
                         }
                         AccountSectionVisibility(display.ordinaryExpanded && connected) {
-                            val ordinaryMode = when {
-                                display.ordinaryProducts.isNotEmpty() -> AccountCardMode.Cards
-                                display.ordinaryLoading -> AccountCardMode.Loading
-                                display.ordinaryError != null -> AccountCardMode.Error
-                                display.ordinaryLoaded -> AccountCardMode.Empty
-                                else -> AccountCardMode.Hidden
-                            }
-                            AccountCardsReadContent(display, ordinaryMode, Modifier.testTag("hellobike-other-cards-content")) { shown, mode, current ->
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    when (mode) {
-                                        AccountCardMode.Cards -> shown.ordinaryProducts.forEach { product -> key(product.key) {
-                                            HellobikeProductCard(product, enabled && current && display.ordinaryExpanded && connected, { model.cards.choose(product.key) })
-                                        } }
-                                        AccountCardMode.Loading -> HellobikeCardsPlaceholder("hellobike-ordinary-loading")
-                                        AccountCardMode.Empty -> AccountEmptyCard("暂无其他骑行卡", "下拉刷新后查看")
-                                        else -> Unit
-                                    }
-                                    shown.ordinaryError?.let { Box(Modifier.padding(horizontal = 16.dp)) { AccountNotice(it) } }
-                                    if (shown.ordinaryError != null) Box(Modifier.padding(horizontal = 28.dp)) {
-                                        DashboardLink("重试", { model.cards.expandOrdinary(true) }, enabled = enabled && current && display.ordinaryExpanded && connected, arrow = false)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                InlineRetryFeedback(display.ordinaryLocationError, display.ordinaryLocationLoading || bikeState.locationPermissionRequest != null,
+                                    when {
+                                        display.ordinaryLocationPermissionRequired && bikeState.locationPermissionBlocked -> "去设置"
+                                        display.ordinaryLocationPermissionRequired -> "开启定位"
+                                        else -> "重新定位"
+                                    }, model.cards::requestOrdinaryLocation,
+                                    Modifier.padding(horizontal = 16.dp).testTag("hellobike-card-location-notice"),
+                                    enabled = enabled && !display.loading && display.ordinaryExpanded && connected,
+                                    busyLabel = if (bikeState.locationPermissionRequest != null) "等待授权" else "正在定位",
+                                    actionModifier = Modifier.testTag("hellobike-card-location-retry"), identity = model.restorationOwner)
+                                val ordinaryMode = when {
+                                    display.ordinaryProducts.isNotEmpty() -> AccountCardMode.Cards
+                                    display.ordinaryLoading -> AccountCardMode.Loading
+                                    display.ordinaryError != null -> AccountCardMode.Error
+                                    display.ordinaryLoaded -> AccountCardMode.Empty
+                                    else -> AccountCardMode.Hidden
+                                }
+                                AccountCardsReadContent(display, ordinaryMode, Modifier.testTag("hellobike-other-cards-content")) { shown, mode, current ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        when (mode) {
+                                            AccountCardMode.Cards -> shown.ordinaryProducts.forEach { product -> key(product.key) {
+                                                HellobikeProductCard(product, enabled && current && display.ordinaryExpanded && connected, { model.cards.choose(product.key) })
+                                            } }
+                                            AccountCardMode.Loading -> HellobikeCardsPlaceholder("hellobike-ordinary-loading")
+                                            AccountCardMode.Empty -> AccountEmptyCard("暂无其他骑行卡", "下拉刷新后查看")
+                                            else -> Unit
+                                        }
+                                        shown.ordinaryError?.let { Box(Modifier.padding(horizontal = 16.dp)) { AccountNotice(it) } }
+                                        if (shown.ordinaryError != null) Box(Modifier.padding(horizontal = 28.dp)) {
+                                            DashboardLink("重试", { model.cards.expandOrdinary(true) }, enabled = enabled && current && display.ordinaryExpanded && connected, arrow = false)
+                                        }
                                     }
                                 }
                             }

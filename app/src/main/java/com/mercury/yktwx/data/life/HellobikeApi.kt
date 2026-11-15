@@ -54,7 +54,7 @@ internal object HellobikeProtocol {
     }
     fun rideFields(account: HellobikeAccount) = jsonObjectOf("token" to account.token,
         "ticket" to account.ticket.takeIf(String::isNotBlank), "systemCode" to account.systemCode,
-        "version" to RideH5Version, "h5Version" to RideH5Version, "appName" to "AppHelloMiniBrand",
+        "version" to NativeVersion, "h5Version" to RideH5Version, "appName" to "AppHelloMiniBrand",
         "from" to "h5", "sourceMarkup" to "ohoSaaS")
     // BikeRideCheckApiModel extends native BaseApiModel; it has no H5 or bizType fields.
     fun rideCheckFields(account: HellobikeAccount) = jsonObjectOf("token" to account.token,
@@ -240,49 +240,75 @@ class HellobikeApi internal constructor(
     }
     private suspend fun ride(action: String, account: HellobikeAccount, fields: JsonObject) =
         request(action, JsonObject(HellobikeProtocol.rideFields(account) + fields))
+    override suspend fun inspectBike(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+        val page = ride("tw.bike.unlock.page.basic.info", account, JsonObject(location(region, position) +
+            jsonObjectOf("bikeNo" to bikeNo, "bikeShowNo" to bikeNo, "businessType" to 0, "pageVersion" to 2,
+                "userLat" to position.lat, "userLng" to position.lng)))
+        return HellobikePrecheck(bikeNo, "", page.objectOrNull("ridePriceInfo")?.hbText("priceRule").orEmpty(),
+            elapsed(), region, position, notice = HellobikeProtocol.message(page))
+    }
     override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
         val scanId = HellobikeProtocol.scanRequestId(account.userGuid, bikeNo, now())
         val pre = ride("user.ride.pre.ride", account, JsonObject(location(region, position) + jsonObjectOf("bikeNo" to bikeNo, "isHandleTag" to true,
             "scanReqId" to scanId, "scan_req_id" to scanId, "model" to 0, "force" to 1, "platform" to 0,
-            "scanEntrance" to 1, "openBluetooth" to 0, "bleStatus" to false, "locationStatus" to 1, "pageVersion" to 2, "mode" to 0, "bizType" to 0)))
-        val order = pre.hbText("orderGuid")
-        // S/z0/R dispatch these responses to separate official dialogs or authentication.
-        // Preserve that requirement instead of bypassing it on result=true.
-        val needsOfficialFlow = pre.hbInt("causeType") in setOf(1421, 1215, 1130, 1136, 1133, 1225) ||
-            pre.hbInt("causeType") == 1226 && pre.objectOrNull("nearBikeInfo") != null ||
-            pre.hbBoolean("netBluetoothModel") == true && pre.hbInt("popupPromptType") == 3 ||
-            pre.hbInt("canFaceRecognition") == 1 && pre.hbText("launchBioAuthRequestResponseDto") != null ||
-            (pre.objectOrNull("recommendProperties") != null || pre.hbInt("causeType") == 1427) && pre.objectOrNull("popup") != null ||
-            pre.arrayOrNull("notices").orEmpty().any {
-                val warn = (it as? JsonObject)?.hbInt("warnType")
-                warn in setOf(1225, 1234) || warn == 1226 && pre.objectOrNull("nearBikeInfo") != null
-            }
-        if (needsOfficialFlow) throw HellobikeException(HellobikeProtocol.message(pre, includeEnvelope = true)
-            ?: "user.ride.pre.ride：返回了当前应用尚未接入的官方交互，服务端未提供提示", officialRequired = true)
-        // BikePreRideCreateAction.S: result == true OR causeType == 1100.
-        // Neither missBike nor an absent bikeType is an additional rejection here.
-        if (pre.hbBoolean("result") != true && pre.hbInt("causeType") != 1100)
+            "scanEntrance" to 1, "openBluetooth" to 1, "bleStatus" to 0, "locationStatus" to 1, "pageVersion" to 2, "mode" to 0, "bizType" to 0,
+            "userConfirmContinueRide" to false)))
+        val skip = pre.objectOrNull("skipConfirmResult")
+        // Official executor 1 means the server has already issued the unlock in pre-ride.
+        val skipConfirmation = skip?.hbBoolean("canSkip") == true
+        val serverUnlock = skipConfirmation && skip.hbInt("executor") == 1
+        val order = if (serverUnlock) pre.hbText("rideGuid") else pre.hbText("orderGuid")
+        // The official server executor starts checking rideGuid directly, before the
+        // ordinary confirmation guards. Never lose an already accepted server unlock.
+        if (serverUnlock) {
+            val rideGuid = order?.let(HellobikeProtocol::normaliseRideGuid)?.takeIf(String::isNotBlank)
+                ?: throw HellobikeException("user.ride.pre.ride：服务端开锁结果缺少 rideGuid", officialRequired = true, rideMayHaveStarted = true)
+            return HellobikePrecheck(pre.hbText("bikeNo") ?: bikeNo, rideGuid, pre.hbText("priceRule").orEmpty(),
+                elapsed(), region, position, scanId, notice = HellobikeProtocol.message(pre), serverUnlockStarted = true, skipConfirmation = true)
+        }
+        val cause = pre.hbInt("causeType")
+        // New H5 isBlockedByPreCheck, distinct from the native S() fallback.
+        if (pre.hbBoolean("result") == false && cause in setOf(1204, 1235, 1231, 1109, 1115))
             throw HellobikeException(HellobikeProtocol.message(pre, includeEnvelope = true)
                 ?: HellobikeProtocol.missingReason("user.ride.pre.ride", pre), rejected = true)
-        if (order.isNullOrBlank()) throw HellobikeException("user.ride.pre.ride：响应缺少 orderGuid")
-        val page = ride("tw.bike.unlock.page.basic.info", account, JsonObject(location(region, position) +
-            jsonObjectOf("bikeNo" to bikeNo, "bikeShowNo" to bikeNo, "businessType" to 0, "pageVersion" to 2)))
-        val rule = page.objectOrNull("ridePriceInfo")?.hbText("priceRule").orEmpty()
-        return HellobikePrecheck(bikeNo, HellobikeProtocol.normaliseRideGuid(order), rule, elapsed(), region, position, scanId,
-            notice = HellobikeProtocol.message(pre))
+        // Native-app H5 handles these through direct navigation, risk authentication,
+        // recommendation/modals or BLE. This app must hand them back to the official
+        // flow rather than pretending they were ordinary informational notices.
+        val needsOfficialFlow = pre.hbInt("canFaceRecognition")?.let { it != 0 } == true ||
+            pre.hbBoolean("canFaceRecognition") == true || cause in setOf(1420, 1421, 1215) ||
+            pre.hbInt("popupPromptType") == 3 ||
+            !skipConfirmation && (pre.objectOrNull("directGoto") != null ||
+                pre.objectOrNull("recommendProperties") != null || pre.arrayOrNull("popups").orEmpty().isNotEmpty() ||
+                pre.arrayOrNull("notices").orEmpty().any { (it as? JsonObject)?.hbInt("warnType") in setOf(1429, 1213, 1227, 1237) } ||
+                pre.hbBoolean("result") != true && cause in setOf(1130, 1136, 309, 1109, 1119, 1120, 1115, 30012))
+        if (needsOfficialFlow) throw HellobikeException(HellobikeProtocol.message(pre, includeEnvelope = true)
+            ?: "user.ride.pre.ride：返回了当前应用尚未接入的官方交互，服务端未提供提示", officialRequired = true)
+        // wxHandler's ordinary false result opens a blocking notice. Only the
+        // official client-skip path goes directly to onConfirmUnlock and its guard.
+        if (pre.hbBoolean("result") != true && !skipConfirmation)
+            throw HellobikeException(HellobikeProtocol.message(pre, includeEnvelope = true)
+                ?: HellobikeProtocol.missingReason("user.ride.pre.ride", pre), rejected = true)
+        return HellobikePrecheck(pre.hbText("bikeNo") ?: bikeNo, order?.let(HellobikeProtocol::normaliseRideGuid).orEmpty(), pre.hbText("priceRule").orEmpty(),
+            elapsed(), region, position, scanId, notice = HellobikeProtocol.message(pre), skipConfirmation = skipConfirmation,
+            userConfirmContinueRide = pre.hbBoolean("result") == true && pre.hbInt("unpaidEntranceMode") in setOf(2, 3))
     }
-    override suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition) {
+    override suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition): String {
+        if (precheck.serverUnlockStarted) return precheck.orderGuid
+        if (precheck.scanReqId.isBlank()) throw HellobikeException("尚未完成扫码检查，请重新检查车辆")
         if (!precheck.fresh(elapsed())) throw HellobikeException("车辆检查数据不完整，请重新检查")
         val data = ride("user.ride.create", account, JsonObject(location(precheck.region, position) + jsonObjectOf("bikeNo" to precheck.bikeNo,
-            "orderGuid" to precheck.orderGuid, "model" to 0, "mode" to 0, "force" to 1, "rideLicenseforce" to 1,
-            "scanReqId" to precheck.scanReqId.takeIf(String::isNotBlank), "platform" to 2,
-            "connectBluetooth" to false, "insurePlanType" to -1, "userConfirmContinueRide" to false)))
+            "model" to 0, "mode" to 0, "force" to 1, "rideLicenseforce" to 1,
+            // onConfirmUnlock stores scan_req_id for tracking; parseBikeParams
+            // reads the absent scanReqId/orderGuid properties and JSON omits them.
+            "platform" to 2, "connectBluetooth" to false, "insurePlanType" to -1,
+            "userConfirmContinueRide" to precheck.userConfirmContinueRide)))
         val returned = data.hbText("rideId")?.let(HellobikeProtocol::normaliseRideGuid)
-        if (returned != null && returned != precheck.orderGuid)
-            throw HellobikeException("返回订单与本次开锁不一致，请在哈啰核对", officialRequired = true)
-        if (data.hbBoolean("result") != true || returned == null)
+        // The new official confirmation page does not send a pre-ride orderGuid;
+        // parseResult adopts rideId from create and verifies it with order.status.
+        if (returned.isNullOrBlank())
             throw HellobikeException(HellobikeProtocol.message(data, includeEnvelope = true) ?: HellobikeProtocol.missingReason("user.ride.create", data),
                 rejected = data.hbBoolean("result") == false)
+        return returned
     }
     override suspend fun orderState(account: HellobikeAccount, rideGuid: String): HellobikeOrderReading {
         val data = ride("user.ride.order.status", account, jsonObjectOf("rideGuid" to rideGuid, "bizType" to 1))
@@ -523,10 +549,16 @@ class HellobikeApi internal constructor(
             if (group.hbInt("businessType") != 1) return@flatMapIndexed emptyList()
             group.arrayOrNull("packages").orEmpty().mapIndexed { index, packageValue ->
                 val item = packageValue as? JsonObject ?: throw HellobikeException("骑行卡商品格式异常")
-                val raw = JsonObject(jsonObjectOf("channelCode" to group.hbInt("channelCode"), "businessType" to group.hbInt("businessType"),
-                    "canBuy" to group.hbInt("canBuy")) + item)
-                val price = item.objectOrNull("actualPrice")?.hbText("finalPrice")?.let(HellobikeProtocol::money)
+                val actual = item.objectOrNull("actualPrice")
+                // Official ordinary formatCard uses purchasePrice when actualPrice is absent;
+                // an existing actualPrice without finalPrice gets the official zero default.
+                val price = (if (actual == null) item.hbText("purchasePrice") else actual.hbText("finalPrice") ?: "0")
+                    ?.let(HellobikeProtocol::money)
                     ?: throw HellobikeException("骑行卡商品缺少有效价格")
+                val pricedActual = actual?.takeIf { it.hbText("finalPrice") != null }
+                    ?: JsonObject(actual.orEmpty() + jsonObjectOf("finalPrice" to price))
+                val raw = JsonObject(jsonObjectOf("channelCode" to group.hbInt("channelCode"), "businessType" to group.hbInt("businessType"),
+                    "canBuy" to group.hbInt("canBuy")) + item + jsonObjectOf("actualPrice" to pricedActual))
                 HellobikeCampusProduct("ordinary:$groupIndex:$index", item.hbText("showName").orEmpty(), price,
                     item.hbText("commodityDesc").orEmpty(), raw, campus = false)
             }

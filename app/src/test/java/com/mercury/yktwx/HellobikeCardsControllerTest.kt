@@ -18,6 +18,8 @@ class HellobikeCardsControllerTest {
         var preorders = 0
         var cardPays = 0
         var ordinaryCalls = 0
+        val ordinaryRequests = mutableListOf<Pair<HellobikeRegion?, HellobikePosition?>>()
+        var ordinaryResponse: (suspend (HellobikeRegion?, HellobikePosition?) -> List<HellobikeCampusProduct>)? = null
         var gate: CompletableDeferred<Unit>? = null
         var auditFailure: Exception? = null
         var cardPayFailure: Exception? = null
@@ -34,7 +36,8 @@ class HellobikeCardsControllerTest {
             productCalls++; return HellobikeCampusProducts("校园卡", listOf(product))
         }
         override suspend fun ordinaryProducts(account: HellobikeAccount, region: HellobikeRegion?, position: HellobikePosition?): List<HellobikeCampusProduct> {
-            ordinaryCalls++; return listOf(product.copy(key = "ordinary", campus = false))
+            ordinaryCalls++; ordinaryRequests += region to position
+            return ordinaryResponse?.invoke(region, position) ?: listOf(product.copy(key = "ordinary", campus = false))
         }
         override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCardPurchase { preorders++; return purchase }
         override suspend fun cardPayChannels(account: HellobikeAccount, purchase: HellobikeCardPurchase) = listOf(HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "4.90"))
@@ -43,8 +46,10 @@ class HellobikeCardsControllerTest {
             return HellobikePayComponent("001", "", orders, payload = "fixture-payload")
         }
     }
-    private fun TestScope.controller(api: CardsApi, store: HellobikeStore, owner: () -> HellobikeAccount? = { fixtureBikeAccount }) =
-        HellobikeCardsController(backgroundScope, api, store, StandardTestDispatcher(testScheduler), owner, { fixtureBikeRegion }, FakeBikeLocation(), { true }, { _, _ -> }, { 1000L }).also {
+    private fun TestScope.controller(api: CardsApi, store: HellobikeStore,
+        location: HellobikeLocationService = FakeBikeLocation(), requestLocationPermission: () -> Unit = {},
+        owner: () -> HellobikeAccount? = { fixtureBikeAccount }) =
+        HellobikeCardsController(backgroundScope, api, store, StandardTestDispatcher(testScheduler), owner, { fixtureBikeRegion }, location, { true }, { _, _ -> }, { 1000L }, requestLocationPermission).also {
             it.bind(store.load().cardPurchases[owner()?.userGuid]); it.environment(true); it.pageVisible(true)
         }
     @Test fun onlyApprovedStudentsSeeProductsButAllAccountsCanReadTheirCards() = runTest {
@@ -66,6 +71,101 @@ class HellobikeCardsControllerTest {
         controller.dismissPayment(); controller.environment(false); controller.environment(true); runCurrent()
         assertEquals(2, api.ordinaryCalls)
         controller.expandOrdinary(false); controller.expandOrdinary(true); runCurrent(); assertEquals(2, api.ordinaryCalls)
+    }
+    @Test fun expandingOrdinaryCardsWaitsForTheCurrentLocation() = runTest {
+        val position = CompletableDeferred<HellobikePosition>()
+        val location = object : HellobikeLocationService {
+            override suspend fun current() = position.await()
+        }
+        val api = CardsApi()
+        val controller = controller(api, BikeRecords().store(), location); runCurrent()
+        controller.expandOrdinary(); runCurrent()
+        assertEquals(0, api.ordinaryCalls); assertTrue(controller.state.value.ordinaryLoading)
+        position.complete(fixtureBikePosition); runCurrent()
+        assertEquals(listOf(fixtureBikeRegion to fixtureBikePosition), api.ordinaryRequests)
+        assertTrue(controller.state.value.ordinaryLoaded); assertFalse(controller.state.value.ordinaryLoading)
+    }
+    @Test fun refreshingLocationDiscardsALateOrdinaryCardResponse() = runTest {
+        val staleResponse = CompletableDeferred<Unit>()
+        val location = FakeBikeLocation()
+        val freshPosition = fixtureBikePosition.copy(lat = fixtureBikePosition.lat + 0.01)
+        val freshProducts = (1..8).map { product.copy(key = "ordinary:$it", campus = false) }
+        val api = CardsApi().apply {
+            ordinaryResponse = { _, point ->
+                if (point == fixtureBikePosition) {
+                    withContext(NonCancellable) { staleResponse.await() }
+                    listOf(product.copy(key = "stale-national-card", campus = false))
+                } else freshProducts
+            }
+        }
+        val controller = controller(api, BikeRecords().store(), location); runCurrent()
+        controller.expandOrdinary(); runCurrent(); assertEquals(1, api.ordinaryCalls)
+        location.point = freshPosition; controller.refresh(); runCurrent()
+        assertEquals(2, api.ordinaryCalls); assertEquals(freshPosition, api.ordinaryRequests.last().second)
+        assertEquals(freshProducts, controller.state.value.ordinaryProducts)
+        staleResponse.complete(Unit); runCurrent()
+        assertEquals(freshProducts, controller.state.value.ordinaryProducts)
+        controller.expandOrdinary(false); controller.expandOrdinary(true); runCurrent()
+        assertEquals(2, api.ordinaryCalls)
+    }
+    @Test fun cancelledCardRefreshCannotClearTheNextLocationRefresh() = runTest {
+        val oldLocation = CompletableDeferred<HellobikePosition>()
+        val newLocation = CompletableDeferred<HellobikePosition>()
+        var calls = 0
+        val location = object : HellobikeLocationService {
+            override suspend fun current(): HellobikePosition = when (++calls) {
+                1 -> fixtureBikePosition
+                2 -> withContext(NonCancellable) { oldLocation.await() }
+                else -> newLocation.await()
+            }
+        }
+        val api = CardsApi()
+        val controller = controller(api, BikeRecords().store(), location); runCurrent()
+        controller.expandOrdinary(); runCurrent()
+        controller.refresh(); runCurrent()
+        controller.choose(product.key); runCurrent()
+        controller.dismissPayment()
+        controller.refresh(); runCurrent()
+        oldLocation.complete(fixtureBikePosition); runCurrent()
+        assertTrue("Old finally block must not finish the new refresh", controller.state.value.loading)
+        assertTrue(controller.state.value.ordinaryLoading)
+        controller.choose("ordinary"); runCurrent()
+        assertEquals("An ordinary purchase must wait for the current location", 1, api.preorders)
+        val point = fixtureBikePosition.copy(lat = fixtureBikePosition.lat + .02)
+        newLocation.complete(point); runCurrent()
+        assertFalse(controller.state.value.loading)
+        assertEquals(point, api.ordinaryRequests.last().second)
+    }
+    @Test fun locationProgressEndsBeforeUnrelatedStudentAndCardQueries() = runTest {
+        val position = CompletableDeferred<HellobikePosition>()
+        val student = CompletableDeferred<Unit>()
+        val api = CardsApi().apply { gate = student }
+        val controller = controller(api, BikeRecords().store(), object : HellobikeLocationService {
+            override suspend fun current() = position.await()
+        })
+        runCurrent()
+        assertTrue(controller.state.value.ordinaryLocationLoading)
+        position.complete(fixtureBikePosition); runCurrent()
+        assertFalse("Student audit must not keep the location indicator active", controller.state.value.ordinaryLocationLoading)
+        assertTrue(controller.state.value.loading)
+        student.complete(Unit); runCurrent()
+        assertFalse(controller.state.value.loading)
+    }
+    @Test fun missingLocationKeepsTheOfficialFallbackButOffersAuthorizationAndRefresh() = runTest {
+        val location = FakeBikeLocation().apply { failure = HellobikeLocationPermissionRequired() }
+        var permissionRequests = 0
+        val api = CardsApi()
+        val controller = controller(api, BikeRecords().store(), location, { permissionRequests++ }); runCurrent()
+        controller.expandOrdinary(); runCurrent()
+        assertNull(api.ordinaryRequests.single().second)
+        assertTrue(controller.state.value.ordinaryLocationPermissionRequired)
+        assertNotNull(controller.state.value.ordinaryLocationError)
+        assertTrue(controller.state.value.ordinaryProducts.isNotEmpty())
+        controller.requestOrdinaryLocation(); assertEquals(1, permissionRequests)
+        location.failure = null; controller.refresh(); runCurrent()
+        assertEquals(fixtureBikePosition, api.ordinaryRequests.last().second)
+        assertNull(controller.state.value.ordinaryLocationError)
+        assertFalse(controller.state.value.ordinaryLocationPermissionRequired)
     }
     @Test fun auditFailureIsShownWithoutTurningAnEmptyCardListIntoAnError() = runTest {
         val api = CardsApi().also { it.auditFailure = HellobikeException("官方认证查询原因") }

@@ -22,6 +22,10 @@ import com.mercury.yktwx.analytics.AnalyticsFixtures
 import com.mercury.yktwx.data.appPreferencesRepositoryFixture
 import com.mercury.yktwx.ui.themeSettingsFixture
 import com.mercury.yktwx.data.MemoryPreferences
+import com.mercury.yktwx.data.HttpFixture
+import com.mercury.yktwx.data.fixtureHttp
+import com.mercury.yktwx.data.parseObject
+import com.mercury.yktwx.data.stringValue
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.ThemeSettings
@@ -244,6 +248,221 @@ class HellobikeUiTest {
         compose.onNodeWithText("剩余 23 天").assertIsDisplayed()
         compose.onNodeWithTag("hellobike-my-cards-loading").assertDoesNotExist()
         compose.runOnIdle { cardsReply.complete(Unit) }
+    }
+    @Test fun ordinaryCardLocationNoticeKeepsRetryInsideTheInlineFeedbackInBothThemes() {
+        val bike = HellobikeViewModel(FakeHellobikeService(), BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("card-location-notice", it) }
+        var dark by mutableStateOf(false)
+        var display by mutableStateOf(HellobikeCardsState(ordinaryExpanded = true, ordinaryLoaded = true,
+            ordinaryLocationError = "暂无法确认地区，骑行卡可能不全",
+            ordinaryProducts = listOf(HellobikeCampusProduct("national-card", "单车7天不限次全国卡", "6.90", "官方商品说明",
+                com.mercury.yktwx.data.jsonObjectOf("businessType" to 1), campus = false))))
+        val account = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection(fixtureBikeAccount.maskedPhone, LifeAccountStatus.Verified), owner = fixtureBikeAccount.userGuid)
+        compose.setContent { AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+            Scaffold(topBar = { com.mercury.yktwx.ui.components.DashboardTopBar("哈啰") }) { padding ->
+                HellobikeAccountContent(Modifier.fillMaxSize(), padding, account, display, bike, true, {}, {})
+            }
+        } }
+        compose.runOnIdle { bike.initialize(false) }
+        fun snapshot(name: String) {
+            repeat(30) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+            val image = compose.onRoot().captureToImage().asAndroidBitmap()
+            File("../build/hellobike-card-list-review/$name.png").absoluteFile.also { it.parentFile?.mkdirs() }
+                .outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val notice = compose.onNodeWithTag("hellobike-card-location-notice").captureToImage().asAndroidBitmap()
+            File("../build/hellobike-card-list-review/$name-notice.png").outputStream()
+                .use { notice.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        compose.onNodeWithTag("hellobike-card-location-retry").performScrollTo().assertIsDisplayed().assertIsEnabled().assertHasClickAction()
+        compose.onNodeWithText(display.ordinaryLocationError!!).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-buy-national-card").assertExists()
+        val retryBounds = compose.onNodeWithTag("hellobike-card-location-retry").fetchSemanticsNode().boundsInRoot
+        val messageBounds = compose.onNodeWithText(display.ordinaryLocationError!!).fetchSemanticsNode().boundsInRoot
+        assertTrue(retryBounds.left >= messageBounds.right)
+        assertTrue(retryBounds.center.y in messageBounds.top..messageBounds.bottom)
+        snapshot("ordinary-location-inline-light")
+        compose.runOnIdle { dark = true }; snapshot("ordinary-location-inline-dark")
+        compose.runOnIdle { display = display.copy(loading = true, ordinaryLocationLoading = true) }
+        compose.onNodeWithText("正在定位").assertExists()
+        compose.runOnIdle { display = display.copy(ordinaryLocationLoading = false) }
+        compose.onNodeWithText("正在定位").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-card-location-retry").assertIsNotEnabled()
+        compose.runOnIdle { display = display.copy(loading = false, ordinaryLocationPermissionRequired = true,
+            ordinaryLocationError = "定位未授权，骑行卡可能不全") }
+        compose.onNodeWithText("开启定位").assertExists(); compose.onNodeWithText("重新定位").assertDoesNotExist()
+        compose.runOnIdle { display = display.copy(ordinaryLocationError = null, ordinaryLocationPermissionRequired = false) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("hellobike-card-location-notice").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-card-location-retry").assertDoesNotExist()
+    }
+    @Test fun scanRetryKeepsItsErrorAndShowsProgressUntilTheVehicleReply() {
+        var fail = true
+        val reply = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                if (fail) throw HellobikeException("暂无法检查车辆，请稍后重试", rejected = true)
+                reply.await()
+                return super.prepare(account, bikeNo, region, position)
+            }
+        }
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            elapsed = { 50_000L }, analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("scan-retry", it) }
+        val settings = themeSettingsFixture(compose.activity.application)
+        compose.setContent { AppTheme {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, elapsedMillis = { 50_000L })
+        } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.openDevice(fixtureBikeSession.bikeNo) }
+        compose.onNodeWithTag("hellobike-device-retry").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { fail = false }
+        compose.onNodeWithTag("hellobike-device-retry").performClick()
+        compose.onNodeWithTag("hellobike-device-retry").assertIsNotEnabled()
+        compose.onNodeWithText("正在检查").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-action-progress", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("暂无法检查车辆，请稍后重试").assertIsDisplayed()
+        compose.runOnIdle { reply.complete(Unit) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("hellobike-device-error").assertDoesNotExist()
+        assertNotNull(bike.state.value.precheck); assertEquals(0, api.createCalls)
+    }
+    @Test fun primaryRetryShowsFeedbackWhenTheSameFailureReturnsBeforeTheNextFrame() {
+        var checks = 0
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                checks++; throw HellobikeException("车辆查询失败", rejected = true)
+            }
+        }
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            elapsed = { 50_000L }, analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("instant-primary", it) }
+        val settings = settings()
+        compose.setContent { AppTheme {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, elapsedMillis = { 50_000L })
+        } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.openDevice(fixtureBikeSession.bikeNo) }
+        compose.onNodeWithTag("hellobike-primary-action").assertIsEnabled()
+        val before = checks
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("hellobike-primary-action").performClick()
+        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+        compose.runOnIdle { assertEquals(before + 1, checks) }
+        compose.onNodeWithTag("hellobike-action-progress", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("hellobike-primary-action").assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        compose.onNodeWithTag("hellobike-primary-action").assertIsEnabled()
+        assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls)
+    }
+    @Test fun ordinaryScanWaitsForConfirmationAndUsesTheCreatedRide() = assertOfficialScanBranch(null)
+    @Test fun serverSkipOnScanningTracksItsRideWithoutDuplicateCreate() = assertOfficialScanBranch(1)
+    @Test fun clientSkipOnScanningCreatesExactlyOnce() = assertOfficialScanBranch(2)
+    private fun assertOfficialScanBranch(executor: Int?) {
+        val actions = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val serverOpened = java.util.concurrent.atomic.AtomicBoolean(false)
+        val transport = fixtureHttp { url -> object : HttpFixture(url) {
+            val sent = ByteArrayOutputStream()
+            override fun requestBodyStream() = sent
+            override fun bodyStream(): java.io.InputStream {
+                val action = parseObject(sent.toString("UTF-8")).stringValue("action")
+                actions += action
+                val data = when (action) {
+                    "tw.bike.unlock.page.basic.info" -> """{"ridePriceInfo":{"priceRule":"30分钟2元"}}"""
+                    "user.ride.pre.ride" -> {
+                        if (executor == 1) serverOpened.set(true)
+                        val skip = if (executor == null) "" else """, "skipConfirmResult":{"canSkip":true,"executor":$executor}"""
+                        val ride = if (executor == 1) ", \"rideGuid\":\"${fixtureBikeSession.rideGuid}\"" else ""
+                        """{"result":true,"causeType":1100$skip$ride}"""
+                    }
+                    "user.ride.create" -> {
+                        serverOpened.set(true)
+                        """{"result":true,"rideId":"${fixtureBikeSession.rideGuid}"}"""
+                    }
+                    "user.ride.order.status" -> """{"rideGuid":"${fixtureBikeSession.rideGuid}","rideStatus":20,"subStatus":0}"""
+                    "hello.lbs.code.regeo" -> """{"data":{"reGeoCodesList":[{"addressComponent":{"cityCode":"${fixtureBikeRegion.cityCode}","adCode":"${fixtureBikeRegion.adCode}"}}]}}"""
+                    else -> "{}"
+                }
+                return java.io.ByteArrayInputStream("""{"code":0,"data":$data}""".toByteArray())
+            }
+        } }
+        val api = HellobikeApi(transport, { 1_000_000L }, { 50_000L })
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            elapsed = { 50_000L }, analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("scan-server-boundary", it) }
+        val settings = settings()
+        compose.setContent { AppTheme {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, elapsedMillis = { 50_000L })
+        } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.openDevice(fixtureBikeSession.bikeNo) }
+        compose.waitUntil(10_000) {
+            compose.waitForIdle()
+            (if (executor == null) bike.state.value.precheck != null else bike.state.value.session?.phase == HellobikePhase.Riding) ||
+                bike.state.value.error != null
+        }
+        compose.runOnIdle {
+            assertNull(bike.state.value.error)
+            assertEquals(1, actions.count { it == "user.ride.pre.ride" })
+            if (executor == null) {
+                assertNotNull(bike.state.value.precheck)
+                assertFalse("An ordinary scan cannot authorize unlocking", serverOpened.get())
+                assertFalse(actions.contains("user.ride.create"))
+            } else {
+                assertTrue("The only user action was scanning; canSkip comes from the official response", serverOpened.get())
+                assertEquals(HellobikePhase.Riding, bike.state.value.session?.phase)
+                assertEquals(if (executor == 1) 0 else 1, actions.count { it == "user.ride.create" })
+            }
+        }
+        if (executor == null) {
+            compose.onNodeWithTag("hellobike-primary-action").assertIsEnabled().performClick()
+            compose.waitUntil(10_000) {
+                compose.waitForIdle()
+                bike.state.value.session?.phase == HellobikePhase.Riding || bike.state.value.error != null
+            }
+        }
+        compose.runOnIdle {
+            assertTrue(serverOpened.get()); assertEquals(HellobikePhase.Riding, bike.state.value.session?.phase)
+            assertEquals(1, actions.count { it == "user.ride.pre.ride" })
+            assertEquals(if (executor == 1) 0 else 1, actions.count { it == "user.ride.create" })
+        }
+    }
+    @Test fun aPressStartedOnRetryCannotBecomeAnUnlockWhenPrecheckArrives() {
+        var fail = true
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                if (fail) throw HellobikeException("车辆查询失败", rejected = true)
+                return super.prepare(account, bikeNo, region, position)
+            }
+        }
+        val bike = HellobikeViewModel(api, BikeRecords().store(), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            elapsed = { 50_000L }, analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("press-identity", it) }
+        val settings = settings()
+        compose.setContent { AppTheme {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, elapsedMillis = { 50_000L })
+        } }
+        compose.runOnIdle { bike.initialize(false); bike.environment(true); bike.openDevice(fixtureBikeSession.bikeNo) }
+        compose.onNodeWithTag("hellobike-primary-action").performTouchInput { down(center) }
+        compose.runOnIdle { fail = false; bike.retryDeviceCheck() }
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("确认计费并开锁")
+        compose.onRoot().performTouchInput { up() }
+        compose.runOnIdle { assertEquals("An old gesture cannot confirm a new unlock action", 0, api.createCalls) }
+        compose.onNodeWithTag("hellobike-primary-action").performClick()
+        compose.runOnIdle { assertEquals(1, api.createCalls) }
+    }
+    @Test fun permissionAndReturnCheckingUseOnePrimaryActionAndOneProgressIndicator() {
+        val bike = model(FakeHellobikeService())
+        val settings = settings()
+        var state by mutableStateOf(HellobikeUiState(restoring = false, connectedPhone = fixtureBikeAccount.maskedPhone,
+            sessions = listOf(fixtureBikeSession), selectedSessionId = fixtureBikeSession.sessionId,
+            locationPermissionRequired = true, locationPermissionBlocked = true, error = "定位未授权，暂时无法操作车辆"))
+        compose.setContent { AppTheme { HellobikeDevicePage(state, settings, bike, true, {}, {}) } }
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("去设置开启定位")
+        compose.onNodeWithTag("hellobike-device-page").performScrollToNode(hasTestTag("hellobike-device-error"))
+        compose.onNodeWithTag("hellobike-device-retry").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(locationPermissionRequired = false, locationPermissionBlocked = false,
+            loadingDevice = true, error = null) }
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        compose.onNodeWithTag("hellobike-action-progress", useUnmergedTree = true).assertExists()
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo),
+            useUnmergedTree = true).assertCountEquals(1)
     }
     @Test fun purchaseWithDelayedChannelsUsesOfficialFallbackWithoutSendingPaymentAutomatically() {
         val channelReply = kotlinx.coroutines.CompletableDeferred<Unit>()

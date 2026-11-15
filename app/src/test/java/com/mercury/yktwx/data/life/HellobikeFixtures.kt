@@ -42,12 +42,14 @@ internal open class FakeHellobikeService : HellobikeService {
     var payCalls = 0
     var queryCalls = 0
     var prepareCalls = 0
+    var inspectCalls = 0
     var smsCalls = 0
     var loginCalls = 0
     var sliderCalls = 0
     var elapsed: () -> Long = { 50_000 }
     var createGate: CompletableDeferred<Unit>? = null
     var createFailure: Exception? = null
+    var createdRideGuid: String? = null
     var closeFailure: Exception? = null
     var payFailure: Exception? = null
     var detailFailure: Exception? = null
@@ -84,12 +86,17 @@ internal open class FakeHellobikeService : HellobikeService {
     }
     override suspend fun region(position: HellobikePosition) = fixtureBikeRegion
     override suspend fun checkRide(account: HellobikeAccount): HellobikeRideReading { readCalls++; return onRead?.invoke(account) ?: reading }
+    override suspend fun inspectBike(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+        inspectCalls++; return HellobikePrecheck(bikeNo, "", "首个30分钟2元", elapsed(), region, position)
+    }
     override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
         prepareCalls++; return HellobikePrecheck(bikeNo, fixtureBikeSession.rideGuid, "首个30分钟2元", elapsed(), region, position)
     }
-    override suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition) {
+    override suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition): String {
         beforeCreate(); createCalls++; createGate?.await(); createFailure?.let { throw it }
-        reading = HellobikeRideReading.Ride(precheck.orderGuid, precheck.bikeNo, 0, userGuid = account.userGuid)
+        val rideGuid = createdRideGuid ?: precheck.orderGuid
+        reading = HellobikeRideReading.Ride(rideGuid, precheck.bikeNo, 0, userGuid = account.userGuid)
+        return rideGuid
     }
     override suspend fun orderEnded(account: HellobikeAccount, rideGuid: String) = endedOrder
     override suspend fun orderState(account: HellobikeAccount, rideGuid: String): HellobikeOrderReading {

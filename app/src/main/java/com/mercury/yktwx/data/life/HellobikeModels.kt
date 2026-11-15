@@ -58,7 +58,9 @@ data class HellobikeSlider(val background: ByteArray, val piece: ByteArray, val 
 }
 data class HellobikePrecheck(val bikeNo: String, val orderGuid: String, val priceRule: String,
     val preparedAtElapsedMillis: Long, val region: HellobikeRegion, val position: HellobikePosition, val scanReqId: String = "",
-    val notice: String? = null) {
+    val notice: String? = null, val serverUnlockStarted: Boolean = false, val skipConfirmation: Boolean = false,
+    val userConfirmContinueRide: Boolean = false) {
+    // An ordinary pre-ride result need not contain a ride ID. Create returns the actual ride ID.
     // Kept only for the local monotonic clock; business expiry is decided by user.ride.create.
     fun fresh(elapsedMillis: Long) = elapsedMillis >= preparedAtElapsedMillis
 }
@@ -130,7 +132,8 @@ data class HellobikePayComponent(val channel: String, val status: String, val or
 }
 
 class HellobikeException(message: String, val loginExpired: Boolean = false, val rejected: Boolean = false,
-    val officialRequired: Boolean = false, val storageFailure: Boolean = false) : Exception(message)
+    val officialRequired: Boolean = false, val storageFailure: Boolean = false,
+    val rideMayHaveStarted: Boolean = false) : Exception(message)
 internal class HellobikeLocationPermissionRequired : Exception()
 
 interface HellobikeLocationService { suspend fun current(): HellobikePosition }
@@ -142,8 +145,9 @@ interface HellobikeService : HellobikeCardService {
     suspend fun login(phone: String, code: String, region: HellobikeRegion?, clientId: String, loginGuid: String): HellobikeAccount
     suspend fun region(position: HellobikePosition): HellobikeRegion
     suspend fun checkRide(account: HellobikeAccount): HellobikeRideReading
+    suspend fun inspectBike(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck
     suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck
-    suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition)
+    suspend fun create(account: HellobikeAccount, precheck: HellobikePrecheck, position: HellobikePosition): String
     suspend fun orderState(account: HellobikeAccount, rideGuid: String): HellobikeOrderReading
     suspend fun orderEnded(account: HellobikeAccount, rideGuid: String): Boolean
     suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition, region: HellobikeRegion,

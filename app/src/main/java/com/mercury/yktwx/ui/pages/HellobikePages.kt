@@ -45,6 +45,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.math.roundToInt
 
 private enum class HellobikeLoginPage { Phone, Verification }
+private enum class HellobikePrimaryAction { Login, Permission, Scan, Return, Refresh, PaymentResult, Payment, Unlock, Check }
 
 @Composable
 internal fun HellobikeLoginSheet(state: HellobikeUiState, model: HellobikeViewModel, active: Boolean) {
@@ -142,12 +143,18 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     val session = state.session
     val phase = session?.phase
     val interactive = active && !state.loginVisible && !state.paymentVisible
-    val busy = state.restoring || state.busy || state.loadingDevice || state.locating || state.paymentInFlight
+    val feedbackIdentity = model.restorationOwner to (state.selectedSessionId ?: state.scannedBikeNo)
+    val retryFeedback = rememberRetryFeedbackState(feedbackIdentity)
+    val busy = state.restoring || state.busy || state.loadingDevice || state.locating || state.paymentInFlight ||
+        state.locationPermissionRequest != null || retryFeedback.dispatching
     val precheckFresh = state.precheck?.fresh(clock) == true
     val primary = when {
         state.restoring -> "正在恢复账号…"
         !state.connected -> "登录并继续"
+        state.locationPermissionRequest != null -> "等待定位授权…"
+        state.loadingDevice || state.locating || retryFeedback.dispatching -> if (phase == HellobikePhase.Riding) "正在检查还车位置…" else "正在检查车辆…"
         busy -> "正在处理…"
+        state.locationPermissionRequired -> if (state.locationPermissionBlocked) "去设置开启定位" else "开启定位"
         phase == HellobikePhase.Opening || phase == HellobikePhase.Closing -> "查询车辆状态"
         phase == HellobikePhase.Riding -> "还车"
         session?.dismissible == true -> "再次扫码骑行"
@@ -155,6 +162,17 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
         phase == HellobikePhase.Ended -> "查看费用与支付"
         precheckFresh -> if (state.precheck.priceRule.isBlank()) "确认开锁" else "确认计费并开锁"
         else -> "重新检查车辆"
+    }
+    val primaryAction = when {
+        !state.connected -> HellobikePrimaryAction.Login
+        state.locationPermissionRequired -> HellobikePrimaryAction.Permission
+        session?.dismissible == true -> HellobikePrimaryAction.Scan
+        phase == HellobikePhase.Riding -> HellobikePrimaryAction.Return
+        phase == HellobikePhase.Opening || phase == HellobikePhase.Closing -> HellobikePrimaryAction.Refresh
+        phase == HellobikePhase.Ended && session.paymentAttempt != null -> HellobikePrimaryAction.PaymentResult
+        phase == HellobikePhase.Ended -> HellobikePrimaryAction.Payment
+        precheckFresh -> HellobikePrimaryAction.Unlock
+        else -> HellobikePrimaryAction.Check
     }
     val title = when (phase) {
         HellobikePhase.Riding, HellobikePhase.Closing -> "骑行进度"
@@ -165,17 +183,27 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true, footer = {
         LifeDeviceActionFooter("hellobike-action-footer") {
-            Button({ when {
-                !state.connected -> model.connectAccount(false)
-                session?.dismissible == true -> onScan()
-                phase == HellobikePhase.Riding -> model.checkClose()
-                phase == HellobikePhase.Opening || phase == HellobikePhase.Closing -> model.refreshState()
-                phase == HellobikePhase.Ended && session.paymentAttempt != null -> model.checkPayment()
-                phase == HellobikePhase.Ended -> model.showPayment()
-                precheckFresh -> model.startRide()
-                else -> state.scannedBikeNo?.let(model::openDevice)
+            // Replacing the operation cancels an in-flight press instead of rebinding its release.
+            key(feedbackIdentity, primaryAction, state.precheck.takeIf { primaryAction == HellobikePrimaryAction.Unlock }) {
+            Button({ when (primaryAction) {
+                HellobikePrimaryAction.Login -> model.connectAccount(false)
+                HellobikePrimaryAction.Permission, HellobikePrimaryAction.Check -> retryFeedback.dispatch(model::retryDeviceCheck)
+                HellobikePrimaryAction.Scan -> onScan()
+                HellobikePrimaryAction.Return -> retryFeedback.dispatch(model::checkClose)
+                HellobikePrimaryAction.Refresh -> retryFeedback.dispatch(model::refreshState)
+                HellobikePrimaryAction.PaymentResult -> model.checkPayment()
+                HellobikePrimaryAction.Payment -> model.showPayment()
+                HellobikePrimaryAction.Unlock -> model.startRide(state.precheck)
             } }, enabled = interactive && !busy && (session != null || state.scannedBikeNo != null),
-                modifier = Modifier.fillMaxWidth().testTag("hellobike-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) { Text(primary) }
+                modifier = Modifier.fillMaxWidth().testTag("hellobike-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.restoring || state.busy || state.loadingDevice || state.locating || state.locationPermissionRequest != null ||
+                        retryFeedback.dispatching) CircularProgressIndicator(size = 16.dp, strokeWidth = 2.dp,
+                        modifier = Modifier.testTag("hellobike-action-progress"))
+                    ContentFade(primary) { Text(it) }
+                }
+            }
+            }
             if (session == null) DashboardLink("重新扫码", onScan, enabled = interactive && !busy, arrow = false,
                 modifier = Modifier.testTag("hellobike-rescan"), color = DashboardPalette.muted)
             else Button(onBack, Modifier.fillMaxWidth(), enabled = interactive) { Text("返回") }
@@ -208,7 +236,7 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                         !display.connected -> "登录后继续查询车辆"
                         else -> "等待车辆检查"
                     }, display.precheck?.priceRule ?: "开锁和还车时需要获取位置，请在车辆旁操作。",
-                        "hellobike-precheck", loading = display.restoring || display.loadingDevice) }
+                        "hellobike-precheck") }
                     display.precheck?.notice?.let { notice -> item { LifeDeviceNoticeCard("哈啰提示", notice, "hellobike-official-notice") } }
                     if (display.precheck != null && !precheckFresh) item { Text("车辆检查已过期，请重新检查", fontSize = 12.sp, color = DashboardPalette.muted) }
                 } else {
@@ -231,9 +259,18 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                         HellobikePhase.Riding -> "请在允许停车的位置还车。离开页面不会结束骑行，可从付款页继续查看。"
                         HellobikePhase.Closing -> "已提交关锁，正在查询本次还车结果。请核对现场锁具状态。"
                         HellobikePhase.Ended -> ""
-                    }, "hellobike-usage-notice", loading = display.busy || display.loadingDevice) }
+                    }, "hellobike-usage-notice") }
                 }
-                item { InlineErrorGroup(display.error, 12.dp, preserveMessage = true) {} }
+                item(key = "hellobike-device-error-slot") {
+                    if (display.locationPermissionRequired || display.locationPermissionRequest != null)
+                        AnimatedInlineError(display.error, Modifier.testTag("hellobike-device-error"), preserveMessage = true)
+                    else InlineRetryFeedback(display.error, display.loadingDevice || display.locating,
+                        "重新检查", model::retryDeviceCheck, Modifier.testTag("hellobike-device-error"),
+                        enabled = interactive && displayedStage == stage && !display.busy && !display.paymentInFlight,
+                        actionModifier = Modifier.testTag("hellobike-device-retry"),
+                        identity = model.restorationOwner to (display.selectedSessionId ?: display.scannedBikeNo),
+                        retryFeedback = retryFeedback, showProgress = false)
+                }
                 if (display.officialRequired) item { OfficialHellobikeLink(enabled = interactive) }
             }
         }

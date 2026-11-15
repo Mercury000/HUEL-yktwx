@@ -15,6 +15,8 @@ data class HellobikeCardsState(
     val feedback: LifePaymentFeedback? = null, val paymentLaunch: LifePaymentLaunch? = null, val paymentInFlight: Boolean = false,
     val ordinaryExpanded: Boolean = false, val ordinaryLoading: Boolean = false, val ordinaryLoaded: Boolean = false,
     val ordinaryProducts: List<HellobikeCampusProduct> = emptyList(), val ordinaryError: String? = null,
+    val ordinaryLocationError: String? = null, val ordinaryLocationPermissionRequired: Boolean = false,
+    val ordinaryLocationLoading: Boolean = false,
     val cardsLoading: Boolean = false, val auditLoading: Boolean = false, val productsLoading: Boolean = false,
 )
 
@@ -25,6 +27,7 @@ internal class HellobikeCardsController(
     private val region: () -> HellobikeRegion?, private val location: HellobikeLocationService,
     private val canSubmit: () -> Boolean, private val expired: suspend (Exception, HellobikeAccount) -> Unit,
     private val now: () -> Long,
+    private val requestLocationPermission: () -> Unit = {},
 ) {
     private val mutable = MutableStateFlow(HellobikeCardsState())
     val state = mutable.asStateFlow()
@@ -33,6 +36,8 @@ internal class HellobikeCardsController(
     private var generation = 0L
     private var readTask: Job? = null
     private var ordinaryTask: Job? = null
+    private var ordinaryGeneration = 0L
+    private var resolvingLocation = false
     private var operation: Job? = null
     private var position: HellobikePosition? = null
     private var selectedRegion: HellobikeRegion? = null
@@ -41,15 +46,17 @@ internal class HellobikeCardsController(
     private var claimed = false
     private var counter = 0L
     val occupied get() = state.value.busy || state.value.paymentInFlight
+    val canRequestOrdinaryLocation get() = foreground && visible && account() != null && state.value.ordinaryExpanded
 
     suspend fun stopAndJoin() {
-        generation++
+        generation++; ordinaryGeneration++; resolvingLocation = false
         val tasks = listOfNotNull(readTask, ordinaryTask, operation)
         tasks.forEach { it.cancel() }; tasks.joinAll()
-        readTask = null; operation = null
+        readTask = null; ordinaryTask = null; operation = null
     }
     fun bind(purchase: HellobikeCardPurchase?) {
-        generation++; readTask?.cancel(); ordinaryTask?.cancel(); operation?.cancel()
+        generation++; ordinaryGeneration++; resolvingLocation = false
+        readTask?.cancel(); ordinaryTask?.cancel(); operation?.cancel()
         position = null; selectedRegion = null; launchOwner = null; launchId = null; claimed = false
         // Restored IDs are only a query handle. Historical local result flags never
         // become a fresh cloud payment or cancellation status.
@@ -69,9 +76,11 @@ internal class HellobikeCardsController(
         else if (!active) { stopVisibleWork(); dismissPayment() }
     }
     private fun stopVisibleWork() {
-        generation++; readTask?.cancel(); ordinaryTask?.cancel(); operation?.cancel()
+        generation++; ordinaryGeneration++; resolvingLocation = false
+        readTask?.cancel(); ordinaryTask?.cancel(); operation?.cancel()
         if (!claimed) { launchOwner = null; launchId = null }
         mutable.update { it.copy(loading = false, ordinaryLoading = false, busy = false, paymentLaunch = null,
+            ordinaryLocationLoading = false,
             cardsLoading = false, auditLoading = false, productsLoading = false,
             paymentInFlight = claimed, feedback = it.feedback?.copy(loading = false)) }
     }
@@ -87,19 +96,36 @@ internal class HellobikeCardsController(
         val owner = account() ?: return
         if (!foreground || !visible || state.value.loading || state.value.busy) return
         readTask?.cancel()
-        val request = generation
+        ordinaryGeneration++; ordinaryTask?.cancel(); ordinaryTask = null
+        resolvingLocation = true
+        val request = ++generation
         mutable.update { it.copy(loading = true, cardsLoading = true, auditLoading = true, productsLoading = true,
-            cardsError = null, auditError = null, productsError = null) }
+            ordinaryLocationLoading = true,
+            cardsError = null, auditError = null, productsError = null, ordinaryLoaded = false,
+            ordinaryLoading = it.ordinaryExpanded, ordinaryError = null) }
         readTask = scope.launch {
             try {
-                val point = try { location.current() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                var locationError: String? = null
+                var permissionRequired = false
+                val point = try { location.current() }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    permissionRequired = e is HellobikeLocationPermissionRequired
+                    locationError = if (permissionRequired) "定位未授权，骑行卡可能不全" else "未获取到位置，骑行卡可能不全"
+                    null
+                }
                 ensure(owner, request)
                 var area = region()
                 if (point != null) {
                     try { val resolved = api.region(point); ensure(owner, request); area = resolved }
-                    catch (e: CancellationException) { throw e } catch (_: Exception) { /* The official H5 permits an empty city fallback. */ }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { locationError = "暂无法确认地区，骑行卡可能不全" }
                 }
                 ensure(owner, request); position = point; selectedRegion = area
+                resolvingLocation = false
+                mutable.update { it.copy(ordinaryLoading = false, ordinaryLocationLoading = false,
+                    ordinaryLocationError = locationError, ordinaryLocationPermissionRequired = permissionRequired) }
+                if (state.value.ordinaryExpanded) expandOrdinary(true)
                 try {
                     val audit = api.studentAudit(owner); ensure(owner, request)
                     mutable.update { it.copy(audit = audit, auditLoading = false, productsLoading = audit.studentApproved,
@@ -126,11 +152,15 @@ internal class HellobikeCardsController(
                     } catch (e: CancellationException) { throw e }
                     catch (e: Exception) { val message = readFailure(e, owner); ensure(owner, request); mutable.update { it.copy(products = emptyList(), productsError = message, productsLoading = false) } }
                 }
-                if (state.value.ordinaryExpanded) {
-                    mutable.update { it.copy(ordinaryLoaded = false) }
-                    expandOrdinary(true)
+            } finally {
+                if (request == generation) {
+                    if (resolvingLocation) {
+                        resolvingLocation = false
+                        mutable.update { it.copy(ordinaryLoading = false, ordinaryLocationLoading = false) }
+                    }
+                    mutable.update { it.copy(loading = false, cardsLoading = false, auditLoading = false, productsLoading = false) }
                 }
-            } finally { if (request == generation) mutable.update { it.copy(loading = false, cardsLoading = false, auditLoading = false, productsLoading = false) } }
+            }
         }
     }
     fun loadMore() {
@@ -153,18 +183,38 @@ internal class HellobikeCardsController(
     }
     fun expandOrdinary(expanded: Boolean = !state.value.ordinaryExpanded) {
         mutable.update { it.copy(ordinaryExpanded = expanded) }
+        if (expanded && resolvingLocation) {
+            mutable.update { it.copy(ordinaryLoading = true) }
+            return
+        }
         if (!expanded || state.value.ordinaryLoaded || state.value.ordinaryLoading || !foreground || !visible) return
         val owner = account() ?: return
         val request = generation
+        val ordinaryRequest = ++ordinaryGeneration
+        val area = selectedRegion ?: region()
+        val point = position
         mutable.update { it.copy(ordinaryLoading = true, ordinaryError = null) }
         ordinaryTask = scope.launch {
             try {
-                val products = api.ordinaryProducts(owner, selectedRegion ?: region(), position); ensure(owner, request)
+                val products = api.ordinaryProducts(owner, area, point)
+                ensureOrdinary(owner, request, ordinaryRequest)
                 mutable.update { it.copy(ordinaryProducts = products, ordinaryLoaded = true) }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { val message = readFailure(e, owner); ensure(owner, request); mutable.update { it.copy(ordinaryError = message) } }
-            finally { if (request == generation) mutable.update { it.copy(ordinaryLoading = false) } }
+            catch (e: Exception) {
+                ensureOrdinary(owner, request, ordinaryRequest)
+                val message = readFailure(e, owner); ensureOrdinary(owner, request, ordinaryRequest)
+                mutable.update { it.copy(ordinaryError = message) }
+            }
+            finally { if (request == generation && ordinaryRequest == ordinaryGeneration) mutable.update { it.copy(ordinaryLoading = false) } }
         }
+    }
+    private suspend fun ensureOrdinary(owner: HellobikeAccount, request: Long, ordinaryRequest: Long) {
+        ensure(owner, request)
+        if (ordinaryRequest != ordinaryGeneration) throw CancellationException("Card location changed")
+    }
+    fun requestOrdinaryLocation() {
+        if (!canRequestOrdinaryLocation || occupied || resolvingLocation) return
+        if (state.value.ordinaryLocationPermissionRequired) requestLocationPermission() else refresh()
     }
     private suspend fun save(owner: HellobikeAccount, purchase: HellobikeCardPurchase?, request: Long) {
         ensure(owner, request)
@@ -191,6 +241,7 @@ internal class HellobikeCardsController(
     }
     fun choose(productKey: String) {
         val product = (state.value.products + state.value.ordinaryProducts).firstOrNull { it.key == productKey } ?: return
+        if (!product.campus && resolvingLocation) return
         if (product.campus && state.value.audit?.studentApproved != true || !product.purchasable) return
         if (state.value.purchase?.let { !it.paid && it.attempt != null } == true) {
             showPurchase(); return

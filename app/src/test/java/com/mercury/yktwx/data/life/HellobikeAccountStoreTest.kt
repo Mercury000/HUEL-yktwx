@@ -4,6 +4,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HellobikeAccountStoreTest {
+    @Test fun unidentifiedOpeningAttemptsPersistSeparatelyWithoutInventedOrdersOrPayments() {
+        val records = BikeRecords(); val store = records.store()
+        val pending = fixtureBikeSession.copy(rideGuid = "", phase = HellobikePhase.Opening, uncertain = true)
+        val second = pending.copy(sessionId = "another-local-attempt")
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(pending, second))
+        assertEquals(listOf(pending, second), store.load().sessions)
+        store.clearAccount(); store.saveAccount(fixtureBikeAccount)
+        assertEquals(listOf(pending, second), store.load().sessions)
+        for (invalid in listOf(pending.copy(phase = HellobikePhase.Riding),
+            pending.copy(settlement = HellobikeSettlement.Paid), pending.copy(endedAtMillis = 900_000))) {
+            store.saveSessions(fixtureBikeAccount.userGuid, listOf(invalid))
+            try { store.load(); fail("An unidentified local attempt cannot be a completed cloud order") }
+            catch (e: HellobikeException) { assertTrue(e.storageFailure) }
+            records.values.clear()
+            records.store()
+        }
+    }
     @Test fun cardPurchaseSurvivesExpiryAndAccountSwitchAndLogoutErasesIt() {
         val store = BikeRecords().store()
         val purchase = HellobikeCardPurchase("校园月卡", listOf(HellobikePayOrder("pay-no", "6.90", "payment-id", "28")), "6.90", "28", "2801", fixtureBikeRegion)
