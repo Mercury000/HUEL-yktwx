@@ -150,6 +150,27 @@ class Hui798ViewModelTest {
     }
     private fun running() = Hui798Session(device, WaterPhase.Running, clock, true, clock, clock, sessionId = "fixture-session")
 
+    @Test fun failedDeviceRetryAfterLeavingThePageStillChecksTheScannedDevice() = runTest(dispatcher) {
+        val api = Api().apply { statusFailure = true }
+        val model = model(api, Store(account)); runCurrent()
+        model.environment(true); model.pageVisible(true)
+        model.openDevice(device.id); runCurrent()
+        assertNotNull(model.state.value.error)
+        model.pageVisible(false); model.environment(false)
+        model.environment(true); model.pageVisible(true); runCurrent()
+        val before = api.deviceQueries.size
+        api.statusFailure = false
+        model.refreshState()
+        assertTrue("Retry must publish progress after page/lifecycle cancellation", model.state.value.loadingDevice)
+        runCurrent()
+        assertEquals(before + 1, api.deviceQueries.size)
+        assertEquals(device.id, api.deviceQueries.last())
+        assertTrue(model.state.value.deviceReady)
+        assertNull(model.state.value.error)
+        assertEquals(0, api.starts); assertEquals(0, api.ends)
+        model.environment(false)
+    }
+
     @Test fun restoredRouteReopensThe798SessionAndValidatesDeviceAndAccountBeforeQuery() = runTest(dispatcher) {
         val api = Api().apply { reading = Hui798Reading(1, clock); overviewDevices = listOf(device) }
         val store = Store(account, listOf(running()))

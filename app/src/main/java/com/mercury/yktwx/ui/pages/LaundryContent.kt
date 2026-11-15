@@ -34,9 +34,16 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: LifeDevicesViewModel,
-    active: Boolean, nowMillis: () -> Long) {
+    active: Boolean, nowMillis: () -> Long, retryFeedback: RetryFeedbackState? = null) {
     val session = state.laundry
     if (session == null) {
+        if (state.device == null) {
+            item { LifeDeviceHero("洗衣设备", "", LifeFeature.Laundry) }
+            item { LifeDeviceInfoCard(listOf("设备编号" to state.scannedSerial.orEmpty()), "laundry-device-info") }
+        }
+        if (state.loadingDevice) item {
+            LifeDeviceNoticeCard("正在检查设备", "正在读取设备状态与可用程序", "laundry-device-check")
+        }
         state.device?.let { device ->
             item { LaundryDeviceIdentity(device) }
             item {
@@ -82,7 +89,16 @@ internal fun LazyListScope.laundryContent(state: LifeDevicesUiState, model: Life
             }
         }
     }
-    item { AnimatedInlineError(state.error.takeUnless { state.paymentVisible }, preserveMessage = true) }
+    item(key = "laundry-device-error-slot") {
+        if (session == null || session.phase in setOf(LaundryPhase.Running, LaundryPhase.Refunding, LaundryPhase.Ended)) {
+            InlineRetryFeedback(state.error.takeUnless { state.paymentVisible }, state.loadingDevice || state.laundryBusy,
+                if (session == null) "重新检查" else "刷新状态", { if (session == null) model.refreshDevice() else model.retryLaundry() },
+                Modifier.testTag("laundry-device-error"), enabled = active && !state.paymentVisible,
+                actionModifier = Modifier.testTag("laundry-device-retry"),
+                identity = model.restorationOwner to (session?.sessionId ?: state.scannedSerial ?: state.device?.id),
+                retryFeedback = retryFeedback, showProgress = false)
+        } else AnimatedInlineError(state.error.takeUnless { state.paymentVisible }, preserveMessage = true)
+    }
 }
 
 @Composable
@@ -129,8 +145,7 @@ private fun LaundryProgress(session: LaundrySession, busy: Boolean, nowMillis: (
                 Text(if (end > now) "预计剩余时间" else "预计时间已到，正在读取完成状态", fontSize = 12.sp, color = DashboardPalette.muted)
             } ?: Text("设备运行中", Modifier.padding(top = 22.dp), fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            if (!busy && session.phase in setOf(LaundryPhase.Paying, LaundryPhase.Creating, LaundryPhase.Starting, LaundryPhase.Refunding)) LifeDeviceGlyph(LifeFeature.Laundry)
-            else CircularProgressIndicator(Modifier.size(40.dp))
+            LifeDeviceGlyph(LifeFeature.Laundry)
             val label = when (session.phase) {
                 LaundryPhase.Checking -> "正在检查设备"
                 LaundryPhase.Creating -> if (busy) "正在创建订单" else "下单结果未知"
@@ -179,9 +194,10 @@ private fun laundryTime(millis: Long): String = DateTimeFormatter.ofPattern("MM-
 
 @Composable
 internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean, onBack: () -> Unit,
-    nowMillis: () -> Long = System::currentTimeMillis) {
+    nowMillis: () -> Long = System::currentTimeMillis, retryFeedback: RetryFeedbackState? = null) {
     val session = state.laundry
-    val loading = state.loadingDevice || state.laundryBusy
+    val feedback = retryFeedback ?: rememberRetryFeedbackState(model.restorationOwner to (session?.sessionId ?: state.scannedSerial))
+    val loading = state.loadingDevice || state.laundryBusy || feedback.dispatching
     val ended = session != null && !session.active
     val canCancel = session?.canCancel == true && state.paymentLaunch == null
     val confirmingCancel = state.cancelOrderConfirmation != null && state.cancelOrderConfirmation == session?.sessionId &&
@@ -190,6 +206,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
     val label = when {
         state.loadingDevice -> "正在查询设备…"
         state.laundryBusy -> "正在处理…"
+        feedback.dispatching -> "正在检查…"
         ended -> "再次扫码洗衣"
         session?.phase == LaundryPhase.Paying -> "继续支付"
         session?.canDismissUnknownCreation == true -> "重新扫码"
@@ -217,7 +234,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
                 session?.canDismissUnknownCreation == true -> model.rescanLaundryException()
                 session?.phase == LaundryPhase.Paying -> model.showLaundryPayment()
                 session?.phase == LaundryPhase.Checking && !session.createSent -> model.showLaundryPayment()
-                retry || session != null -> model.retryLaundry()
+                retry || session != null -> feedback.dispatch(model::retryLaundry)
                 else -> model.showLaundryPayment()
             }
         }, enabled = active && !loading && when {

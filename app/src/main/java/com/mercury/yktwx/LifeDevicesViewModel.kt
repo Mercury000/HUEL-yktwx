@@ -434,8 +434,8 @@ class LifeDevicesViewModel internal constructor(
         val generation = ++scanGeneration
         val feature = mutable.value.feature
         deviceTask?.cancel()
+        mutable.update { it.copy(loadingDevice = true, error = null, scanning = false) }
         deviceTask = viewModelScope.launch {
-            mutable.update { it.copy(loadingDevice = true, error = null, scanning = false) }
             try {
                 val device = if (feature == LifeFeature.Water) api.device(serial, token)
                     else requireNotNull(laundryApi).laundryDevice(serial, token)
@@ -451,7 +451,7 @@ class LifeDevicesViewModel internal constructor(
                 restoredSkuId?.let(::selectSku); restoredSkuId = null
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (generation == scanGeneration) mutable.update { it.copy(loadingDevice = false, scanning = it.device == null, error = failure(e)) }
+                if (generation == scanGeneration) mutable.update { it.copy(loadingDevice = false, scanning = false, error = failure(e)) }
                 expired(e)
             }
         }
@@ -964,7 +964,7 @@ class LifeDevicesViewModel internal constructor(
     fun retryLaundry() {
         if (mutable.value.feature != LifeFeature.Laundry || mutable.value.loadingDevice || mutable.value.quoteLoading) return
         val session = mutable.value.laundry ?: run {
-            if (mutable.value.device?.laundryError != null) refreshDevice()
+            if (mutable.value.device == null || mutable.value.device?.laundryError != null) refreshDevice()
             else showLaundryPayment()
             return
         }
