@@ -1,5 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -11,6 +15,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,9 +45,6 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.math.roundToInt
 
 private enum class HellobikeLoginPage { Phone, Verification }
@@ -186,7 +189,9 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     }
     val stage = when (phase) { null -> "ready"; HellobikePhase.Ended -> "ended"; else -> "progress" }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-    LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true, footer = {
+    var topBarListState by remember { mutableStateOf<LazyListState?>(null) }
+    LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true,
+        listState = topBarListState, footer = {
         LifeDeviceActionFooter("hellobike-action-footer") {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (phase == HellobikePhase.Riding && session.temporaryAction == null) {
@@ -237,7 +242,10 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
         }, label = "hellobike-device-stage") { displayedStage ->
             val display = rememberWhileShown(displayedStage == stage, state.copy(phone = "", code = "", slider = null, paymentLaunch = null))
             val ride = display.session
-            LazyColumn(Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection).testTag("hellobike-device-page"),
+            val listState = rememberLazyListState()
+            SideEffect { if (displayedStage == stage) topBarListState = listState }
+            LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).nestedScroll(scrollBehavior.nestedScrollConnection).testTag("hellobike-device-page"),
+                state = listState,
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = padding.calculateBottomPadding() + 20.dp,
                     start = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (!display.restoring && !display.connected) item {

@@ -1,8 +1,10 @@
 package com.mercury.yktwx.ui.pages
 
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +34,13 @@ fun ThemeSettingsPage(
     onFloatingBottomBarStyleChange: (Int) -> Unit = {},
     blurTopBar: State<Boolean> = mutableStateOf(false),
     onBlurTopBarChange: (Boolean) -> Unit = {},
+    glassStyle: State<Boolean> = mutableStateOf(false),
+    onGlassStyleChange: (Boolean) -> Unit = {},
     swipeBack: State<Boolean> = mutableStateOf(false),
     onSwipeBackChange: (Boolean) -> Unit = {},
     navTransitionStyle: State<Int> = mutableStateOf(0),
     onNavTransitionStyleChange: (Int) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -50,10 +55,12 @@ fun ThemeSettingsPage(
     val floatingStyleOptions = listOf(
         stringResource(R.string.floating_bottom_bar_style_default),
         stringResource(R.string.floating_bottom_bar_style_ios),
+        stringResource(R.string.floating_bottom_bar_style_glass),
     )
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        state = listState,
+        modifier = modifier.fillMaxSize().testTag("theme-page-list"),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 12.dp,
             bottom = contentPadding.calculateBottomPadding() + 12.dp,
@@ -62,58 +69,72 @@ fun ThemeSettingsPage(
         ),
     ) {
         item {
-            Card {
-                RestorableDropdownPreference(
-                    title = stringResource(R.string.theme_title),
-                    items = themeOptions,
-                    selectedIndex = themeMode.value.coerceIn(themeOptions.indices),
-                    onSelectedIndexChange = { onThemeModeChange(it) },
-                )
-                RestorableDropdownPreference(
-                    title = stringResource(R.string.theme_color),
-                    summary = stringResource(R.string.theme_color_summary),
-                    items = accentOptions,
-                    selectedIndex = accentMode.value.coerceIn(accentOptions.indices),
-                    onSelectedIndexChange = { onAccentModeChange(it) },
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.floating_bottom_bar),
-                    summary = stringResource(R.string.floating_bottom_bar_summary),
-                    checked = floatingBottomBar.value,
-                    onCheckedChange = { onFloatingBottomBarChange(it) },
-                )
-                if (floatingBottomBar.value) {
+            // Keep the existing empty space outside the card, while allowing a short
+            // settings page to scroll beneath the header (the demo's About body does this too).
+            Box {
+                // fillParentMaxHeight excludes LazyColumn content padding; add it back
+                // outside the sizing modifier so the body occupies the whole viewport.
+                Spacer(Modifier.padding(bottom = contentPadding.calculateTopPadding() +
+                    contentPadding.calculateBottomPadding() + 24.dp).fillParentMaxHeight())
+                Card {
+                    RestorableDropdownPreference(
+                        title = stringResource(R.string.theme_title),
+                        items = themeOptions,
+                        selectedIndex = themeMode.value.coerceIn(themeOptions.indices),
+                        onSelectedIndexChange = { onThemeModeChange(it) },
+                    )
+                    RestorableDropdownPreference(
+                        title = stringResource(R.string.theme_color),
+                        summary = stringResource(R.string.theme_color_summary),
+                        items = accentOptions,
+                        selectedIndex = accentMode.value.coerceIn(accentOptions.indices),
+                        onSelectedIndexChange = { onAccentModeChange(it) },
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.floating_bottom_bar),
+                        summary = stringResource(R.string.floating_bottom_bar_summary),
+                        checked = floatingBottomBar.value,
+                        onCheckedChange = { onFloatingBottomBarChange(it) },
+                    )
                     RestorableDropdownPreference(
                         title = stringResource(R.string.floating_bottom_bar_style),
                         items = floatingStyleOptions,
-                        selectedIndex = floatingBottomBarStyle.value.coerceIn(floatingStyleOptions.indices),
+                        selectedIndex = if (floatingBottomBar.value)
+                            floatingBottomBarStyle.value.coerceIn(floatingStyleOptions.indices) else 0,
                         onSelectedIndexChange = { onFloatingBottomBarStyleChange(it) },
                     )
+                    SwitchPreference(
+                        title = stringResource(R.string.glass_style),
+                        summary = stringResource(R.string.glass_style_summary),
+                        checked = glassStyle.value,
+                        onCheckedChange = onGlassStyleChange,
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.blur_bottom_bar),
+                        summary = stringResource(R.string.blur_bottom_bar_summary),
+                        checked = blurBottomBar.value,
+                        onCheckedChange = { onBlurBottomBarChange(it) },
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.blur_top_bar),
+                        summary = stringResource(if (glassStyle.value) R.string.blur_glass_top_bar_summary
+                            else R.string.blur_top_bar_summary),
+                        checked = blurTopBar.value,
+                        onCheckedChange = { onBlurTopBarChange(it) },
+                    )
+                    RestorableDropdownPreference(
+                        title = stringResource(R.string.nav_transition_style),
+                        items = NavTransitionStyleOptions,
+                        selectedIndex = navTransitionStyle.value.coerceIn(NavTransitionStyleOptions.indices),
+                        onSelectedIndexChange = onNavTransitionStyleChange,
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.swipe_back),
+                        summary = stringResource(R.string.swipe_back_summary),
+                        checked = swipeBack.value,
+                        onCheckedChange = { onSwipeBackChange(it) },
+                    )
                 }
-                SwitchPreference(
-                    title = stringResource(R.string.blur_bottom_bar),
-                    summary = stringResource(R.string.blur_bottom_bar_summary),
-                    checked = blurBottomBar.value,
-                    onCheckedChange = { onBlurBottomBarChange(it) },
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.blur_top_bar),
-                    summary = stringResource(R.string.blur_top_bar_summary),
-                    checked = blurTopBar.value,
-                    onCheckedChange = { onBlurTopBarChange(it) },
-                )
-                RestorableDropdownPreference(
-                    title = stringResource(R.string.nav_transition_style),
-                    items = NavTransitionStyleOptions,
-                    selectedIndex = navTransitionStyle.value.coerceIn(NavTransitionStyleOptions.indices),
-                    onSelectedIndexChange = onNavTransitionStyleChange,
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.swipe_back),
-                    summary = stringResource(R.string.swipe_back_summary),
-                    checked = swipeBack.value,
-                    onCheckedChange = { onSwipeBackChange(it) },
-                )
             }
         }
     }

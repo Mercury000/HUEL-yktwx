@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import com.mercury.yktwx.ui.components.InputFocusDismissalHost
 import com.mercury.yktwx.ui.components.AppPressFeedbackHost
+import com.mercury.yktwx.ui.components.AppAppearanceHost
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -15,6 +16,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 fun AppTheme(
     colorSchemeMode: ColorSchemeMode = ColorSchemeMode.System,
     accentMode: Int = 0,
+    glassStyle: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val actualMode = when (accentMode) {
@@ -48,7 +50,9 @@ fun AppTheme(
     }
     CompositionLocalProvider(LocalConfiguration provides providedConfig) {
         MiuixTheme(controller = controller) {
-            AppPressFeedbackHost { InputFocusDismissalHost(content) }
+            AppAppearanceHost(glassStyle) {
+                AppPressFeedbackHost { InputFocusDismissalHost(content) }
+            }
         }
     }
 }

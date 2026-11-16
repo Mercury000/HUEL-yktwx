@@ -1,5 +1,13 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppSmallTopAppBar as SmallTopAppBar
+import com.mercury.yktwx.ui.components.BarBlurHost
+import com.mercury.yktwx.ui.components.BarBackdropContent
+import com.mercury.yktwx.ui.components.BlurredBar
+import com.mercury.yktwx.ui.components.topBarOverscroll
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -53,28 +61,23 @@ import com.mercury.yktwx.BuildConfig
 import com.mercury.yktwx.R
 import com.mercury.yktwx.ui.components.SectionTitle
 import com.mercury.yktwx.ui.components.effect.BgEffectBackground
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurBlendMode
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.material.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 // ---------------------------------------------------------------------------
 // Structure copied from the miuix example app's AboutPage (example/shared/src/
@@ -92,6 +95,7 @@ internal fun AboutPage(
     isActive: Boolean,
     onOpenReferences: () -> Unit,
     onBack: (() -> Unit)? = null,
+    blurTopBar: Boolean = false,
 ) {
     val context = LocalContext.current
     val sourceUrl = stringResource(R.string.source_code_url)
@@ -132,22 +136,38 @@ internal fun AboutPage(
     }
 
     var heroHeightDp by remember { mutableStateOf(280.dp) }
+    val heroSpacerHeight = heroHeightDp + 52.dp + HERO_EXTRA_TOP + 126.dp
 
+    BarBlurHost(false, blurTopBar) {
     Scaffold(
         topBar = {
-            SmallTopAppBar(
-                navigationIcon = { onBack?.let { IconButton(onClick = it) { Icon(MiuixIcons.Back, "返回") } } },
-                title = stringResource(R.string.about_tab),
-                scrollBehavior = topAppBarScrollBehavior,
-                color = if (collapsed) surface else Color.Transparent,
-                titleColor = MiuixTheme.colorScheme.onSurface.copy(
-                    alpha = ((scrollProgress - 0.35f) / 0.65f).coerceIn(0f, 1f),
-                ),
-            )
+            // Match the demo: the hero stays unobscured until it has fully scrolled away.
+            BlurredBar(topGradient = true, visible = collapsed) {
+                SmallTopAppBar(
+                    navigationIcon = { onBack?.let { IconButton(onClick = it) { AppBackIcon("返回") } } },
+                    title = stringResource(R.string.about_tab),
+                    scrollBehavior = topAppBarScrollBehavior,
+                    color = Color.Transparent,
+                    titleColor = MiuixTheme.colorScheme.onSurface.copy(
+                        alpha = ((scrollProgress - 0.35f) / 0.65f).coerceIn(0f, 1f),
+                    ),
+                    backgroundAlpha = { if (collapsed) 1f else 0f },
+                    isContentScrolled = lazyListState.canScrollBackward,
+                    // Pair exact overlap with exact visual offset, as GlassTopAppBar recommends.
+                    // Programmatic scrolling also restores the native band and shadow ramps.
+                    visualContentOffset = {
+                        val preceding = if (lazyListState.firstVisibleItemIndex > 0) {
+                            with(density) { heroSpacerHeight.toPx() }
+                        } else 0f
+                        -preceding - lazyListState.firstVisibleItemScrollOffset + topAppBarScrollBehavior.state.overscrollOffset
+                    },
+                )
+            }
         },
     ) { innerPadding ->
         val contentTopPadding = innerPadding.calculateTopPadding()
 
+        BarBackdropContent(Modifier.fillMaxSize()) {
         BgEffectBackground(
             dynamicBackground = isActive && !inspectionMode,
             isFullSize = true,
@@ -225,7 +245,7 @@ internal fun AboutPage(
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("about-page-list")
-                    .overScrollVertical()
+                    .topBarOverscroll(topAppBarScrollBehavior)
                     .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
                 contentPadding = PaddingValues(
                     top = contentTopPadding,
@@ -235,11 +255,7 @@ internal fun AboutPage(
             ) {
                 item(key = LOGO_SPACER_KEY) {
                     // Hero area + the example page's 126dp scroll budget.
-                    Spacer(
-                        Modifier.height(
-                            heroHeightDp + 52.dp + HERO_EXTRA_TOP + 126.dp,
-                        ),
-                    )
+                    Spacer(Modifier.height(heroSpacerHeight))
                 }
                 item(key = "about") {
                     Box {
@@ -277,6 +293,8 @@ internal fun AboutPage(
                 }
             }
         }
+    }
+    }
     }
 }
 

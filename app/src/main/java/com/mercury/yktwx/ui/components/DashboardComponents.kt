@@ -1,5 +1,7 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +28,7 @@ import top.yukonga.miuix.kmp.icon.extended.Show
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.lerp
@@ -33,7 +36,8 @@ import androidx.compose.ui.graphics.lerp
 /** Preserve the light dashboard design; adapt its accents on Miuix dark surfaces. */
 internal object DashboardPalette {
     val ink: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface else Color(0xFF202329)
-    val muted: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurfaceVariantSummary else Color(0xFF929CA9)
+    val muted: Color @Composable get() = if (LocalGlassOverlay.current || isSystemInDarkTheme())
+        MiuixTheme.colorScheme.onSurfaceVariantSummary else Color(0xFF929CA9)
     val card: Color @Composable get() = CardDefaults.defaultColors().color
     val iconAccent: Color @Composable get() = if (isSystemInDarkTheme())
         lerp(MiuixTheme.colorScheme.primary, MiuixTheme.colorScheme.onSurface, .20f) else MiuixTheme.colorScheme.primary
@@ -61,9 +65,11 @@ internal object DashboardPalette {
 /** Use Miuix's large title and centered collapsed title on every dashboard page. */
 @Composable
 internal fun DashboardTopBar(title: String, subtitle: String? = null, scrollBehavior: ScrollBehavior? = null,
+    isContentScrolled: Boolean? = null, visualContentOffset: (() -> Float)? = null,
     actions: @Composable RowScope.() -> Unit = {}) {
     TopAppBar(title = title, largeTitle = title, subtitle = subtitle.orEmpty(),
-        color = Color.Transparent, scrollBehavior = scrollBehavior, actions = actions)
+        color = Color.Transparent, scrollBehavior = scrollBehavior,
+        isContentScrolled = isContentScrolled, visualContentOffset = visualContentOffset, actions = actions)
 }
 
 /** Background reads keep the list usable; only a user pull owns the refresh indicator. */
@@ -108,11 +114,20 @@ internal fun CompactButton(text: String, onClick: () -> Unit, modifier: Modifier
         MiuixTheme.colorScheme.secondaryVariant else MiuixTheme.colorScheme.primary.copy(alpha = .08f),
     textColor: Color = if (isSystemInDarkTheme())
         MiuixTheme.colorScheme.onSecondaryVariant else MiuixTheme.colorScheme.primary) {
+    val dark = isSystemInDarkTheme()
+    val defaultFill = if (dark) MiuixTheme.colorScheme.secondaryVariant else MiuixTheme.colorScheme.primary.copy(alpha = .08f)
+    val defaultContent = if (dark) MiuixTheme.colorScheme.onSecondaryVariant else MiuixTheme.colorScheme.primary
+    val glassColors = if (LocalGlassOverlay.current && color == defaultFill && textColor == defaultContent)
+        GlassDialogButtonDefaults.buttonColors() else null
+    val colors = if (glassColors != null) ButtonDefaults.textButtonColors(
+        color = glassColors.color, disabledColor = glassColors.disabledColor,
+        textColor = glassColors.contentColor, disabledTextColor = glassColors.disabledContentColor,
+    ) else ButtonDefaults.textButtonColors(color = color, textColor = textColor)
     TextButton(text, onClick = onClick, modifier = modifier, enabled = enabled,
         minHeight = 32.dp, cornerRadius = 12.dp, insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         textStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium),
         indication = rememberPressFeedback(color = textColor),
-        colors = ButtonDefaults.textButtonColors(color = color, textColor = textColor))
+        colors = colors)
 }
 
 @Composable

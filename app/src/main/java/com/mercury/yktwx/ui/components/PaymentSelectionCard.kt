@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -14,6 +15,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonRole
 
 /** Shared by recipient, dorm meter and payment-method selection. */
 @Composable
@@ -26,13 +29,19 @@ internal fun PaymentSelectionCard(
     content: @Composable ColumnScope.(Color) -> Unit,
 ) {
     val dark = isSystemInDarkTheme()
+    val glass = LocalGlassOverlay.current
+    val glassColors = if (glass) GlassDialogButtonDefaults.buttonColors(
+        if (selected) GlassDialogButtonRole.Primary else GlassDialogButtonRole.Normal,
+    ) else null
     val targetContentColor = when {
+        glassColors != null -> if (enabled) glassColors.contentColor else glassColors.disabledContentColor
         dark && !enabled -> MiuixTheme.colorScheme.disabledOnSecondaryVariant
         selected -> MiuixTheme.colorScheme.onPrimary
         dark -> MiuixTheme.colorScheme.onSecondaryVariant
         else -> MiuixTheme.colorScheme.onSurface
     }
     val targetColor = when {
+        glassColors != null -> if (enabled) glassColors.color else glassColors.disabledColor
         dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
         selected -> MiuixTheme.colorScheme.primary
         dark -> MiuixTheme.colorScheme.secondaryVariant
@@ -45,7 +54,9 @@ internal fun PaymentSelectionCard(
         color = color,
         contentColor = contentColor,
         shape = RoundedCornerShape(16.dp),
-        modifier = modifier.fillMaxWidth().semantics {
+        modifier = modifier.fillMaxWidth().then(if (glass) Modifier.border(1.dp,
+            if (selected && enabled) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface.copy(alpha = .08f),
+            RoundedCornerShape(16.dp)) else Modifier).semantics {
             this.selected = selected
             role = Role.RadioButton
         },

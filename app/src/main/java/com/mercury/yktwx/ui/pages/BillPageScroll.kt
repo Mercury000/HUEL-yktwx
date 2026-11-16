@@ -28,6 +28,10 @@ internal class BillPageScroll {
     var inputEnabled: () -> Boolean = { true }
     var body by mutableStateOf<LazyListState?>(null)
 
+    // Presentation must not depend on inputEnabled: a paused/restored page can still be scrolled.
+    val isContentScrolled: Boolean get() = controlsOffset > 0f ||
+        statistics && typeOffset > 0f || body?.canScrollBackward == true
+
     val position: Float get() = controlsOffset + (if (statistics) typeOffset else 0f) +
         (body?.let { it.firstVisibleItemIndex * 500f + it.firstVisibleItemScrollOffset } ?: 0f)
 
@@ -49,8 +53,7 @@ internal class BillPageScroll {
     val state: ScrollableState = object : ScrollableState by gestures {
         override val canScrollForward: Boolean get() = inputEnabled() && (controlsOffset < controlsHeight ||
             statistics && typeOffset < typeHeight || body?.canScrollForward == true)
-        override val canScrollBackward: Boolean get() = inputEnabled() && (controlsOffset > 0f ||
-            statistics && typeOffset > 0f || body?.canScrollBackward == true)
+        override val canScrollBackward: Boolean get() = inputEnabled() && isContentScrolled
     }
 
     private fun consume(delta: Float): Float {

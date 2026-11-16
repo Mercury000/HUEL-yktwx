@@ -1,5 +1,8 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -23,9 +26,10 @@ import com.mercury.yktwx.data.BillDateFilter
 import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillRecord
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonRole
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -170,16 +174,22 @@ internal fun BillIcon(icon: String, modifier: Modifier = Modifier, size: Dp = 40
 @Composable
 internal fun BillFilterPill(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     val dark = isSystemInDarkTheme()
+    // Match recharge presets over glass while keeping the pill's geometry and feedback.
+    val glassColors = if (LocalGlassOverlay.current) GlassDialogButtonDefaults.buttonColors(
+        if (selected) GlassDialogButtonRole.Primary else GlassDialogButtonRole.Normal,
+    ) else null
     ActionSurface(
         onClick = onClick, enabled = enabled,
         shape = RoundedCornerShape(50),
         color = when {
+            glassColors != null -> if (enabled) glassColors.color else glassColors.disabledColor
             dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
             selected -> MiuixTheme.colorScheme.primary
             dark -> MiuixTheme.colorScheme.secondaryVariant
             else -> MiuixTheme.colorScheme.surfaceContainerHigh
         },
         contentColor = when {
+            glassColors != null -> if (enabled) glassColors.contentColor else glassColors.disabledContentColor
             dark && !enabled -> MiuixTheme.colorScheme.disabledOnSecondaryVariant
             selected -> MiuixTheme.colorScheme.onPrimary
             dark -> MiuixTheme.colorScheme.onSecondaryVariant

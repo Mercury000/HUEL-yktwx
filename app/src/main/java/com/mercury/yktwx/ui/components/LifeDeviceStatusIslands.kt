@@ -36,6 +36,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.liquid.iosGlassSurface
+import top.yukonga.miuix.kmp.glass.glassPanel
+import top.yukonga.miuix.kmp.glass.GlassNavigationBarDefaults
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
+import top.yukonga.miuix.kmp.material.GlassShape
+import androidx.compose.foundation.shape.CornerSize
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -176,10 +181,20 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
     val dark = isSystemInDarkTheme()
     val liquid = settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 1
     val surface = if (settings.floatingBottomBar.value) floatingBarColor() else MiuixTheme.colorScheme.surface
-    val material = if (liquid) Modifier.iosGlassSurface(LocalBarBlurBackdrop.current
-        .takeIf { settings.blurBottomBar.value }) else Modifier.barBlurBackground(CircleShape, backgroundColor = surface)
+    val os4 = settings.floatingBottomBar.value && settings.floatingBottomBarStyle.value == 2
+    val material = when {
+        liquid -> Modifier.iosGlassSurface(LocalBarBlurBackdrop.current.takeIf { settings.blurBottomBar.value })
+        os4 -> Modifier.glassPanel(
+            backdrop = LocalBarBlurBackdrop.current.takeIf { settings.blurBottomBar.value },
+            shape = GlassShape(CornerSize(50), CornerSize(50), CornerSize(50), CornerSize(50)),
+            material = GlassNavigationBarDefaults.material(), stroke = GlassNavigationBarDefaults.stroke(),
+            // Match the navigation bar's unshaded body; refraction shading washes out dark panels.
+            shadow = null, shading = false, fallback = Modifier.background(surface, CircleShape))
+        else -> Modifier.barBlurBackground(CircleShape, backgroundColor = surface)
+    }
     val ink = if (dark) MiuixTheme.colorScheme.onSurface else Color(0xFF252A32)
-    val muted = if (dark) DashboardPalette.muted else Color(0xFF939DAA)
+    val muted = if (liquid || os4) GlassDialogButtonDefaults.buttonColors().contentColor
+        else if (dark) DashboardPalette.muted else Color(0xFF939DAA)
     val accent = MiuixTheme.colorScheme.primary
     val panel = if (dark) DashboardPalette.iconPanel else Color(0xFFF1F6FF)
     val border = if (dark) ink.copy(alpha = .08f) else Color(0xFFE7EBF1)

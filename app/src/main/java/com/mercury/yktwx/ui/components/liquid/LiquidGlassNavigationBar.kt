@@ -47,6 +47,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Alignment.Companion.CenterHorizontally
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
@@ -85,13 +86,14 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
-import top.yukonga.miuix.kmp.blur.highlight.BloomStroke
-import top.yukonga.miuix.kmp.blur.highlight.Highlight
-import top.yukonga.miuix.kmp.blur.highlight.LightPosition
-import top.yukonga.miuix.kmp.blur.highlight.LightSource
+import top.yukonga.miuix.kmp.material.EdgeStroke
+import top.yukonga.miuix.kmp.material.EdgeLightSource
+import top.yukonga.miuix.kmp.material.EdgePeak
+import top.yukonga.miuix.kmp.material.drawEdgeStroke
+import androidx.compose.ui.draw.drawWithContent
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.sensor.rememberDeviceTilt
+import top.yukonga.miuix.kmp.material.sensor.rememberDeviceTilt
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.PI
@@ -110,24 +112,13 @@ private val LocalIosTabScale = staticCompositionLocalOf { { 1f } }
 // 76dp being miuix's floating-item minimum width.
 private val IosTabMaxTabWidth = 76.dp
 
-private val iosIndicatorSpecular: Highlight = Highlight(
+private val iosIndicatorSpecular: EdgeStroke = EdgeStroke(
     width = 1.dp,
-    alpha = 1f,
-    style = BloomStroke(
-        color = Color.White.copy(alpha = 0.12f),
-        innerBlurRadius = 2.0.dp,
-        primaryLight = LightSource(
-            position = LightPosition(0.5f, -0.3f, -0.05f),
-            color = Color.White,
-            intensity = 1f,
-        ),
-        secondaryLight = LightSource(
-            position = LightPosition(0.5f, 0.8f, -0.5f),
-            color = Color.White,
-            intensity = 0.4f,
-        ),
-        dualPeak = true,
-    ),
+    bevel = 2.dp,
+    color = Color.White.copy(alpha = 0.12f),
+    primary = EdgeLightSource(0.5f, -0.3f, -0.05f, color = Color.White, intensity = 1f),
+    secondary = EdgeLightSource(0.5f, 0.8f, -0.5f, color = Color.White, intensity = 0.4f),
+    peak = EdgePeak.Dual,
 )
 
 // Mirrors HighlightStyle.kt's LIGHT_REF — keep in sync.
@@ -172,24 +163,18 @@ private fun rememberQuantizedGravityAngle(): State<Float> {
  */
 @Composable
 private fun rememberGravityRotatedHighlight(
-    base: Highlight,
+    base: EdgeStroke,
     extraDegrees: Float,
-): State<Highlight> {
+): State<EdgeStroke> {
     val gravityAngle = rememberQuantizedGravityAngle()
     return remember(gravityAngle, base, extraDegrees) {
         derivedStateOf {
-            val baseStyle = base.style as BloomStroke
-            val basePrimary = baseStyle.primaryLight
+            val basePrimary = base.primary
             val rad = gravityAngle.value + (extraDegrees * PI / 180.0).toFloat()
             base.copy(
-                style = baseStyle.copy(
-                    primaryLight = basePrimary.copy(
-                        position = LightPosition(
-                            x = LIGHT_REF_X + cos(rad),
-                            y = LIGHT_REF_Y + sin(rad),
-                            z = basePrimary.position.z,
-                        ),
-                    ),
+                primary = basePrimary.copy(
+                    x = LIGHT_REF_X + cos(rad),
+                    y = LIGHT_REF_Y + sin(rad),
                 ),
             )
         }
@@ -208,10 +193,21 @@ internal fun Modifier.iosGlassSurface(backdrop: LayerBackdrop?, shape: Shape = C
             vibrancy()
             blur(4.dp.toPx(), 4.dp.toPx())
             lens(refractionHeight = 24.dp.toPx(), refractionAmount = 24.dp.toPx())
-        }, highlight = { highlight.value.copy(alpha = .75f) }, layerBlock = layerBlock,
+        }, layerBlock = layerBlock,
         onDrawSurface = { drawRect(surface.copy(alpha = .4f)) },
-    ) else background(surface, shape)
+    ).drawWithContent {
+        drawContent()
+        drawEdgeStroke(shape, highlight.value, alpha = .75f)
+    } else background(surface, shape)
 }
+
+/** Navigation and its trailing action share the same material, rim and elevation. */
+@Composable
+internal fun Modifier.iosNavigationSurface(backdrop: LayerBackdrop?, shape: Shape = CircleShape,
+    layerBlock: GraphicsLayerScope.() -> Unit = {}): Modifier = dropShadow(shape,
+    Shadow(radius = 10.dp, color = Color.Black,
+        alpha = if (MiuixTheme.colorScheme.background.luminance() < .5f) .2f else .1f))
+    .iosGlassSurface(backdrop, shape, layerBlock)
 
 /**
  * iOS-style liquid-glass tab bar: a floating pill with a draggable pill indicator,
@@ -226,6 +222,7 @@ internal fun IosLiquidGlassNavigationBar(
     onItemClick: (Int) -> Unit,
     backdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
+    includeOuterPadding: Boolean = true,
 ) {
     // The app theme follows themeMode, not just the system setting — resolve dark from the
     // active color scheme so the glass tints match the page behind the bar.
@@ -408,11 +405,12 @@ internal fun IosLiquidGlassNavigationBar(
         }
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.then(if (includeOuterPadding) Modifier.fillMaxWidth() else Modifier)) {
         Box(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(bottom = bottomPaddingValue, start = 24.dp, end = 24.dp)
+                .padding(bottom = if (includeOuterPadding) bottomPaddingValue else 0.dp,
+                    start = if (includeOuterPadding) 24.dp else 0.dp, end = if (includeOuterPadding) 24.dp else 0.dp)
                 .widthIn(max = IosTabMaxTabWidth * tabsCount + 8.dp)
                 .fillMaxWidth(),
             contentAlignment = Alignment.CenterStart,
@@ -427,16 +425,7 @@ internal fun IosLiquidGlassNavigationBar(
                             tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
                         }
                         .graphicsLayer { translationX = panelOffset() }
-                        .dropShadow(
-                            shape = pillShape,
-                            shadow = Shadow(
-                                radius = 10.dp,
-                                color = Color.Black,
-                                // Lighter in light theme to avoid a visible gray fringe.
-                                alpha = if (isDark) 0.2f else 0.1f,
-                            ),
-                        )
-                        .iosGlassSurface(backdrop, pillShape) {
+                        .iosNavigationSurface(backdrop, pillShape) {
                             val width = size.width.coerceAtLeast(1f)
                             val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDrag.pressProgress)
                             scaleX = s
@@ -451,6 +440,7 @@ internal fun IosLiquidGlassNavigationBar(
                         )
                         .then(dampedDrag.modifier)
                         .height(64.dp)
+                        .testTag("ios-floating-capsule")
                         .padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     content = tabsContent,
@@ -513,7 +503,6 @@ internal fun IosLiquidGlassNavigationBar(
                                         chromaticAberration = 0.5f,
                                     )
                                 },
-                                highlight = { pillHighlight.value.copy(alpha = dampedDrag.pressProgress) },
                                 layerBlock = {
                                     scaleX = dampedDrag.scaleX
                                     scaleY = dampedDrag.scaleY
@@ -530,6 +519,10 @@ internal fun IosLiquidGlassNavigationBar(
                                     drawRect(Color.Black.copy(alpha = 0.03f * progress))
                                 },
                             )
+                            .drawWithContent {
+                                drawContent()
+                                drawEdgeStroke(pillShape, pillHighlight.value, alpha = dampedDrag.pressProgress)
+                            }
                             .innerShadow(shape = pillShape) {
                                 InnerShadow(
                                     radius = 8.dp * dampedDrag.pressProgress,

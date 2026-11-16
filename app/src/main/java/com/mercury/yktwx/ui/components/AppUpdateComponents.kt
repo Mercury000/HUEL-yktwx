@@ -1,5 +1,8 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,7 +33,6 @@ import com.mercury.yktwx.BuildConfig
 import com.mercury.yktwx.R
 import com.mercury.yktwx.data.UpdateDownloadPhase
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

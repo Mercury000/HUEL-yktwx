@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,8 +17,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.RechargePhase
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-
 /** The same sheet and paid-result content used by recharge and living-fee payments. */
 @Composable
 internal fun PaymentSuccessDialog(amountCents: Long?, onDismiss: () -> Unit) {
