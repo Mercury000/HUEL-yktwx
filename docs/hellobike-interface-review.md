@@ -15,7 +15,10 @@
 | tw.bike.unlock.page.basic.info | 官方开锁页调用：取得计费说明；缺少文字不额外否定成功预检。 |
 | user.ride.create | 普通／APP分支先保存Opening、单次提交并采用实际rideId；SERVER跳过create。省略H5未定义的orderGuid／scanReqId，恢复只查单。 |
 | user.ride.order.status | 官方H5orderStatusCheck、APK原单查询及RideOrderStatus：20/subStatus判断开锁，30结束，区别于bikeCheck状态空间；Closing优先查原单。 |
-| ride.hub.pre.close | APK P10及官方请求：operateType0检查、2确认，单次提交；causeType1100成功先持久化Ended，处理中查询原单。 |
+| ride.hub.pre.close | 官方P10：operateType0检查、2提交；1102/1103按skipConfirm决定是否显示第二次确认；1101/1108按相同operateType/poll继续P10。firstOperate跟随操作变化，阶段窗口40秒；1100先持久化Ended再读费用。 |
+| user.tw.ride.check | 官方骑行页：originGuid原样映射；非空rideInfo且rideStatus!=2显示骑行，不新增标识/车号/状态齐全门槛。与原单开锁查询区分，不作缺ID提前兜底。 |
+| user.ride.pause.verify / pause / resume | 官方单车useTempLock：一次资格校验、用户确认、提交及状态查询；删除提交前额外资格复查。 |
+| user.tw.order.check | LoopRideState：bizType与定位地区字段，不自行添加rideGuid。 |
 | user.artemis.pay.page.order.detail | 官方费用页H5：费用独立查询，保留付款标识；费用延迟不撤回已确认还车。 |
 | student.audit.info | 校园HAR及认证H5：仅authState2且userType1允许校园购买；未认证与查询错误区分。 |
 | tw.ridecard.user.list | 我的卡HAR及H5：双业务、空卡正常、页号每次加1、Unix秒日期、官方续费入口语义。 |
@@ -24,7 +27,7 @@
 | tw.standard.preOrder | 校园HAR19与普通wrapper：原促销、fromTwoWheel=true；paymentId映射付款ID，非orderNo。 |
 | com.alphapay.getPayChannel | H5 SDK及APK请求/初选/手动点击分支：购卡原生SDK字段和安装检测，子渠道分别处理；f/m/p/v/w/d确认指定默认、enableSelect优先及首个余额合格渠道兜底，false不能直接禁付或断言无初选。 |
 | com.alphapay.paymentOrder.pay | ConfirmPayHelper.b/c、PayCoreConfirmPayHelper.a及付款桥：购卡发送原金额与优惠标识；HBPayCore.b与PayAndSignTransfer.a确认包月102路径、周期规则和宿主回跳；SDK回调不直接结清。 |
-| com.alphapay.facade.orderSingleQuery | APK原单查询及整数状态：按原ID和整数1确认，未套用businessId=paymentId或原金额=优惠后金额的未经证实映射，返回guid时防串单。 |
+| com.alphapay.facade.orderSingleQuery | BasePayModule.i/w及CheckOrderStatusHelper完整调用：查询指定订单或orders[0]，DTO解析的payStatus==1确认；不附加返回guid、金额或业务身份相等门槛，不要求全单成功。自动重试与手动单次分别处理。 |
 
 原有登录/骑行主机、公共字段、方法体及DEX原型见[协议核验](hellobike-protocol-audit.json)、[登录失效证据](life-login-expiry-evidence.md)。P10模型和原因空间见[还车证据索引](hellobike-return-evidence-index.json)。购卡HAR、H5来源及哈希见[账号购卡说明](hellobike-campus-cards.md)。
 
@@ -49,4 +52,4 @@
 
 官方原生支付chaos加密及设备风控初始化未完整迁入。字段映射和本地验证通过不能证明所有官方传输机制、在线资格、实车关锁、支付受理和发卡到账。这份清单记录已接入接口的静态与本地行为覆盖，不把尚未实测的链路标为线上通过。
 
-补充判断核对表见[条件核对](hellobike-condition-review.md)，19个原生方法及校园源码见[购卡REA](hellobike-purchase-conditions-rea.json)。本轮验证结果另见条件核对表，不能以之前75项测试替代本轮修正的验证。
+补充判断核对表见[条件核对](hellobike-condition-review.md)，19个原生方法及校园源码见[购卡REA](hellobike-purchase-conditions-rea.json)。2026-11-16已修改整个已接入实现的额外业务门槛及请求顺序，具体改动、完整源码和本次验证见[业务对齐记录](hellobike-business-alignment-rea.md)，不以前述历史测试替代。

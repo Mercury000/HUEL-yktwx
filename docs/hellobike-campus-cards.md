@@ -23,7 +23,7 @@
 | 预下单 | `tw.standard.preOrder` | 原样传递 `actualPrice`、`pendingInfos`；`packageGuid`、`channelCode`、`businessType` 取选中商品。单车校园卡资格最终由官方接口决定。 |
 | 付款方式 | `com.alphapay.getPayChannel` | 收银台业务类型取预下单 `businessType`，场景取 `businessScene`；`waitPayGuid=payNo`、`orderId=paymentId`。渠道实际金额取 `realAmount`。 |
 | 发起付款 | `com.alphapay.paymentOrder.pay` | 复用支付宝、哈啰余额、银联收银台。返回渠道决定支付桥；付款前保存实际金额与原付款标识。 |
-| 确认付款 | `com.alphapay.facade.orderSingleQuery` | 查询原付款订单；整数 `payStatus=1` 才确认成功，随后刷新我的卡。SDK回调不能直接确认。 |
+| 确认付款 | `com.alphapay.facade.orderSingleQuery` | 查询指定付款订单或返回orders[0]，DTO解析的 `payStatus=1` 确认成功；不附加字段相等或全单成功条件，随后刷新我的卡。SDK回调不能直接确认。 |
 
 我的卡官方状态：0生效中、10待启用、40冻结中、41待激活、50/60/70失效。未知状态保留数值，不推断过期。日期显示由 `expireSecond * 1000` 转换。
 
@@ -43,13 +43,13 @@ enableSelect是默认选择的一个优先条件，不是禁付条件，也不�
 
 StandardCashierDialogHelper.t0/B0/A0/Q0表明普通手动选择不因enableSelect=false拦截，可选免密提示不强制阻止单次付款。余额不足独立处理；子渠道不会整组丢弃。如果所有已接入渠道都不可用，保持未选中，可选择查看原因但不能付款。共用HallNeutralTabs在未选中或选择失效时渲染无选中态，避免把-1传进Miuix的scrollToItem。这是本地延迟渠道复现场景的闪退原因，不是支付SDK报错。
 
-原生付款保留StandardCashierRequest.payMoney/payList原金额，并另传marketingActivityId、marketingType、promoType等本次优惠信息。预下单6.90、渠道展示4.90时，界面及本机尝试记录为4.90，请求原订单金额仍为6.90。ConfirmPayHelper.b/c与PayCoreConfirmPayHelper.a提供此映射依据。原生查询按原付款标识及整数payStatus=1确认，不把businessId当paymentId，也不以原金额与优惠后显示金额不同否定成功；返回guid时核对它。
+原生付款保留StandardCashierRequest.payMoney/payList原金额，并另传marketingActivityId、marketingType、promoType等本次优惠信息。预下单6.90、渠道展示4.90时，界面及尝试记录的displayAmount保留4.90；付款订单字段仍保留6.90及服务端实际返回。删除本地合计一致、单笔唯一、业务类型一致门槛。原生查询按DTO解析的payStatus=1确认，不要求businessId、guid或金额与本地字段相等。同渠道不同报价分别显示和选择，不按渠道码去重。
 
 校园与学生接口使用HAR中的H5 7.0.65字段；我的卡使用HAR中的7.0.75、Android、platform=4字段。它们独立于骑行页的AppHelloMiniBrand字段组。位置有授权时取当前定位和官方行政区反查，否则使用已有地区或空字段。没有复制HAR中的token、ticket、riskControlData、个人认证资料；原生风控设备初始化尚未完整接入，服务端拒绝时展示原文。
 
 ## 订单恢复
 
-账号详情页不展示根据本机恢复数据生成的订单卡片，不显示本机推断的「待付款」「已取消」云端状态。我的卡、到期时间和卡状态取官方卡列表；付款成功仅取原付款查询的整数payStatus=1。预下单返回的金额和付款标识用于当前收银台。
+账号详情页不展示根据本机恢复数据生成的云端订单列表。我的卡、到期时间和卡状态取官方卡列表；付款成功取原付款查询DTO解析的payStatus=1。预下单返回的金额、业务字段和所有付款订单用于收银台，不额外核对本地求和或业务类型相等。自动查询首次立即、最多三次重查、间隔三秒；手动及恢复查询单次。最新修改与验证见[业务对齐记录](hellobike-business-alignment-rea.md)。
 
 为防止进程退出后重复付费，仍在账户隔离的加密记录中保存原付款标识与请求尝试，仅供恢复时查单。成功/SDK取消标志不作为持久化结果；历史记录中的这两个标志恢复时也清除，重新读云端。点击购买遇到尚未确认的已发起付款会打开原订单查询，不另建订单。云端查询失败不能据此清除未知付款或再次发送付款。
 

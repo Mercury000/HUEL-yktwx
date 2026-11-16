@@ -28,7 +28,7 @@
 | 登录 | `user.account.login` 使用官方原 DEX 注解确认的 `/auth`；保存 token、ticket、userGuid。UA 取设备 WebView 默认值，渠道取本 APK Walle 数据 `a0010005`，SSID 独立持久化为去掉连字符的 UUID。 |
 | 行政区反查 | `hello.lbs.code.regeo` 使用官方公开 H5 的 `oho_ride_mobile_page` 参数与 MD5 签名算法，解析嵌套的 `data.data.reGeoCodesList[].addressComponent`。 |
 | 骑行与结束 | 默认H5扫码先pre.ride；普通结果等待确认，SERVER跳过确认查rideGuid，APP跳过确认创建。create使用platform=2，省略预订单号及未定义scanReqId，采用实际返回rideId查询；rideStatus=20且subStatus不是22/23才确认骑行。 |
-| 还车 | `ride.hub.pre.close` 先查询位置校验，再由用户确认提交。官方类型常量为网络 `1`、短信 `2`、蓝牙 `3`；明确非网络类型转哈啰处理。 |
+| 还车 | `ride.hub.pre.close` 查询位置校验，按官方skipConfirm选择直接提交或用户确认；1101/1108按同一operateType继续P10。官方类型常量为网络 `1`、短信 `2`、蓝牙 `3`；未接入的控制类型转哈啰处理。 |
 | 业务费用 | `user.artemis.pay.page.order.detail` 读取 `orderInfo.unpaidPayList`；普通付款以 `payNo` 为付款 guid、`payPrice` 为金额。 |
 | 通用付款 | `com.alphapay.getPayChannel` → `com.alphapay.paymentOrder.pay` → `com.alphapay.facade.orderSingleQuery`，使用匹配订单查询确认付款。 |
 
@@ -67,13 +67,13 @@
 | 阶段 | 进入条件与后续行为 |
 | --- | --- |
 | 车辆检查 | 按新版H5预骑行及完整弹窗／导航条件处理，不能套用原生result或causeType=1100条件。计费独立加载，普通结果等待确认，不合成自动开锁标记。 |
-| 正在开锁 | pre.ride前保存本地恢复记录；SERVER采用rideGuid且不发create，普通／APP创建采用实际rideId。丢失响应先按账户与车号恢复真实订单再查单；20/22、20/23继续等待，不重发创建，结束及付款状态不被迟到响应复活。 |
+| 正在开锁 | pre.ride前保存本地恢复记录；SERVER采用rideGuid且不发create，普通／APP创建采用实际rideId。缺ID仍查单，省略缺省字段，不按同车号补绑定。20/22、20/23继续等待；原查单明确成功后读取骑行页，不重发创建。 |
 | 骑行中 | 显示参考计时。返回付款页、离开设备页或退出登录都不会还车。 |
-| 还车位置通过 | 查询返回普通网络类型及可确认的官方causeType，由用户明确确认；不按费用字段或本机30秒期限追加拒绝。 |
-| 正在还车 | 用户确认后先保存待提交状态，再发送一次关锁；仍查询到骑行中时继续保留关锁待确认，不重新开放关锁命令。 |
+| 还车位置通过 | 1102/1103按skipConfirm决定直接提交还是显示确认；不在校验或提交前另查骑行添加资格门槛。 |
+| 正在还车 | 先保存待提交状态再请求关锁；官方明确1101/1108时按相同operateType/poll继续P10，firstOperate跟随官方操作顺序，位置及关锁阶段各40秒。丢失响应保留待确认，不自行重放提交。 |
 | 骑行结束 | 匹配订单的结束信息确认后结束计时，继续读取业务费用；结束不等于费用结清。 |
 
-P10预还车使用 `causeType`：1101／1108继续位置查询，1102／1103允许正常网络还车确认，1100表示已还车并查询结束信息。`skipConfirm=false` 是官方正常确认分支。优先显示完整云端causeDesc；不把penaltyFree、penaltyDisplay、蓝牙密钥或附加费用的出现当作额外拒绝条件。明确非网络type仍属于未接入的控制方式。已经提交的请求遇到超时、取消或无法明确分类的错误时保留原记录，只继续查单，不自动重放。最新逐项证据与限制见[云端判断与原文提示核验](life-cloud-authority-audit.md)。
+P10预还车使用 `causeType`：1101／1108按当前operateType继续P10，1102／1103按skipConfirm决定是否另需确认，1100先保存还车成功再读取费用。优先显示完整云端causeDesc；不把penaltyFree、penaltyDisplay、蓝牙密钥或附加费用的出现当作额外拒绝条件。明确非网络type仍属于未接入的控制方式。响应丢失与官方明确要求继续查询分开处理。单车临时锁车按官方一次verify→用户确认→pause→user.tw.order.check，继续骑行用resume；校验后提交复用已确认位置，不再额外读取骑行资格。本次完整方法与修改见[业务对齐记录](hellobike-business-alignment-rea.md)。
 
 2026-11-13 的[调度费与蓝牙还车 REA 核验](hellobike-return-analysis.md)确认了官方调度费场景、费用接受参数、蓝牙读写和反馈上报流程，并记录原生两套还车状态模型的差异。该补证提供后续接入依据；本版本仍按上述范围处理。
 
@@ -81,9 +81,9 @@ P10预还车使用 `causeType`：1101／1108继续位置查询，1102／1103允�
 
 范围为普通支付宝 `001`、哈啰余额 `003` 和普通银联 `1201`；骑行卡另见[账号购卡说明](hellobike-campus-cards.md)。微信SDK、免密、开卡、签约和复杂组合支付交由哈啰处理。余额沿用官方判断：有balanceEnough使用该值，缺失时比较accountBalance与应付金额，展示balanceText。REA调用方确认enableSelect用于初选，false不能直接禁止普通渠道手动选择；子渠道分别处理。普通渠道不误用只适用于全余额013的引导标记。签约条件按官方字段组合判断，原文保留。请求至恢复的范围见[接口复核记录](hellobike-interface-review.md)。
 
-支付前重新读取原订单费用及渠道，核对付款标识、金额和条件，再可靠保存付款尝试后发送一次请求。付款组件返回的渠道为准：在共用桥接边界将支付宝映射至已有 `13`、银联映射至已有 `52`；不把 rideGuid 当付款 guid，也不机械地把 tradeId 当 orderId。
+支付提交使用用户看到并选中的云端请求与渠道，先保存付款尝试再请求，不再额外重查费用/渠道并按本地标识、金额合计或业务字段拒绝。付款组件的实际返回字段原样保存。原订单金额与展示报价分别保存；在共用桥接边界将支付宝映射至已有 `13`、银联映射至已有 `52`；不把 rideGuid 当付款 guid，也不机械地把 tradeId 当 orderId。
 
-SDK 回跳、HTTP 成功和付款组件的状态不直接标记付款成功。原订单查询采用首次加最多三次重查、间隔三秒；仅匹配 guid、金额及业务身份且数值 `payStatus == 1` 确认该付款。未知结果保留原付款记录与查询入口，不允许创建另一笔付款。
+SDK 回跳、HTTP 成功和付款组件的状态不直接标记付款成功。指定付款订单或返回orders[0]按DTO解析的 `payStatus == 1` 确认，不附加返回guid、金额、业务身份相等或全单成功门槛。自动查询首次立即、最多三次重查、间隔三秒；手动及恢复查询单次。未知结果保留原付款记录与查询入口，本次查询失败清除该次旧确认标记，不能拿旧本地成功覆盖当前云端结果。
 
 付款确认与骑行费用结清分开处理：
 

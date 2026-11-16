@@ -316,6 +316,7 @@ internal fun PaymentResultContent(
     preserveError: Boolean = false,
     cancelled: Boolean = false,
     onResumePayment: (() -> Unit)? = null,
+    amountYuan: String? = null,
 ) {
     val busy = loading || phase == RechargePhase.AwaitingPayment
     val failed = phase in setOf(RechargePhase.Failed, RechargePhase.TimedOut) && !busy
@@ -356,7 +357,7 @@ internal fun PaymentResultContent(
         Text(
             // Official result page: order.msg || transactionFailedDescription (status 0 and 2).
             if (failed) detail?.takeIf { it.isNotEmpty() } ?: "若扣款成功，请稍后在账单查看"
-            else "¥ " + RechargeMoney.yuan(amountCents),
+            else "¥ " + (amountYuan ?: RechargeMoney.yuan(amountCents)),
             modifier = Modifier.fillMaxWidth(),
             fontSize = if (failed) 17.sp else 36.sp,
             fontWeight = if (failed) FontWeight.Normal else FontWeight.SemiBold,

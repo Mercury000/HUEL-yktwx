@@ -2,7 +2,7 @@
 
 核对对象为用户指定的`D:\mercu\Downloads\哈啰_7.0.75.apk`，SHA-256：`7e7362c0099069334be458347e567b87eb9baf0ab0b1f4ea8a410246d3e7c62b`。核对官方APK和它实际路由到的官方H5，未逆向本项目APK，未执行骑行或支付请求。
 
-结论：**预骑行接口存在，且官方默认扫码链会调用它；它可能直接触发服务端开锁。是否自动开锁取决于官方返回的skipConfirmResult，不能只用本机createCalls=0证明没有开锁，也不能自行规定所有扫码都自动确认。**
+结论：**预骑行接口存在，且官方默认扫码链会调用它；用户已实测官方也是扫一扫直接开锁。自动分支由官方skipConfirmResult决定，不能只用本机createCalls=0证明没有开锁。官方要求确认的分支才显示确认按钮。** 2026-11-16已撤销缺少rideGuid时自行添加的提前恢复兜底，并接入临时锁车，见[本次复核](hellobike-scan-temporary-lock-rea.md)及[整个实现的业务对齐](hellobike-business-alignment-rea.md)。此前把核对计费再点击开锁描述为通用流程不准确。
 
 ## 原APK入口与默认路由
 
@@ -25,7 +25,7 @@ classes18／classes7切片与原APK对应DEX逐字节相同，DEX SHA-256为`ae9
 | 返回结果 | 官方行为 | 当前实现 |
 | --- | --- | --- |
 | canSkip不为true | 等待用户确认；明确路由isAutoUnlock另有自动分支 | 普通扫码等待确认，不合成isAutoUnlock |
-| canSkip=true、executor=1（SERVER） | autoUnlock使用预骑行返回的**rideGuid**查单并尝试BLE，不再发create | 保存rideGuid并查单，零create |
+| canSkip=true、executor=1（SERVER） | autoUnlock使用预骑行返回的**rideGuid**查单并尝试BLE，不再发create；缺失标识仍查单 | 原样查单，缺失时省略rideGuid，零create；查单明确成功后才进入骑行页 |
 | canSkip=true、其他executor（APP常量为2） | onConfirmUnlock通过其拦截条件后创建 | 消费官方自动确认结果，至多一次create |
 | 用户点击普通确认 | onClickConfirmUnlock检查蓝牙及官方交互，再进入onConfirmUnlock | 普通网络分支明确确认；未接入的官方交互转官方处理 |
 
@@ -41,11 +41,11 @@ classes18／classes7切片与原APK对应DEX逐字节相同，DEX SHA-256为`ae9
 
 userConfirmContinueRide来自路由参数或成功结果的unpaidEntranceMode 2／3；当前普通入口没有该路由参数，按成功结果计算。H5封装从原生UA获取version=7.0.75，h5Version=7.0.70，分别发送。
 
-create的parseResult采用实际返回的**rideId**，再查user.ride.order.status，不能要求等于预骑行orderGuid。成功为rideStatus=20且subStatus不是22／23；22／23继续等待，-12走卡锁提示。官方单车首次立即查单，此后约1秒查询，等待窗口35秒。
+create的parseResult采用实际返回的**rideId**，再查user.ride.order.status，不能要求等于预骑行orderGuid；成功响应缺少rideId也不新增拒绝。成功为rideStatus=20且subStatus不是22／23；22／23继续等待，-12走卡锁提示并约2秒查询。官方单车首次立即查单，此后通常约1秒查询，等待窗口35秒；查单异常的catch不安排下一次请求。
 
-本项目在pre.ride发送前保存没有云端ID的本地恢复记录，正常结果返回后删除临时记录。SERVER采用rideGuid；普通／APP创建前另存本地操作，取得rideId后绑定。响应丢失、取消或进程中断保留待确认记录，按账户及同车号从原生bikeCheck恢复真实ID后查该订单，不重发pre.ride或create。不同扫码的恢复记录相互隔离，旧响应不能删除新记录。
+本项目在pre.ride发送前保存本地恢复记录，普通正常结果返回后删除临时记录。SERVER采用实际rideGuid，缺失时继续官方查单；普通／APP采用实际rideId，缺失也继续查单。响应丢失、取消或进程中断仅保留待确认记录，不重复pre.ride或create，也不按同车号自行绑定云端骑行。只有原查单明确成功才读取骑行页。独立的当前骑行发现仍按云端返回展示，不受另一条本地待查记录的资格门槛阻挡。不同扫码的本地记录及迟到响应保持隔离。
 
-重复云端ID与已有记录合并，保留已结束订单和付款状态；迟到开锁结果不能复活结束记录。没有云端ID的记录只允许Opening、未知结算和无付款记录。删除异常记录按本地sessionId处理，不会禁止未来所有暂无云端ID的操作。
+重复非空云端ID与已有记录合并，保留原记录的付款数据；迟到开锁结果不能复活已确认结束的记录。本地sessionId承担保存身份，成功骑行页缺少云端ID不会被保存层再次判为无效。删除异常记录按本地sessionId处理，不会禁止未来所有暂无云端ID的操作。
 
 ## 证据与验证边界
 

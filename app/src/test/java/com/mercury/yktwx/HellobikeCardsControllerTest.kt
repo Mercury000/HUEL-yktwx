@@ -23,6 +23,8 @@ class HellobikeCardsControllerTest {
         var gate: CompletableDeferred<Unit>? = null
         var auditFailure: Exception? = null
         var cardPayFailure: Exception? = null
+        var orderedPurchase = purchase
+        var channelOptions = listOf(HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "4.90"))
         val pages = mutableListOf<Pair<Int, Int>>()
         var myCards = emptyList<HellobikeUserCard>()
         override suspend fun studentAudit(account: HellobikeAccount): HellobikeStudentAudit {
@@ -39,8 +41,8 @@ class HellobikeCardsControllerTest {
             ordinaryCalls++; ordinaryRequests += region to position
             return ordinaryResponse?.invoke(region, position) ?: listOf(product.copy(key = "ordinary", campus = false))
         }
-        override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCardPurchase { preorders++; return purchase }
-        override suspend fun cardPayChannels(account: HellobikeAccount, purchase: HellobikeCardPurchase) = listOf(HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "4.90"))
+        override suspend fun preOrderCard(account: HellobikeAccount, product: HellobikeCampusProduct, region: HellobikeRegion?, position: HellobikePosition?): HellobikeCardPurchase { preorders++; return orderedPurchase }
+        override suspend fun cardPayChannels(account: HellobikeAccount, purchase: HellobikeCardPurchase) = channelOptions
         override suspend fun payCard(account: HellobikeAccount, purchase: HellobikeCardPurchase, orders: List<HellobikePayOrder>, option: HellobikePayOption): HellobikePayComponent {
             cardPays++; beforePay(); cardPayFailure?.let { throw it }
             return HellobikePayComponent("001", "", orders, payload = "fixture-payload")
@@ -177,19 +179,41 @@ class HellobikeCardsControllerTest {
         val store = BikeRecords().store(); val api = CardsApi()
         val controller = controller(api, store); runCurrent(); controller.choose("product"); runCurrent()
         assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
-        api.beforePay = { assertEquals("4.90", store.load().cardPurchases[fixtureBikeAccount.userGuid]!!.attempt!!.orders.single().amount) }
+        api.beforePay = {
+            val attempt = store.load().cardPurchases[fixtureBikeAccount.userGuid]!!.attempt!!
+            assertEquals("6.90", attempt.orders.single().amount); assertEquals("4.90", attempt.displayAmount)
+        }
         controller.pay(); runCurrent()
         val launch = controller.state.value.paymentLaunch!!
         assertTrue(controller.claimPayment(launch.id)); assertFalse(controller.claimPayment(launch.id))
         controller.paymentReturned(launch.id, "9000"); runCurrent()
         assertFalse(store.load().cardPurchases[fixtureBikeAccount.userGuid]!!.paid)
         assertEquals(1, api.cardPays); assertEquals(1, api.queryCalls)
-        api.queryPaid = { it.guid == "pay-no" && it.orderId == "payment-id" && it.amount == "4.90" }
-        controller.checkPayment(); runCurrent()
+        api.queryPaid = { it.guid == "pay-no" && it.orderId == "payment-id" && it.amount == "6.90" }
+        advanceTimeBy(3001); runCurrent()
         assertTrue(controller.state.value.purchase!!.paid)
         assertFalse(store.load().cardPurchases[fixtureBikeAccount.userGuid]!!.paid)
         assertEquals(RechargePhase.Paid, controller.state.value.feedback!!.phase)
         assertEquals(1, api.preorders); assertEquals(1, api.cardPays)
+    }
+    @Test fun multiOrderCashierUsesTheOfficialFirstOrderQueryAndKeepsTheSelectedOffer() = runTest {
+        val api = CardsApi().apply {
+            orderedPurchase = purchase.copy(orders = listOf(purchase.orders.single(),
+                HellobikePayOrder("extra-order", "1.00", "extra-payment", "29")))
+            channelOptions = listOf(
+                HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "4.90", selectionId = "001:first"),
+                HellobikePayOption(LifePayChannel("001", "支付宝", true, false), "3.90", selectionId = "001:second"))
+            queryPaid = { it.guid == "pay-no" }
+        }
+        val store = BikeRecords().store(); val controller = controller(api, store)
+        runCurrent(); controller.choose("product"); runCurrent()
+        controller.selectMethod("001:second"); controller.pay(); runCurrent()
+        val attempt = controller.state.value.purchase!!.attempt!!
+        assertEquals("001", attempt.channel); assertEquals("3.90", attempt.displayAmount)
+        assertEquals(api.orderedPurchase.orders, attempt.orders)
+        val launch = controller.state.value.paymentLaunch!!; assertTrue(controller.claimPayment(launch.id))
+        controller.paymentReturned(launch.id, "9000"); runCurrent()
+        assertEquals(listOf("pay-no"), api.queriedGuids); assertTrue(controller.state.value.purchase!!.paid)
     }
     @Test fun recreationQueriesPersistedAttemptWithoutResendingOrderOrPayment() = runTest {
         val store = BikeRecords().store(); val api = CardsApi()
@@ -240,7 +264,7 @@ class HellobikeCardsControllerTest {
         val store = BikeRecords().store(); val api = CardsApi()
         val controller = controller(api, store); runCurrent(); controller.choose("product"); runCurrent(); controller.pay(); runCurrent()
         val launch = controller.state.value.paymentLaunch!!; assertTrue(controller.claimPayment(launch.id))
-        controller.paymentReturned(launch.id, "6001"); runCurrent()
+        controller.paymentReturned(launch.id, "6001"); runCurrent(); advanceTimeBy(9001); runCurrent()
         assertTrue(controller.state.value.purchase!!.paymentCancelled); assertFalse(controller.state.value.purchase!!.paid)
         assertEquals(RechargePhase.Failed, controller.state.value.feedback!!.phase)
         controller.continueCancelledPayment(); runCurrent()

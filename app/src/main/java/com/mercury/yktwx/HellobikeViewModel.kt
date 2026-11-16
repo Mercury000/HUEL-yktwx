@@ -30,6 +30,7 @@ data class HellobikeUiState(
     val scannedBikeNo: String? = null, val precheck: HellobikePrecheck? = null, val loadingDevice: Boolean = false,
     val sessions: List<HellobikeSession> = emptyList(), val selectedSessionId: String? = null, val confirmedSessions: Set<String> = emptySet(),
     val closeProof: HellobikeCloseProof? = null, val busy: Boolean = false, val error: String? = null, val officialRequired: Boolean = false,
+    val temporaryLockProof: HellobikeTemporaryLockProof? = null, val checkingTemporaryLock: Boolean = false,
     val paymentVisible: Boolean = false, val paymentLoading: Boolean = false, val payDetail: HellobikePayDetail? = null,
     val payOptions: List<HellobikePayOption> = emptyList(), val paymentFeedback: LifePaymentFeedback? = null,
     val paymentLaunch: LifePaymentLaunch? = null, val paymentInFlight: Boolean = false,
@@ -106,7 +107,8 @@ class HellobikeViewModel internal constructor(
     private var permissionClaimed: Long? = null
     private var locationSettingsPending = false
     private var locationSettingsRequested = false
-    private enum class LocationAction { Prepare, Close, Cards }
+    private enum class LocationAction { Prepare, Close, Cards, TemporaryLock, Resume }
+    private var deviceLocationAction: LocationAction? = null
     private var pendingLocationAction: LocationAction? = null
     private data class LocationPermissionOwner(val account: HellobikeAccount, val selection: Long, val bikeNo: String?, val sessionId: String?)
     private var locationPermissionOwner: LocationPermissionOwner? = null
@@ -238,6 +240,7 @@ class HellobikeViewModel internal constructor(
         if (mutable.value.locationPermissionRequest != null || !foreground ||
             (if (action == LocationAction.Cards) !cards.canRequestOrdinaryLocation else !visible)) return
         pendingLocationAction = action; permissionClaimed = null
+        if (action != LocationAction.Cards) deviceLocationAction = action
         locationSettingsRequested = openSettings
         locationPermissionOwner = LocationPermissionOwner(owner, deviceSelection, mutable.value.scannedBikeNo, mutable.value.selectedSessionId)
         mutable.update { it.copy(locationPermissionRequest = ++permissionCounter) }
@@ -259,7 +262,8 @@ class HellobikeViewModel internal constructor(
         mutable.update { it.copy(locationPermissionRequest = null) }
         if (action == null || owner == null || owner.account != account || when (action) {
             LocationAction.Prepare -> owner.selection != deviceSelection || owner.bikeNo != mutable.value.scannedBikeNo || mutable.value.session != null
-            LocationAction.Close -> owner.selection != deviceSelection || owner.sessionId != mutable.value.selectedSessionId || mutable.value.session?.phase != HellobikePhase.Riding
+            LocationAction.Close, LocationAction.TemporaryLock, LocationAction.Resume -> owner.selection != deviceSelection ||
+                owner.sessionId != mutable.value.selectedSessionId || mutable.value.session?.phase != HellobikePhase.Riding
             LocationAction.Cards -> !cards.canRequestOrdinaryLocation
         }) return
         mutable.update { it.copy(locationPermissionRequest = null,
@@ -276,13 +280,15 @@ class HellobikeViewModel internal constructor(
         when (action) {
             LocationAction.Prepare -> if (visible) mutable.value.scannedBikeNo?.let(::prepareBike)
             LocationAction.Close -> if (visible) checkClose()
+            LocationAction.TemporaryLock -> if (visible) checkTemporaryLock()
+            LocationAction.Resume -> if (visible) resumeRide()
             LocationAction.Cards -> cards.refresh()
         }
     }
     fun retryDeviceCheck() {
         if (mutable.value.loadingDevice || mutable.value.busy || mutable.value.accountBusy || mutable.value.locationPermissionRequest != null) return
         if (mutable.value.locationPermissionRequired) {
-            requirePermission(if (mutable.value.session?.phase == HellobikePhase.Riding) LocationAction.Close else LocationAction.Prepare,
+            requirePermission(deviceLocationAction ?: if (mutable.value.session?.phase == HellobikePhase.Riding) LocationAction.Close else LocationAction.Prepare,
                 openSettings = mutable.value.locationPermissionBlocked)
         } else if (mutable.value.session != null) refreshState()
         else mutable.value.scannedBikeNo?.let(::prepareBike)
@@ -420,7 +426,9 @@ class HellobikeViewModel internal constructor(
     fun openDevice(bikeNo: String) {
         if (!HellobikeDeviceCode.validIdentifier(bikeNo) || mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight) return
         pendingBike = bikeNo; deviceSelection++; deviceGeneration++; deviceTask?.cancel()
+        deviceLocationAction = null
         mutable.update { it.copy(scannedBikeNo = bikeNo, selectedSessionId = null, precheck = null, closeProof = null,
+            temporaryLockProof = null, checkingTemporaryLock = false,
             loadingDevice = false, locationPermissionRequired = false, locationPermissionBlocked = false,
             error = null, officialRequired = false, paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList()) }
         if (!mutable.value.restoring && account != null && foreground && visible) prepareBike(bikeNo)
@@ -428,7 +436,9 @@ class HellobikeViewModel internal constructor(
     fun openSession(id: String) {
         if (mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight || mutable.value.sessions.none { it.sessionId == id }) return
         pendingBike = null; deviceSelection++; deviceGeneration++; deviceTask?.cancel()
+        deviceLocationAction = null
         mutable.update { it.copy(selectedSessionId = id, scannedBikeNo = null, precheck = null, closeProof = null,
+            temporaryLockProof = null, checkingTemporaryLock = false,
             loadingDevice = false, locationPermissionRequired = false, error = errors[id], paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList()) }
         if (visible && foreground) refreshState()
     }
@@ -458,7 +468,7 @@ class HellobikeViewModel internal constructor(
                     val prepared = api.prepare(owner, bikeNo, region, point)
                     if (prepared.serverUnlockStarted) {
                         saveSession(owner, reserved.copy(rideGuid = prepared.orderGuid, bikeNo = prepared.bikeNo,
-                            priceRule = prepared.priceRule, uncertain = false), select = request == deviceGeneration && visible)
+                            priceRule = prepared.priceRule, uncertain = prepared.orderGuid.isBlank()), select = request == deviceGeneration && visible)
                     } else releaseScan(owner, reserved.sessionId)
                     ensureOwner(owner)
                     if (request != deviceGeneration || !visible) return@supervisorScope
@@ -515,7 +525,11 @@ class HellobikeViewModel internal constructor(
             val prepared = precheck.copy(region = region, position = point)
             // The official H5 create obtains rideId in its response; a pre-ride ID is
             // not a created order. Persist a local attempt with no invented cloud ID.
-            var pending = saveSession(owner, HellobikeSession(
+            // SERVER pre-ride already published its durable scan record. Reuse its
+            // local identity even when the cloud ID has not arrived yet.
+            val serverRecord = mutable.value.session?.takeIf { prepared.serverUnlockStarted &&
+                it.phase == HellobikePhase.Opening && it.bikeNo == prepared.bikeNo && it.rideGuid == prepared.orderGuid }
+            var pending = saveSession(owner, serverRecord?.copy(region = region, priceRule = prepared.priceRule) ?: HellobikeSession(
                 if (prepared.serverUnlockStarted) prepared.orderGuid else "", prepared.bikeNo, region,
                 HellobikePhase.Opening, now(), priceRule = prepared.priceRule), select = true)
             ensureOwner(owner); ensureCommandVisible()
@@ -532,17 +546,7 @@ class HellobikeViewModel internal constructor(
                 if (e is HellobikeException && (e.loginExpired || e.officialRequired)) {
                     analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikeRide, AnalyticsError.from(e)); throw e
                 }
-                // A concurrent/previously accepted unlock can be reported as a create rejection.
-                // Only this exact pending order's query can turn it into continued progress.
-                try { pending = readOpening(owner, pending) }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) {
-                    analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikeRide, AnalyticsError.from(e)); throw e
-                }
-                val observed = mutable.value.sessions.firstOrNull { it.sessionId == pending.sessionId }
-                if (observed == null || observed.rideGuid.isBlank() || observed.uncertain) {
-                    analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikeRide, AnalyticsError.from(e)); throw e
-                }
+                analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikeRide, AnalyticsError.from(e)); throw e
             }
             ensureOwner(owner)
             mutable.update { it.copy(precheck = null) }
@@ -551,16 +555,16 @@ class HellobikeViewModel internal constructor(
     }
     fun checkClose() {
         val owner = account ?: return; val session = mutable.value.session ?: return
-        if (!canCommand() || session.phase != HellobikePhase.Riding || mutable.value.loadingDevice) return
+        if (!canCommand() || session.phase != HellobikePhase.Riding || session.temporaryAction != null || mutable.value.loadingDevice) return
         val request = ++deviceGeneration
         mutable.update { it.copy(loadingDevice = true, closeProof = null, error = null, officialRequired = false) }
         deviceTask?.cancel()
         deviceTask = viewModelScope.launch {
             try {
-                readSession(owner, session.sessionId)
-                if (request != deviceGeneration || mutable.value.session?.phase != HellobikePhase.Riding || session.sessionId !in mutable.value.confirmedSessions) return@launch
-                val deadline = elapsed() + 20_000
+                if (request != deviceGeneration || mutable.value.session?.phase != HellobikePhase.Riding) return@launch
+                val deadline = elapsed() + 40_000
                 var continuation = false
+                var automaticProof: HellobikeCloseProof? = null
                 while (true) {
                     val point = freshPosition(); val region = operationRegion(point)
                     val current = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId } ?: return@launch
@@ -569,10 +573,17 @@ class HellobikeViewModel internal constructor(
                     if (reading.completed) { finishRide(owner, current); break }
                     if (reading.ready) {
                         saveSession(owner, current.copy(region = region))
-                        mutable.update { it.copy(closeProof = HellobikeCloseProof(session.sessionId, elapsed(), region, point, reading.detail)) }; break
+                        val proof = HellobikeCloseProof(session.sessionId, elapsed(), region, point, reading.detail)
+                        if (reading.skipConfirmation) automaticProof = proof
+                        else mutable.update { it.copy(closeProof = proof) }
+                        break
                     }
                     if (!reading.processing || elapsed() >= deadline) throw HellobikeException(reading.detail ?: "还车位置校验较慢，请稍后重新校验")
-                    continuation = true; delay(1500)
+                    continuation = true; delay(1000)
+                }
+                automaticProof?.let { proof ->
+                    mutable.update { it.copy(loadingDevice = false) }
+                    submitClose(proof)
                 }
             } catch (e: HellobikeLocationPermissionRequired) {
                 mutable.update { it.copy(locationPermissionRequired = true, error = "需要定位权限才能检查还车位置") }
@@ -583,23 +594,121 @@ class HellobikeViewModel internal constructor(
             finally { if (request == deviceGeneration) mutable.update { it.copy(loadingDevice = false) } }
         }
     }
+    fun checkTemporaryLock() {
+        val owner = account ?: return; val session = mutable.value.session ?: return
+        if (!canCommand() || session.phase != HellobikePhase.Riding || session.temporarilyLocked || session.temporaryAction != null) return
+        val request = ++deviceGeneration
+        mutable.update { it.copy(loadingDevice = true, checkingTemporaryLock = true, temporaryLockProof = null,
+            closeProof = null, error = null, officialRequired = false) }
+        deviceTask?.cancel()
+        deviceTask = viewModelScope.launch {
+            try {
+                val current = mutable.value.session ?: return@launch
+                if (request != deviceGeneration || current.sessionId != session.sessionId || current.phase != HellobikePhase.Riding ||
+                    current.temporarilyLocked || current.temporaryAction != null) return@launch
+                val point = freshPosition(); val region = operationRegion(point)
+                val seconds = api.verifyTemporaryLock(owner, current, point, region)
+                ensureOwner(owner)
+                if (request == deviceGeneration && visible) mutable.update { it.copy(
+                    temporaryLockProof = HellobikeTemporaryLockProof(current.sessionId, elapsed(), region, point, seconds)) }
+            } catch (e: HellobikeLocationPermissionRequired) {
+                mutable.update { it.copy(locationPermissionRequired = true, error = "需要定位权限才能临时锁车") }
+                requirePermission(LocationAction.TemporaryLock)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (request == deviceGeneration && account == owner) { report(e, session.sessionId); expired(e, owner) } }
+            finally { if (request == deviceGeneration) mutable.update { it.copy(loadingDevice = false, checkingTemporaryLock = false) } }
+        }
+    }
+    fun dismissTemporaryLock() { mutable.update { it.copy(temporaryLockProof = null) } }
+    fun commitTemporaryLock() {
+        val proof = mutable.value.temporaryLockProof ?: return
+        val session = mutable.value.session ?: return
+        if (proof.sessionId != session.sessionId || session.temporarilyLocked || session.temporaryAction != null) return
+        performTemporaryAction(HellobikeTemporaryAction.Lock, proof)
+    }
+    fun resumeRide() {
+        val session = mutable.value.session ?: return
+        if (!session.temporarilyLocked || session.temporaryAction != null) return
+        performTemporaryAction(HellobikeTemporaryAction.Unlock)
+    }
+    private fun performTemporaryAction(action: HellobikeTemporaryAction, proof: HellobikeTemporaryLockProof? = null) {
+        val owner = account ?: return; val session = mutable.value.session ?: return
+        if (!canCommand() || session.phase != HellobikePhase.Riding || session.temporaryAction != null) return
+        runCommand(owner) {
+            mutable.update { it.copy(temporaryLockProof = null, closeProof = null) }
+            try {
+                // useTempLock submits the confirmed operation without an additional
+                // riding-page request or a second eligibility decision.
+                val current = mutable.value.session ?: return@runCommand
+                if (current.sessionId != session.sessionId || current.phase != HellobikePhase.Riding || current.temporaryAction != null ||
+                    current.temporarilyLocked != (action == HellobikeTemporaryAction.Unlock)) return@runCommand
+                val point = proof?.position ?: freshPosition()
+                val region = proof?.region ?: operationRegion(point)
+                if (action == HellobikeTemporaryAction.Lock) {
+                    if (proof?.sessionId != current.sessionId) return@runCommand
+                }
+                ensureOwner(owner); ensureCommandVisible()
+                val pending = saveSession(owner, current.copy(region = region, temporaryAction = action, uncertain = false))
+                ensureOwner(owner); ensureCommandVisible()
+                // Persist before sending; interruption/retry only queries this order.
+                api.temporaryLock(owner, pending, point, region, unlock = action == HellobikeTemporaryAction.Unlock)
+                val deadline = elapsed() + 35_000
+                while (foreground && elapsed() < deadline) {
+                    delay(minOf(3000, deadline - elapsed()))
+                    ensureOwner(owner)
+                    if (elapsed() >= deadline) break
+                    val status = try { api.temporaryLockState(owner, pending, point, region) }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { if (e is HellobikeException && (e.loginExpired || e.officialRequired)) throw e else continue }
+                    if (status == 2) { finishRide(owner, pending); return@runCommand }
+                    if (status == if (action == HellobikeTemporaryAction.Lock) 1 else 0) {
+                        saveSession(owner, pending.copy(temporarilyLocked = status == 1, temporaryAction = null, uncertain = false))
+                        mutable.update { it.copy(confirmedSessions = it.confirmedSessions + pending.sessionId) }
+                        return@runCommand
+                    }
+                }
+                throw HellobikeException("车辆响应较慢，请查询本次${if (action == HellobikeTemporaryAction.Lock) "临时锁车" else "继续骑行"}结果")
+            } catch (e: HellobikeLocationPermissionRequired) {
+                mutable.update { it.copy(locationPermissionRequired = true, error = "需要定位权限才能${if (action == HellobikeTemporaryAction.Lock) "临时锁车" else "继续骑行"}") }
+                requirePermission(if (action == HellobikeTemporaryAction.Lock) LocationAction.TemporaryLock else LocationAction.Resume)
+            }
+        }
+    }
     fun dismissClose() { mutable.update { it.copy(closeProof = null) } }
     fun commitClose() {
-        val owner = account ?: return; val session = mutable.value.session ?: return; val proof = mutable.value.closeProof ?: return
-        if (!canCommand() || session.phase != HellobikePhase.Riding || proof.sessionId != session.sessionId) return
+        val proof = mutable.value.closeProof ?: return
+        submitClose(proof)
+    }
+    private fun submitClose(proof: HellobikeCloseProof) {
+        val owner = account ?: return; val session = mutable.value.session ?: return
+        if (!canCommand() || session.phase != HellobikePhase.Riding || session.temporaryAction != null || proof.sessionId != session.sessionId) return
         if (!proof.fresh(elapsed())) { mutable.update { it.copy(closeProof = null, error = "还车校验数据不完整，请重新校验") }; return }
         runCommand(owner) {
             val point = freshPosition()
-            readSession(owner, session.sessionId)
             val current = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId } ?: return@runCommand
-            if (current.phase != HellobikePhase.Riding || current.sessionId !in mutable.value.confirmedSessions)
-                throw HellobikeException("骑行状态已变化，请刷新订单")
-            saveSession(owner, current.copy(phase = HellobikePhase.Closing, uncertain = false, attemptedAtMillis = now()))
+            if (current.phase != HellobikePhase.Riding || current.temporaryAction != null) return@runCommand
+            val region = operationRegion(point)
+            val pending = saveSession(owner, current.copy(region = region, phase = HellobikePhase.Closing, uncertain = false, attemptedAtMillis = now()))
             mutable.update { it.copy(closeProof = null) }; ensureOwner(owner); ensureCommandVisible()
-            // A close is issued once. Running/unknown responses cannot reopen this command after submission.
-            val result = api.preClose(owner, current, point, proof.region, poll = true, commit = true)
-            ensureOwner(owner)
-            if (result.completed) finishRide(owner, current) else pollCommand(owner, current.sessionId)
+            // P10 explicitly continues the same operateType with poll=1 for 1101/1108.
+            // A lost response is kept unknown; it does not invent a continuation.
+            var result = api.preClose(owner, pending, point, region, poll = true, commit = true)
+            val deadline = elapsed() + 40_000
+            while (true) {
+                ensureOwner(owner)
+                if (result.completed) { finishRide(owner, pending); break }
+                if (result.ready && !result.skipConfirmation) {
+                    saveSession(owner, pending.copy(phase = HellobikePhase.Riding))
+                    mutable.update { it.copy(closeProof = HellobikeCloseProof(pending.sessionId, elapsed(), region, point, result.detail)) }
+                    break
+                }
+                if (!result.processing && !result.skipConfirmation || elapsed() >= deadline)
+                    throw HellobikeException(result.detail ?: "车辆响应较慢，还车结果尚未确认，请刷新原订单")
+                if (result.processing) delay(minOf(1000, deadline - elapsed()))
+                if (elapsed() >= deadline) throw HellobikeException("车辆响应较慢，还车结果尚未确认，请刷新原订单")
+                val nextPoint = freshPosition(); val nextRegion = operationRegion(nextPoint)
+                result = api.preClose(owner, pending, nextPoint, nextRegion, poll = true, commit = true)
+            }
         }
     }
     fun refreshState() {
@@ -643,7 +752,7 @@ class HellobikeViewModel internal constructor(
     }
     private suspend fun markUncertain(owner: HellobikeAccount) {
         val session = mutable.value.session ?: return
-        if (session.phase in setOf(HellobikePhase.Opening, HellobikePhase.Closing)) {
+        if (session.phase in setOf(HellobikePhase.Opening, HellobikePhase.Closing) || session.temporaryAction != null) {
             try { saveSession(owner, session.copy(uncertain = true)) } catch (_: Exception) { /* The pre-command record remains recoverable. */ }
         }
         if (session.paymentAttempt != null && !session.settled) feedback(session.sessionId, RechargePhase.Checking,
@@ -774,29 +883,26 @@ class HellobikeViewModel internal constructor(
         }
     }
     private suspend fun discover(owner: HellobikeAccount, ride: HellobikeRideReading.Ride): HellobikeSession {
-        if (ride.userGuid != null && ride.userGuid != owner.userGuid) throw HellobikeException("骑行账户不一致，请在哈啰核对", officialRequired = true)
-        val old = mutable.value.sessions.firstOrNull { it.rideGuid == ride.rideGuid } ?: mutable.value.sessions.firstOrNull {
-            it.phase == HellobikePhase.Opening && it.rideGuid.isBlank() && it.bikeNo == ride.bikeNo
-        }
+        // The request owner binds this response. Returned business fields do not
+        // add another account/vehicle eligibility gate to the official ride page.
+        val old = mutable.value.sessions.firstOrNull { it.rideGuid == ride.rideGuid &&
+            (ride.rideGuid.isNotBlank() || it.phase != HellobikePhase.Opening && it.bikeNo == ride.bikeNo) }
         // OVER/P10 success is final for this order. Cached bikeCheck responses on resume
         // cannot resurrect a ride or discard its already persisted payment state.
         if (old?.phase == HellobikePhase.Ended) return old
-        val pending = mutable.value.sessions.firstOrNull { it.riding }
-        if (pending != null && pending.rideGuid != ride.rideGuid && pending.sessionId != old?.sessionId)
-            throw HellobikeException("服务端骑行与待确认订单不一致，请在哈啰核对", officialRequired = true)
-        if (ride.bikeNo.isBlank()) throw HellobikeException("骑行信息缺少车号，请在哈啰核对", officialRequired = true)
         // A server-discovered ride can be recovered before this installation has a location.
         val region = old?.region ?: mutable.value.region
-        val session = old?.copy(rideGuid = ride.rideGuid) ?: HellobikeSession(ride.rideGuid, ride.bikeNo, region, HellobikePhase.Opening, now(),
+        val session = old?.copy(rideGuid = ride.rideGuid) ?: HellobikeSession(ride.rideGuid, ride.bikeNo, region, HellobikePhase.Riding, now(),
             startedAtMillis = ride.seconds?.let { now() - it * 1000 })
-        if (session.bikeNo != ride.bikeNo) throw HellobikeException("骑行车号不一致，请在哈啰核对", officialRequired = true)
         if (session.phase == HellobikePhase.Opening) {
             if (old == null || old.rideGuid.isBlank()) saveSession(owner, session)
             readOpening(owner, session)
             return mutable.value.sessions.first { it.sessionId == session.sessionId }
         }
         val updated = session.copy(phase = if (session.phase == HellobikePhase.Closing) HellobikePhase.Closing else HellobikePhase.Riding,
-            uncertain = false, seconds = ride.seconds ?: session.seconds, startedAtMillis = session.startedAtMillis ?: ride.seconds?.let { now() - it * 1000 } ?: now())
+            uncertain = session.temporaryAction != null && session.uncertain, temporarilyLocked = ride.status == 1,
+            temporaryLockSupported = ride.temporaryLockSupported, seconds = ride.seconds ?: session.seconds,
+            startedAtMillis = session.startedAtMillis ?: ride.seconds?.let { now() - it * 1000 } ?: now())
         saveSession(owner, updated)
         mutable.update { it.copy(confirmedSessions = it.confirmedSessions + updated.sessionId) }
         return updated
@@ -820,7 +926,7 @@ class HellobikeViewModel internal constructor(
             ensureOwner(owner)
             if (ended) { finishRide(owner, before); return }
         }
-        val reading = api.checkRide(owner); ensureOwner(owner)
+        val reading = api.ridingInfo(owner); ensureOwner(owner)
         val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         when (reading) {
             HellobikeRideReading.NoRide -> if (api.orderEnded(owner, current.rideGuid)) { finishRide(owner, current); return } else {
@@ -828,18 +934,26 @@ class HellobikeViewModel internal constructor(
                 throw HellobikeException("本笔骑行结果尚未确认，请刷新原订单并在哈啰核对")
             }
             is HellobikeRideReading.Ride -> {
-                if (reading.rideGuid != current.rideGuid || reading.bikeNo.isNotBlank() && reading.bikeNo != current.bikeNo ||
-                    reading.userGuid != null && reading.userGuid != owner.userGuid)
-                    throw HellobikeException("服务端订单与本地骑行不一致，请在哈啰核对", officialRequired = true)
+                // The riding page displays the account's returned order. An older
+                // local snapshot does not add an eligibility check to that response.
+                if (current.phase == HellobikePhase.Closing && reading.rideGuid != current.rideGuid) {
+                    discover(owner, reading)
+                    return
+                }
                 when (reading.status) {
-                    0 -> {
-                        saveSession(owner, current.copy(phase = if (current.phase == HellobikePhase.Closing) HellobikePhase.Closing else HellobikePhase.Riding,
+                    2 -> { finishRide(owner, current); return }
+                    else -> {
+                        val expectedTemporaryState = current.temporaryAction?.let { if (it == HellobikeTemporaryAction.Lock) 1 else 0 }
+                        val stillPending = expectedTemporaryState != null && expectedTemporaryState != reading.status
+                        saveSession(owner, current.copy(rideGuid = reading.rideGuid, bikeNo = reading.bikeNo,
+                            phase = if (current.phase == HellobikePhase.Closing) HellobikePhase.Closing else HellobikePhase.Riding,
                             startedAtMillis = current.startedAtMillis ?: reading.seconds?.let { now() - it * 1000 } ?: now(),
-                            seconds = reading.seconds ?: current.seconds, uncertain = current.phase == HellobikePhase.Closing && current.uncertain))
+                            seconds = reading.seconds ?: current.seconds, temporarilyLocked = reading.status == 1,
+                            temporaryLockSupported = reading.temporaryLockSupported,
+                            temporaryAction = if (stillPending) current.temporaryAction else null,
+                            uncertain = (current.phase == HellobikePhase.Closing || stillPending) && current.uncertain))
                         mutable.update { it.copy(confirmedSessions = it.confirmedSessions + id) }
                     }
-                    2 -> { finishRide(owner, current); return }
-                    else -> throw HellobikeException("骑行状态尚未确认，请在哈啰核对", officialRequired = true)
                 }
             }
         }
@@ -848,15 +962,9 @@ class HellobikeViewModel internal constructor(
     }
     private suspend fun readOpening(owner: HellobikeAccount, before: HellobikeSession,
         supplied: HellobikeOrderReading? = null): HellobikeSession {
-        val identified = if (before.rideGuid.isNotBlank()) before else {
-            val ride = api.checkRide(owner)
-            ensureOwner(owner)
-            if (ride !is HellobikeRideReading.Ride || ride.rideGuid.isBlank() || ride.bikeNo != before.bikeNo ||
-                ride.userGuid != null && ride.userGuid != owner.userGuid)
-                throw HellobikeException("开锁结果尚未返回订单，请重新查询车辆状态")
-            saveSession(owner, before.copy(rideGuid = ride.rideGuid))
-        }
+        val identified = before
         if (identified.phase == HellobikePhase.Ended) return identified
+        if (identified.unlockConfirmed && identified.rideGuid.isBlank()) return readConfirmedRiding(owner, identified)
         val reading = supplied ?: api.orderState(owner, identified.rideGuid)
         ensureOwner(owner)
         val current = mutable.value.sessions.firstOrNull { it.sessionId == identified.sessionId } ?: return identified
@@ -865,8 +973,14 @@ class HellobikeViewModel internal constructor(
             finishRide(owner, current)
             return mutable.value.sessions.firstOrNull { it.sessionId == current.sessionId } ?: current
         }
-        val updated = if (reading.unlocked) current.copy(phase = HellobikePhase.Riding,
-            uncertain = false, startedAtMillis = current.startedAtMillis ?: now())
+        // The official success callback opens the riding page; that page then reads
+        // user.tw.ride.check. This is reached only after a confirmed unlock result,
+        // never as a substitute for a missing pre-ride/create ID or a failed command.
+        val updated = if (reading.unlocked && current.rideGuid.isBlank()) {
+            val confirmed = saveSession(owner, current.copy(unlockConfirmed = true, uncertain = false))
+            return readConfirmedRiding(owner, confirmed)
+        } else if (reading.unlocked) current.copy(phase = HellobikePhase.Riding,
+            uncertain = false, startedAtMillis = current.startedAtMillis ?: now(), unlockConfirmed = true)
         else current.copy(phase = HellobikePhase.Opening, uncertain = !reading.opening)
         saveSession(owner, updated)
         val detail = if (!reading.unlocked) reading.detail else null
@@ -878,12 +992,29 @@ class HellobikeViewModel internal constructor(
             officialRequired = if (it.selectedSessionId == updated.sessionId) false else it.officialRequired) }
         return updated
     }
+    private suspend fun readConfirmedRiding(owner: HellobikeAccount, confirmed: HellobikeSession): HellobikeSession {
+        val ride = api.ridingInfo(owner); ensureOwner(owner)
+        if (ride !is HellobikeRideReading.Ride) return confirmed
+        val updated = saveSession(owner, confirmed.copy(rideGuid = ride.rideGuid, bikeNo = ride.bikeNo,
+            phase = HellobikePhase.Riding, temporarilyLocked = ride.status == 1,
+            temporaryLockSupported = ride.temporaryLockSupported, startedAtMillis = confirmed.startedAtMillis ?: now()))
+        if (ride.status == 2) {
+            finishRide(owner, updated)
+            return mutable.value.sessions.first { it.sessionId == updated.sessionId }
+        }
+        errors.remove(updated.sessionId)
+        mutable.update { it.copy(confirmedSessions = it.confirmedSessions + updated.sessionId, sessionErrors = errors.toMap(),
+            error = if (it.selectedSessionId == updated.sessionId) null else it.error) }
+        return updated
+    }
     private suspend fun finishRide(owner: HellobikeAccount, session: HellobikeSession) {
         // Persist P10 success / the original order's OVER status before querying billing.
         // A missing or late bill must never keep a confirmed return in Closing.
-        saveSession(owner, session.copy(phase = HellobikePhase.Ended, endedAtMillis = session.endedAtMillis ?: now(), uncertain = false))
+        saveSession(owner, session.copy(phase = HellobikePhase.Ended, endedAtMillis = session.endedAtMillis ?: now(), uncertain = false,
+            temporarilyLocked = false, temporaryAction = null))
         errors.remove(session.sessionId)
         mutable.update { it.copy(confirmedSessions = it.confirmedSessions - session.sessionId, closeProof = null,
+            temporaryLockProof = null,
             locationPermissionRequired = if (it.selectedSessionId == session.sessionId) false else it.locationPermissionRequired,
             sessionErrors = errors.toMap(), error = if (it.selectedSessionId == session.sessionId) null else it.error, officialRequired = false) }
         readSettlement(owner, session.sessionId)
@@ -892,11 +1023,10 @@ class HellobikeViewModel internal constructor(
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return null
         if (session.phase != HellobikePhase.Ended || session.dismissible) return null
         val detail = api.payDetail(owner, session); ensureOwner(owner)
-        if (detail.rideGuid != session.rideGuid) throw HellobikeException("费用订单不一致，请在哈啰核对", officialRequired = true)
         val attempt = session.paymentAttempt
         val settlement = when {
             detail.settlement in setOf(HellobikeSettlement.Paid, HellobikeSettlement.Closed) -> detail.settlement
-            attempt != null && attempt.orders.all { it.guid in attempt.confirmedGuids } -> HellobikeSettlement.Unknown
+            attempt != null && attempt.orders.firstOrNull()?.guid in attempt.confirmedGuids -> HellobikeSettlement.Unknown
             attempt != null -> HellobikeSettlement.Paying
             else -> detail.settlement
         }
@@ -917,11 +1047,24 @@ class HellobikeViewModel internal constructor(
             ensureOwner(owner)
             val before = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
             if (before.phase == HellobikePhase.Ended) return
-            try { readSession(owner, id) }
-            catch (e: HellobikeException) { if (e.loginExpired || e.officialRequired) throw e }
+            var interval = if (opening) 1000L else 1800L
+            if (opening) {
+                val reading = try { api.orderState(owner, before.rideGuid) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    if (e is HellobikeException && e.loginExpired) throw e
+                    // checkOrderStatus's catch does not schedule another request;
+                    // the existing 35-second progress timer then expires.
+                    delay((deadline - elapsed()).coerceAtLeast(0))
+                    throw HellobikeException("车辆响应较慢，结果尚未确认，请刷新原订单")
+                }
+                readOpening(owner, before, reading)
+                if (reading.lockStuck) interval = 2000L
+                if (reading.unlocked) return
+            } else readSession(owner, id)
             val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
             if (current.phase == HellobikePhase.Riding || current.phase == HellobikePhase.Ended) return
-            delay(if (opening) 1000 else 1800)
+            delay(minOf(interval, (deadline - elapsed()).coerceAtLeast(0)))
         }
         throw HellobikeException("车辆响应较慢，结果尚未确认，请刷新原订单")
     }
@@ -931,8 +1074,8 @@ class HellobikeViewModel internal constructor(
         if (recoveryTask?.isActive != true && !wait) {
             recoveryTask = viewModelScope.launch {
                 try {
-                    val reading = api.checkRide(owner); ensureOwner(owner)
-                    if (reading is HellobikeRideReading.Ride && reading.status == 0 && reading.rideGuid !in dismissedRideGuids) discover(owner, reading)
+                    val reading = api.ridingInfo(owner); ensureOwner(owner)
+                    if (reading is HellobikeRideReading.Ride && reading.status != 2 && reading.rideGuid !in dismissedRideGuids) discover(owner, reading)
                     for (session in mutable.value.sessions.filterNot { it.dismissible }) {
                         try { readSession(owner, session.sessionId) }
                         catch (e: CancellationException) { throw e }
@@ -979,22 +1122,16 @@ class HellobikeViewModel internal constructor(
     fun dismissPayment() { pendingOverlay = null; mutable.update { it.copy(paymentVisible = false, paymentRestorePending = false) } }
     fun pay(channel: String) {
         val owner = account ?: return; val session = mutable.value.session ?: return; val detail = mutable.value.payDetail ?: return
-        val option = mutable.value.payOptions.singleOrNull { it.channel.method == channel } ?: return
+        val option = mutable.value.payOptions.singleOrNull { it.selectionId == channel } ?: return
         if (!canCommand() || !mutable.value.paymentVisible || session.phase != HellobikePhase.Ended || session.dismissible ||
             session.paymentAttempt != null || option.channel.available != true || option.channel.needsOpen == true) return
         val analyticsAttempt = analytics.begin()
         runCommand(owner) {
-            val fresh = readSettlement(owner, session.sessionId) ?: return@runCommand
-            if (fresh.settlement == HellobikeSettlement.Paid) { feedback(session.sessionId, RechargePhase.Paid); return@runCommand }
-            if (fresh.settlement != HellobikeSettlement.Pending || fresh.orders != detail.orders || fresh.amount != detail.amount)
-                throw HellobikeException("应付费用已更新，请重新确认支付方式")
-            val options = api.payChannels(owner, session, fresh); ensureOwner(owner)
-            val selected = options.singleOrNull { it.channel.method == channel }
-            mutable.update { it.copy(payOptions = options) }
-            if (selected == null || selected.channel.available != true || selected.channel.needsOpen == true || selected.amount != option.amount)
-                throw HellobikeException("付款条件已更新，请重新确认")
-            val orders = if (fresh.orders.size == 1) listOf(fresh.orders.single().copy(amount = selected.amount)) else fresh.orders
-            val attempt = HellobikePaymentAttempt(orders, channel, now(), selected.extension)
+            // Official cashier submits the displayed request and selected channel.
+            // Eligibility and price changes are decided by the payment response.
+            val selected = option
+            val orders = if (detail.orders.size == 1) listOf(detail.orders.single().copy(amount = selected.amount)) else detail.orders
+            val attempt = HellobikePaymentAttempt(orders, selected.channel.method, now(), selected.extension, displayAmount = selected.amount)
             val current = mutable.value.session ?: return@runCommand
             saveSession(owner, current.copy(settlement = HellobikeSettlement.Paying, paymentAttempt = attempt))
             feedback(session.sessionId, RechargePhase.Creating, loading = true); ensureOwner(owner); ensureCommandVisible()
@@ -1008,7 +1145,7 @@ class HellobikeViewModel internal constructor(
             val pending = mutable.value.session ?: return@runCommand
             saveSession(owner, pending.copy(paymentAttempt = attempt.copy(orders = component.orders, channel = component.channel, extension = component.extension)))
             if (component.channel !in HellobikeSupportedChannels) throw HellobikeException("服务端返回的支付方式需要在哈啰处理，请先查询本笔结果", officialRequired = true)
-            if (component.channel == "003") { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId) }
+            if (component.channel == "003") { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId, polling = true) }
             else {
                 val payload = component.payload?.takeIf(String::isNotBlank) ?: throw HellobikeException("支付凭据尚未取得，请查询原订单")
                 val id = ++paymentCounter
@@ -1038,14 +1175,14 @@ class HellobikeViewModel internal constructor(
             "cancel", "6001" -> "已返回，请查询本笔付款结果"
             else -> "正在核对本笔付款结果"
         })
-        if (foreground) checkPayment(binding.sessionId)
+        if (foreground) checkPayment(binding.sessionId, polling = true)
     }
-    fun checkPayment(id: String? = mutable.value.selectedSessionId) {
+    fun checkPayment(id: String? = mutable.value.selectedSessionId, polling: Boolean = false) {
         val owner = account ?: return; val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         if (!foreground || mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight || session.phase != HellobikePhase.Ended) return
-        runCommand(owner, requirePage = false) { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId) }
+        runCommand(owner, requirePage = false) { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId, polling) }
     }
-    private suspend fun queryPayment(owner: HellobikeAccount, id: String) {
+    private suspend fun queryPayment(owner: HellobikeAccount, id: String, polling: Boolean = false) {
         try { readSettlement(owner, id) }
         catch (e: CancellationException) { throw e }
         catch (e: HellobikeException) { if (e.loginExpired || e.officialRequired) throw e }
@@ -1057,20 +1194,23 @@ class HellobikeViewModel internal constructor(
         }
         val attempt = session.paymentAttempt
         if (attempt == null) { feedback(id, RechargePhase.Checking, detail = "费用尚未确认，请刷新订单或在哈啰查看"); return }
+        val order = attempt.orders.firstOrNull() ?: return
         var confirmed = attempt.confirmedGuids
         var lastError: Exception? = null
         // Match REA: the initial query plus at most three retries at three-second intervals.
-        repeat(4) { index ->
+        repeat(if (polling) 4 else 1) { index ->
             if (index > 0) delay(3000)
             ensureOwner(owner)
-            for (order in attempt.orders.filterNot { it.guid in confirmed }) {
-                try { if (api.paymentPaid(owner, order, attempt.extension)) confirmed = confirmed + order.guid }
-                catch (e: CancellationException) { throw e }
-                catch (e: Exception) { lastError = e; if (e is HellobikeException && (e.loginExpired || e.officialRequired)) throw e }
+            try { confirmed = if (api.paymentPaid(owner, order, attempt.extension)) confirmed + order.guid else confirmed - order.guid }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                confirmed = confirmed - order.guid
+                lastError = e
+                if (e is HellobikeException && (e.loginExpired || e.officialRequired)) throw e
             }
             ensureOwner(owner)
             session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
-            if (confirmed.size == attempt.orders.size) {
+            if (order.guid in confirmed) {
                 saveSession(owner, session.copy(settlement = HellobikeSettlement.Unknown,
                     paymentAttempt = attempt.copy(confirmedGuids = confirmed)))
                 try { readSettlement(owner, id) }

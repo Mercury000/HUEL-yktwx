@@ -370,17 +370,18 @@ private fun HellobikeCardPaymentSheet(show: Boolean, state: HellobikeCardsState,
         val purchase = display.purchase
         val feedback = display.feedback
         if (shownPage == HellobikeCardPaymentPage.Result) {
-            val amount = purchase?.attempt?.orders?.sumOf { it.amount.toBigDecimal() }?.toPlainString() ?: purchase?.amount ?: "0.00"
+            val amount = purchase?.attempt?.displayAmount ?: purchase?.amount ?: "0.00"
             val cancelled = purchase?.paymentCancelled == true && feedback?.phase == com.mercury.yktwx.RechargePhase.Failed
             PaymentResultContent(feedback?.phase ?: com.mercury.yktwx.RechargePhase.Checking,
-                display.busy || feedback?.loading == true, amount.toBigDecimal().movePointRight(2).longValueExact(),
+                display.busy || feedback?.loading == true, 0,
                 feedback?.detail, if (cancelled) controller::cancelPayment else controller::dismissPayment,
                 subject = "支付", enabled = enabled, onCheck = controller::checkPayment,
                 paymentApp = when (purchase?.attempt?.channel) { "003" -> "哈啰"; "1201" -> "银联"; else -> "支付宝" },
                 preserveError = true, cancelled = cancelled,
-                onResumePayment = if (cancelled) controller::continueCancelledPayment else null)
+                onResumePayment = if (cancelled) controller::continueCancelledPayment else null,
+                amountYuan = amount.toBigDecimal().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
         } else {
-            val selected = display.options.indexOfFirst { it.channel.method == display.method }
+            val selected = display.options.indexOfFirst { it.selectionId == display.method }
             val option = display.options.getOrNull(selected)
             PaymentFixedAmount(option?.amount ?: purchase?.amount, display.busy && purchase == null,
                 Modifier.testTag("hellobike-card-payment-amount"), detail = purchase?.name)
@@ -389,7 +390,7 @@ private fun HellobikeCardPaymentSheet(show: Boolean, state: HellobikeCardsState,
                 !display.busy && display.options.isEmpty()
             }
             PaymentMethodActions(display.options.map { it.channel.name }, selected,
-                { controller.selectMethod(display.options[it].channel.method) },
+                { controller.selectMethod(display.options[it].selectionId) },
                 if (display.busy) "正在发起…" else if (purchase?.signingFields?.isNotEmpty() == true) "签约并支付"
                     else option?.channel?.name?.let { "${it}支付" } ?: "确认支付",
                 controller::pay, enabled, option?.channel?.available == true && purchase?.attempt == null && purchase != null,

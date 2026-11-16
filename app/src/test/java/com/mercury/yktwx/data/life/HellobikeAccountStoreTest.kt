@@ -12,14 +12,15 @@ class HellobikeAccountStoreTest {
         assertEquals(listOf(pending, second), store.load().sessions)
         store.clearAccount(); store.saveAccount(fixtureBikeAccount)
         assertEquals(listOf(pending, second), store.load().sessions)
-        for (invalid in listOf(pending.copy(phase = HellobikePhase.Riding),
-            pending.copy(settlement = HellobikeSettlement.Paid), pending.copy(endedAtMillis = 900_000))) {
-            store.saveSessions(fixtureBikeAccount.userGuid, listOf(invalid))
-            try { store.load(); fail("An unidentified local attempt cannot be a completed cloud order") }
-            catch (e: HellobikeException) { assertTrue(e.storageFailure) }
-            records.values.clear()
-            records.store()
-        }
+    }
+    @Test fun confirmedCloudPagesPersistWithoutImposingAnOrderIdOrPhaseGate() {
+        val store = BikeRecords().store()
+        val riding = fixtureBikeSession.copy(rideGuid = "", phase = HellobikePhase.Riding, unlockConfirmed = true)
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(riding))
+        assertEquals(riding, store.load().sessions.single())
+        val ended = riding.copy(phase = HellobikePhase.Ended, endedAtMillis = 900_000)
+        store.saveSessions(fixtureBikeAccount.userGuid, listOf(ended))
+        assertEquals(ended, store.load().sessions.single())
     }
     @Test fun cardPurchaseSurvivesExpiryAndAccountSwitchAndLogoutErasesIt() {
         val store = BikeRecords().store()

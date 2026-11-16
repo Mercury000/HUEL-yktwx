@@ -355,7 +355,8 @@ class HellobikeUiTest {
     @Test fun ordinaryScanWaitsForConfirmationAndUsesTheCreatedRide() = assertOfficialScanBranch(null)
     @Test fun serverSkipOnScanningTracksItsRideWithoutDuplicateCreate() = assertOfficialScanBranch(1)
     @Test fun clientSkipOnScanningCreatesExactlyOnce() = assertOfficialScanBranch(2)
-    private fun assertOfficialScanBranch(executor: Int?) {
+    @Test fun serverSkipWithoutRideGuidChecksStatusBeforeEnteringTheOfficialRidingPage() = assertOfficialScanBranch(1, false)
+    private fun assertOfficialScanBranch(executor: Int?, includeRideGuid: Boolean = true) {
         val actions = java.util.concurrent.CopyOnWriteArrayList<String>()
         val serverOpened = java.util.concurrent.atomic.AtomicBoolean(false)
         val transport = fixtureHttp { url -> object : HttpFixture(url) {
@@ -369,7 +370,7 @@ class HellobikeUiTest {
                     "user.ride.pre.ride" -> {
                         if (executor == 1) serverOpened.set(true)
                         val skip = if (executor == null) "" else """, "skipConfirmResult":{"canSkip":true,"executor":$executor}"""
-                        val ride = if (executor == 1) ", \"rideGuid\":\"${fixtureBikeSession.rideGuid}\"" else ""
+                        val ride = if (executor == 1 && includeRideGuid) ", \"rideGuid\":\"${fixtureBikeSession.rideGuid}\"" else ""
                         """{"result":true,"causeType":1100$skip$ride}"""
                     }
                     "user.ride.create" -> {
@@ -377,6 +378,7 @@ class HellobikeUiTest {
                         """{"result":true,"rideId":"${fixtureBikeSession.rideGuid}"}"""
                     }
                     "user.ride.order.status" -> """{"rideGuid":"${fixtureBikeSession.rideGuid}","rideStatus":20,"subStatus":0}"""
+                    "user.tw.ride.check" -> if (serverOpened.get()) """{"rideInfo":{"originGuid":"${fixtureBikeSession.rideGuid}","rideStatus":0},"bikeInfo":{"bikeNo":"${fixtureBikeSession.bikeNo}"},"rideFunctionSettings":[{"type":0}]}""" else "{}"
                     "hello.lbs.code.regeo" -> """{"data":{"reGeoCodesList":[{"addressComponent":{"cityCode":"${fixtureBikeRegion.cityCode}","adCode":"${fixtureBikeRegion.adCode}"}}]}}"""
                     else -> "{}"
                 }
@@ -410,6 +412,12 @@ class HellobikeUiTest {
                 assertEquals(if (executor == 1) 0 else 1, actions.count { it == "user.ride.create" })
             }
         }
+        if (executor != null) {
+            compose.onNodeWithTag("hellobike-primary-action").assertTextContains("还车")
+            compose.onNodeWithText("确认开锁").assertDoesNotExist()
+            compose.onNodeWithText("确认计费并开锁").assertDoesNotExist()
+            assertNull(bike.state.value.error)
+        }
         if (executor == null) {
             compose.onNodeWithTag("hellobike-primary-action").assertIsEnabled().performClick()
             compose.waitUntil(10_000) {
@@ -422,6 +430,42 @@ class HellobikeUiTest {
             assertEquals(1, actions.count { it == "user.ride.pre.ride" })
             assertEquals(if (executor == 1) 0 else 1, actions.count { it == "user.ride.create" })
         }
+    }
+    @Test fun temporaryLockControlsShowResumeReturnAndOneProgressIndicator() = assertTemporaryLockControls(false)
+    @Test fun temporaryLockControlsUseTheSameLayoutInDarkTheme() = assertTemporaryLockControls(true)
+    private fun assertTemporaryLockControls(dark: Boolean) {
+        val bike = model(FakeHellobikeService()); val theme = settings()
+        var display by mutableStateOf(HellobikeUiState(restoring = false, connectedPhone = fixtureBikeAccount.maskedPhone,
+            sessions = listOf(fixtureBikeSession.copy(temporaryLockSupported = true)), selectedSessionId = fixtureBikeSession.sessionId))
+        compose.setContent { AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) {
+            Scaffold {
+            HellobikeDevicePage(display, theme, bike, true, {}, {}, nowMillis = { 1_300_000 }, elapsedMillis = { 50_000 })
+            }
+        } }
+        val appearance = if (dark) "dark" else "light"
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("还车")
+        compose.onNodeWithTag("hellobike-temporary-lock").assertIsDisplayed()
+        capture("temporary-lock-riding-$appearance")
+        compose.runOnIdle { display = display.copy(loadingDevice = true, checkingTemporaryLock = true) }
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("还车").assertIsNotEnabled()
+        compose.onNodeWithTag("hellobike-temporary-lock").assertTextContains("正在检查…").assertIsNotEnabled()
+        compose.onAllNodesWithTag("hellobike-action-progress", useUnmergedTree = true).assertCountEquals(1)
+        capture("temporary-lock-checking-$appearance")
+        compose.runOnIdle { display = display.copy(temporaryLockProof = HellobikeTemporaryLockProof(fixtureBikeSession.sessionId,
+            50_000, fixtureBikeRegion, fixtureBikePosition, 601), loadingDevice = false, checkingTemporaryLock = false) }
+        compose.onNodeWithText("确认临时锁车").assertIsDisplayed()
+        compose.onNodeWithText("临时锁车期间按正常骑行时间收费。本次最多可临时锁车11分钟。临时锁车时间结束后，车辆会自动开锁进入骑行中。").assertIsDisplayed()
+        capture("temporary-lock-confirm-$appearance")
+        compose.runOnIdle { display = display.copy(temporaryLockProof = null, sessions = listOf(display.session!!.copy(temporarilyLocked = true))) }
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("继续骑行")
+        compose.onNodeWithTag("hellobike-paused-return").assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-temporary-lock").assertDoesNotExist()
+        capture("temporary-lock-paused-$appearance")
+        compose.runOnIdle { display = display.copy(busy = true, sessions = listOf(display.session!!.copy(temporaryAction = HellobikeTemporaryAction.Unlock))) }
+        compose.onNodeWithTag("hellobike-primary-action").assertIsNotEnabled().assertTextContains("正在解锁车辆…")
+        compose.onAllNodesWithTag("hellobike-action-progress", useUnmergedTree = true).assertCountEquals(1)
+        compose.onNodeWithTag("hellobike-paused-return").assertDoesNotExist()
+        capture("temporary-lock-resuming-$appearance")
     }
     @Test fun aPressStartedOnRetryCannotBecomeAnUnlockWhenPrecheckArrives() {
         var fail = true

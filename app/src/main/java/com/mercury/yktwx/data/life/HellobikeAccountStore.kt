@@ -29,17 +29,15 @@ class HellobikeAccountStore internal constructor(private val records: LifeDevice
                 require(value.cardPurchases.keys.none(String::isBlank))
                 value.cardPurchases.values.forEach { purchase ->
                     require(purchase.orders.isNotEmpty() && purchase.orders.all { it.guid.isNotBlank() && it.orderId.isNotBlank() &&
-                        HellobikeProtocol.money(it.amount) != null && it.businessType == purchase.businessType })
-                    require(purchase.orders.map { it.guid }.distinct().size == purchase.orders.size)
+                        HellobikeProtocol.money(it.amount) != null })
                 }
                 (value.retainedSessions.values + listOf(value.sessions)).forEach { sessions ->
                     require(sessions.map { it.sessionId }.distinct().size == sessions.size)
                     val knownRides = sessions.map { it.rideGuid }.filter(String::isNotBlank)
                     require(knownRides.distinct().size == knownRides.size)
-                    require(sessions.all { it.sessionId.isNotBlank() &&
-                        (it.rideGuid.isNotBlank() || it.phase == HellobikePhase.Opening && it.bikeNo.isNotBlank() &&
-                            it.settlement == HellobikeSettlement.Unknown && it.paymentAttempt == null && it.endedAtMillis == null) &&
-                        (it.region == null || it.region.valid) })
+                    // Cloud fields may be absent even in a successful page response.
+                    // The local session identity binds persistence independently.
+                    require(sessions.all { it.sessionId.isNotBlank() && (it.region == null || it.region.valid) })
                 }
             }
         } catch (_: Exception) { throw HellobikeException("无法读取哈啰账号或骑行记录，请重新登录后核对订单", storageFailure = true) }

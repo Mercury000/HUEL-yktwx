@@ -297,29 +297,29 @@ internal class HellobikeCardsController(
     }
     private fun initialMethod(options: List<HellobikePayOption>): String? =
         (options.firstOrNull { it.channel.available == true && it.defaultSelected }
-            ?: options.firstOrNull { it.channel.available == true })?.channel?.method
+            ?: options.firstOrNull { it.channel.available == true })?.selectionId
     fun selectMethod(method: String) {
-        if (!occupied && state.value.options.any { it.channel.method == method })
+        if (!occupied && state.value.options.any { it.selectionId == method })
             mutable.update { it.copy(method = method) }
     }
     fun pay() {
         val purchase = state.value.purchase ?: return
-        val option = state.value.options.firstOrNull { it.channel.method == state.value.method && it.channel.available == true } ?: return
+        val option = state.value.options.firstOrNull { it.selectionId == state.value.method && it.channel.available == true } ?: return
         if (purchase.attempt != null || purchase.paid || !state.value.paymentVisible) return
         runOperation { owner, request ->
-            val orders = purchase.orders.map { it.copy(amount = option.amount) }
-            val attempt = HellobikePaymentAttempt(orders, option.channel.method, now(), option.extension)
+            val orders = purchase.orders
+            val attempt = HellobikePaymentAttempt(orders, option.channel.method, now(), option.extension, displayAmount = option.amount)
             save(owner, purchase.copy(attempt = attempt), request)
             mutable.update { it.copy(feedback = LifePaymentFeedback("campus-card", RechargePhase.Creating, loading = true)) }
             val component = api.payCard(owner, purchase, orders, option); ensure(owner, request)
             save(owner, purchase.copy(attempt = attempt.copy(orders = component.orders, channel = component.channel, extension = component.extension)), request)
-            if (component.channel == "003") query(owner, request)
+            if (component.channel == "003") query(owner, request, polling = true)
             else {
                 val method = component.channel.hellobikeBridgeMethod() ?: throw HellobikeException("返回的支付方式需要在哈啰处理，请查询原订单")
                 val payload = component.payload?.takeIf(String::isNotBlank) ?: throw HellobikeException("支付凭据未返回，请查询原订单")
                 val id = ++counter
                 launchOwner = owner; launchId = id; claimed = false
-                mutable.update { it.copy(paymentInFlight = true, paymentLaunch = LifePaymentLaunch(id, orders.single().guid, payload, method),
+                mutable.update { it.copy(paymentInFlight = true, paymentLaunch = LifePaymentLaunch(id, orders.first().guid, payload, method),
                     feedback = LifePaymentFeedback("campus-card", RechargePhase.AwaitingPayment)) }
             }
         }
@@ -339,7 +339,7 @@ internal class HellobikeCardsController(
         operation = scope.launch {
             try {
                 if (cancelled) state.value.purchase?.let { save(owner, it.copy(paymentCancelled = true), request) }
-                if (foreground && visible) query(owner, request)
+                if (foreground && visible) query(owner, request, polling = true)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 val message = readFailure(e, owner); ensure(owner, request)
@@ -351,11 +351,25 @@ internal class HellobikeCardsController(
         if (state.value.purchase?.attempt == null || state.value.purchase?.paid == true) return
         runOperation { owner, request -> query(owner, request) }
     }
-    private suspend fun query(owner: HellobikeAccount, request: Long) {
+    private suspend fun query(owner: HellobikeAccount, request: Long, polling: Boolean = false) {
         val purchase = state.value.purchase ?: return
         val attempt = purchase.attempt ?: return
         mutable.update { it.copy(feedback = LifePaymentFeedback("campus-card", RechargePhase.Checking, loading = true)) }
-        val paid = api.cardPaymentPaid(owner, attempt.orders.single(), attempt.extension); ensure(owner, request)
+        // BasePayModule.w uses the designated order, or componentData.orders[0].
+        // It does not add an all-orders-success requirement to this cashier result.
+        val order = attempt.orders.firstOrNull() ?: return
+        var paid = false
+        for (index in 0 until if (polling) 4 else 1) {
+            if (index > 0) delay(3000)
+            paid = try { api.cardPaymentPaid(owner, order, attempt.extension) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (!polling || (e as? HellobikeException)?.loginExpired == true || index == 3) throw e
+                false
+            }
+            ensure(owner, request)
+            if (paid) break
+        }
         if (paid) {
             save(owner, purchase.copy(paid = true, paymentCancelled = false), request)
             mutable.update { it.copy(feedback = LifePaymentFeedback("campus-card", RechargePhase.Paid, detail = "付款已确认，正在刷新我的卡")) }

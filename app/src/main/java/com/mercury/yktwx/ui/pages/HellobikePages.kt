@@ -45,7 +45,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.math.roundToInt
 
 private enum class HellobikeLoginPage { Phone, Verification }
-private enum class HellobikePrimaryAction { Login, Permission, Scan, Return, Refresh, PaymentResult, Payment, Unlock, Check }
+private enum class HellobikePrimaryAction { Login, Permission, Scan, Return, Refresh, PaymentResult, Payment, Unlock, Check, Resume }
 
 @Composable
 internal fun HellobikeLoginSheet(state: HellobikeUiState, model: HellobikeViewModel, active: Boolean) {
@@ -145,33 +145,38 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     val interactive = active && !state.loginVisible && !state.paymentVisible
     val feedbackIdentity = model.restorationOwner to (state.selectedSessionId ?: state.scannedBikeNo)
     val retryFeedback = rememberRetryFeedbackState(feedbackIdentity)
-    val busy = state.restoring || state.busy || state.loadingDevice || state.locating || state.paymentInFlight ||
+    val busy = state.restoring || state.busy || state.loadingDevice || state.locating || state.paymentInFlight || state.precheck?.skipConfirmation == true ||
         state.locationPermissionRequest != null || retryFeedback.dispatching
     val precheckFresh = state.precheck?.fresh(clock) == true
     val primary = when {
         state.restoring -> "正在恢复账号…"
         !state.connected -> "登录并继续"
         state.locationPermissionRequest != null -> "等待定位授权…"
-        state.loadingDevice || state.locating || retryFeedback.dispatching -> if (phase == HellobikePhase.Riding) "正在检查还车位置…" else "正在检查车辆…"
-        busy -> "正在处理…"
+        state.checkingTemporaryLock -> "还车"
+        state.loadingDevice || state.locating || retryFeedback.dispatching -> if (phase == HellobikePhase.Riding) "正在查询车辆…" else "正在扫码开锁…"
+        busy -> if (phase == HellobikePhase.Opening || session?.temporaryAction != null) "${session.title}…"
+            else if (state.precheck?.skipConfirmation == true) "正在开锁…" else "正在处理…"
         state.locationPermissionRequired -> if (state.locationPermissionBlocked) "去设置开启定位" else "开启定位"
-        phase == HellobikePhase.Opening || phase == HellobikePhase.Closing -> "查询车辆状态"
+        phase == HellobikePhase.Opening || phase == HellobikePhase.Closing || session?.temporaryAction != null -> "查询车辆状态"
+        phase == HellobikePhase.Riding && session.temporarilyLocked -> "继续骑行"
         phase == HellobikePhase.Riding -> "还车"
         session?.dismissible == true -> "再次扫码骑行"
         phase == HellobikePhase.Ended && session.paymentAttempt != null -> "查询付款结果"
         phase == HellobikePhase.Ended -> "查看费用与支付"
-        precheckFresh -> if (state.precheck.priceRule.isBlank()) "确认开锁" else "确认计费并开锁"
+        precheckFresh && !state.precheck.skipConfirmation -> if (state.precheck.priceRule.isBlank()) "确认开锁" else "确认计费并开锁"
         else -> "重新检查车辆"
     }
     val primaryAction = when {
         !state.connected -> HellobikePrimaryAction.Login
         state.locationPermissionRequired -> HellobikePrimaryAction.Permission
         session?.dismissible == true -> HellobikePrimaryAction.Scan
+        session?.temporaryAction != null -> HellobikePrimaryAction.Refresh
+        phase == HellobikePhase.Riding && session.temporarilyLocked -> HellobikePrimaryAction.Resume
         phase == HellobikePhase.Riding -> HellobikePrimaryAction.Return
         phase == HellobikePhase.Opening || phase == HellobikePhase.Closing -> HellobikePrimaryAction.Refresh
         phase == HellobikePhase.Ended && session.paymentAttempt != null -> HellobikePrimaryAction.PaymentResult
         phase == HellobikePhase.Ended -> HellobikePrimaryAction.Payment
-        precheckFresh -> HellobikePrimaryAction.Unlock
+        precheckFresh && !state.precheck.skipConfirmation -> HellobikePrimaryAction.Unlock
         else -> HellobikePrimaryAction.Check
     }
     val title = when (phase) {
@@ -183,6 +188,21 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true, footer = {
         LifeDeviceActionFooter("hellobike-action-footer") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (phase == HellobikePhase.Riding && session.temporaryAction == null) {
+                    key(feedbackIdentity, session.temporarilyLocked) {
+                    if (session.temporarilyLocked) Button({ retryFeedback.dispatch(model::checkClose) }, Modifier.weight(1f)
+                        .testTag("hellobike-paused-return"), enabled = interactive && !busy) { Text("还车") }
+                    else if (session.temporaryLockSupported) Button({ retryFeedback.dispatch(model::checkTemporaryLock) }, Modifier.weight(1f)
+                        .testTag("hellobike-temporary-lock"), enabled = interactive && !busy) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (state.checkingTemporaryLock) CircularProgressIndicator(size = 16.dp, strokeWidth = 2.dp,
+                                modifier = Modifier.testTag("hellobike-action-progress"))
+                            ContentFade(if (state.checkingTemporaryLock) "正在检查…" else "临时锁车") { Text(it) }
+                        }
+                    }
+                    }
+                }
             // Replacing the operation cancels an in-flight press instead of rebinding its release.
             key(feedbackIdentity, primaryAction, state.precheck.takeIf { primaryAction == HellobikePrimaryAction.Unlock }) {
             Button({ when (primaryAction) {
@@ -194,14 +214,16 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                 HellobikePrimaryAction.PaymentResult -> model.checkPayment()
                 HellobikePrimaryAction.Payment -> model.showPayment()
                 HellobikePrimaryAction.Unlock -> model.startRide(state.precheck)
+                HellobikePrimaryAction.Resume -> model.resumeRide()
             } }, enabled = interactive && !busy && (session != null || state.scannedBikeNo != null),
-                modifier = Modifier.fillMaxWidth().testTag("hellobike-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
+                modifier = Modifier.weight(1f).testTag("hellobike-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (state.restoring || state.busy || state.loadingDevice || state.locating || state.locationPermissionRequest != null ||
-                        retryFeedback.dispatching) CircularProgressIndicator(size = 16.dp, strokeWidth = 2.dp,
+                    if (!state.checkingTemporaryLock && (state.restoring || state.busy || state.loadingDevice || state.locating ||
+                        state.locationPermissionRequest != null || retryFeedback.dispatching)) CircularProgressIndicator(size = 16.dp, strokeWidth = 2.dp,
                         modifier = Modifier.testTag("hellobike-action-progress"))
                     ContentFade(primary) { Text(it) }
                 }
+            }
             }
             }
             if (session == null) DashboardLink("重新扫码", onScan, enabled = interactive && !busy, arrow = false,
@@ -231,11 +253,11 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                     }, "hellobike-device-info") }
                     item { LifeDeviceNoticeCard(when {
                         display.restoring -> "正在恢复账号"
-                        display.loadingDevice -> "正在检查车辆"
+                        display.loadingDevice -> "正在扫码开锁"
                         display.precheck != null -> "计费规则"
                         !display.connected -> "登录后继续查询车辆"
                         else -> "等待车辆检查"
-                    }, display.precheck?.priceRule ?: "开锁和还车时需要获取位置，请在车辆旁操作。",
+                    }, display.precheck?.priceRule ?: "扫一扫会按哈啰规则直接开锁，请在车辆旁操作。开锁和还车时需要获取位置。",
                         "hellobike-precheck") }
                     display.precheck?.notice?.let { notice -> item { LifeDeviceNoticeCard("哈啰提示", notice, "hellobike-official-notice") } }
                     if (display.precheck != null && !precheckFresh) item { Text("车辆检查已过期，请重新检查", fontSize = 12.sp, color = DashboardPalette.muted) }
@@ -254,9 +276,13 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                         add("服务提供方" to "哈啰")
                     }, "hellobike-device-info") }
                     if (ride.phase != HellobikePhase.Ended) item { LifeDeviceNoticeCard(
-                        if (ride.phase == HellobikePhase.Riding) "到达后记得还车" else ride.title, when (ride.phase) {
+                        if (ride.phase == HellobikePhase.Riding && !ride.temporarilyLocked && ride.temporaryAction == null) "到达后记得还车" else ride.title, when (ride.phase) {
                         HellobikePhase.Opening -> "正在读取车辆响应。请留意现场锁具，结果待确认时继续查询原订单。"
-                        HellobikePhase.Riding -> "请在允许停车的位置还车。离开页面不会结束骑行，可从付款页继续查看。"
+                        HellobikePhase.Riding -> when {
+                            ride.temporaryAction != null -> "已提交${if (ride.temporaryAction == HellobikeTemporaryAction.Lock) "临时锁车" else "继续骑行"}，正在确认车辆状态。请留意现场锁具。"
+                            ride.temporarilyLocked -> "临时锁车期间继续计费，时限结束后车辆会自动开锁。需要继续使用时点击继续骑行，结束用车请还车。"
+                            else -> "请在允许停车的位置还车。离开页面不会结束骑行，可从付款页继续查看。"
+                        }
                         HellobikePhase.Closing -> "已提交关锁，正在查询本次还车结果。请核对现场锁具状态。"
                         HellobikePhase.Ended -> ""
                     }, "hellobike-usage-notice") }
@@ -275,6 +301,19 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
             }
         }
     }
+    val temporaryProof = state.temporaryLockProof
+    val temporaryConfirm = interactive && temporaryProof != null && temporaryProof.sessionId == session?.sessionId &&
+        session.phase == HellobikePhase.Riding && !session.temporarilyLocked && session.temporaryAction == null
+    OverlayDialog(show = temporaryConfirm, title = "确认临时锁车", summary =
+        "临时锁车期间按正常骑行时间收费。" + (temporaryProof?.canPauseSeconds?.let { "本次最多可临时锁车${(it.toLong() + 59) / 60}分钟。" } ?: "") +
+            "临时锁车时间结束后，车辆会自动开锁进入骑行中。", onDismissRequest = model::dismissTemporaryLock,
+        renderInRootScaffold = true) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(model::dismissTemporaryLock, Modifier.weight(1f), enabled = temporaryConfirm && !busy) { Text("取消") }
+            Button(model::commitTemporaryLock, Modifier.weight(1f).testTag("hellobike-confirm-temporary-lock"),
+                enabled = temporaryConfirm && !busy, colors = ButtonDefaults.buttonColorsPrimary()) { Text("确定锁车") }
+        }
+    }
     val proof = state.closeProof
     val confirm = interactive && proof != null && proof.sessionId == session?.sessionId
     val confirming by rememberUpdatedState(confirm)
@@ -289,7 +328,7 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     }
     OverlayBottomSheet(show = active && help, startAction = { SheetTitle("骑行帮助") }, onDismissRequest = { help = false }, renderInRootScaffold = true) {
         Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("扫描哈啰普通单车二维码，核对车辆与计费规则后开锁。骑行中可从付款页状态卡返回；离开页面不会还车。停好车辆后先校验位置，再确认关锁。骑行结束后核对本笔费用，支持平台返回的余额、支付宝和普通银联。需要实名认证、蓝牙、异常停车或其他支付方式时，请在哈啰处理，返回后刷新原订单。",
+            Text("扫描哈啰普通单车二维码后，会按官方规则直接开锁；官方要求确认时才显示确认开锁。请在车辆旁扫码并留意锁具。骑行中支持的车辆可临时锁车，锁车期间继续计费，时限结束后自动开锁。骑行中可从付款页状态卡返回；离开页面不会还车。停好车辆后点击还车，按哈啰返回的要求决定是否需要再次确认，并留意锁具是否关闭。骑行结束后核对本笔费用，支持平台返回的余额、支付宝和普通银联。需要实名认证、蓝牙、异常停车或其他支付方式时，请在哈啰处理，返回后刷新原订单。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             OfficialHellobikeLink(enabled = currentActive && help)
             Button({ help = false }, Modifier.fillMaxWidth(), enabled = currentActive && help, colors = ButtonDefaults.buttonColorsPrimary()) { Text("知道了") }
@@ -321,31 +360,33 @@ internal fun HellobikePaymentSheet(show: Boolean, state: HellobikeUiState, model
         val display = rememberWhileShown(enabled, currentState.copy(phone = "", code = "", slider = null, paymentLaunch = null))
         if (displayPage == HellobikePaymentPage.Result) {
             val result = display.paymentFeedback
-            val amount = display.session?.paymentAttempt?.orders?.sumOf { it.amount.toBigDecimal() }?.toPlainString()
-                ?: display.payDetail?.amount ?: display.session?.amount ?: "0.00"
+            val amount = display.session?.paymentAttempt?.displayAmount
+                ?: display.payDetail?.amount ?: display.session?.amount
+                ?: display.session?.paymentAttempt?.orders?.singleOrNull()?.amount ?: "0.00"
             val retry = if (currentState.session?.paymentAttempt == null && currentState.session?.settlement == HellobikeSettlement.Pending)
-                display.payOptions.filter { it.channel.available == true }.map { FeeMethod(it.channel.method, it.channel.method, it.channel.name, false, 0) }
+                display.payOptions.filter { it.channel.available == true }.map { FeeMethod(it.selectionId, it.channel.method, it.channel.name, false, 0) }
                 else emptyList()
             val phase = result?.phase ?: RechargePhase.Checking
             PaymentResultContent(if (phase == RechargePhase.TimedOut) RechargePhase.Checking else phase, result?.loading == true,
-                amount.toBigDecimal().movePointRight(2).longValueExact(), result?.detail, model::dismissPayment,
+                0, result?.detail, model::dismissPayment,
                 subject = "支付", retryMethods = retry, onContinuePayment = { if (enabled) model.pay(it.id) },
                 selectedRetryId = currentState.paymentMethod, selectedRetryCode = currentState.paymentMethod,
                 onRetrySelection = { model.selectPaymentMethod(it?.id) },
                 enabled = enabled && (!currentState.busy || result?.phase == RechargePhase.Paid),
                 onCheck = { if (enabled) model.checkPayment() }, paymentApp = when (display.session?.paymentAttempt?.channel) {
                     "003" -> "哈啰"; "1201" -> "银联"; else -> "支付宝"
-                }, retryMethodLabel = { it.name }, preserveError = true)
+                }, retryMethodLabel = { it.name }, preserveError = true,
+                amountYuan = amount.toBigDecimal().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
         } else {
             val options = display.payOptions
-            val selected = options.indexOfFirst { it.channel.method == currentState.paymentMethod }.takeIf { it >= 0 }
+            val selected = options.indexOfFirst { it.selectionId == currentState.paymentMethod }.takeIf { it >= 0 }
                 ?: options.indexOfFirst { it.channel.available == true }.coerceAtLeast(0)
             val option = options.getOrNull(selected)
             PaymentFixedAmount(option?.amount ?: display.payDetail?.amount, display.paymentLoading,
                 Modifier.testTag("hellobike-payment-loading"))
-            PaymentMethodActions(options.map { it.channel.name }, selected, { model.selectPaymentMethod(options[it].channel.method) },
+            PaymentMethodActions(options.map { it.channel.name }, selected, { model.selectPaymentMethod(options[it].selectionId) },
                 if (display.busy) "正在发起…" else option?.channel?.name?.let { "${it}支付" } ?: "确认支付",
-                { if (enabled && option != null) model.pay(option.channel.method) },
+                { if (enabled && option != null) model.pay(option.selectionId) },
                 enabled = enabled && currentPage == HellobikePaymentPage.Methods && !currentState.busy && !currentState.paymentLoading && !currentState.paymentInFlight,
                 canSubmit = option?.channel?.available == true && currentState.session?.paymentAttempt == null,
                 error = display.error ?: option?.channel?.remark ?: "暂无支持的支付方式，请在哈啰处理".takeIf { !display.paymentLoading && options.isEmpty() },

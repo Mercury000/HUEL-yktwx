@@ -72,6 +72,12 @@ internal open class FakeHellobikeService : HellobikeService {
     val authClientIds = mutableListOf<String>()
     var sliderFailure: Exception? = null
     var sliderGate: CompletableDeferred<Unit>? = null
+    var temporaryVerifyCalls = 0
+    val temporaryCommands = mutableListOf<Boolean>()
+    var temporaryFailure: Exception? = null
+    var temporaryVerifyFailure: Exception? = null
+    var holdTemporary = false
+    var beforeTemporary: () -> Unit = {}
     val smsOffsets = mutableListOf<Int?>()
     val smsChallenges = mutableListOf<String?>()
     val channels get() = listOf("001", "003", "1201").map { code ->
@@ -113,7 +119,15 @@ internal open class FakeHellobikeService : HellobikeService {
         if (!commit) { preCloseCalls++; return HellobikeCloseReading(!closeReady, closeReady) }
         beforeClose(); closeCalls++; closeFailure?.let { throw it }
         if (!holdClose) reading = HellobikeRideReading.Ride(session.rideGuid, session.bikeNo, 2, userGuid = account.userGuid)
-        return HellobikeCloseReading(true, false)
+        return HellobikeCloseReading(!endedOrder && holdClose, false, completed = endedOrder || !holdClose)
+    }
+    override suspend fun verifyTemporaryLock(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,
+        region: HellobikeRegion): Int? { temporaryVerifyCalls++; temporaryVerifyFailure?.let { throw it }; return 600 }
+    override suspend fun temporaryLock(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,
+        region: HellobikeRegion, unlock: Boolean) {
+        beforeTemporary(); temporaryCommands += unlock; temporaryFailure?.let { throw it }
+        if (!holdTemporary) reading = HellobikeRideReading.Ride(session.rideGuid, session.bikeNo, if (unlock) 0 else 1,
+            userGuid = account.userGuid, temporaryLockSupported = true)
     }
     override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail { detailFailure?.let { throw it }; return detail.copy(rideGuid = session.rideGuid) }
     override suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail) = channels

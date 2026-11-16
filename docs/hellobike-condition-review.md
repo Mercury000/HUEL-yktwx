@@ -1,6 +1,6 @@
 # 哈啰判断条件与证据范围
 
-此前「完整核对」结论不成立。此次将操作拦截、业务成功失败、跳转官方和本机恢复判断按来源分开记录。下面覆盖当前接入代码的主要业务判断；不是所有官方业务分支已经接入的声明。
+此前「完整核对」结论不成立。2026-11-16按整个已接入实现修改本地额外业务门槛，当前差异及源码来源见[业务对齐记录](hellobike-business-alignment-rea.md)。下面记录当前判断；历史原生备用链不能替代默认H5消费者。
 
 ## 服务端业务判断
 
@@ -9,13 +9,13 @@
 | 手输10位设备号 | 手输解析与QR解析分别核对，见协议核验 | 仅是输入格式，不代表真实设备或已允许开锁；预骑行接口决定结果。 |
 | 登录过期 | HiResponse.isTokenError，见登录失效证据 | 103/-10003表示过期，不按任意错误文案推断过期。 |
 | 短信滑块 | 原生短信调用 | 先captchaType再ok；失败保留返回文字。 |
-| 预骑行成功 | BikePreRideCreateAction.S | result=true或causeType1100；没有missBike、bikeType、计费文字额外成功门槛。 |
+| 预骑行成功 | 默认H5预处理、onAutoConfirmUnlock与onConfirmUnlock | 消费canSkip/executor与完整官方交互分支；普通result=false不能套用原生备用链的causeType1100 OR条件。 |
 | 预骑行官方交互 | S/z0/R分派，见协议/预骑行证据 | 人脸、就近车辆、特殊告知等仍需各自流程。当前未实现的交互明确说明，不能用通用成功绕过。 |
 | 无骑行中订单 | RidingOrderRepository.checkOrder | 无活动订单是正常发现结果，设置不显示异常；不能单凭它确认某个待查原单已经结束。 |
 | 开锁/结束状态 | user.ride.order.status与RideOrderStatus | rideStatus20、subStatus22/23表示开锁中；30结束。它与bikeCheck的状态空间不同。 |
 | 还车确认 | P10及原订单查询 | causeType1100或原单30即先保存结束；费用延迟不撤回还车成功，不请求endInfo加附加门槛。 |
-| 还车特殊分支 | P10类型、causeType | 1101/1108继续查询，1102/1103允许确认；其他类型/错误分别处理。蓝牙与特殊调度费流程仍未接入。 |
-| 费用结清 | 官方费用页H5 | SUCCESS/CLOSED独立处理；未知/费用未生成不能伪装成已结清。组合费用和bizType分支仍有限制。 |
+| 还车特殊分支 | P10BikeLock、BikeLockStatus与getFirstOperate | 1101/1108按相同operateType/poll继续P10；1102/1103按skipConfirm选择直接提交或用户确认，firstOperate跟随官方操作顺序。位置及关锁阶段各40秒；蓝牙与特殊调度费流程仍未接入。 |
+| 费用结清 | 官方费用页H5 | SUCCESS/CLOSED独立处理；未知/费用未生成保留云端状态。删除本地费用合计一致门槛，其他bizType和复杂渠道仍属于未接入范围。 |
 | 学生认证 | 认证H5与HAR | authState2且userType1显示校园购买；状态未返回和查询异常分别显示，认证材料由官方处理。 |
 | 我的卡状态与续费 | 我的卡H5 | 卡状态、到期时间来自列表；续费按status0、hasPackage、canOperateType显示，并进入相应商品页，不直接延长旧卡。 |
 | 校园商品按钮 | 新版校园H5 Q/H/R/W完整源码 | 不使用button.canClick或appLimit禁购；业务1/2均支持预下单；所有商品资格交给预下单响应。 |
@@ -24,12 +24,12 @@
 | 付款初选/手选 | PayChannelDataTransfer.f/m/p/v/w/d与t0/B0 | 指定默认、enableSelect优先、余额合格首渠道兜底；不能只看w就判定无初选。普通手选不强制可选免密签约，余额不足单独处理。 |
 | 付款金额/订单ID | ConfirmPayHelper.b/c与PayCoreConfirmPayHelper.a | 原订单金额和优惠标识分别发送；paymentId不等同orderNo/businessId。 |
 | 连续包月 | formatSignParams、HBPayCore.b、PayAndSignTransfer.a、模块工厂和HBAliIPayModule | 支付宝102，periodRuleParams来自预下单，原生payV2；宿主回跳仅返回应用，不授予支付成功。已完成静态映射及本地验证，尚未实付。 |
-| 付款成功 | 原生BasePayModule.i/w | 查询原付款标识，整数payStatus1才成功。字符串1、SDK9000、回跳URL都不能代替云端确认。 |
+| 付款成功 | BasePayModule.i/w与CheckOrderStatusHelper.j/k/l | 指定订单或返回orders[0]，按DTO解析后的payStatus==1确认；不附加原始JSON token类型、返回guid/金额/业务字段相等或全单成功门槛。SDK和回跳不直接确认。自动首次立即、最多3次重查、间隔3秒；手动单次。 |
 | 取消支付 | CashierDialogManager.b及共享支付桥实际回调 | 关闭收银台不注销云端订单；6001/cancel只取消本次SDK操作。云端成功优先；查询失败保留待查标识。没有已确认的云端购卡取消接口。 |
 
 ## 本应用恢复与完整性条件
 
-这些是本应用的防重复付款和响应一致性检查，不宣称是官方账户资格：账号/页面变化后丢弃晚到响应、单次提交、请求前保存原付款标识、ID防串单、金额和单选订单一致性、位置数据格式与单调时钟检查。账号详情不以本机恢复内容生成「待付款」「已取消」订单行。成功/取消标志不保存为本机业务结果，历史标志恢复时忽略，重新查询云端。当前未实现云端购卡订单列表，不能将本机列表当作替代品。
+本应用保留请求账户、页面选择与取消关联，提交前持久化原请求，丢失响应只查原操作，以及位置格式与单调时钟检查。这些属于宿主恢复与权限适配。已撤销金额合计、单选订单、返回业务标识必须相等及缺云端ID必须为Opening的门槛；不再用“本地完整性”包装这些业务判断。账号详情不以本机恢复内容生成云端订单列表，历史付款标记恢复时重新查询云端。
 
 ## 默认渠道的漏查与补查
 

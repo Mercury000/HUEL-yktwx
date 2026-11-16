@@ -31,6 +31,112 @@ class HellobikeApiTest {
     private suspend fun rejected(operation: suspend () -> Any?) {
         try { operation(); fail("A malformed or mismatched response cannot be accepted") } catch (_: HellobikeException) {}
     }
+    @Test fun acceptedCreateWithoutAnIdUsesTheOfficialEmptyDataAndOrderStatusPath() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val pre = HellobikePrecheck(fixtureBikeSession.bikeNo, "pre-id", "", 50_000, fixtureBikeRegion, fixtureBikePosition, "scan")
+        val id = api("""{"code":0,"data":{"result":false}}""", calls).create(fixtureBikeAccount, pre, fixtureBikePosition)
+        assertEquals("", id)
+        val status = api("""{"code":0}""", calls).orderState(fixtureBikeAccount, id)
+        assertFalse(status.unlocked)
+        assertEquals(listOf("user.ride.create", "user.ride.order.status"), calls.map { it.json.hbText("action") })
+        assertFalse(calls.last().json.containsKey("rideGuid"))
+        assertEquals(1, calls.last().json.hbInt("bizType"))
+    }
+    @Test fun nativeCashierPreservesCloudTotalsAndAllOrdersWithoutImposingASumOrBusinessEquality() = runBlocking {
+        val product = HellobikeCampusProduct("cloud", "单车卡", "7.90", "", jsonObjectOf("businessType" to 1,
+            "channelCode" to 101000, "packageGuid" to "cloud-package", "actualPrice" to jsonObjectOf("finalPrice" to "7.90")))
+        val calls = mutableListOf<Reply>()
+        val purchase = api("""{"code":0,"data":{"businessType":28,"businessScene":2801,"totalAmount":"7.90","orderGoPayList":[{"payNo":"first","paymentId":"first-payment","businessType":28,"payPrice":"3.10"},{"payNo":"second","paymentId":"second-payment","businessType":29,"payPrice":"4.10"}]}}""")
+            .preOrderCard(fixtureBikeAccount, product, fixtureBikeRegion, fixtureBikePosition)
+        val store = BikeRecords().store()
+        store.saveCardPurchase(fixtureBikeAccount.userGuid, purchase)
+        assertEquals(purchase, store.load().cardPurchases[fixtureBikeAccount.userGuid])
+        val option = api("""{"code":0,"data":{"channelList":[{"channelCode":"001","realAmount":"6.90"}]}}""", calls)
+            .cardPayChannels(fixtureBikeAccount, purchase).single()
+        assertEquals(listOf(JsonPrimitive("first"), JsonPrimitive("second")), calls.last().json.arrayOrNull("voucherNos"))
+        api("""{"code":0,"data":{"channel":"001","credential":{"params":"cloud-credential"}}}""", calls)
+            .payCard(fixtureBikeAccount, purchase, purchase.orders, option)
+        assertEquals("7.90", calls.last().json.hbText("amount"))
+        val orders = parseArray(calls.last().json.hbText("orders")!!)
+        assertEquals(listOf("3.10", "4.10"), orders.map { (it as JsonObject).hbText("amount") })
+        assertEquals(listOf("28", "29"), orders.map { (it as JsonObject).hbText("businessType") })
+    }
+    @Test fun p10PreservesSkipConfirmAndItsFirstOperationTracking() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val service = api("""{"code":0,"data":{"causeType":1103,"type":1,"skipConfirm":true}}""", calls)
+        assertTrue(service.preClose(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, false, false).skipConfirmation)
+        service.preClose(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, true, true)
+        service.preClose(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, true, true)
+        assertEquals(listOf(0, 1, 0), calls.map { it.json.hbInt("firstOperate") })
+        assertEquals(listOf(0, 2, 2), calls.map { it.json.hbInt("operateType") })
+        assertEquals(listOf(0, 1, 1), calls.map { it.json.hbInt("poll") })
+    }
+    @Test fun cashierKeepsEverySameChannelOfferAndSendsTheSelectedOfferWithoutALocalSumGate() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val options = api("""{"code":0,"data":{"channelList":[{"subChannelList":[{"channelCode":"001","realAmount":"2.00","marketingActivityId":"first"},{"channelCode":"001","realAmount":"1.00","marketingActivityId":"second"}]}]}}""")
+            .payChannels(fixtureBikeAccount, fixtureBikeSession, fixtureBikeDetail)
+        assertEquals(2, options.size); assertNotEquals(options[0].selectionId, options[1].selectionId)
+        api("""{"code":0,"data":{"channel":"001","credential":{"params":"offer-credential"}}}""", calls)
+            .pay(fixtureBikeAccount, fixtureBikeSession, listOf(fixtureBikeOrder), options[1])
+        assertEquals("001", calls.last().json.hbText("channel"))
+        assertEquals("second", calls.last().json.hbText("marketingActivityId"))
+        assertEquals("1.00", calls.last().json.hbText("amount"))
+    }
+    @Test fun serverUnlockWithoutRideGuidKeepsTheAcceptedOperationAndNeverCreatesAgain() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val service = api("""{"code":0,"data":{"result":true,"orderGuid":"pre-order","skipConfirmResult":{"canSkip":true,"executor":1}}}""", calls)
+        val pre = service.prepare(fixtureBikeAccount, fixtureBikeSession.bikeNo, fixtureBikeRegion, fixtureBikePosition)
+        assertTrue(pre.serverUnlockStarted); assertTrue(pre.skipConfirmation); assertEquals("", pre.orderGuid)
+        service.create(fixtureBikeAccount, pre, fixtureBikePosition)
+        assertEquals(listOf("user.ride.pre.ride"), calls.map { it.json.hbText("action") })
+    }
+    @Test fun officialRidingPageProvidesTheActualOrderAndTemporaryLockCapability() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val reading = api("""{"code":0,"data":{"rideInfo":{"originGuid":"actual-ride","rideStatus":1},"bikeInfo":{"bikeNo":"1234567890"},"rideFunctionSettings":[{"type":0}]}}""", calls)
+            .ridingInfo(fixtureBikeAccount) as HellobikeRideReading.Ride
+        assertEquals("actual-ride", reading.rideGuid); assertEquals(1, reading.status)
+        assertTrue(reading.temporaryLockSupported)
+        assertEquals("user.tw.ride.check", calls.single().json.hbText("action")); assertEquals(0, calls.single().json.hbInt("bizType"))
+        assertEquals("ebike.hellobike.com", calls.single().url.host)
+    }
+    @Test fun nonemptyOfficialRidingInfoDoesNotNeedIdentifiersOrAStatusToBeDisplayed() = runBlocking {
+        val riding = api("""{"code":0,"data":{"rideInfo":{"elapsedSeconds":12},"bikeInfo":{},"rideFunctionSettings":[{"type":0}]}}""")
+            .ridingInfo(fixtureBikeAccount) as HellobikeRideReading.Ride
+        assertEquals("", riding.rideGuid); assertEquals("", riding.bikeNo); assertNull(riding.status)
+        assertTrue(riding.temporaryLockSupported)
+        assertEquals(HellobikeRideReading.NoRide, api("""{"code":0,"data":{"rideInfo":{}}}""").ridingInfo(fixtureBikeAccount))
+    }
+    @Test fun ridingIdentifiersAreOpaqueAndTheirPrefixMustBeSentUnchanged() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val reading = api("""{"code":0,"data":{"rideInfo":{"originGuid":"TWactual-ride","rideStatus":0},"bikeInfo":{"bikeNo":"1234567890"}}}""")
+            .ridingInfo(fixtureBikeAccount) as HellobikeRideReading.Ride
+        assertEquals("TWactual-ride", reading.rideGuid)
+        api("""{"code":0,"data":{"rideGuid":"TWactual-ride","rideStatus":20}}""", calls).orderState(fixtureBikeAccount, reading.rideGuid)
+        assertEquals("TWactual-ride", calls.single().json.hbText("rideGuid"))
+        assertTrue(api("""{"code":0,"data":{"rideGuid":"actual-ride","originGuid":"another-format","rideStatus":20}}""")
+            .orderState(fixtureBikeAccount, reading.rideGuid).unlocked)
+    }
+    @Test fun temporaryLockEligibilityUsesOfficialNumericResultsAndReturnedTime() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        assertEquals(601, api("""{"code":0,"data":{"result":0,"canPauseTime":601}}""", calls)
+            .verifyTemporaryLock(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion))
+        assertEquals("user.ride.pause.verify", calls.single().json.hbText("action"))
+        assertFalse(calls.single().json.containsKey("orderGuid")); assertFalse(calls.single().json.containsKey("rideGuid"))
+        for (result in listOf(1, 2, 3)) rejected { api("""{"code":0,"data":{"result":$result}}""")
+            .verifyTemporaryLock(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion) }
+    }
+    @Test fun temporaryLockAndResumeUseTheOfficialActionsAndStatusQueryFields() = runBlocking {
+        val calls = mutableListOf<Reply>()
+        val service = api("""{"code":0,"data":{"rideStatus":1}}""", calls)
+        service.temporaryLock(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, false)
+        service.temporaryLock(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, true)
+        assertEquals(1, service.temporaryLockState(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion))
+        assertEquals(listOf("user.ride.pause", "user.ride.resume", "user.tw.order.check"), calls.map { it.json.hbText("action") })
+        assertFalse(calls.last().json.containsKey("rideGuid"))
+        assertEquals(0, calls.last().json.hbInt("bizType"))
+        assertEquals(1, api("""{"code":0,"data":{"rideGuid":"other-order","rideStatus":1}}""")
+            .temporaryLockState(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion))
+    }
     @Test fun studentStatusAndMyCardsUseTheirOwnH5FieldsAndKeepEmptyCardsSuccessful() = runBlocking {
         val calls = mutableListOf<Reply>()
         val approved = api("""{"code":0,"data":{"authState":2,"userType":1,"stuName":"ignored"}}""", calls).studentAudit(fixtureBikeAccount)
@@ -69,7 +175,7 @@ class HellobikeApiTest {
         val component = api("""{"code":0,"data":{"channel":"001","credential":{"params":"fixture-payload"}}}""", calls).payCard(fixtureBikeAccount, purchase, paidOrders, options.single())
         assertEquals("28", calls.last().json.hbText("businessType")); assertEquals("6.90", calls.last().json.hbText("amount"))
         assertEquals("dynamic-promo", calls.last().json.hbText("marketingActivityId"))
-        assertEquals("4.90", component.orders.single().amount)
+        assertEquals("6.90", component.orders.single().amount)
         assertEquals("6.90", parseArray(calls.last().json.hbText("orders")!!).objectOrNull(0)!!.hbText("amount"))
         assertFalse((calls.last().json["amount"] as JsonPrimitive).isString)
         assertEquals("[]", calls.last().json.hbText("combinedWith"))
@@ -79,9 +185,9 @@ class HellobikeApiTest {
         assertEquals("Android", calls.last().json.hbText("currentSdkOS")); assertNull(calls.last().json["from"])
         assertTrue(api("""{"code":0,"data":{"businessId":"business-order","amount":6.9,"payStatus":1}}""")
             .cardPaymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
-        assertFalse(api("""{"code":0,"data":{"guid":"pay-no","payStatus":"1"}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
+        assertTrue(api("""{"code":0,"data":{"guid":"pay-no","payStatus":"1"}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
         assertTrue(api("""{"code":0,"data":{"guid":"pay-no","businessId":"payment-id","amount":4.9,"payStatus":1}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
-        rejected { api("""{"code":0,"data":{"guid":"other","payStatus":1}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())) }
+        assertTrue(api("""{"code":0,"data":{"guid":"other","payStatus":1}}""").paymentPaid(fixtureBikeAccount, paidOrders.single(), JsonObject(emptyMap())))
     }
     @Test fun ordinaryListKeepsEveryServerBicyclePackageAndUsesOfficialPriceFallback() = runBlocking {
         val calls = mutableListOf<Reply>()
@@ -276,20 +382,20 @@ class HellobikeApiTest {
         assertEquals("7.0.75", create.hbText("version"))
         assertNull(create.hbText("releaseVersion"))
     }
-    @Test fun aMismatchedRideOrPaymentCannotBeConfirmed() = runBlocking {
-        rejected { api("""{"code":0,"data":{"rideGuid":"other-ride","rideStatus":30}}""")
-            .orderEnded(fixtureBikeAccount, fixtureBikeSession.rideGuid) }
-        rejected { api("""{"code":0,"data":{"guid":"other","payStatus":1}}""")
-            .paymentPaid(fixtureBikeAccount, fixtureBikeOrder, JsonObject(emptyMap())) }
+    @Test fun officialStatusConsumersDoNotAddUnrelatedIdentifierEqualityConditions() = runBlocking {
+        assertTrue(api("""{"code":0,"data":{"rideGuid":"other-ride","rideStatus":30}}""")
+            .orderEnded(fixtureBikeAccount, fixtureBikeSession.rideGuid))
+        assertTrue(api("""{"code":0,"data":{"guid":"other","payStatus":1}}""")
+            .paymentPaid(fixtureBikeAccount, fixtureBikeOrder, JsonObject(emptyMap())))
     }
-    @Test fun onlyNumericOneConfirmsPaymentAndQueriesUseThePaymentGuid() = runBlocking {
+    @Test fun onlyParsedIntegerOneConfirmsPaymentAndQueriesUseThePaymentGuid() = runBlocking {
         assertTrue(api("""{"code":0,"data":{"payStatus":1,"businessId":"business-order","amount":6.9}}""")
             .paymentPaid(fixtureBikeAccount, fixtureBikeOrder, JsonObject(emptyMap())))
         for (status in listOf("0", "2", "\"1\"", "null", "1")) {
             val calls = mutableListOf<Reply>()
             val result = api("""{"code":0,"data":{"guid":"${fixtureBikeOrder.guid}","payStatus":$status}}""", calls)
                 .paymentPaid(fixtureBikeAccount, fixtureBikeOrder, JsonObject(emptyMap()))
-            assertEquals(status == "1", result)
+            assertEquals(status == "1" || status == "\"1\"", result)
             assertEquals("${fixtureBikeOrder.guid}", calls.single().json.hbText("guid"))
             assertEquals("com.alphapay.facade.orderSingleQuery", calls.single().json.hbText("action"))
             assertEquals("api.hellobike.com", calls.single().url.host)
@@ -333,7 +439,7 @@ class HellobikeApiTest {
         val order = parseArray(calls.single().json.hbText("orders")!!).objectOrNull(0)!!
         assertEquals(fixtureBikeOrder.guid, order.hbText("guid")); assertEquals("001", calls.single().json.hbText("channel"))
         assertEquals("payment-order", component.orders.single().orderId)
-        rejected { api(body.replace("2.00", "9.00")).pay(fixtureBikeAccount, fixtureBikeSession, listOf(fixtureBikeOrder), option) }
+        assertEquals("9.00", api(body.replace("2.00", "9.00")).pay(fixtureBikeAccount, fixtureBikeSession, listOf(fixtureBikeOrder), option).orders.single().amount)
     }
     @Test fun preCloseUsesOfficialCauseTypesAndAllowsItsNormalConfirmation() {
         val base = jsonObjectOf("state" to 3, "causeType" to 1103, "penaltyFree" to 1, "skipConfirm" to true, "type" to 1)

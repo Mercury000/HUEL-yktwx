@@ -29,8 +29,8 @@ data class HellobikeCampusProduct(val key: String, val name: String, val price: 
     val description: String, val raw: JsonObject, val section: String = "", val campus: Boolean = true) {
     // The campus Q/H/R components call preOrder for every returned package. They do not
     // use button.canClick/appLimit. Ordinary prePay only blocks canBuy > 1.
-    val purchasable get() = raw.hbInt("businessType") in 1..2 && (campus || (raw.hbInt("canBuy") ?: 0) <= 1)
-    val unavailableReason get() = if (raw.hbInt("businessType") !in 1..2) "商品信息不完整，请刷新" else if (campus) null else when (raw.hbInt("canBuy")) {
+    val purchasable get() = campus || (raw.hbInt("canBuy") ?: 0) <= 1
+    val unavailableReason get() = if (campus) null else when (raw.hbInt("canBuy")) {
         2 -> "该账号已停止购卡"
         3 -> "骑行卡数量已达上限"
         else -> null
