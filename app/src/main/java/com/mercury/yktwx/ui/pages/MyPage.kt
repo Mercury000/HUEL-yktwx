@@ -208,7 +208,7 @@ internal fun MyPage(
                                             feedbackStyle = PressFeedbackStyle.Group, feedbackColor = foreground,
                                             modifier = Modifier.fillMaxWidth()) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(MiuixIcons.BankCards, null, Modifier.size(15.dp), tint = if (dark) foreground else foreground.copy(alpha = .8f))
+                                                Icon(AppIcons.CampusCard, null, Modifier.size(15.dp), tint = if (dark) foreground else foreground.copy(alpha = .8f))
                                                 UpdatedText(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f),
                                                     numeric = false, fontSize = 11.sp, color = if (dark) foreground else foreground.copy(alpha = .8f))
                                                 Text("账户详情", fontSize = 11.sp, color = foreground)
@@ -249,15 +249,15 @@ internal fun MyPage(
                         item {
                             Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
                                 Text("校园卡管理", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                DashboardPreference(title = "挂失 / 解挂", startAction = { ProfileServiceIcon(MiuixIcons.BankCards) },
+                                DashboardPreference(title = "挂失 / 解挂", startAction = { ServiceIcon(AppIcons.CampusCard) },
                                     enabled = !manageLoading, onClick = { onCardAction(CampusCardAction.ManageState) })
                                 HorizontalDivider(Modifier.padding(start = 62.dp), color = if (dark) MiuixTheme.colorScheme.dividerLine else MiuixTheme.colorScheme.onSurface.copy(alpha = .06f))
-                                DashboardPreference(title = "修改查询密码", startAction = { ProfileServiceIcon(MiuixIcons.Lock) },
+                                DashboardPreference(title = "修改查询密码", startAction = { ServiceIcon(AppIcons.QueryPassword) },
                                     enabled = !passwordLoading, onClick = { onCardAction(CampusCardAction.ChangePassword) })
                             }
                         }
-                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "应用设置", startAction = { Icon(MiuixIcons.Settings, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary) }, onClick = onSettings) } }
-                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "关于财小通", startAction = { Icon(MiuixIcons.Info, null, Modifier.size(20.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary) }, onClick = onAbout) } }
+                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "应用设置", startAction = { ServiceIcon(AppIcons.Settings) }, onClick = onSettings) } }
+                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "关于财小通", startAction = { ServiceIcon(AppIcons.Info) }, onClick = onAbout) } }
                         }
                     }
                 }
@@ -278,13 +278,6 @@ private fun MyAmount(label: String, cents: Long?, modifier: Modifier, income: Bo
             color = if (income) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurface)
         }
     }
-}
-
-@Composable
-private fun ProfileServiceIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    val dark = isSystemInDarkTheme()
-    Box(Modifier.size(32.dp).clip(RoundedCornerShape(11.dp)).background(DashboardPalette.iconPanel),
-        contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(19.dp), tint = if (dark) DashboardPalette.iconAccent else MiuixTheme.colorScheme.primary.copy(alpha = .7f)) }
 }
 
 internal fun cardStatus(card: CampusCard?, account: String?, busy: Boolean): String = when {

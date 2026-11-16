@@ -330,11 +330,7 @@ internal fun LifeDeviceHero(name: String, location: String, feature: LifeFeature
 
 @Composable
 internal fun LifeDeviceGlyph(feature: LifeFeature) {
-    Box(Modifier.size(70.dp).clip(RoundedCornerShape(24.dp)).background(DashboardPalette.iconPanel)
-        .testTag("life-device-glyph"), contentAlignment = Alignment.Center) {
-        Icon(lifeFeatureIcon(feature), null, Modifier.size(35.dp),
-            tint = DashboardPalette.iconAccent)
-    }
+    ServiceIcon(lifeFeatureIcon(feature), Modifier.testTag("life-device-glyph"), size = 70.dp)
 }
 
 @Composable

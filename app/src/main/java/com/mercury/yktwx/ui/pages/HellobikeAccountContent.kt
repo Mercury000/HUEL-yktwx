@@ -36,8 +36,6 @@ import java.util.Locale
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.BankCards
 
 @Composable
 internal fun HellobikeAccountContent(modifier: Modifier, padding: PaddingValues, account: ManagedLifeAccount,
@@ -295,7 +293,7 @@ private fun AccountNotice(text: String) { Text(text, fontSize = 14.sp, color = M
 private fun AccountEmptyCard(title: String, detail: String) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("hellobike-cards-empty"), cornerRadius = 16.dp) {
         Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Icon(MiuixIcons.BankCards, null, Modifier.size(28.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Icon(AppIcons.CampusCard, null, Modifier.size(28.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text(detail, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

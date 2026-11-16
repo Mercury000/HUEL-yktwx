@@ -48,6 +48,8 @@ import com.mercury.yktwx.data.life.LaundrySession
 import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
@@ -155,7 +157,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     if (showScanAction) IconButton(onClick = { if (isActive && scanEnabled) { enlarged = null; onScan() } },
                         modifier = Modifier.padding(end = 16.dp).testTag("payment-scan-button")
                             .semantics { if (!enabled) disabled() }, enabled = enabled) {
-                        Icon(AppIcons.Scan, "扫一扫", Modifier.size(24.dp),
+                        Icon(MiuixIcons.Scan, "扫一扫", Modifier.size(24.dp),
                             tint = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.disabledOnSurface)
                     }
                 }
@@ -275,7 +277,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
                                 Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(AppIcons.CardState, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                        Icon(AppIcons.CampusCard, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                         UpdatedText(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), numeric = false, fontSize = 11.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
