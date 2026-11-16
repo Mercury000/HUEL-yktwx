@@ -87,10 +87,14 @@ class AppUpdateViewModelTest {
 
     @Test fun initialPolicyReadinessDoesNotExposeBusinessBeforeForcedPolicyLoads() = runTest(dispatcher) {
         val loaded = CompletableDeferred<AppPreferences>()
+        var fail = true
         val fixture = SignedUpdateFixture()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
         val source = object : androidx.datastore.core.DataStore<AppPreferences> {
-            override val data = kotlinx.coroutines.flow.flow { emit(loaded.await()); awaitCancellation() }
+            override val data = kotlinx.coroutines.flow.flow {
+                if (fail) throw java.io.IOException("private stored data")
+                emit(loaded.await()); awaitCancellation()
+            }
             override suspend fun updateData(transform: suspend (AppPreferences) -> AppPreferences) = transform(loaded.await())
         }
         val repository = appPreferencesRepositoryFixture(source, backgroundScope, fixture.verifier::manifest)
@@ -100,11 +104,18 @@ class AppUpdateViewModelTest {
         models.put("loading-policy", model)
         model.configure(true, false, true); runCurrent()
         assertFalse(model.state.value.ready)
+        assertEquals(PreferencesFailureKind.Storage, model.state.value.loadFailure?.kind)
+        assertTrue(model.state.value.loadFailure!!.detail.contains("IOException"))
+        assertFalse(model.state.value.loadFailure!!.detail.contains("private stored data"))
         assertEquals(0, count)
+        fail = false; model.retryLoading(); runCurrent()
+        assertFalse(model.state.value.ready)
+        assertNull(model.state.value.loadFailure)
         loaded.complete(AppPreferences(legacyMigrated = true, policies = mapOf("${fixture.request.packageName}:stable" to
             AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, release.signedManifest))))
         runCurrent()
         assertTrue(model.state.value.ready); assertTrue(model.state.value.required)
+        assertNull(model.state.value.loadFailure)
         assertEquals(0, count)
     }
 

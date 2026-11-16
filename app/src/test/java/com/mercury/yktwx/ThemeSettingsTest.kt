@@ -11,6 +11,24 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ThemeSettingsTest {
+    @Test fun unsupportedAppearanceValuesRenderDefaultsAndSurviveUnrelatedWrites() = runTest {
+        val unknown = UiPreferences(themeMode = 99, accentMode = -1, floatingBottomBarStyle = 99, navTransitionStyle = 7)
+        val store = MemoryPreferences(AppPreferences(legacyMigrated = true, ui = unknown))
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
+        runCurrent()
+        val settings = themeSettingsFixture(repository)
+        assertTrue(repository.state.value is PreferencesLoadState.Ready)
+        assertEquals(0, settings.themeMode.value)
+        assertEquals(0, settings.accentMode.value)
+        assertEquals(0, settings.floatingBottomBarStyle.value)
+        assertEquals(0, settings.navTransitionStyle.value)
+        settings.setBlurTop(true); runCurrent()
+        assertEquals(unknown.copy(blurTopBar = true), store.values.value.ui)
+        settings.setFloatingStyle(2); runCurrent()
+        assertEquals(2, settings.floatingBottomBarStyle.value)
+        assertEquals(99, repository.snapshot().ui.themeMode)
+    }
+
     @Test fun glassAppearanceDoesNotReplaceThePersistedIosStyle() = runTest {
         val store = MemoryPreferences()
         val repository = appPreferencesRepositoryFixture(store, backgroundScope)
@@ -70,15 +88,16 @@ class ThemeSettingsTest {
         val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         runCurrent()
         val settings = themeSettingsFixture(repository)
-        var failures = 0
+        val failures = mutableListOf<PreferencesFailure>()
         backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
-            repository.failures.collect { failures++ }
+            repository.failures.collect { failures += it }
         }
         store.failure = java.io.IOException("disk full")
         settings.setPreventScreenshots(false)
         runCurrent()
         assertTrue(settings.preventScreenshots.value)
-        assertEquals(1, failures)
+        assertEquals(PreferencesFailureKind.Storage, failures.single().kind)
+        assertTrue(failures.single().detail.contains("IOException"))
         store.failure = null
         settings.setPreventScreenshots(false); runCurrent()
         assertFalse(settings.preventScreenshots.value)

@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
                 SideEffect { if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
                 LaunchedEffect(loaded) { stopBusiness() }
                 AppTheme(ColorSchemeMode.System, 0) {
-                    PreferencesEntry(loaded is PreferencesLoadState.Failed, preferences::retry)
+                    PreferencesEntry((loaded as? PreferencesLoadState.Failed)?.failure, preferences::retry)
                 }
                 return@setContent
             }
@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
             if (!updateState.ready) {
                 LaunchedEffect(updateState.ready) { stopBusiness() }
                 AppTheme(ColorSchemeMode.System, 0) {
-                    PreferencesEntry(updateState.loadFailed, updateViewModel::retryLoading)
+                    PreferencesEntry(updateState.loadFailure, updateViewModel::retryLoading)
                 }
                 return@setContent
             }
@@ -78,8 +78,8 @@ class MainActivity : ComponentActivity() {
                 } else stopBusiness()
             }
             LaunchedEffect(preferences) {
-                preferences.failures.collect {
-                    android.widget.Toast.makeText(this@MainActivity, "设置保存失败，请重试", android.widget.Toast.LENGTH_SHORT).show()
+                preferences.failures.collect { failure ->
+                    android.widget.Toast.makeText(this@MainActivity, "设置保存失败：${failure.detail}", android.widget.Toast.LENGTH_LONG).show()
                 }
             }
             val secure = !preview && settings.preventScreenshots.value

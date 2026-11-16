@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,8 +47,13 @@ class AppPreferencesRepositoryTest {
         val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         assertEquals(PreferencesLoadState.Loading, repository.state.value)
         runCurrent()
-        assertEquals(PreferencesLoadState.Failed, repository.state.value)
+        val failure = (repository.state.value as PreferencesLoadState.Failed).failure
+        assertEquals(PreferencesFailureKind.Storage, failure.kind)
+        assertTrue(failure.detail.contains("IOException"))
+        assertFalse(failure.detail.contains("read failed"))
         assertNull(repository.readyOrNull())
+        val error = assertThrows(PreferencesDataException::class.java) { runBlocking { repository.awaitReady() } }
+        assertEquals(failure, error.failure)
         fail = false; repository.retry(); runCurrent()
         assertEquals(good, repository.awaitReady())
     }
@@ -56,7 +62,9 @@ class AppPreferencesRepositoryTest {
         val fixture = SignedUpdateFixture()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
         val data = AppPreferences(legacyMigrated = true, writeRevision = 4, updateChannel = "beta",
-            roomSelections = mapOf("owner.selection" to setOf("target")), ui = UiPreferences(preventScreenshots = false),
+            roomSelections = mapOf("owner.selection" to setOf("target")),
+            ui = UiPreferences(preventScreenshots = false, themeMode = 99, accentMode = -1,
+                floatingBottomBarStyle = 99, navTransitionStyle = 7),
             policies = mapOf("${fixture.request.packageName}:stable" to AcceptedUpdatePolicy(release.policyRevision,
                 digest, 9, release.versionCode, release.signedManifest)))
         val output = ByteArrayOutputStream()
@@ -66,10 +74,50 @@ class AppPreferencesRepositoryTest {
         val restored = appPreferencesRepositoryFixture(MemoryPreferences(decoded), backgroundScope, fixture.verifier::manifest)
         runCurrent()
         assertEquals(data, restored.awaitReady())
+        restored.update { it.copy(ui = it.ui.copy(blurTopBar = true)) }
+        assertEquals(data.ui.copy(blurTopBar = true), restored.snapshot().ui)
+        assertEquals(data.policies, restored.snapshot().policies)
         for (body in listOf("invalid", "[]", "{}", "{} trailing", "{\"schemaVersion\":2}", "{\"writeRevision\":-1}")) {
             assertThrows(androidx.datastore.core.CorruptionException::class.java) { runBlocking {
                 AppPreferencesSerializer.readFrom(ByteArrayInputStream(body.toByteArray()))
             } }
+        }
+    }
+
+    @Test fun malformedRecordsReportSafeFieldSpecificReasons() = runTest {
+        val output = ByteArrayOutputStream()
+        AppPreferencesSerializer.writeTo(AppPreferences(), output)
+        val valid = Json.parseToJsonElement(output.toString(Charsets.UTF_8.name())).jsonObject
+        val cases = listOf(
+            Triple("{\"private-marker\":", PreferencesFailureKind.Format, "有效 JSON"),
+            Triple("[]", PreferencesFailureKind.Format, "顶层"),
+            Triple(JsonObject(valid - "policies").toString(), PreferencesFailureKind.Record, "policies"),
+            Triple(JsonObject(valid + ("schemaVersion" to JsonPrimitive(2))).toString(), PreferencesFailureKind.Record, "schemaVersion=2"),
+            Triple(JsonObject(valid + ("writeRevision" to JsonPrimitive(-1))).toString(), PreferencesFailureKind.Record, "writeRevision"),
+            Triple(JsonObject(valid + ("updateChannel" to JsonPrimitive("private-marker"))).toString(), PreferencesFailureKind.Record, "updateChannel"),
+            Triple(JsonObject(valid + ("ui" to JsonObject(mapOf("floatingBottomBarStyle" to JsonPrimitive("private-marker"))))).toString(),
+                PreferencesFailureKind.Format, "ui.floatingBottomBarStyle"),
+        )
+        for ((body, kind, detail) in cases) {
+            val error = assertThrows(androidx.datastore.core.CorruptionException::class.java) { runBlocking {
+                AppPreferencesSerializer.readFrom(ByteArrayInputStream(body.toByteArray()))
+            } }
+            val failure = PreferencesFailure.from(error)
+            assertEquals(kind, failure.kind)
+            assertTrue(failure.detail, failure.detail.contains(detail))
+            assertFalse(failure.detail.contains("private-marker"))
+        }
+    }
+
+    @Test fun storageFailuresReportTheOperatingSystemReasonWithoutTheExceptionPayload() {
+        for ((errno, detail) in listOf(android.system.OsConstants.ENOSPC to "空间不足",
+            android.system.OsConstants.EACCES to "访问被拒绝", android.system.OsConstants.EROFS to "只读",
+            android.system.OsConstants.EIO to "读写异常")) {
+            val error = java.io.IOException("private-marker", android.system.ErrnoException("open", errno))
+            val failure = PreferencesFailure.from(error)
+            assertEquals(PreferencesFailureKind.Storage, failure.kind)
+            assertTrue(failure.detail, failure.detail.contains(detail))
+            assertFalse(failure.detail.contains("private-marker"))
         }
     }
 
@@ -179,12 +227,38 @@ class AppPreferencesRepositoryTest {
     @Test fun tamperedPersistedManifestBlocksReadinessWithoutClearingTheLedger() = runTest {
         val fixture = SignedUpdateFixture()
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
-        val policy = AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, release.signedManifest.replace("\"signature\":\"", "\"signature\":\"A"))
+        val envelope = Json.parseToJsonElement(release.signedManifest).jsonObject
+        val signature = java.util.Base64.getDecoder().decode(envelope.getValue("signature").jsonPrimitive.content)
+        signature[0] = (signature[0].toInt() xor 1).toByte()
+        val tampered = JsonObject(envelope + ("signature" to JsonPrimitive(java.util.Base64.getEncoder().encodeToString(signature)))).toString()
+        val policy = AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, tampered)
         val data = AppPreferences(legacyMigrated = true, policies = mapOf("${fixture.request.packageName}:stable" to policy))
         val store = MemoryPreferences(data)
         val repository = appPreferencesRepositoryFixture(store, backgroundScope, fixture.verifier::manifest)
         runCurrent()
-        assertEquals(PreferencesLoadState.Failed, repository.state.value)
+        val failure = (repository.state.value as PreferencesLoadState.Failed).failure
+        assertEquals(PreferencesFailureKind.Policy, failure.kind)
+        assertTrue(failure.detail.contains("正式版"))
+        assertTrue(failure.detail.contains("签名验证失败"))
+        assertFalse(failure.detail.contains(tampered))
         assertEquals(data, store.values.value)
+    }
+
+    @Test fun signedLedgerMismatchesReportTheFieldAndPreserveTheRecord() = runTest {
+        val fixture = SignedUpdateFixture()
+        val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
+        val good = AcceptedUpdatePolicy(release.policyRevision, digest, 9, release.versionCode, release.signedManifest)
+        for ((policy, field) in listOf(good.copy(digest = "b".repeat(64)) to "digest", good.copy(revision = good.revision + 1) to "revision",
+            good.copy(versionCode = good.versionCode + 1) to "versionCode", good.copy(forcedBoundary = 8) to "forcedBoundary")) {
+            val data = AppPreferences(legacyMigrated = true, policies = mapOf("${fixture.request.packageName}:stable" to policy))
+            val store = MemoryPreferences(data)
+            val repository = appPreferencesRepositoryFixture(store, backgroundScope, fixture.verifier::manifest)
+            runCurrent()
+            val failure = (repository.state.value as PreferencesLoadState.Failed).failure
+            assertEquals(PreferencesFailureKind.Policy, failure.kind)
+            assertTrue(failure.detail, failure.detail.contains(field))
+            assertEquals(data, store.values.value)
+            assertNull(repository.readyOrNull())
+        }
     }
 }

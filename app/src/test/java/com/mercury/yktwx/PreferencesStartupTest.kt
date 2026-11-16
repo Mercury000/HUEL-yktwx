@@ -75,6 +75,8 @@ class PreferencesStartupTest {
     @Test fun failedReadShowsRetryAndPreservesProtectionUntilReadiness() {
         fail = true; launch()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("重试").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("本机设置文件读写失败（IOException）").assertIsDisplayed()
+        compose.onNodeWithText("temporary read failure", substring = true).assertDoesNotExist()
         assertTrue(protected()); assertFalse(hasBusinessModel())
         fail = false
         loaded.complete(AppPreferences(legacyMigrated = true))

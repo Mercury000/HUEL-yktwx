@@ -75,7 +75,9 @@ class LegacyPreferencesMigrationTest {
             try { return DataStoreFactory.create(AppPreferencesSerializer, migrations = listOf(migration), scope = scope) { target }.data.first() }
             finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
         }
-        assertThrows(IllegalStateException::class.java) { runBlocking { read() } }
+        val error = assertThrows(PreferencesDataException::class.java) { runBlocking { read() } }
+        assertEquals(PreferencesFailureKind.Migration, error.failure.kind)
+        assertTrue(error.failure.detail.contains("清理旧设置内容（hall_display.xml）"))
         assertTrue(target.isFile)
         val durable = target.inputStream().use { AppPreferencesSerializer.readFrom(it) }
         assertTrue(durable.legacyMigrated)
@@ -126,7 +128,9 @@ class LegacyPreferencesMigrationTest {
                     migrations = listOf(LegacyPreferencesMigration(unreliable)), scope = scope) { target }.data.first()
             } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
         }
-        assertThrows(IllegalStateException::class.java) { runBlocking { read() } }
+        val error = assertThrows(PreferencesDataException::class.java) { runBlocking { read() } }
+        assertEquals(PreferencesFailureKind.Migration, error.failure.kind)
+        assertTrue(error.failure.detail.contains("删除旧设置文件（ui_settings.xml）"))
         val durable = target.inputStream().use { AppPreferencesSerializer.readFrom(it) }
         assertEquals(2, durable.ui.themeMode)
         assertTrue(durable.legacyMigrated)

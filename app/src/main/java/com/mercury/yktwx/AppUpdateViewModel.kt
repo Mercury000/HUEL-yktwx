@@ -26,7 +26,7 @@ internal enum class UpdateFeedback { Current, NoRelease, Incompatible, Network, 
     StaleMetadata, ConflictingMetadata, InvalidMetadata, Failed, Preview }
 internal data class AppUpdateUiState(
     val ready: Boolean = false,
-    val loadFailed: Boolean = false,
+    val loadFailure: PreferencesFailure? = null,
     val checking: Boolean = false,
     val release: UpdateRelease? = null, val visible: Boolean = false,
     val noticeVisible: Boolean = false,
@@ -88,11 +88,11 @@ internal class AppUpdateViewModel internal constructor(
         viewModelScope.launch {
             store.repository.state.collect { value ->
                 when (value) {
-                    PreferencesLoadState.Loading, PreferencesLoadState.Failed -> {
+                    PreferencesLoadState.Loading, is PreferencesLoadState.Failed -> {
                         generation++; job?.cancel(); job = null
                         downloadGeneration++; downloadJob?.cancel(); downloadJob = null
                         pendingInstallLauncher = null; awaitingAuthorization = false
-                        mutable.value = state.value.copy(ready = false, loadFailed = value is PreferencesLoadState.Failed,
+                        mutable.value = state.value.copy(ready = false, loadFailure = (value as? PreferencesLoadState.Failed)?.failure,
                             checking = false, visible = false, noticeVisible = false)
                     }
                     is PreferencesLoadState.Ready -> {

@@ -105,7 +105,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
     val loaded by settings.repository.state.collectAsStateWithLifecycle()
     if (loaded !is PreferencesLoadState.Ready) {
         AppTheme(ColorSchemeMode.System, 0) {
-            PreferencesEntry(loaded is PreferencesLoadState.Failed, settings.repository::retry)
+            PreferencesEntry((loaded as? PreferencesLoadState.Failed)?.failure, settings.repository::retry)
         }
         return
     }
@@ -130,7 +130,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         Scaffold(modifier = Modifier.semantics { testTagsAsResourceId = true }) {
           AppearanceBackdropContent {
             if (!updateState.ready) {
-                PreferencesEntry(updateState.loadFailed, updateModel::retryLoading)
+                PreferencesEntry(updateState.loadFailure, updateModel::retryLoading)
             } else if (!agreed) {
                 // Life model constructors recover orders over the network. Defer the
                 // business composition, navigation and payment launches until agreement.

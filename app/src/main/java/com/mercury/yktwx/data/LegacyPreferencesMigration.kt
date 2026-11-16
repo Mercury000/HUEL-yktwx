@@ -3,6 +3,7 @@ package com.mercury.yktwx.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.datastore.core.DataMigration
+import kotlinx.coroutines.CancellationException
 import java.io.File
 
 /** The only reader of the three retired preference files. Retirement: docs/json-storage-compatibility.md. */
@@ -19,15 +20,19 @@ internal class LegacyPreferencesMigration internal constructor(
         names.flatMap { name -> listOf("$name.xml", "$name.xml.bak").map {
             File(context.applicationInfo.dataDir, "shared_prefs/$it")
         } },
-        { names.forEach { check(context.deleteSharedPreferences(it)) { "无法删除旧设置文件，请重试" } } })
+        { names.forEach { name -> migrationStep("删除旧设置文件（$name.xml）") {
+            requirePreferences(context.deleteSharedPreferences(name), PreferencesFailureKind.Migration,
+                "迁移后无法删除旧设置文件（$name.xml），请重试")
+        } } })
 
     override suspend fun shouldMigrate(currentData: AppPreferences): Boolean = !currentData.legacyMigrated ||
-        ui.all.isNotEmpty() || hall.all.isNotEmpty() || updates.all.isNotEmpty() || retiredFiles.any { it.exists() }
+        legacyValues(ui, "ui_settings").isNotEmpty() || legacyValues(hall, "hall_display").isNotEmpty() ||
+        legacyValues(updates, "app_updates").isNotEmpty() || retiredFiles.any { it.exists() }
 
     override suspend fun migrate(currentData: AppPreferences): AppPreferences {
         // Cleanup may have failed after the target was persisted. Never re-import over newer settings.
         if (currentData.legacyMigrated) return currentData
-        val values = ui.all
+        val values = legacyValues(ui, "ui_settings")
         fun integer(key: String, default: Int = 0) = values[key] as? Int ?: default
         fun boolean(key: String, default: Boolean = false) = values[key] as? Boolean ?: default
         val storedUi = UiPreferences(
@@ -40,11 +45,11 @@ internal class LegacyPreferencesMigration internal constructor(
             pangguiLoginNoticeDismissed = boolean("panggui_login_notice_dismissed"), hui798LoginNoticeDismissed = boolean("hui798_login_notice_dismissed"),
             navigationRailExpanded = values["navigation_rail_expanded"] as? Boolean,
         )
-        val rooms = hall.all.mapNotNull { (key, value) ->
+        val rooms = legacyValues(hall, "hall_display").mapNotNull { (key, value) ->
             if (!key.matches(Regex("[a-f0-9]{64}\\.selection"))) null
             else (value as? Set<*>)?.filterIsInstance<String>()?.toSet()?.let { key to it }
         }.toMap()
-        val oldUpdates = updates.all
+        val oldUpdates = legacyValues(updates, "app_updates")
         val reminders = oldUpdates.keys.mapNotNull { key ->
             Regex("^(.*:(?:stable|beta):[1-9][0-9]*):(?:checked|check_interval|dismissed_version|dismissed_at)$")
                 .matchEntire(key)?.groupValues?.get(1)
@@ -61,13 +66,24 @@ internal class LegacyPreferencesMigration internal constructor(
     }
 
     override suspend fun cleanUp() {
-        listOf(ui, hall, updates).forEach { prefs ->
-            if (prefs.all.isNotEmpty()) check(prefs.edit().clear().commit()) { "无法清理旧设置，请重试" }
+        names.zip(listOf(ui, hall, updates)).forEach { (name, prefs) ->
+            migrationStep("清理旧设置内容（$name.xml）") {
+                if (prefs.all.isNotEmpty()) requirePreferences(prefs.edit().clear().commit(), PreferencesFailureKind.Migration,
+                    "迁移后无法清理旧设置内容（$name.xml），请重试")
+            }
         }
-        deletePreferences()
+        migrationStep("删除旧设置文件") { deletePreferences() }
     }
 
     private companion object {
         val names = listOf("ui_settings", "hall_display", "app_updates")
+        fun legacyValues(prefs: SharedPreferences, name: String) = migrationStep("读取旧设置（$name.xml）") { prefs.all }
+        inline fun <T> migrationStep(operation: String, action: () -> T): T = try { action() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: PreferencesDataException) { throw error }
+        catch (error: Exception) {
+            throw PreferencesDataException(PreferencesFailure(PreferencesFailureKind.Migration,
+                "$operation 失败（${error.javaClass.simpleName}），请重试"), error)
+        }
     }
 }

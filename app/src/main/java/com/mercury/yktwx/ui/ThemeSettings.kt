@@ -10,15 +10,18 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     private fun <T> ui(select: (UiPreferences) -> T): State<T> = derivedStateOf {
         select((repository.composeState.value as? PreferencesLoadState.Ready)?.preferences?.ui ?: UiPreferences())
     }
-    val themeMode = ui { it.themeMode }
-    val accentMode = ui { it.accentMode }
+    private fun option(supported: IntRange, select: (UiPreferences) -> Int) = ui {
+        select(it).takeIf { value -> value in supported } ?: 0
+    }
+    val themeMode = option(0..2) { it.themeMode }
+    val accentMode = option(0..1) { it.accentMode }
     val floatingBottomBar = ui { it.floatingBottomBar }
-    val floatingBottomBarStyle = ui { it.floatingBottomBarStyle }
+    val floatingBottomBarStyle = option(0..2) { it.floatingBottomBarStyle }
     val blurBottomBar = ui { it.blurBottomBar }
     val blurTopBar = ui { it.blurTopBar }
     val glassStyle = ui { it.glassStyle }
     val swipeBack = ui { it.swipeBack }
-    val navTransitionStyle = ui { it.navTransitionStyle }
+    val navTransitionStyle = option(0..1) { it.navTransitionStyle }
     val paymentMotionDetection = ui { it.paymentMotionDetection }
     val paymentBrightness = ui { it.paymentBrightness }
     val preventScreenshots = ui { it.preventScreenshots }
