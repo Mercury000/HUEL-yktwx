@@ -1,5 +1,8 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -24,9 +27,7 @@ import com.mercury.yktwx.data.life.WaterPhase
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -94,7 +95,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
             val display = presentation.state
             val payment = presentation.paymentContent
             val stageActive = active && display.phase.pageStage == state.phase.pageStage
-            LazyColumn(Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection)
+            LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).nestedScroll(scrollBehavior.nestedScrollConnection)
                 .testTag(if (display.provider == LifeProvider.Panggui) "life-device-page" else "hui798-device-page"),
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                     bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),

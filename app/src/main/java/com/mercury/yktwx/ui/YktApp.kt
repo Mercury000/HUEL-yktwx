@@ -1,5 +1,10 @@
 package com.mercury.yktwx.ui
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -8,6 +13,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerDefaults
+import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
+import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
+import top.yukonga.miuix.kmp.utils.pagerGestureOverride
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
@@ -85,11 +94,8 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 private enum class AuthPage : NavKey { Restoring, Login, Main }
 
@@ -108,7 +114,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         2 -> ColorSchemeMode.Dark
         else -> ColorSchemeMode.System
     }
-    AppTheme(mode, settings.accentMode.value) {
+    AppTheme(mode, settings.accentMode.value, glassStyle = settings.glassStyle.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
         val session by viewModel.sessionState.collectAsStateWithLifecycle()
         val authenticated = if (state.preview) !state.needsLogin else session.username != null
@@ -122,6 +128,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             channel = settings.updateChannel.value)
         val activity = LocalActivity.current
         Scaffold(modifier = Modifier.semantics { testTagsAsResourceId = true }) {
+          AppearanceBackdropContent {
             if (!updateState.ready) {
                 PreferencesEntry(updateState.loadFailed, updateModel::retryLoading)
             } else if (!agreed) {
@@ -136,6 +143,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             }
             if (consent != null && updateState.ready) RequiredUsageConsent(consent,
                 onExit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() })
+          }
         }
     }
 }
@@ -813,16 +821,26 @@ private fun MainContent(
                     appEntries(swipeDirection) { screen ->
                         if (screen == Screen.Main) {
                             BarBlurHost(settings.blurBottomBar.value, false) {
-                                MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage, railOutside = true) { padding ->
+                                MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage, railOutside = true,
+                                    onScan = ::openLifeScanner,
+                                    scanEnabled = isActive && !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy &&
+                                        !hellobikeState.busy && lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight)
+                                    { padding ->
                                     // Match SonyPods: full-bleed content and a constant 28dp scroll margin.
                                     BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                                         val bottom = padding.calculateBottomPadding() + 28.dp
+                                        val fling = PagerDefaults.flingBehavior(pagerState,
+                                            snapAnimationSpec = PagerNavigationSpringSpec)
                                         HorizontalPager(
-                                            state = pagerState, modifier = Modifier.fillMaxSize().then(
+                                            state = pagerState, modifier = Modifier.fillMaxSize()
+                                                .pagerGestureOverride(pagerState, fling).then(
                                                 if (!pagerState.isScrollInProgress)
                                                     Modifier.testTag("main-pager-ready-${pagerState.settledPage}")
                                                 else Modifier),
                                             verticalAlignment = Alignment.Top,
+                                            userScrollEnabled = false,
+                                            flingBehavior = fling,
+                                            pageNestedScrollConnection = PagerGestureNestedScrollConnection,
                                         ) { page ->
                                             when (page) {
                                                 0 -> PaymentPage(
@@ -833,6 +851,7 @@ private fun MainContent(
                                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                                     isActive = paymentPageSelected && !paymentPageCovered,
                                                     onScan = ::openLifeScanner,
+                                                    showScanAction = !settings.floatingBottomBar.value || shouldShowMainNavigationRail(),
                                                     scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&
                                                         lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight,
                                                     lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
@@ -983,7 +1002,8 @@ private fun MainContent(
                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                     onRefresh = { viewModel.refreshAccount(manual = true) })
                                 Screen.About -> AboutPage(PaddingValues(bottom = 28.dp), isActive && layers.lastOrNull() == Screen.About,
-                                    onOpenReferences = { open(Screen.References) }, onBack = ::close)
+                                    onOpenReferences = { open(Screen.References) }, onBack = ::close,
+                                    blurTopBar = settings.blurTopBar.value)
                                 is Screen.BillDetail -> {
                                     val detailActive = isActive && foreground && backStack.lastOrNull() == screen
                                     LaunchedEffect(screen, detailActive, network.online, billState.needsLogin, billState.restoringSelection) {
@@ -1083,15 +1103,21 @@ private fun SecondaryPage(
         else -> ""
     }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
+    val themeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scroll,
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") } })
+                    modifier = if (screen == Screen.Theme) Modifier.testTag("theme-top-bar") else Modifier,
+                    isContentScrolled = if (screen == Screen.Theme) themeListState.canScrollBackward else null,
+                    visualContentOffset = if (screen == Screen.Theme) {
+                        { -themeListState.firstVisibleItemScrollOffset.toFloat() + scroll.state.overscrollOffset }
+                    } else null,
+                    navigationIcon = { IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") } })
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
-                val modifier = Modifier.fillMaxSize().overScrollVertical().nestedScroll(scroll.nestedScrollConnection)
+                val modifier = Modifier.fillMaxSize().topBarOverscroll(scroll).nestedScroll(scroll.nestedScrollConnection)
                 val contentPadding = PaddingValues(top = padding.calculateTopPadding(),
                     bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp)
                 when (screen) {
@@ -1103,13 +1129,14 @@ private fun SecondaryPage(
                         lifeAccounts.first { it.provider == LifeProvider.Hellobike }, hellobikeCardsState, hellobikeModel, active,
                         onLogin = { onLoginLifeAccount(LifeProvider.Hellobike) }, onChange = onChangeHellobike, scroll = scroll)
                     Screen.Theme -> ThemeSettingsPage(
-                        modifier = modifier, contentPadding = contentPadding,
+                        modifier = modifier, listState = themeListState, contentPadding = contentPadding,
                         themeMode = settings.themeMode, onThemeModeChange = settings::setTheme,
                         accentMode = settings.accentMode, onAccentModeChange = settings::setAccent,
                         floatingBottomBar = settings.floatingBottomBar, onFloatingBottomBarChange = settings::setFloating,
                         floatingBottomBarStyle = settings.floatingBottomBarStyle, onFloatingBottomBarStyleChange = settings::setFloatingStyle,
                         blurBottomBar = settings.blurBottomBar, onBlurBottomBarChange = settings::setBlurBottom,
                         blurTopBar = settings.blurTopBar, onBlurTopBarChange = settings::setBlurTop,
+                        glassStyle = settings.glassStyle, onGlassStyleChange = settings::setGlassStyle,
                         swipeBack = settings.swipeBack, onSwipeBackChange = settings::setSwipeBack,
                         navTransitionStyle = settings.navTransitionStyle, onNavTransitionStyleChange = settings::setNavTransitionStyle,
                     )

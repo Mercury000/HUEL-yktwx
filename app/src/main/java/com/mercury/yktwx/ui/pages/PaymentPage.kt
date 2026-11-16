@@ -1,9 +1,12 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import com.mercury.yktwx.ui.PaymentCodePresentationEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,7 +48,6 @@ import com.mercury.yktwx.ui.components.*
 import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.util.Locale
 
 @Composable
@@ -61,7 +63,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
     lifeSessionErrors: Map<String, String> = emptyMap(),
     lifeLoginExpired: Boolean = false, hui798LoginExpired: Boolean = false,
-    hellobikeLoginExpired: Boolean = false) {
+    hellobikeLoginExpired: Boolean = false, showScanAction: Boolean = true) {
     // Restoration can precede the shell's first read; show code loading without card verification.
     val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
         (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
@@ -144,7 +146,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
             BlurredBar(topGradient = true) {
                 DashboardTopBar("付款", scrollBehavior = scrollBehavior) {
                     val enabled = isActive && scanEnabled
-                    IconButton(onClick = { if (isActive && scanEnabled) { enlarged = null; onScan() } },
+                    if (showScanAction) IconButton(onClick = { if (isActive && scanEnabled) { enlarged = null; onScan() } },
                         modifier = Modifier.padding(end = 16.dp).testTag("payment-scan-button")
                             .semantics { if (!enabled) disabled() }, enabled = enabled) {
                         Icon(AppIcons.Scan, "扫一扫", Modifier.size(24.dp),
@@ -168,7 +170,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                     // Only an empty pending shell is retained for the outgoing skeleton.
                     val state = if (!showFailure && initialError != null) displayState.copy(error = null, busy = true) else displayState
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("payment-page-list"),
+                        modifier = Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).imePadding().testTag("payment-page-list"),
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp,
                             bottom = bottomPadding + 24.dp + if (hasLifeSessions) 64.dp else 0.dp,
                             start = 16.dp, end = 16.dp),

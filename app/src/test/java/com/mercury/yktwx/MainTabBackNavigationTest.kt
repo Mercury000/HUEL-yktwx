@@ -49,7 +49,11 @@ class MainTabBackNavigationTest {
     }
 
     private fun selectTab(label: String) {
-        compose.onNode(hasText(label) and hasClickAction()).performClick()
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodes((hasText(label) or hasContentDescription(label)) and hasClickAction())
+                .fetchSemanticsNodes().size == 1
+        }
+        compose.onNode((hasText(label) or hasContentDescription(label)) and hasClickAction()).performClick()
         compose.waitForIdle()
     }
 
@@ -88,7 +92,7 @@ class MainTabBackNavigationTest {
         compose.onNodeWithText("校园网充值").assertIsDisplayed()
         back()
         compose.onNodeWithText("水电费").assertIsDisplayed()
-        compose.onNode(hasText("大厅") and hasClickAction()).assertIsSelected()
+        compose.onNode((hasText("大厅") or hasContentDescription("大厅")) and hasClickAction()).assertIsSelected()
         back()
         assertPaymentRoot()
     }
@@ -168,7 +172,7 @@ class MainTabBackNavigationTest {
         compose.onNodeWithText("主题").assertIsDisplayed()
         back(commitGesture = true)
         compose.onNodeWithText("主题").assertDoesNotExist()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
         compose.onNodeWithTag("main-bottom-navigation").assertIsDisplayed()
     }
 
@@ -180,7 +184,7 @@ class MainTabBackNavigationTest {
         back(commitGesture = true)
         compose.onNodeWithTag("settings-page-list").assertIsDisplayed()
         back()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
         back()
         assertPaymentRoot()
     }
@@ -188,12 +192,12 @@ class MainTabBackNavigationTest {
     @Test fun rapidMainTabChangesSettleOnTheLastSelectedPage() {
         compose.mainClock.autoAdvance = false
         for (label in listOf("我的", "大厅", "账单")) {
-            compose.onNode(hasText(label) and hasClickAction()).performClick()
+            compose.onNode((hasText(label) or hasContentDescription(label)) and hasClickAction()).performClick()
             compose.mainClock.advanceTimeBy(80)
         }
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
-        compose.onNode(hasText("账单") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("账单") or hasContentDescription("账单")) and isSelectable()).assertIsSelected()
         compose.onNodeWithTag("bill-content-viewport").assertIsDisplayed()
         back()
         assertPaymentRoot()
@@ -208,7 +212,7 @@ class MainTabBackNavigationTest {
         }
         compose.waitForIdle()
         compose.onNodeWithText("主题").assertDoesNotExist()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
     }
 
     @Test fun transitionStyleSelectionKeepsTheThemePageAndAppliesToItsReturn() {
@@ -227,7 +231,7 @@ class MainTabBackNavigationTest {
         back()
         compose.onNodeWithTag("settings-page-list").assertIsDisplayed()
         back()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
     }
 
     @Test fun aospPredictiveReturnUsesACardAndRestoresItOnCancel() {
@@ -261,7 +265,7 @@ class MainTabBackNavigationTest {
         compose.onNodeWithText("主题").assertIsDisplayed()
         back(commitGesture = true)
         compose.onNodeWithText("主题").assertDoesNotExist()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
     }
 
     @Test fun savedStateRestoresTheNestedNavigationStack() {
@@ -273,7 +277,7 @@ class MainTabBackNavigationTest {
         back()
         compose.onNodeWithTag("settings-page-list").assertIsDisplayed()
         back()
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
     }
 
     @Test fun classicBarStaysComposedThroughOrdinaryPageReturn() {
@@ -300,6 +304,6 @@ class MainTabBackNavigationTest {
         bar.assertIsDisplayed()
         assertEquals("Ordinary return must preserve the navigation instance", originalId, bar.fetchSemanticsNode().id)
         assertEquals("Ordinary return must restore the original position", restingLeft, barLeft(), 1f)
-        compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()
+        compose.onNode((hasText("我的") or hasContentDescription("我的")) and isSelectable()).assertIsSelected()
     }
 }

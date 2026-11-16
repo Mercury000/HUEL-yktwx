@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,7 +43,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
 fun HallPage(
@@ -99,7 +99,7 @@ fun HallPage(
                         dorm.loading && !dorm.roomsAvailable && dorm.rooms.isEmpty() && dorm.network == null))
                         DormUiState(loading = true) else dorm
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("hall-page-list"),
+                    modifier = Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).imePadding().testTag("hall-page-list"),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 10.dp,
                         bottom = bottomPadding + 24.dp,

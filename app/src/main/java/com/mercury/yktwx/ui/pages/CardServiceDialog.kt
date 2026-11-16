@@ -1,5 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,8 +36,6 @@ import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import com.mercury.yktwx.ui.components.rememberSampledImage
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private enum class RecipientSheetPage { Query, Amount }

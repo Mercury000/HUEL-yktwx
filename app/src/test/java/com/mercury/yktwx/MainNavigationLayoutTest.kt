@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -53,7 +54,7 @@ class MainNavigationLayoutTest {
     }) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme(ColorSchemeMode.Light) {
+                AppTheme(ColorSchemeMode.Light, glassStyle = settings.glassStyle.value) {
                     density = LocalDensity.current.density
                     val actualWindow = LocalWindowInfo.current
                     val window = remember(actualWindow) {
@@ -63,7 +64,7 @@ class MainNavigationLayoutTest {
                     }
                     var selected by remember { mutableIntStateOf(0) }
                     CompositionLocalProvider(LocalWindowInfo provides window) {
-                        MainNavigationScaffold(settings, selected, { selected = it }, content = page)
+                        MainNavigationScaffold(settings, selected, { selected = it }, onScan = {}, content = page)
                     }
                 }
             }
@@ -84,7 +85,7 @@ class MainNavigationLayoutTest {
         // The unified top bar keeps both the collapsed and the large title; scrolling
         // collapses the large one, so only the small title must stay on screen.
         fun collapsedTitle() = titles.fetchSemanticsNodes().minBy { it.boundsInRoot.height }
-        for (style in listOf(-1, 0, 1)) {
+        for (style in listOf(-1, 0, 1, 2)) {
             compose.runOnIdle {
                 settings.setFloating(style >= 0)
                 if (style >= 0) settings.setFloatingStyle(style)
@@ -124,6 +125,26 @@ class MainNavigationLayoutTest {
     }
 
     @Test
+    @Config(qualifiers = "zh-rCN-w700dp-h1000dp-xhdpi")
+    fun compactFloatingCapsulesKeepTheScanBesideTheirActualSurfaceInWidePortrait() {
+        settings.setFloating(true)
+        content()
+        for ((style, tag, width) in listOf(Triple(0, "default-floating-capsule", 252.dp),
+            Triple(1, "ios-floating-capsule", 312.dp))) {
+            compose.runOnIdle { settings.setFloatingStyle(style) }
+            compose.mainClock.advanceTimeBy(800)
+            val capsule = compose.onNodeWithTag(tag, useUnmergedTree = true).assertWidthIsEqualTo(width)
+                .fetchSemanticsNode().boundsInRoot
+            val action = compose.onNodeWithTag("main-floating-scan").fetchSemanticsNode().boundsInRoot
+            assertEquals("Scan must follow the actual capsule instead of its full-width wrapper",
+                12f * density, action.left - capsule.right, 2f)
+            val window = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot
+            assertEquals("Capsule and scan must be centered together", window.center.x,
+                (capsule.left + action.right) / 2f, 2f)
+        }
+    }
+
+    @Test
     @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
     fun landscapeKeepsRailWithEitherFloatingBarStyle() {
         content()
@@ -134,6 +155,23 @@ class MainNavigationLayoutTest {
         }
         compose.runOnIdle { settings.setFloating(false) }
         assertRail(expanded = false)
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
+    fun topGlassAndHiddenFloatingPreferencesDoNotRestyleTheNavigationRail() {
+        content()
+        val rail = compose.onNodeWithTag("main-navigation-rail")
+        compose.onNode(hasText("账单") and isSelectable()).performClick()
+        compose.mainClock.advanceTimeBy(800)
+        val originalId = rail.fetchSemanticsNode().id
+        val original = rail.captureToImage().asAndroidBitmap()
+        compose.runOnIdle { settings.setGlassStyle(true); settings.setFloating(true); settings.setFloatingStyle(2) }
+        compose.mainClock.advanceTimeBy(800)
+        compose.onNode(hasText("账单") and isSelectable()).assertIsSelected()
+        assertEquals(originalId, rail.fetchSemanticsNode().id)
+        assertTrue("The demo's ordinary rail is independent of top glass and floating styles",
+            original.sameAs(rail.captureToImage().asAndroidBitmap()))
     }
 
     @Test

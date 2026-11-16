@@ -1,6 +1,7 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -26,15 +27,19 @@ internal fun PaymentSelectionCard(
     content: @Composable ColumnScope.(Color) -> Unit,
 ) {
     val dark = isSystemInDarkTheme()
+    val glass = LocalGlassOverlay.current
     val targetContentColor = when {
+        glass && !enabled -> MiuixTheme.colorScheme.onSurface.copy(alpha = .38f)
         dark && !enabled -> MiuixTheme.colorScheme.disabledOnSecondaryVariant
         selected -> MiuixTheme.colorScheme.onPrimary
         dark -> MiuixTheme.colorScheme.onSecondaryVariant
         else -> MiuixTheme.colorScheme.onSurface
     }
     val targetColor = when {
+        glass && !enabled -> glassControlFill().copy(alpha = .04f)
         dark && !enabled -> MiuixTheme.colorScheme.disabledSecondaryVariant
         selected -> MiuixTheme.colorScheme.primary
+        glass -> glassControlFill()
         dark -> MiuixTheme.colorScheme.secondaryVariant
         else -> MiuixTheme.colorScheme.surfaceContainerHigh
     }
@@ -45,7 +50,9 @@ internal fun PaymentSelectionCard(
         color = color,
         contentColor = contentColor,
         shape = RoundedCornerShape(16.dp),
-        modifier = modifier.fillMaxWidth().semantics {
+        modifier = modifier.fillMaxWidth().then(if (glass) Modifier.border(1.dp,
+            if (selected && enabled) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface.copy(alpha = .08f),
+            RoundedCornerShape(16.dp)) else Modifier).semantics {
             this.selected = selected
             role = Role.RadioButton
         },

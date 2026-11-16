@@ -1,5 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -39,9 +43,6 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.math.roundToInt
 
 private enum class HellobikeLoginPage { Phone, Verification }
@@ -237,7 +238,7 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
         }, label = "hellobike-device-stage") { displayedStage ->
             val display = rememberWhileShown(displayedStage == stage, state.copy(phone = "", code = "", slider = null, paymentLaunch = null))
             val ride = display.session
-            LazyColumn(Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection).testTag("hellobike-device-page"),
+            LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).nestedScroll(scrollBehavior.nestedScrollConnection).testTag("hellobike-device-page"),
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = padding.calculateBottomPadding() + 20.dp,
                     start = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (!display.restoring && !display.connected) item {

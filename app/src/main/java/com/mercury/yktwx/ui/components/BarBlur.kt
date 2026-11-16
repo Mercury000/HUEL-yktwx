@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,12 +16,14 @@ import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.material.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 internal val LocalBottomBarBlurEnabled = staticCompositionLocalOf { false }
 internal val LocalTopBarBlurEnabled = staticCompositionLocalOf { false }
@@ -38,8 +41,8 @@ internal fun floatingBarColor(): Color = if (isSystemInDarkTheme())
  * [BarBackdropContent] subtree sits inside [content]; bars themselves must stay outside
  * it (Scaffold bar slots are siblings of the content slot, which is why this works).
  *
- * The backdrop only exists when a bar blur is enabled AND the platform RuntimeShader
- * path is available; bars fall back to an opaque surface via [barBlurBackground].
+ * Glass buttons retain their sampling layer independently of bar background blur.
+ * RuntimeShader support is required for either treatment.
  */
 @Composable
 internal fun BarBlurHost(
@@ -48,7 +51,8 @@ internal fun BarBlurHost(
     content: @Composable () -> Unit,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
-    val backdrop = if ((bottomBarBlurEnabled || topBarBlurEnabled) && isRuntimeShaderSupported()) {
+    val glass = LocalGlassStyle.current
+    val backdrop = if ((bottomBarBlurEnabled || topBarBlurEnabled || glass) && isRuntimeShaderSupported()) {
         rememberLayerBackdrop {
             drawRect(surfaceColor)
             drawContent()
@@ -65,6 +69,14 @@ internal fun BarBlurHost(
             content()
         }
     }
+}
+
+/** Match the demo's pageScrollModifiers: elastic motion also drives the top-bar material. */
+@Composable
+internal fun Modifier.topBarOverscroll(scrollBehavior: ScrollBehavior): Modifier {
+    val state = scrollBehavior.state
+    val reportOffset: (Float) -> Unit = remember(state) { { state.overscrollOffset = it } }
+    return overScrollVertical(onOffsetChanged = reportOffset)
 }
 
 /**
@@ -89,10 +101,11 @@ internal fun BarBackdropContent(
 @Composable
 internal fun BlurredBar(
     topGradient: Boolean = false,
+    visible: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Box(
-        modifier = Modifier.barBlurBackground(
+        modifier = if (!visible || (topGradient && LocalGlassStyle.current)) Modifier else Modifier.barBlurBackground(
             shape = RectangleShape,
             topGradient = topGradient,
         ),

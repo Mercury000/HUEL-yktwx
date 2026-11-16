@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -28,7 +29,6 @@ import com.mikepenz.aboutlibraries.util.withJson
 import com.mercury.yktwx.ui.components.SectionTitle
 import com.mercury.yktwx.ui.components.ContentPlaceholder
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text

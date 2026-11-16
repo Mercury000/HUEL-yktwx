@@ -1,6 +1,6 @@
 # 页面导航与转场
 
-页面导航使用 `miuix-nav-android:0.9.4` 的 `NavDisplay`。主题设置中的“转场风格”提供与 demo 相同的 **Miuix / AOSP** 选择，默认 Miuix，选择后立即生效并保存在本机。
+页面导航使用 `miuix-nav-android:0.9.4-d8efe187-SNAPSHOT` 的 `NavDisplay`。主题设置中的“转场风格”提供与 demo 相同的 **Miuix / AOSP** 选择，默认 Miuix，选择后立即生效并保存在本机。
 
 ## Miuix
 
@@ -29,6 +29,6 @@
 
 页面栈使用 miuix 的 `NavBackStack`，由 `AppNavigationViewModel` 结合 `SavedStateHandle` 按账户范围保存。路由只包含可序列化的页面标识和恢复所需的参数，重复打开同一个路由时不重复入栈；业务模型、登录凭据和支付数据不写入导航状态。窗口尺寸与侧栏样式变化不会替换导航栈。
 
-主标签页严格沿用 demo 的默认 `HorizontalPager`，内容顶部对齐，不额外扩大屏幕外页面范围，也不进行自定义预热或保留全部标签页。点击标签时使用 demo 的 `scroll(MutatePriority.UserInput)`、累计实际滚动量和到达目标页的兜底逻辑。导航深度与 Miuix / AOSP 转场使用原实现，页面的业务读取与付款传感器仍按现有活跃状态控制。
+主标签页沿用 `HorizontalPager`，内容顶部对齐，不扩大屏幕外页面范围，也不进行自定义预热或保留全部标签页。点击标签使用库的 `springAnimateToPage`，手势切页使用同一弹簧参数；按官方示例配置 CrossAxis 接管、共享 fling 和 `PagerGestureNestedScrollConnection`，支持列表仍在滑行时横向切页。导航深度与 Miuix / AOSP 转场使用原实现，业务读取与付款传感器仍按现有活跃状态控制。
 
 登录边界也跟随所选风格，以单个路由替换展示当前登录状态。应用级服务模型继续由原来的 ViewModel owner 管理，退出期间仍按当前登录状态清除付款内容并禁用旧页面操作。

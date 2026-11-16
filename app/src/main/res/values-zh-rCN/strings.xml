@@ -16,8 +16,12 @@
     <string name="floating_bottom_bar_style">悬浮底栏样式</string>
     <string name="floating_bottom_bar_style_default">默认</string>
     <string name="floating_bottom_bar_style_ios">iOS</string>
+    <string name="floating_bottom_bar_style_glass">OS4</string>
+    <string name="glass_style">玻璃风格</string>
+    <string name="glass_style_summary">使用玻璃按钮、弹层、菜单和标签，顶底栏模糊单独控制</string>
     <string name="blur_top_bar">顶栏模糊</string>
     <string name="blur_top_bar_summary">使用半透明顶部栏背景</string>
+    <string name="blur_glass_top_bar_summary">渐进模糊玻璃顶栏下方内容，关闭后使用渐变背景</string>
     <string name="swipe_back">启用滑动返回</string>
     <string name="swipe_back_summary">滑动二级页面返回上一级，方向随界面布局变化</string>
     <string name="nav_transition_style">转场风格</string>

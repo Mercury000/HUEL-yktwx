@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -63,7 +64,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mercury.yktwx.BuildConfig
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicLong

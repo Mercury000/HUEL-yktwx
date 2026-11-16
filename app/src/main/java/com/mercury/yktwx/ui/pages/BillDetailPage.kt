@@ -1,5 +1,10 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,9 +24,7 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
 fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, loading: Boolean = false, error: String? = null,
@@ -36,14 +39,14 @@ fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, loading: Boolea
                     scrollBehavior = scrollBehavior,
                     color = Color.Transparent,
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
+                        IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") }
                     },
                 )
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection),
+                    modifier = Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).nestedScroll(scrollBehavior.nestedScrollConnection),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 16.dp,
                         bottom = padding.calculateBottomPadding() + 28.dp,

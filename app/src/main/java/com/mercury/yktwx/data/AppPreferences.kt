@@ -15,6 +15,7 @@ import java.io.OutputStream
     val themeMode: Int = 0, val accentMode: Int = 0,
     val floatingBottomBar: Boolean = false, val floatingBottomBarStyle: Int = 0,
     val blurBottomBar: Boolean = false, val blurTopBar: Boolean = false,
+    val glassStyle: Boolean = false,
     val swipeBack: Boolean = false, val navTransitionStyle: Int = 0,
     val paymentMotionDetection: Boolean = false, val paymentBrightness: Boolean = true,
     val preventScreenshots: Boolean = true, val automaticUpdates: Boolean = true,
@@ -55,7 +56,7 @@ import java.io.OutputStream
     fun validate(): AppPreferences {
         require(writeRevision >= 0)
         require(schemaVersion == 1 && updateChannel in setOf("stable", "beta"))
-        require(ui.themeMode in 0..2 && ui.accentMode in 0..1 && ui.floatingBottomBarStyle in 0..1 && ui.navTransitionStyle in 0..1)
+        require(ui.themeMode in 0..2 && ui.accentMode in 0..1 && ui.floatingBottomBarStyle in 0..2 && ui.navTransitionStyle in 0..1)
         policies.values.forEach(AcceptedUpdatePolicy::validate)
         return this
     }

@@ -1,5 +1,13 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppSmallTopAppBar as SmallTopAppBar
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -39,11 +47,8 @@ import com.mercury.yktwx.ui.components.*
 import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 /** Both feature entries use this account drawer; closing it leaves the account disconnected. */
 @Composable
@@ -179,7 +184,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 Text(state.error, Modifier.align(Alignment.TopCenter).padding(errorPadding),
                     fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
             }
-        } else LazyColumn(Modifier.fillMaxSize().overScrollVertical()
+        } else LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior)
             .nestedScroll(scrollBehavior.nestedScrollConnection).testTag("life-device-page"),
             contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
@@ -217,9 +222,9 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
     if (scanning) {
         LifeScannerShell(topBar = {
             Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White,
+                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White, glassStyle = false,
                     modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = Color.White) }
+                        IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
                     }, actions = {
                         if (showHelp) IconButton(onClick = onHelp) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
                     })
@@ -232,7 +237,7 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             val navigationIcon: @Composable () -> Unit = {
-                IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) }
+                IconButton(onClick = onBack) { AppBackIcon("返回", tint = ink) }
             }
             val actions: @Composable RowScope.() -> Unit = {
                 if (showHelp) IconButton(onClick = onHelp) {

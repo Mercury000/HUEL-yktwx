@@ -11,6 +11,25 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ThemeSettingsTest {
+    @Test fun glassAppearanceDoesNotReplaceThePersistedIosStyle() = runTest {
+        val store = MemoryPreferences()
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
+        runCurrent()
+        val settings = themeSettingsFixture(repository)
+        val restored = themeSettingsFixture(repository)
+        settings.setFloatingStyle(1)
+        settings.setGlassStyle(true)
+        runCurrent()
+        assertTrue(restored.glassStyle.value)
+        assertEquals(1, restored.floatingBottomBarStyle.value)
+        settings.setFloatingStyle(2)
+        settings.setGlassStyle(false)
+        runCurrent()
+        assertEquals(2, restored.floatingBottomBarStyle.value)
+        assertFalse(restored.glassStyle.value)
+        assertEquals(repository.snapshot(), store.values.value)
+    }
+
     @Test fun everySettingIsReadFromThePersistedSharedSnapshot() = runTest {
         val store = MemoryPreferences()
         val repository = appPreferencesRepositoryFixture(store, backgroundScope)

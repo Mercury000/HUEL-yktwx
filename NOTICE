@@ -7,7 +7,7 @@ A complete GPL v3 copy is included in LICENSE. Provide corresponding source with
 any APK redistribution. No SonyPods original project files were modified.
 
 Apache-2.0 components and adaptation references:
-- compose-miuix-ui/miuix, including blur and icons
+- compose-miuix-ui/miuix, including blur, glass, material and icons
 - AndroidX / Jetpack Compose
 - JetBrains Kotlin and kotlinx.coroutines
 - ZXing core

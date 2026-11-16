@@ -1,5 +1,9 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,14 +25,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.DormRoom
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.state.HallRoomReference
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal val FeeProject.hallTitle: String get() = when (this) {
@@ -39,23 +42,41 @@ internal val FeeProject.hallTitle: String get() = when (this) {
 }
 
 @Composable
-internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) =
+    HallNeutralTabs(tabs, selected, true, onSelect)
+
+@Composable
+internal fun HallNeutralTabs(tabs: List<String>, selected: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     if (tabs.isEmpty()) return
     ReadLayout(Modifier.fillMaxWidth()) {
-        val background = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.surface else DashboardPalette.field
-        val content = MiuixTheme.colorScheme.onSurfaceVariantSummary
-        val colors = if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = background,
+        val glass = LocalGlassStyle.current
+        val background = if (glass && LocalGlassOverlay.current) glassControlFill()
+            else if (isSystemInDarkTheme()) MiuixTheme.colorScheme.surface else DashboardPalette.field
+        val content = if (enabled) MiuixTheme.colorScheme.onSurfaceVariantSummary
+            else MiuixTheme.colorScheme.onSurface.copy(alpha = .38f)
+        val selectedBackground = if (glass && LocalGlassOverlay.current) {
+            if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface.copy(alpha = .10f)
+            else Color.White.copy(alpha = .75f)
+        } else if (isSystemInDarkTheme()) MiuixTheme.colorScheme.surfaceContainer else DashboardPalette.card
+        val colors = if (glass && LocalGlassOverlay.current) TabRowDefaults.tabRowColors(
+            backgroundColor = background, contentColor = content,
+            selectedBackgroundColor = selectedBackground,
+            selectedContentColor = MiuixTheme.colorScheme.onSurface)
+            else if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = background,
                 contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface)
         // Miuix scrolls directly to selectedTabIndex. A genuinely unselected list must
         // not pass -1 to its LazyListState or visually select a different payment method.
-        if (selected !in tabs.indices) {
+        if (selected !in tabs.indices || !enabled) {
             val shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)
             Row(Modifier.fillMaxWidth().height(TabRowDefaults.TabRowWithContourHeight)
                 .clip(RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius + 5.dp))
-                .background(background).padding(5.dp).selectableGroup()) {
+                .background(background).padding(5.dp).selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 tabs.forEachIndexed { index, label ->
-                    Box(Modifier.weight(1f).fillMaxHeight().clip(shape).selectable(false, role = Role.Tab,
+                    Box(Modifier.weight(1f).fillMaxHeight().clip(shape)
+                        .background(if (selected == index) selectedBackground else Color.Transparent)
+                        .selectable(selected == index, enabled = enabled, role = Role.Tab,
                         interactionSource = remember { MutableInteractionSource() }, indication = rememberPressFeedback(shape = shape),
                         onClick = { onSelect(index) }), contentAlignment = Alignment.Center) {
                         Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = content)
@@ -63,7 +84,10 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, onSelect: (Int) 
                 }
             }
         } else TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect, colors = colors,
-            indication = rememberPressFeedback(shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
+            // Use the native selector feedback on glass. A theme-dependent indication
+            // adds another offscreen clip around each label inside the sampled sheet.
+            indication = if (glass) null else rememberPressFeedback(
+                shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
     }
 }
 
