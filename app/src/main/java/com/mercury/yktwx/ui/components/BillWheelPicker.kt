@@ -44,6 +44,7 @@ import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
 
@@ -58,7 +59,8 @@ internal fun BillWheelPicker(
     label: (Int) -> String = { it.toString() },
     visibleItemCount: Int = 5,
     selectedColor: Color = MiuixTheme.colorScheme.primary,
-    unselectedColor: Color = MiuixTheme.colorScheme.primary.copy(alpha = 0.55f),
+    unselectedColor: Color = if (LocalGlassOverlay.current) GlassDialogButtonDefaults.buttonColors().contentColor
+        else MiuixTheme.colorScheme.primary.copy(alpha = 0.55f),
     disabledSelectedColor: Color = MiuixTheme.colorScheme.disabledOnSecondary,
     disabledUnselectedColor: Color = MiuixTheme.colorScheme.disabledOnSecondary,
     wrapAround: Boolean = false,

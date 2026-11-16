@@ -1,11 +1,21 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppSmallTopAppBar as SmallTopAppBar
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -39,11 +49,8 @@ import com.mercury.yktwx.ui.components.*
 import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 /** Both feature entries use this account drawer; closing it leaves the account disconnected. */
 @Composable
@@ -110,6 +117,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         return
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    var topBarListState by remember { mutableStateOf<LazyListState?>(null) }
     val view = LocalView.current
     if (scanning && active) DisposableEffect(view) {
         val window = (view.context as? android.app.Activity)?.window
@@ -132,6 +140,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
     }
     val awaitingAccount = state.scannedSerial != null && (state.restoring || state.connectedPhone.isBlank())
     LifeDeviceShell(title, settings, scanning, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
+        listState = topBarListState,
         footer = {
             if (state.feature == LifeFeature.Laundry && !scanning) {
                 if (awaitingAccount) LifeDeviceActionFooter("laundry-action-footer") {
@@ -179,8 +188,12 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
                 Text(state.error, Modifier.align(Alignment.TopCenter).padding(errorPadding),
                     fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
             }
-        } else LazyColumn(Modifier.fillMaxSize().overScrollVertical()
+        } else {
+        val listState = rememberLazyListState()
+        SideEffect { if (displayedStage == stage) topBarListState = listState }
+        LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior)
             .nestedScroll(scrollBehavior.nestedScrollConnection).testTag("life-device-page"),
+            state = listState,
             contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                 bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -200,6 +213,7 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             } else laundryContent(state, model, stageActive, nowMillis, retryFeedback)
         }
         }
+        }
     }
     LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
         onValue = { serial = it },
@@ -210,16 +224,18 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
 
 @Composable
 internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
-    onHelp: () -> Unit, showHelp: Boolean, footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
+    onHelp: () -> Unit, showHelp: Boolean, listState: LazyListState?,
+    footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
+    val topBarOffset = rememberLazyListTopBarOffset(listState, scrollBehavior)
     val currentContent by rememberUpdatedState(content)
     // Preserve the stage transition and preview identity when the shell switches layouts.
     val body = remember { movableContentOf<PaddingValues> { padding -> currentContent(padding) } }
     if (scanning) {
         LifeScannerShell(topBar = {
             Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White,
+                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White, glassStyle = false,
                     modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = Color.White) }
+                        IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
                     }, actions = {
                         if (showHelp) IconButton(onClick = onHelp) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
                     })
@@ -232,7 +248,7 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             val navigationIcon: @Composable () -> Unit = {
-                IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回", tint = ink) }
+                IconButton(onClick = onBack) { AppBackIcon("返回", tint = ink) }
             }
             val actions: @Composable RowScope.() -> Unit = {
                 if (showHelp) IconButton(onClick = onHelp) {
@@ -241,6 +257,7 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
             }
             BlurredBar(topGradient = true) {
                 TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scrollBehavior,
+                    isContentScrolled = listState?.canScrollBackward == true, visualContentOffset = topBarOffset,
                     modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
             }
         }, bottomBar = { footer() }) { padding ->

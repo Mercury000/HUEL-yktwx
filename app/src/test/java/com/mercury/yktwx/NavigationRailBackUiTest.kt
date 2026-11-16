@@ -2,6 +2,7 @@ package com.mercury.yktwx
 
 import com.mercury.yktwx.ui.themeSettingsFixture
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,6 +29,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
@@ -35,9 +37,10 @@ import org.robolectric.annotation.GraphicsMode
 class NavigationRailBackUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
 
-    private fun awaitMainNavigation() {
+    private fun awaitMainNavigation(glass: Boolean = false) {
         compose.waitUntil(timeoutMillis = 10_000) {
-            compose.onAllNodesWithTag("main-navigation-rail").fetchSemanticsNodes().size == 1
+            compose.onAllNodesWithTag(if (glass) "main-glass-navigation-rail" else "main-navigation-rail")
+                .fetchSemanticsNodes().size == 1
         }
     }
 
@@ -58,16 +61,24 @@ class NavigationRailBackUiTest {
 
     @Test fun aospRailSelectionReturnsFromNestedPagesBeforeSwitchingTabs() = verifyRailSelection(style = 1)
 
-    private fun verifyRailSelection(style: Int = 0) {
+    @Test fun glassRailSelectionReturnsFromNestedPagesBeforeSwitchingTabs() = verifyRailSelection(navigationStyle = 2)
+
+    @Test fun aospGlassRailSelectionReturnsFromNestedPagesBeforeSwitchingTabs() =
+        verifyRailSelection(style = 1, navigationStyle = 2)
+
+    private fun verifyRailSelection(style: Int = 0, navigationStyle: Int = 0) {
         compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val settings = themeSettingsFixture(compose.activity).apply { setNavTransitionStyle(style) }
+        val settings = themeSettingsFixture(compose.activity).apply {
+            setNavTransitionStyle(style)
+            setFloatingStyle(navigationStyle)
+        }
         val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
         val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }
-        awaitMainNavigation()
-        val rail = compose.onNodeWithTag("main-navigation-rail")
+        awaitMainNavigation(glass = navigationStyle == 2)
+        val rail = compose.onNodeWithTag(if (navigationStyle == 2) "main-glass-navigation-rail" else "main-navigation-rail")
         val originalId = rail.fetchSemanticsNode().id
         for (label in listOf("我的", "付款")) {
             compose.onNode(hasText("我的") and isSelectable()).performClick()
@@ -89,6 +100,98 @@ class NavigationRailBackUiTest {
                 }
             }
         }
+    }
+
+    @Test fun changingNavigationFromThemeKeepsTheOpenPageAndAllNavigationOptions() {
+        compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        val settings = themeSettingsFixture(compose.activity)
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
+        }
+        awaitMainNavigation()
+        compose.onNode(hasText("我的") and isSelectable()).performClick()
+        openSettings()
+        compose.onNodeWithText("主题").performClick()
+        val page = compose.onNodeWithTag("theme-page-list")
+        val originalId = page.fetchSemanticsNode().id
+        for (style in listOf(2, 1, 0)) {
+            compose.runOnIdle { settings.setFloatingStyle(style) }
+            compose.mainClock.advanceTimeBy(1600)
+            compose.waitForIdle()
+            assertEquals("Changing chrome must retain the current secondary page", originalId,
+                page.fetchSemanticsNode().id)
+            compose.onNodeWithText(compose.activity.getString(R.string.floating_bottom_bar_style)).assertExists()
+            compose.onNodeWithText(compose.activity.getString(R.string.blur_bottom_bar)).assertExists()
+            compose.onNodeWithText(compose.activity.getString(R.string.blur_top_bar)).assertExists()
+            if (style == 2) compose.onNodeWithTag("main-glass-navigation-rail").assertExists()
+            else if (style == 1) {
+                // The iOS bar belongs to the main page and returns with it.
+                compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
+                compose.onNodeWithTag("main-glass-navigation-rail").assertDoesNotExist()
+            } else compose.onNodeWithTag("main-navigation-rail").assertExists()
+        }
+    }
+
+    @Test fun padGlassTabsKeepScanInThePaymentHeaderAndIosKeepsItBesideTheBottomBar() {
+        compose.activity.getSharedPreferences("ui_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        val settings = themeSettingsFixture(compose.activity).apply {
+            setFloatingStyle(2)
+            setGlassStyle(true)
+        }
+        val payments = paymentViewModelFixture(compose.activity.application).apply { initialize(true) }
+        val bills = billViewModelFixture(compose.activity.application).apply { initialize(true) }
+        compose.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
+        }
+        awaitMainNavigation(glass = true)
+        fun settle() {
+            compose.mainClock.advanceTimeBy(1600)
+            compose.waitForIdle()
+        }
+        fun capture(name: String) {
+            val file = File("build/miuix-pad-review/$name.png")
+            file.parentFile?.mkdirs()
+            file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap()
+                .compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        fun assertHeaderScan() {
+            val scan = compose.onNodeWithTag("payment-scan-button").assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            val destinations = compose.onAllNodes(isSelectable()).fetchSemanticsNodes().map { it.boundsInRoot }
+            assertTrue("Scan must stay to the right of the navigation capsule or panel",
+                destinations.all { it.right <= scan.left })
+            compose.onNodeWithTag("main-floating-scan").assertDoesNotExist()
+            compose.onNodeWithTag("main-bottom-navigation").assertDoesNotExist()
+        }
+        settle()
+        assertHeaderScan()
+        capture("os4-tabs")
+        compose.onNodeWithContentDescription("展开导航").performClick()
+        settle()
+        assertHeaderScan()
+        capture("os4-panel")
+        compose.onNodeWithContentDescription("收起导航").performClick()
+        compose.onNode(hasText("我的") and isSelectable()).performClick()
+        settle()
+        compose.onNodeWithTag("payment-scan-button").assertDoesNotExist()
+        compose.onNodeWithTag("main-floating-scan").assertDoesNotExist()
+        openSettings()
+        compose.onNodeWithText("主题").performClick()
+        settle()
+        capture("os4-theme-tabs")
+        val back = compose.onAllNodesWithContentDescription("返回").onLast().assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertFalse("The navigation capsule must not cover the secondary page's back action",
+            compose.onAllNodes(isSelectable()).fetchSemanticsNodes().any { it.boundsInRoot.overlaps(back) })
+        compose.onNode(hasText("付款") and isSelectable()).performClick()
+        compose.runOnIdle { settings.setFloatingStyle(1) }
+        settle()
+        compose.onNodeWithTag("payment-scan-button").assertDoesNotExist()
+        compose.onNodeWithTag("main-floating-scan").assertIsDisplayed()
+        compose.onNodeWithTag("ios-floating-capsule", useUnmergedTree = true).assertIsDisplayed()
+        capture("ios-pad")
     }
 
     @Test fun resizingWithASecondaryPageKeepsItsScrollAndComposition() {

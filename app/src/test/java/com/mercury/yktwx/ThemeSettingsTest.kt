@@ -11,6 +11,29 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ThemeSettingsTest {
+    @Test fun choosingIosOrOs4EnablesTheNavigationWithoutClearingOtherPreferences() = runTest {
+        val store = MemoryPreferences()
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
+        runCurrent()
+        val settings = themeSettingsFixture(repository)
+        settings.setBlurBottom(true)
+        settings.setGlassStyle(true)
+        for (style in listOf(1, 2)) {
+            settings.setFloating(false)
+            runCurrent()
+            assertFalse(settings.floatingBottomBar.value)
+            settings.setFloatingStyle(style)
+            runCurrent()
+            assertTrue(settings.floatingBottomBar.value)
+            assertEquals(style, settings.floatingBottomBarStyle.value)
+            assertTrue(settings.blurBottomBar.value)
+            assertTrue(settings.glassStyle.value)
+        }
+        settings.setFloatingStyle(0)
+        runCurrent()
+        assertTrue("Returning to default keeps the existing default-floating preference", settings.floatingBottomBar.value)
+    }
+
     @Test fun unsupportedAppearanceValuesRenderDefaultsAndSurviveUnrelatedWrites() = runTest {
         val unknown = UiPreferences(themeMode = 99, accentMode = -1, floatingBottomBarStyle = 99, navTransitionStyle = 7)
         val store = MemoryPreferences(AppPreferences(legacyMigrated = true, ui = unknown))
@@ -24,9 +47,28 @@ class ThemeSettingsTest {
         assertEquals(0, settings.navTransitionStyle.value)
         settings.setBlurTop(true); runCurrent()
         assertEquals(unknown.copy(blurTopBar = true), store.values.value.ui)
-        settings.setFloatingStyle(1); runCurrent()
-        assertEquals(1, settings.floatingBottomBarStyle.value)
+        settings.setFloatingStyle(2); runCurrent()
+        assertEquals(2, settings.floatingBottomBarStyle.value)
         assertEquals(99, repository.snapshot().ui.themeMode)
+    }
+
+    @Test fun glassAppearanceDoesNotReplaceThePersistedIosStyle() = runTest {
+        val store = MemoryPreferences()
+        val repository = appPreferencesRepositoryFixture(store, backgroundScope)
+        runCurrent()
+        val settings = themeSettingsFixture(repository)
+        val restored = themeSettingsFixture(repository)
+        settings.setFloatingStyle(1)
+        settings.setGlassStyle(true)
+        runCurrent()
+        assertTrue(restored.glassStyle.value)
+        assertEquals(1, restored.floatingBottomBarStyle.value)
+        settings.setFloatingStyle(2)
+        settings.setGlassStyle(false)
+        runCurrent()
+        assertEquals(2, restored.floatingBottomBarStyle.value)
+        assertFalse(restored.glassStyle.value)
+        assertEquals(repository.snapshot(), store.values.value)
     }
 
     @Test fun everySettingIsReadFromThePersistedSharedSnapshot() = runTest {

@@ -1,5 +1,7 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -18,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.UsageNotice
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun noticeParagraph(text: String) = buildAnnotatedString {

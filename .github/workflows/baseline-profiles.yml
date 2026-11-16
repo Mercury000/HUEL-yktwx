@@ -17,6 +17,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      packages: read
+    env:
+      MIUIX_PACKAGES_TOKEN: ${{ secrets.MIUIX_PACKAGES_TOKEN || github.token }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v6

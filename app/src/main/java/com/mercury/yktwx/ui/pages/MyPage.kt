@@ -1,10 +1,16 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +44,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
 internal fun MyPage(
@@ -75,10 +80,15 @@ internal fun MyPage(
         ReadRegion("本月概览", FeedbackText.networkError(readError(state.summaryError, state.summaryErrorKind), readError(state.countsError, state.countsErrorKind)),
             state.summary != null || state.counts != null, state.loading), restoringDisplay = state.restoringDisplay) }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
+    val failureListState = rememberLazyListState()
+    val topBarListState = if (initialError != null) failureListState else listState
+    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scroll)
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
-                DashboardTopBar("我的", scrollBehavior = scroll)
+                DashboardTopBar("我的", scrollBehavior = scroll,
+                    isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset)
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -96,7 +106,8 @@ internal fun MyPage(
                         state.profile?.professionName.isNullOrBlank() && state.homeIdentityError == null
                     val summaryPending = !state.summaryLoaded && state.summary == null && state.summaryError == null
                     val countsPending = !state.countsLoaded && state.counts == null && state.countsError == null
-                    LazyColumn(Modifier.fillMaxSize().overScrollVertical().testTag("my-page-list"),
+                    LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scroll).testTag("my-page-list"),
+                        state = if (showFailure) failureListState else listState,
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 10.dp, bottom = bottomPadding + 24.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (showFailure) {
@@ -391,16 +402,22 @@ private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack
     displayRestored: Boolean = false,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
+    val failureListState = rememberLazyListState()
+    val topBarListState = if (initialError != null) failureListState else listState
+    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scroll)
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) { TopAppBar(title = title, largeTitle = title, scrollBehavior = scroll, color = Color.Transparent,
-                navigationIcon = { IconButton(onClick = onBack) { Icon(MiuixIcons.Back, "返回") } }) }
+                isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset,
+                navigationIcon = { IconButton(onClick = onBack) { AppBackIcon("返回") } }) }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
                 val list: @Composable () -> Unit = {
                     InitialReadTransition(initialError, displayRestored = displayRestored) { displayedError ->
-                    LazyColumn(Modifier.fillMaxSize().overScrollVertical().then(
+                    LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scroll).then(
                         if (onRefresh == null) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier),
+                        state = if (displayedError != null) failureListState else listState,
                         contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                             bottom = padding.calculateBottomPadding() + 28.dp, start = 16.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)) {

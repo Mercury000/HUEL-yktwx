@@ -1,7 +1,6 @@
 package com.mercury.yktwx.ui
 
-import com.mercury.yktwx.data.PreferencesFailure
-
+import com.mercury.yktwx.ui.components.AppButton as Button
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.basic.Button
+import com.mercury.yktwx.data.PreferencesFailure
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

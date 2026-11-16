@@ -14,7 +14,7 @@
 
 缺少生活服务配置的 debug 包仍可编译，对应平台无法登录。Actions 通过同名 Secrets 注入接口配置，release 缺少 798 签名配置时失败，PR 不注入接口 Secrets。统计开关规则见[使用统计](analytics.md)。
 
-依赖版本由 `gradle/libs.versions.toml` 维护。密钥、签名和真实支付数据不提交。
+依赖版本由 `gradle/libs.versions.toml` 维护，GitHub Packages 下载所需的 `MIUIX_PACKAGES_TOKEN` 按构建环境配置。密钥、签名和真实支付数据不提交。
 
 ## 构建与预览
 

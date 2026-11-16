@@ -1,5 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -22,7 +24,6 @@ import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import com.mercury.yktwx.ui.components.ReadLayout
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private data class FeePasswordDisplay(
