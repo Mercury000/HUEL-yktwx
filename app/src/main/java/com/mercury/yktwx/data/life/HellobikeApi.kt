@@ -240,6 +240,11 @@ class HellobikeApi internal constructor(
         if (!region.valid) throw HellobikeException("定位未返回有效地区，请稍后重新检查车辆")
         return region
     }
+    override suspend fun checkAccount(account: HellobikeAccount) {
+        // Only the envelope's official token-expiry codes matter to account status.
+        // Ride fields and ordinary business results belong to ride discovery.
+        request("user.ride.bikeCheck", HellobikeProtocol.rideCheckFields(account))
+    }
     override suspend fun checkRide(account: HellobikeAccount): HellobikeRideReading {
         val data = request("user.ride.bikeCheck", HellobikeProtocol.rideCheckFields(account))
         val info = data.objectOrNull("ride")?.objectOrNull("order") ?: return HellobikeRideReading.NoRide

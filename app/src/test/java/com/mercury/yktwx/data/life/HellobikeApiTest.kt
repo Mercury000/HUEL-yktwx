@@ -333,6 +333,24 @@ class HellobikeApiTest {
         rejected { api.orderEnded(fixtureBikeAccount, fixtureBikeSession.rideGuid) }
         rejected { api.preClose(fixtureBikeAccount, fixtureBikeSession, fixtureBikePosition, fixtureBikeRegion, false, true) }
     }
+    @Test fun accountExpiryProbeDiscardsRideFieldsAndOrdinaryBusinessResults() = runBlocking {
+        for (body in listOf(
+            """{"code":301,"msg":"无骑行中订单","data":null}""",
+            """{"code":987,"msg":"普通骑行业务返回"}""",
+            """{"code":0,"data":{"ride":{"order":{}}}}""",
+            """{"code":0,"data":{"ride":{"order":{"userGuid":"another-rider"}}}}"""
+        )) {
+            val calls = mutableListOf<Reply>()
+            api(body, calls).checkAccount(fixtureBikeAccount)
+            assertEquals("user.ride.bikeCheck", calls.single().json.hbText("action"))
+        }
+        for (code in listOf(103, -10003)) {
+            try {
+                api("""{"code":$code,"msg":"登录已过期"}""").checkAccount(fixtureBikeAccount)
+                fail("The official expiry result must reach the account checker")
+            } catch (e: HellobikeException) { assertTrue(e.loginExpired) }
+        }
+    }
     @Test fun nativeRideDiscoveryUsesBikeQueryAndAcceptsAbsentRideOrOrder() = runBlocking {
         val calls = mutableListOf<Reply>()
         for (data in listOf("null", "{}", "{\"ride\":null}", "{\"ride\":{\"order\":null}}", "{\"ride\":{}}")) {

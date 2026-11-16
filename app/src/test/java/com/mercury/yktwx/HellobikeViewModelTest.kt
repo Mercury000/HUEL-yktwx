@@ -50,6 +50,70 @@ class HellobikeViewModelTest {
     }
     private fun riding() = HellobikeRideReading.Ride(fixtureBikeSession.rideGuid, fixtureBikeSession.bikeNo, 0, userGuid = fixtureBikeAccount.userGuid)
 
+    @Test fun noOrderNeverEntersTheRidingPageOrChangesTheAccountStatus() = bikeTest {
+        var ridingCalls = 0
+        val api = object : FakeHellobikeService() {
+            override suspend fun ridingInfo(account: HellobikeAccount): HellobikeRideReading {
+                ridingCalls++
+                throw HellobikeException("无骑行中订单", rejected = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(0, ridingCalls)
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNull(model.state.value.error)
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(0, ridingCalls); assertNull(model.accountConnection.value.error)
+        assertNotNull(store.load().account); assertTrue(model.state.value.sessions.isEmpty())
+    }
+
+    @Test fun lateRidingPageFailureCannotOverwriteACompletedExpiryCheck() = bikeTest {
+        val gate = CompletableDeferred<Unit>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun ridingInfo(account: HellobikeAccount): HellobikeRideReading {
+                gate.await()
+                throw HellobikeException("无骑行中订单", rejected = true)
+            }
+        }.apply { reading = riding() }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        gate.complete(Unit); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNotNull(store.load().account)
+    }
+
+    @Test fun accountProbeFailureDoesNotPublishRideOrNetworkErrorsAsAccountFailures() = bikeTest {
+        var failed = true
+        val api = object : FakeHellobikeService() {
+            override suspend fun checkAccount(account: HellobikeAccount) {
+                if (failed) throw IOException("probe unavailable")
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Unverified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error); assertNotNull(store.load().account)
+        failed = false
+        model.checkAccount(force = true); runCurrent()
+        assertEquals(LifeAccountStatus.Verified, model.accountConnection.value.status)
+        assertNull(model.accountConnection.value.error)
+    }
+
+    @Test fun explicitAccountExpiryStillClearsCredentialsAndCannotBecomeARecoverySuccess() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun checkAccount(account: HellobikeAccount) {
+                throw HellobikeException("官方登录已过期", loginExpired = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model)
+        assertEquals(LifeAccountStatus.Expired, model.accountConnection.value.status)
+        assertEquals("官方登录已过期", model.accountConnection.value.error)
+        assertNull(store.load().account); assertFalse(model.state.value.connected)
+    }
+
     @Test fun officialSkipConfirmReturnSubmitsAfterTheReturnTapWithoutASecondConfirmation() = bikeTest {
         val api = object : FakeHellobikeService() {
             override suspend fun preClose(account: HellobikeAccount, session: HellobikeSession, position: HellobikePosition,

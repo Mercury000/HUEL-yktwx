@@ -33,7 +33,7 @@ internal class LifeAccountVerifier<T>(
     private val account: () -> T?,
     private val verify: suspend (T) -> Unit,
     private val onExpired: suspend (Exception, T) -> Unit,
-    private val failure: (Exception) -> String,
+    private val failure: (Exception) -> String?,
 ) {
     private val mutable = MutableStateFlow(LifeAccountConnection())
     val state = mutable.asStateFlow()

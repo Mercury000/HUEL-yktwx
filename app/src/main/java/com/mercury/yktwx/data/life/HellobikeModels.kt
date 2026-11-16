@@ -157,6 +157,7 @@ interface HellobikeService : HellobikeCardService {
     suspend fun slider(phone: String, region: HellobikeRegion?, clientId: String): HellobikeSlider
     suspend fun login(phone: String, code: String, region: HellobikeRegion?, clientId: String, loginGuid: String): HellobikeAccount
     suspend fun region(position: HellobikePosition): HellobikeRegion
+    suspend fun checkAccount(account: HellobikeAccount) { checkRide(account) }
     suspend fun checkRide(account: HellobikeAccount): HellobikeRideReading
     suspend fun ridingInfo(account: HellobikeAccount): HellobikeRideReading = checkRide(account)
     suspend fun inspectBike(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck

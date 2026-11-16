@@ -128,10 +128,8 @@ class HellobikeViewModel internal constructor(
     private var launchedPayment: PaymentOwner? = null
     private var paymentAnalyticsAttempt: AnalyticsAttempt? = null
     private val verifier = LifeAccountVerifier(viewModelScope, now, { account }, { owner: HellobikeAccount ->
-        val reading = api.checkRide(owner)
-        if (reading is HellobikeRideReading.Ride && reading.userGuid != null && reading.userGuid != owner.userGuid)
-            throw HellobikeException("哈啰响应的账户标识与当前账户不一致")
-    }, ::expired, ::failure)
+        api.checkAccount(owner)
+    }, ::expired, { null })
     val accountConnection = verifier.state
 
     // The activity's accepted preview mode is known before any account storage is read.
@@ -167,6 +165,7 @@ class HellobikeViewModel internal constructor(
             }
             finally { mutable.update { it.copy(restoring = false) } }
             resume()
+            checkAccount()
             if (visible && account != null) pendingBike?.let(::prepareBike)
         }
     }
@@ -1074,16 +1073,20 @@ class HellobikeViewModel internal constructor(
         if (recoveryTask?.isActive != true && !wait) {
             recoveryTask = viewModelScope.launch {
                 try {
-                    val reading = api.ridingInfo(owner); ensureOwner(owner)
-                    if (reading is HellobikeRideReading.Ride && reading.status != 2 && reading.rideGuid !in dismissedRideGuids) discover(owner, reading)
+                    // The official native query discovers an order before entering its riding page.
+                    val order = api.checkRide(owner); ensureOwner(owner)
+                    if (order is HellobikeRideReading.Ride) {
+                        val reading = api.ridingInfo(owner); ensureOwner(owner)
+                        if (reading is HellobikeRideReading.Ride && reading.status != 2 && reading.rideGuid !in dismissedRideGuids) discover(owner, reading)
+                    }
                     for (session in mutable.value.sessions.filterNot { it.dismissible }) {
                         try { readSession(owner, session.sessionId) }
                         catch (e: CancellationException) { throw e }
                         catch (e: Exception) { report(e, session.sessionId); expired(e, owner) }
                     }
-                    ensureOwner(owner); verifier.verified(owner.maskedPhone)
+                    ensureOwner(owner)
                 } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { if (account == owner) { verifier.failed(failure(e)); report(e); expired(e, owner) } }
+                catch (e: Exception) { if (account == owner) { report(e); expired(e, owner) } }
                 finally { startPolling(owner, wait = true) }
             }
         } else startPolling(owner, wait = true)
