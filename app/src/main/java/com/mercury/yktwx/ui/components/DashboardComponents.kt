@@ -62,6 +62,15 @@ internal object DashboardPalette {
         lerp(MiuixTheme.colorScheme.secondaryVariant, Color(0xFF466C78), .22f) else Color(0xFFE4EEF0)
 }
 
+/** Shared artwork ratio, corner radius and theme colors for service entry glyphs. */
+@Composable
+internal fun ServiceIcon(icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 32.dp) {
+    Box(modifier.size(size).background(DashboardPalette.iconPanel, RoundedCornerShape(size * .34375f)),
+        contentAlignment = Alignment.Center) {
+        Icon(icon, null, Modifier.size(size * .6f), tint = DashboardPalette.iconAccent)
+    }
+}
+
 /** Use Miuix's large title and centered collapsed title on every dashboard page. */
 @Composable
 internal fun DashboardTopBar(title: String, subtitle: String? = null, scrollBehavior: ScrollBehavior? = null,

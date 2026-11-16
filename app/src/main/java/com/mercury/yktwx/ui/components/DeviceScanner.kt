@@ -187,7 +187,7 @@ internal fun ScannerSweep() {
 internal fun ScannerControls(flashAvailable: Boolean?, torch: Boolean, onTorch: () -> Unit, onManualInput: (() -> Unit)?, active: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(36.dp)) {
         // Reserve the final position while capabilities are queried, without exposing a dead action.
-        if (flashAvailable != false) ScannerAction(if (torch) "关闭手电筒" else "手电筒", AppIcons.Electricity, onTorch,
+        if (flashAvailable != false) ScannerAction(if (torch) "关闭手电筒" else "手电筒", AppIcons.Flashlight, onTorch,
             active && flashAvailable == true, if (flashAvailable == null) Modifier.graphicsLayer { alpha = 0f }.clearAndSetSemantics {} else Modifier)
         if (onManualInput != null) ScannerAction("输入设备编号", AppIcons.Keyboard, onManualInput, active)
     }

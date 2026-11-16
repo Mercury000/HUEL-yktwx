@@ -42,7 +42,7 @@
 | 弹层内按钮与表单 | 官方 `GlassDialogButton` 的半透明普通按钮、主色主要按钮及按压反馈；输入框、选择卡和内嵌中性卡片用配套的半透明底色，保留焦点、选中与禁用状态，不增加文字折射或重复模糊 |
 | 设置及缴费位置菜单 | 按官方 `GlassDropdownPreference` 的布局与宿主方式组合 `GlassDropdownPopup`、值锚点和 `GlassPopupItem`；保留原 `rememberSaveable` 展开状态，选中值和禁用状态由调用方控制 |
 | 短标签组 | 明细/统计使用官方 `GlassSegmentedTabRow`；收入/支出保留原 `TabRow` 的按钮宽度和排布；支付方式与房间切换保留原 `TabRowWithContour` 的宽度、高度和滑块，仅适配弹层中的半透明底色；长列表和无有效选中项沿用原标签实现 |
-| OS4 导航图标 | Glass 图标集的扫码、大厅、钱包和联系人；原默认和 iOS 底栏图标保留 |
+| OS4 导航图标 | 付款和账单使用 miuix 风格的自绘二维码与票据，与普通底栏、默认悬浮、iOS 悬浮和侧栏共用；大厅和联系人使用 Glass 图标集，独立扫一扫使用官方 Scan |
 | 导航侧栏 | 默认使用官方 `NavigationRail`，OS4 使用官方 `GlassNavigationRail`；玻璃侧栏的标题、留白与展开动画联动，iOS 保留底部悬浮；顶栏玻璃偏好独立 |
 
 主标签页使用库的 `springAnimateToPage` 和 `PagerNavigationSpringSpec`。水平手势按 `pagerGestureOverride` 官方示例配置：Pager 关闭自己的触控识别器，由 CrossAxis 工具处理接管；非触控输入及 fling 使用同一行为，`PagerGestureNestedScrollConnection` 保留子列表垂直滚动。

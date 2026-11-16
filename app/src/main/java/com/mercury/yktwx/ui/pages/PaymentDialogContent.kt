@@ -2,7 +2,8 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppButton as Button
 import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
@@ -13,14 +14,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -38,6 +36,7 @@ import com.mercury.yktwx.data.RechargeMoney
 import com.mercury.yktwx.data.RechargeConfiguration
 import com.mercury.yktwx.data.RechargeRecipient
 import com.mercury.yktwx.ui.components.AmountTextField
+import com.mercury.yktwx.ui.components.AppIcons
 import com.mercury.yktwx.ui.components.trackInputFocus
 import com.mercury.yktwx.ui.components.AnimatedInlineError
 import com.mercury.yktwx.ui.components.InlineErrorGroup
@@ -427,20 +426,12 @@ private fun ResultMark(phase: RechargePhase, color: Color) {
     val darkFailure = androidx.compose.foundation.isSystemInDarkTheme() && phase == RechargePhase.Failed
     val foreground = if (darkFailure) MiuixTheme.colorScheme.onErrorContainer else color
     val background = if (darkFailure) MiuixTheme.colorScheme.errorContainer else color.copy(alpha = 0.10f)
-    Canvas(Modifier.size(76.dp)) {
-        drawCircle(background)
-        val stroke = 4.dp.toPx()
-        fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(
-            foreground, Offset(size.width * x1, size.height * y1), Offset(size.width * x2, size.height * y2),
-            strokeWidth = stroke, cap = StrokeCap.Round,
-        )
-        when (phase) {
-            RechargePhase.Paid -> { line(.28f, .50f, .44f, .65f); line(.44f, .65f, .73f, .35f) }
-            RechargePhase.Failed -> { line(.34f, .34f, .66f, .66f); line(.66f, .34f, .34f, .66f) }
-            else -> {
-                drawCircle(foreground, radius = size.width * .25f, style = Stroke(stroke))
-                line(.50f, .34f, .50f, .50f); line(.50f, .50f, .62f, .57f)
-            }
-        }
+    val icon = when (phase) {
+        RechargePhase.Paid -> AppIcons.Check
+        RechargePhase.Failed -> AppIcons.Close
+        else -> AppIcons.Pending
+    }
+    Box(Modifier.size(76.dp).background(background, CircleShape), contentAlignment = Alignment.Center) {
+        Icon(icon, null, Modifier.size(48.dp), tint = foreground)
     }
 }
