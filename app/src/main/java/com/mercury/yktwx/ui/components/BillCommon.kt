@@ -143,10 +143,10 @@ internal fun List<BillRecord>.groupByDay(): List<BillDayGroup> {
 private fun billIcon(icon: String): ImageVector = when (icon) {
     "recharge" -> MiuixIcons.AddCircle
     "refund" -> MiuixIcons.Refresh
-    "qrCode-payment" -> MiuixIcons.Scan
+    "qrCode-payment" -> AppIcons.PaymentQrCode
     "subsidy" -> MiuixIcons.Promotions
     "consume" -> MiuixIcons.Store
-    else -> MiuixIcons.BankCards
+    else -> AppIcons.CampusCard
 }
 
 @Composable

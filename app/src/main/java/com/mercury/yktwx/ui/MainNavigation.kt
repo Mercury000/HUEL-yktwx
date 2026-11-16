@@ -56,7 +56,6 @@ import top.yukonga.miuix.kmp.material.GlassShadows
 import top.yukonga.miuix.kmp.icon.glass.Scan as GlassScan
 import top.yukonga.miuix.kmp.icon.glass.GridView as GlassGridView
 import top.yukonga.miuix.kmp.icon.glass.Contacts as GlassContacts
-import top.yukonga.miuix.kmp.icon.glass.Wallet as GlassWallet
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Contacts
@@ -64,9 +63,9 @@ import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private val mainNavigationIcons = listOf(MiuixIcons.Scan, MiuixIcons.GridView, AppIcons.Bill, MiuixIcons.Contacts)
-private val glassNavigationIcons = listOf(MiuixIcons.Glass.GlassScan, MiuixIcons.Glass.GlassGridView,
-    MiuixIcons.Glass.GlassWallet, MiuixIcons.Glass.GlassContacts)
+private val mainNavigationIcons = listOf(AppIcons.PaymentQrCode, MiuixIcons.GridView, AppIcons.Bill, MiuixIcons.Contacts)
+private val glassNavigationIcons = listOf(AppIcons.PaymentQrCode, MiuixIcons.Glass.GlassGridView,
+    AppIcons.Bill, MiuixIcons.Glass.GlassContacts)
 private val mainNavigationLabels = listOf("付款", "大厅", "账单", "我的")
 
 @Composable

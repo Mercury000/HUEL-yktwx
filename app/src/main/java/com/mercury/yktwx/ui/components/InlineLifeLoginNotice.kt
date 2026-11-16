@@ -14,6 +14,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -32,7 +33,7 @@ internal fun InlineLifeLoginNotice(visible: Boolean, onLogin: () -> Unit, enable
             modifier = Modifier.weight(1f).testTag(tag)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(AppIcons.Scan, null, Modifier.size(18.dp), tint = accent)
+                Icon(MiuixIcons.Scan, null, Modifier.size(18.dp), tint = accent)
                 Text(text, Modifier.weight(1f), fontSize = 13.sp, lineHeight = 18.sp, color = foreground)
                 if (onDismiss == null) Icon(MiuixIcons.ChevronForward, null, Modifier.size(14.dp), tint = foreground)
             }
