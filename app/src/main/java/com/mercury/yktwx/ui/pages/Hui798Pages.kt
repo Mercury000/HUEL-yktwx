@@ -1,5 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable

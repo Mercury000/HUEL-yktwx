@@ -1,8 +1,10 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -42,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
 fun HallPage(
@@ -78,10 +79,15 @@ fun HallPage(
         ReadRegion("校园网信息", readError(dorm.networkError, dorm.networkErrorKind), dorm.network != null, dorm.loading),
         restoringDisplay = dorm.restoringDisplay)
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
+    val failureListState = rememberLazyListState()
+    val topBarListState = if (initialError != null) failureListState else listState
+    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scrollBehavior)
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
-                DashboardTopBar("大厅", scrollBehavior = scrollBehavior)
+                DashboardTopBar("大厅", scrollBehavior = scrollBehavior,
+                    isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset)
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -99,7 +105,8 @@ fun HallPage(
                         dorm.loading && !dorm.roomsAvailable && dorm.rooms.isEmpty() && dorm.network == null))
                         DormUiState(loading = true) else dorm
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().overScrollVertical().imePadding().testTag("hall-page-list"),
+                    state = if (showFailure) failureListState else listState,
+                    modifier = Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).imePadding().testTag("hall-page-list"),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 10.dp,
                         bottom = bottomPadding + 24.dp,

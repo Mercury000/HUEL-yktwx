@@ -1,5 +1,13 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppBackIcon
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppTabRowWithContour as TabRowWithContour
+import com.mercury.yktwx.ui.components.AppIconButton as IconButton
+import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -53,13 +61,10 @@ import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -170,6 +175,10 @@ fun BillPage(
     val expenseState = key(state.stats.period) { rememberLazyListState() }
     val incomeState = key(state.stats.period) { rememberLazyListState() }
     val pageScroll = rememberBillPageScroll()
+    val bodyTopBarOffset = rememberLazyListTopBarOffset(pageScroll.body, scrollBehavior)
+    val topBarOffset: () -> Float = {
+        -pageScroll.controlsOffset - (if (pageScroll.statistics) pageScroll.typeOffset else 0f) + bodyTopBarOffset()
+    }
     val scrollScope = rememberCoroutineScope()
     val listState = if (!state.statsVisible) detailsState else if (state.stats.type == 2) expenseState else incomeState
     SideEffect {
@@ -210,13 +219,16 @@ fun BillPage(
         Scaffold(topBar = {
             Box(Modifier.testTag("bill-top-bar")) {
                 BlurredBar(topGradient = true) {
-                    if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior) else TopAppBar(
+                    if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior,
+                        isContentScrolled = pageScroll.isContentScrolled, visualContentOffset = topBarOffset) else TopAppBar(
                         title = "账单",
                         largeTitle = "账单",
                         scrollBehavior = scrollBehavior,
+                        isContentScrolled = pageScroll.isContentScrolled,
+                        visualContentOffset = topBarOffset,
                         color = Color.Transparent,
                         navigationIcon = {
-                            if (showBack) IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
+                            if (showBack) IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") }
                         },
                     )
                 }
@@ -233,7 +245,7 @@ fun BillPage(
                 ) {
                 BillScrollLayer(offset = { pageScroll.controlsOffset },
                     onHeaderHeight = pageScroll::measureControls,
-                    modifier = Modifier.testTag("bill-scroll-surface").overScrollVertical()
+                    modifier = Modifier.testTag("bill-scroll-surface").topBarOverscroll(scrollBehavior)
                         .scrollable(pageScroll.state, Orientation.Vertical, reverseDirection = true, enabled = isActive && !motion.running)
                         .semantics {
                             verticalScrollAxisRange = ScrollAxisRange(

@@ -16,9 +16,10 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     val themeMode = option(0..2) { it.themeMode }
     val accentMode = option(0..1) { it.accentMode }
     val floatingBottomBar = ui { it.floatingBottomBar }
-    val floatingBottomBarStyle = option(0..1) { it.floatingBottomBarStyle }
+    val floatingBottomBarStyle = option(0..2) { it.floatingBottomBarStyle }
     val blurBottomBar = ui { it.blurBottomBar }
     val blurTopBar = ui { it.blurTopBar }
+    val glassStyle = ui { it.glassStyle }
     val swipeBack = ui { it.swipeBack }
     val navTransitionStyle = option(0..1) { it.navTransitionStyle }
     val paymentMotionDetection = ui { it.paymentMotionDetection }
@@ -46,9 +47,13 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     fun setTheme(v: Int) = change { it.copy(themeMode = v.coerceIn(0, 2)) }
     fun setAccent(v: Int) = change { it.copy(accentMode = v.coerceIn(0, 1)) }
     fun setFloating(v: Boolean) = change { it.copy(floatingBottomBar = v) }
-    fun setFloatingStyle(v: Int) = change { it.copy(floatingBottomBarStyle = v.coerceIn(0, 1)) }
+    fun setFloatingStyle(v: Int) = change {
+        val style = v.coerceIn(0, 2)
+        it.copy(floatingBottomBarStyle = style, floatingBottomBar = it.floatingBottomBar || style != 0)
+    }
     fun setBlurBottom(v: Boolean) = change { it.copy(blurBottomBar = v) }
     fun setBlurTop(v: Boolean) = change { it.copy(blurTopBar = v) }
+    fun setGlassStyle(v: Boolean) = change { it.copy(glassStyle = v) }
     fun setSwipeBack(v: Boolean) = change { it.copy(swipeBack = v) }
     fun setNavTransitionStyle(v: Int) = change { it.copy(navTransitionStyle = v.coerceIn(0, 1)) }
     fun setPaymentMotionDetection(v: Boolean) = change { it.copy(paymentMotionDetection = v) }

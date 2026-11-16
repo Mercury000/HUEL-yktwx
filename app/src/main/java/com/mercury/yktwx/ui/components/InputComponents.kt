@@ -96,6 +96,7 @@ internal fun StableTextField(value: String, onValueChange: (String) -> Unit, lab
             if (draft.text != value) onValueChange(draft.text)
         }
     }, label = label, singleLine = true, useLabelAsPlaceholder = useLabelAsPlaceholder, enabled = enabled,
+        colors = appearanceTextFieldColors(),
         modifier = modifier.trackInputFocus(enabled), keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
         visualTransformation = visualTransformation, trailingIcon = trailingIcon)
 }

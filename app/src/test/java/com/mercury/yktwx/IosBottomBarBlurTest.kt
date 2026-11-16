@@ -51,7 +51,7 @@ class IosBottomBarBlurTest {
         }
     }
 
-    @Test fun appBlurSwitchChangesIosSurfaceAndRestoresItInBothThemes() {
+    @Test fun appBlurSwitchChangesBothGlassStylesAndRestoresThemInBothThemes() {
         val app = compose.activity.application
         val payments = paymentViewModelFixture(app).apply { initialize(true) }
         val bills = billViewModelFixture(app).apply { initialize(true) }
@@ -59,18 +59,18 @@ class IosBottomBarBlurTest {
             CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) }
         }
         compose.onNode(hasText("我的") and isSelectable()).performClick()
-        for (mode in listOf(1, 2)) {
-            compose.runOnIdle { settings.setTheme(mode) }
-            val opaque = capture("app-$mode-off")
+        for (style in listOf(1, 2)) for (mode in listOf(1, 2)) {
+            compose.runOnIdle { settings.setFloatingStyle(style); settings.setTheme(mode) }
+            val opaque = capture("app-$style-$mode-off")
             val bounds = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot
             compose.runOnIdle { settings.setBlurBottom(true) }
-            val glass = capture("app-$mode-on")
-            assertTrue("Bottom blur must visibly change the iOS surface (theme $mode)",
+            val glass = capture("app-$style-$mode-on")
+            assertTrue("Bottom blur must visibly change the surface (style $style, theme $mode)",
                 changedFraction(opaque, glass) > .03f)
             assertEquals("Toggling blur must preserve the floating bar's position and size", bounds,
                 compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot)
             compose.runOnIdle { settings.setBlurBottom(false) }
-            val restored = capture("app-$mode-restored")
+            val restored = capture("app-$style-$mode-restored")
             assertTrue("Disabling blur must restore the opaque surface (theme $mode)",
                 changedFraction(opaque, restored) < .005f)
             compose.onNode(hasText("我的") and isSelectable()).assertIsSelected()

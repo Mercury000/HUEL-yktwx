@@ -1,10 +1,15 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -24,9 +29,7 @@ import com.mercury.yktwx.data.life.WaterPhase
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -79,12 +82,14 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
         label = if (retryFeedback.dispatching && !primaryLoading) "正在检查…" else primaryAction.label,
         onClick = { if (primaryReadsState) retryFeedback.dispatch(primaryAction.onClick) else primaryAction.onClick() })
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+    var topBarListState by remember { mutableStateOf<LazyListState?>(null) }
     val title = when (state.phase) {
         WaterPhase.Ended -> "${state.action}结束"
         WaterPhase.Running, WaterPhase.Stopping -> "${state.action}进度"
         else -> "扫码${state.action}"
     }
     LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true,
+        listState = topBarListState,
         footer = { WaterDeviceActions(state, active, primary, scanAction, onBack, footerNote, showRescan, loading) }) { padding ->
         AnimatedContent(WaterDevicePresentation(state, paymentContent), contentKey = { it.state.phase.pageStage },
             modifier = Modifier.fillMaxSize(), transitionSpec = {
@@ -95,8 +100,11 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
             val display = presentation.state
             val payment = presentation.paymentContent
             val stageActive = active && display.phase.pageStage == state.phase.pageStage
-            LazyColumn(Modifier.fillMaxSize().overScrollVertical().nestedScroll(scrollBehavior.nestedScrollConnection)
+            val listState = rememberLazyListState()
+            SideEffect { if (display.phase.pageStage == state.phase.pageStage) topBarListState = listState }
+            LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior).nestedScroll(scrollBehavior.nestedScrollConnection)
                 .testTag(if (display.provider == LifeProvider.Panggui) "life-device-page" else "hui798-device-page"),
+                state = listState,
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp,
                     bottom = padding.calculateBottomPadding() + 20.dp, start = 16.dp, end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {

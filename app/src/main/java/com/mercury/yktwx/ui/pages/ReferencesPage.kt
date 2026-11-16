@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppCard as Card
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -13,11 +14,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -28,7 +32,6 @@ import com.mikepenz.aboutlibraries.util.withJson
 import com.mercury.yktwx.ui.components.SectionTitle
 import com.mercury.yktwx.ui.components.ContentPlaceholder
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
@@ -52,6 +55,7 @@ private data class ReferenceProject(
 fun ReferencesPage(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val context = LocalContext.current
     val applicationContext = context.applicationContext
@@ -60,7 +64,8 @@ fun ReferencesPage(
         value = ReferenceProjects.load(applicationContext)
     }
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        state = listState,
+        modifier = modifier.fillMaxSize().testTag("references-page-list"),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 12.dp,
             bottom = contentPadding.calculateBottomPadding() + 12.dp,

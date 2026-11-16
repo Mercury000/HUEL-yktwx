@@ -1,5 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
+import com.mercury.yktwx.ui.components.AppButton as Button
+import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
@@ -52,7 +54,6 @@ import com.mercury.yktwx.ui.components.SheetPageContent
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.rememberOverlayMounted
 import com.mercury.yktwx.ui.components.rememberWhileShown
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.LocalContentColor
@@ -109,7 +110,7 @@ internal fun PaymentMethodActions(methods: List<String>, selected: Int, onSelect
     onCancel: (() -> Unit)? = null, cancelModifier: Modifier = Modifier) {
     InlineErrorGroup(error, 16.dp, preserveMessage = preserveError) {
         Text("支付方式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        if (methods.isNotEmpty()) HallNeutralTabs(methods, selected) { if (enabled && it != selected) onSelect(it) }
+        if (methods.isNotEmpty()) HallNeutralTabs(methods, selected, enabled) { if (enabled && it != selected) onSelect(it) }
         if (onCancel != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onCancel, enabled = enabled, modifier = cancelModifier.weight(1f)) { Text("取消支付") }
             Button(onClick = { if (enabled && canSubmit) onSubmit() }, enabled = enabled && canSubmit,

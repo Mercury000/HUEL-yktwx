@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -53,7 +54,7 @@ class MainNavigationLayoutTest {
     }) {
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
-                AppTheme(ColorSchemeMode.Light) {
+                AppTheme(ColorSchemeMode.Light, glassStyle = settings.glassStyle.value) {
                     density = LocalDensity.current.density
                     val actualWindow = LocalWindowInfo.current
                     val window = remember(actualWindow) {
@@ -63,7 +64,7 @@ class MainNavigationLayoutTest {
                     }
                     var selected by remember { mutableIntStateOf(0) }
                     CompositionLocalProvider(LocalWindowInfo provides window) {
-                        MainNavigationScaffold(settings, selected, { selected = it }, content = page)
+                        MainNavigationScaffold(settings, selected, { selected = it }, onScan = {}, content = page)
                     }
                 }
             }
@@ -84,7 +85,7 @@ class MainNavigationLayoutTest {
         // The unified top bar keeps both the collapsed and the large title; scrolling
         // collapses the large one, so only the small title must stay on screen.
         fun collapsedTitle() = titles.fetchSemanticsNodes().minBy { it.boundsInRoot.height }
-        for (style in listOf(-1, 0, 1)) {
+        for (style in listOf(-1, 0, 1, 2)) {
             compose.runOnIdle {
                 settings.setFloating(style >= 0)
                 if (style >= 0) settings.setFloatingStyle(style)
@@ -124,16 +125,132 @@ class MainNavigationLayoutTest {
     }
 
     @Test
+    @Config(qualifiers = "zh-rCN-w700dp-h1000dp-xhdpi")
+    fun compactFloatingCapsulesKeepTheScanBesideTheirActualSurfaceInWidePortrait() {
+        settings.setFloating(true)
+        content()
+        for ((style, tag, width) in listOf(Triple(0, "default-floating-capsule", 252.dp),
+            Triple(1, "ios-floating-capsule", 312.dp))) {
+            compose.runOnIdle { settings.setFloatingStyle(style) }
+            compose.mainClock.advanceTimeBy(800)
+            val capsule = compose.onNodeWithTag(tag, useUnmergedTree = true).assertWidthIsEqualTo(width)
+                .fetchSemanticsNode().boundsInRoot
+            val action = compose.onNodeWithTag("main-floating-scan").fetchSemanticsNode().boundsInRoot
+            assertEquals("Scan must follow the actual capsule instead of its full-width wrapper",
+                12f * density, action.left - capsule.right, 2f)
+            val window = compose.onNodeWithTag("main-bottom-navigation").fetchSemanticsNode().boundsInRoot
+            assertEquals("Capsule and scan must be centered together", window.center.x,
+                (capsule.left + action.right) / 2f, 2f)
+        }
+    }
+
+    @Test
     @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
-    fun landscapeKeepsRailWithEitherFloatingBarStyle() {
+    fun landscapeUsesDefaultRailAndKeepsIosFloatingNavigation() {
         content()
         assertRail(expanded = false)
-        for (style in 0..1) {
-            compose.runOnIdle { settings.setFloating(true); settings.setFloatingStyle(style) }
-            assertRail(expanded = false)
-        }
+        compose.runOnIdle { settings.setFloatingStyle(1) }
+        compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
+        compose.onNodeWithTag("main-bottom-navigation").assertExists()
+        compose.onNodeWithTag("ios-floating-capsule", useUnmergedTree = true).assertExists()
+        compose.onNode(hasText("账单") and isSelectable()).performClick().assertIsSelected()
+        compose.runOnIdle { settings.setFloatingStyle(0) }
+        assertRail(expanded = false)
         compose.runOnIdle { settings.setFloating(false) }
         assertRail(expanded = false)
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w700dp-h500dp-xhdpi")
+    fun topGlassAndBlurDoNotRestyleTheDefaultNavigationRail() {
+        content()
+        val rail = compose.onNodeWithTag("main-navigation-rail")
+        compose.onNode(hasText("账单") and isSelectable()).performClick()
+        compose.mainClock.advanceTimeBy(800)
+        val originalId = rail.fetchSemanticsNode().id
+        val original = rail.captureToImage().asAndroidBitmap()
+        compose.runOnIdle { settings.setGlassStyle(true); settings.setFloating(true); settings.setBlurBottom(true) }
+        compose.mainClock.advanceTimeBy(800)
+        compose.onNode(hasText("账单") and isSelectable()).assertIsSelected()
+        assertEquals(originalId, rail.fetchSemanticsNode().id)
+        assertTrue("The demo's ordinary rail is independent of top glass and blur",
+            original.sameAs(rail.captureToImage().asAndroidBitmap()))
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w900dp-h1100dp-xhdpi")
+    fun glassRailMorphsBetweenTopTabsAndPanelWithoutRecreatingThePage() {
+        settings.setFloatingStyle(2)
+        var compositions = 0
+        content {
+            remember { compositions++ }
+            Box(Modifier.fillMaxSize().testTag("navigation-content"))
+        }
+        val page = compose.onNodeWithTag("navigation-content")
+        val originalId = page.fetchSemanticsNode().id
+        val originalLeft = page.fetchSemanticsNode().boundsInRoot.left
+        val rail = compose.onNodeWithTag("main-glass-navigation-rail")
+        val railId = rail.assertExists().fetchSemanticsNode().id
+        compose.onNodeWithTag("main-navigation-rail").assertDoesNotExist()
+        compose.onNodeWithTag("main-bottom-navigation").assertDoesNotExist()
+        fun destinations() = compose.onAllNodes(isSelectable()).fetchSemanticsNodes().map { it.boundsInRoot }
+        val collapsed = destinations()
+        assertEquals(4, collapsed.size)
+        assertTrue("Collapsed destinations are horizontal tabs",
+            collapsed.zipWithNext().all { (before, after) -> before.right <= after.left + 1f })
+        compose.onNodeWithContentDescription("展开导航").performClick()
+        compose.mainClock.advanceTimeBy(1600)
+        compose.waitForIdle()
+        val expanded = destinations()
+        assertTrue("Expanded destinations are a vertical panel",
+            expanded.zipWithNext().all { (before, after) -> before.bottom <= after.top + 1f })
+        assertEquals("Foreground content must reserve the panel and its margin", 262f * density,
+            page.fetchSemanticsNode().boundsInRoot.left - originalLeft, 2f)
+        compose.onNode(hasText("账单") and isSelectable()).performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("收起导航").performClick()
+        compose.mainClock.advanceTimeBy(1600)
+        compose.waitForIdle()
+        assertEquals(originalLeft, page.fetchSemanticsNode().boundsInRoot.left, 2f)
+        assertEquals(originalId, page.fetchSemanticsNode().id)
+        assertEquals(railId, rail.fetchSemanticsNode().id)
+        assertEquals(1, compositions)
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w900dp-h1100dp-xhdpi")
+    fun glassAndIosNavigationAdaptAcrossWindowSizesWithoutRecreatingContent() {
+        settings.setFloatingStyle(2)
+        var compositions = 0
+        content {
+            remember { compositions++ }
+            Box(Modifier.fillMaxSize().testTag("navigation-content"))
+        }
+        val pageId = compose.onNodeWithTag("navigation-content").fetchSemanticsNode().id
+        for (width in listOf(1280, 900, 500, 900)) {
+            compose.runOnIdle { windowSize = IntSize((width * density).toInt(), (800 * density).toInt()) }
+            compose.mainClock.advanceTimeBy(1600)
+            compose.waitForIdle()
+            if (width >= 840) {
+                compose.onNodeWithTag("main-glass-navigation-rail").assertExists()
+                compose.onNodeWithTag("main-bottom-navigation").assertDoesNotExist()
+            } else {
+                compose.onNodeWithTag("main-glass-navigation-rail").assertDoesNotExist()
+                compose.onNodeWithTag("os4-navigation").assertExists()
+            }
+            assertEquals(pageId, compose.onNodeWithTag("navigation-content").fetchSemanticsNode().id)
+        }
+        compose.onNode(hasText("账单") and isSelectable()).performClick().assertIsSelected()
+        for (style in listOf(1, 0, 2)) {
+            compose.runOnIdle { settings.setFloatingStyle(style) }
+            compose.mainClock.advanceTimeBy(1600)
+            compose.waitForIdle()
+            compose.onNode(hasText("账单") and isSelectable()).assertIsSelected()
+            if (style == 1) compose.onNodeWithTag("ios-floating-capsule", useUnmergedTree = true).assertExists()
+            if (style == 0) compose.onNodeWithTag("main-navigation-rail").assertExists()
+            if (style == 2) compose.onNodeWithTag("main-glass-navigation-rail").assertExists()
+            assertEquals(pageId, compose.onNodeWithTag("navigation-content").fetchSemanticsNode().id)
+        }
+        assertEquals(1, compositions)
     }
 
     @Test

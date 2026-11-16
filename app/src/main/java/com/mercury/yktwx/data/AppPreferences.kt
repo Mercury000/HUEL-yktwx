@@ -13,6 +13,7 @@ import java.io.OutputStream
     val themeMode: Int = 0, val accentMode: Int = 0,
     val floatingBottomBar: Boolean = false, val floatingBottomBarStyle: Int = 0,
     val blurBottomBar: Boolean = false, val blurTopBar: Boolean = false,
+    val glassStyle: Boolean = false,
     val swipeBack: Boolean = false, val navTransitionStyle: Int = 0,
     val paymentMotionDetection: Boolean = false, val paymentBrightness: Boolean = true,
     val preventScreenshots: Boolean = true, val automaticUpdates: Boolean = true,

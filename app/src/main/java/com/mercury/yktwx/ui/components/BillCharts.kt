@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.components
 
+import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,7 +16,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
-import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset

@@ -15,7 +15,7 @@ umeng-common = "10.0.1"
 umeng-asms = "1.8.7"
 zxing = "3.5.4"
 alipay = "15.8.42"
-miuix = "0.9.4"
+miuix = "0.9.4-3a980f7c-SNAPSHOT"
 aboutlibraries = "15.3.0"
 robolectric = "4.17"
 junit = "4.13.2"
@@ -57,6 +57,9 @@ miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference-android", 
 miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons-android", version.ref = "miuix" }
 miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur-android", version.ref = "miuix" }
 miuix-nav = { module = "top.yukonga.miuix.kmp:miuix-nav-android", version.ref = "miuix" }
+miuix-glass = { module = "top.yukonga.miuix.kmp:miuix-glass-android", version.ref = "miuix" }
+miuix-glass-icons = { module = "top.yukonga.miuix.kmp:miuix-glass-icons-android", version.ref = "miuix" }
+miuix-material = { module = "top.yukonga.miuix.kmp:miuix-material-android", version.ref = "miuix" }
 aboutlibraries-core = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutlibraries" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 junit = { module = "junit:junit", version.ref = "junit" }
