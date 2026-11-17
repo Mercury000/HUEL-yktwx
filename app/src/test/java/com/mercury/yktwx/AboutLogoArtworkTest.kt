@@ -27,18 +27,15 @@ class AboutLogoArtworkTest {
         }
     }
 
-    @Test fun roundedBadgeAndCardDetailsSurviveAlphaMasking() {
+    @Test fun roundedBadgeAndFoldedHouseSurviveAlphaMasking() {
         val bitmap = renderMask()
-        // The full-size badge is opaque; its corners and the card body are cut out.
+        // Inverted launcher alpha preserves the QR windows and roof separation.
         assertEquals(255, Color.alpha(bitmap.getPixel(54, 16)))
         assertEquals(255, Color.alpha(bitmap.getPixel(16, 54)))
         assertEquals(0, Color.alpha(bitmap.getPixel(0, 0)))
-        assertEquals(0, Color.alpha(bitmap.getPixel(54, 37)))
-        assertEquals(0, Color.alpha(bitmap.getPixel(41, 60)))
-        // Stripe, barcode and chip must be opaque islands, not RGB-only details.
-        assertEquals(255, Color.alpha(bitmap.getPixel(54, 46)))
-        assertEquals(255, Color.alpha(bitmap.getPixel(37, 60)))
-        assertEquals(255, Color.alpha(bitmap.getPixel(67, 61)))
+        assertEquals(255, Color.alpha(bitmap.getPixel(45, 59)))
+        assertEquals(0, Color.alpha(bitmap.getPixel(46, 36)))
+        assertEquals(0, Color.alpha(bitmap.getPixel(67, 68)))
     }
 
     @Test fun glassArtworkContainsOnlyWhiteMaskPixels() {
