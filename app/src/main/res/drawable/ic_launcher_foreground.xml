@@ -1,8 +1,24 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#194EC7" android:pathData="M36,41 L78,41 Q84,41 84,47 L84,74 Q84,80 78,80 L36,80 Q30,80 30,74 L30,47 Q30,41 36,41 Z"/>
-    <path android:fillColor="#FFFFFFFF" android:pathData="M32,33 L76,33 Q82,33 82,39 L82,67 Q82,73 76,73 L32,73 Q26,73 26,67 L26,39 Q26,33 32,33 Z"/>
-    <path android:fillColor="#DFF2FF" android:pathData="M26,43 L82,43 L82,51 L26,51 Z"/>
-    <path android:fillColor="#326CE5" android:pathData="M36,57 L39,57 L39,65 L36,65 Z M42,57 L44,57 L44,65 L42,65 Z M47,57 L50,57 L50,65 L47,65 Z M53,57 L55,57 L55,65 L53,65 Z"/>
-    <path android:fillColor="#25B6B0" android:pathData="M67,56 A5,5 0,1 1,67,66 A5,5 0,1 1,67,56 Z"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+<!-- Concept 86: folded campus house with QR windows. -->
+<group android:scaleX="3" android:scaleY="3" android:translateX="18" android:translateY="18">
+<path android:fillType="evenOdd" android:pathData="M5.1000000000000005 10.6 10.700000000000001 6.7Q11.6 6.1 12.6 6.7L18.099999999999998 9.7Q18.9 10.2 18.9 11.2V18.2Q18.9 19.8 17.299999999999997 19.8H6.7Q5.1000000000000005 19.8 5.1000000000000005 18.2V10.6Z">
+            <aapt:attr name="android:fillColor"><gradient android:type="linear"
+                android:startX="7.17000" android:startY="6.40000"
+                android:endX="16.83000" android:endY="19.80000"
+                android:startColor="#40A0FF" android:endColor="#2868E8" /></aapt:attr>
+        </path>
+<path android:fillType="evenOdd" android:pathData="M3.1 9.05 10.9 4.4Q11.9 3.8 13.0 4.3L20.2 8.45Q21.4 9.05 20.2 9.65L12.9 12.6L3.1 9.05Z">
+            <aapt:attr name="android:fillColor"><gradient android:type="linear"
+                android:startX="3.10000" android:startY="4.07273"
+                android:endX="20.80000" android:endY="12.60000"
+                android:startColor="#86D9FF" android:endColor="#58AFF6" /></aapt:attr>
+        </path>
+<path android:fillColor="#54ADF2" android:fillType="evenOdd" android:pathData="M3.1 9.05 12.9 12.6 11.200000000000001 9.55 5.4 11.1 3.1 9.05Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M9.345 12.9H11.325000000000001Q11.55 12.9 11.55 13.125V15.105Q11.55 15.33 11.325000000000001 15.33H9.345Q9.120000000000001 15.33 9.120000000000001 15.105V13.125Q9.120000000000001 12.9 9.345 12.9ZM9.8733 13.6533V14.5767H10.796700000000001V13.6533H9.8733Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M12.675 12.9H14.655000000000001Q14.88 12.9 14.88 13.125V15.105Q14.88 15.33 14.655000000000001 15.33H12.675Q12.450000000000001 15.33 12.450000000000001 15.105V13.125Q12.450000000000001 12.9 12.675 12.9ZM13.2033 13.6533V14.5767H14.126700000000001V13.6533H13.2033Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M9.345 16.23H11.325000000000001Q11.55 16.23 11.55 16.455V18.435000000000002Q11.55 18.66 11.325000000000001 18.66H9.345Q9.120000000000001 18.66 9.120000000000001 18.435000000000002V16.455Q9.120000000000001 16.23 9.345 16.23ZM9.8733 16.9833V17.9067H10.796700000000001V16.9833H9.8733Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M12.585 16.23H13.305000000000001Q13.440000000000003 16.23 13.440000000000003 16.365000000000002V17.085Q13.440000000000003 17.220000000000002 13.305000000000001 17.220000000000002H12.585Q12.450000000000001 17.220000000000002 12.450000000000001 17.085V16.365000000000002Q12.450000000000001 16.23 12.585 16.23Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M14.025 16.23H14.745000000000001Q14.88 16.23 14.88 16.365000000000002V18.525Q14.88 18.66 14.745000000000001 18.66H14.025Q13.89 18.66 13.89 18.525V16.365000000000002Q13.89 16.23 14.025 16.23Z" />
+<path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M12.585 17.67H13.305000000000001Q13.440000000000003 17.67 13.440000000000003 17.805V18.525Q13.440000000000003 18.66 13.305000000000001 18.66H12.585Q12.450000000000001 18.66 12.450000000000001 18.525V17.805Q12.450000000000001 17.67 12.585 17.67Z" />
+</group>
 </vector>
