@@ -11,9 +11,9 @@ import java.io.OutputStream
 
 @Serializable internal data class UiPreferences(
     val themeMode: Int = 0, val accentMode: Int = 0,
-    val floatingBottomBar: Boolean = false, val floatingBottomBarStyle: Int = 0,
-    val blurBottomBar: Boolean = false, val blurTopBar: Boolean = false,
-    val glassStyle: Boolean = false,
+    val floatingBottomBar: Boolean = true, val floatingBottomBarStyle: Int = 2,
+    val blurBottomBar: Boolean = true, val blurTopBar: Boolean = true,
+    val glassStyle: Boolean = true,
     val swipeBack: Boolean = false, val navTransitionStyle: Int = 0,
     val paymentMotionDetection: Boolean = false, val paymentBrightness: Boolean = true,
     val preventScreenshots: Boolean = true, val automaticUpdates: Boolean = true,
@@ -46,7 +46,7 @@ import java.io.OutputStream
 }
 
 @Serializable internal data class AppPreferences(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val legacyMigrated: Boolean = false,
     val writeRevision: Long = 0,
     val ui: UiPreferences = UiPreferences(),
@@ -58,7 +58,7 @@ import java.io.OutputStream
 ) {
     fun validate(): AppPreferences {
         requirePreferences(writeRevision >= 0, PreferencesFailureKind.Record, "设置写入序号不能为负数（writeRevision）")
-        requirePreferences(schemaVersion == 1, PreferencesFailureKind.Record,
+        requirePreferences(schemaVersion in 1..2, PreferencesFailureKind.Record,
             "设置文件版本不受当前应用支持（schemaVersion=$schemaVersion）")
         requirePreferences(updateChannel in setOf("stable", "beta"), PreferencesFailureKind.Record,
             "保存的更新渠道无效（updateChannel）")

@@ -27,7 +27,8 @@ internal object StorageModule {
 
     @Provides @Singleton
     fun dataStore(@ApplicationContext context: Context, @PreferencesScope scope: CoroutineScope): DataStore<AppPreferences> =
-        DataStoreFactory.create(AppPreferencesSerializer, migrations = listOf(LegacyPreferencesMigration(context)), scope = scope) {
+        DataStoreFactory.create(AppPreferencesSerializer,
+            migrations = listOf(LegacyPreferencesMigration(context), AppearanceDefaultsMigration), scope = scope) {
             context.dataStoreFile("app-preferences.json")
         }
     @Provides @Singleton fun settings(repository: AppPreferencesRepository): ThemeSettings = ThemeSettings(repository)

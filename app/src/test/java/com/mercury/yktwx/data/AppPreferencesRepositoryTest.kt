@@ -92,7 +92,7 @@ class AppPreferencesRepositoryTest {
             Triple("{\"private-marker\":", PreferencesFailureKind.Format, "有效 JSON"),
             Triple("[]", PreferencesFailureKind.Format, "顶层"),
             Triple(JsonObject(valid - "policies").toString(), PreferencesFailureKind.Record, "policies"),
-            Triple(JsonObject(valid + ("schemaVersion" to JsonPrimitive(2))).toString(), PreferencesFailureKind.Record, "schemaVersion=2"),
+            Triple(JsonObject(valid + ("schemaVersion" to JsonPrimitive(3))).toString(), PreferencesFailureKind.Record, "schemaVersion=3"),
             Triple(JsonObject(valid + ("writeRevision" to JsonPrimitive(-1))).toString(), PreferencesFailureKind.Record, "writeRevision"),
             Triple(JsonObject(valid + ("updateChannel" to JsonPrimitive("private-marker"))).toString(), PreferencesFailureKind.Record, "updateChannel"),
             Triple(JsonObject(valid + ("ui" to JsonObject(mapOf("floatingBottomBarStyle" to JsonPrimitive("private-marker"))))).toString(),

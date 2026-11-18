@@ -24,6 +24,23 @@ class LegacyPreferencesMigrationTest {
     private val hall = context.getSharedPreferences("migration-hall", Context.MODE_PRIVATE)
     private val updates = context.getSharedPreferences("migration-updates", Context.MODE_PRIVATE)
 
+    @Test fun firstReadWithoutLegacyUiPersistsNewAppearanceDefaults() = runBlocking {
+        ui.edit().clear().commit(); hall.edit().clear().commit(); updates.edit().clear().commit()
+        val target = java.io.File(files.root, "new-install.json")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = DataStoreFactory.create(AppPreferencesSerializer,
+                migrations = listOf(LegacyPreferencesMigration(ui, hall, updates), AppearanceDefaultsMigration), scope = scope) { target }
+            val saved = store.data.first()
+            assertTrue(saved.legacyMigrated)
+            assertEquals(2, saved.schemaVersion)
+            assertTrue(saved.ui.floatingBottomBar); assertEquals(2, saved.ui.floatingBottomBarStyle)
+            assertTrue(saved.ui.glassStyle); assertTrue(saved.ui.blurBottomBar); assertTrue(saved.ui.blurTopBar)
+            assertTrue(target.isFile)
+            assertEquals(saved, target.inputStream().use { AppPreferencesSerializer.readFrom(it) })
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
+    }
+
     @Test fun released141SettingsMigrateOnceAndUnreleasedFieldsAndDisplayCacheAreDiscarded() = runBlocking {
         val owner = "a".repeat(64) + ".selection"
         val key = "com.mercury.yktwx:stable:3"
@@ -39,11 +56,15 @@ class LegacyPreferencesMigrationTest {
         val target = java.io.File(files.root, "settings.json")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
-            val store = DataStoreFactory.create(AppPreferencesSerializer, migrations = listOf(migration), scope = scope) { target }
+            val store = DataStoreFactory.create(AppPreferencesSerializer,
+                migrations = listOf(migration, AppearanceDefaultsMigration), scope = scope) { target }
             val saved = store.data.first()
             assertTrue(saved.legacyMigrated)
             assertEquals(2, saved.ui.themeMode); assertFalse(saved.ui.preventScreenshots)
             assertFalse(saved.ui.paymentBrightness); assertTrue(saved.ui.swipeBack)
+            assertEquals(2, saved.schemaVersion)
+            assertTrue(saved.ui.floatingBottomBar); assertEquals(2, saved.ui.floatingBottomBarStyle)
+            assertTrue(saved.ui.glassStyle); assertTrue(saved.ui.blurBottomBar); assertTrue(saved.ui.blurTopBar)
             assertEquals(setOf("target"), saved.roomSelections[owner])
             assertEquals(UpdateReminder(123, UpdateCheckStore.HOUR, 9, 456), saved.reminders[key])
             assertEquals(com.mercury.yktwx.BuildConfig.UPDATE_CHANNEL, saved.updateChannel)
@@ -143,7 +164,9 @@ class LegacyPreferencesMigrationTest {
     }
 
     @Test fun alreadyMigratedSettingsAlsoReclaimAnEmptyBackupWithoutReimporting() = runBlocking {
-        val saved = AppPreferences(legacyMigrated = true, ui = UiPreferences(themeMode = 2))
+        val saved = AppPreferences(legacyMigrated = true, ui = UiPreferences(themeMode = 2,
+            floatingBottomBar = false, floatingBottomBarStyle = 0, glassStyle = false,
+            blurBottomBar = false, blurTopBar = false))
         val migration = LegacyPreferencesMigration(context)
         val backup = java.io.File(context.applicationInfo.dataDir, "shared_prefs/hall_display.xml.bak")
         backup.parentFile!!.mkdirs()

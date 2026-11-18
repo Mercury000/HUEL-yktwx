@@ -35,10 +35,11 @@ internal class LegacyPreferencesMigration internal constructor(
         val values = legacyValues(ui, "ui_settings")
         fun integer(key: String, default: Int = 0) = values[key] as? Int ?: default
         fun boolean(key: String, default: Boolean = false) = values[key] as? Boolean ?: default
-        val storedUi = UiPreferences(
+        val storedUi = if (values.isEmpty()) currentData.ui else UiPreferences(
             themeMode = integer("theme_mode").coerceIn(0, 2), accentMode = integer("accent_mode").coerceIn(0, 1),
             floatingBottomBar = boolean("floating_bottom_bar"), floatingBottomBarStyle = integer("floating_bottom_bar_style").coerceIn(0, 1),
             blurBottomBar = boolean("blur_bottom_bar"), blurTopBar = boolean("blur_top_bar"),
+            glassStyle = false,
             swipeBack = boolean("swipe_back"), navTransitionStyle = integer("nav_transition_style").coerceIn(0, 1),
             paymentMotionDetection = boolean("payment_motion_detection"), paymentBrightness = boolean("payment_brightness", true),
             preventScreenshots = boolean("prevent_screenshots", true), automaticUpdates = boolean("automatic_updates", true),
@@ -61,7 +62,8 @@ internal class LegacyPreferencesMigration internal constructor(
         ) }
         // Only released 1.4.1 data is imported. Its unsigned update cache is discardable.
         // Channel, skip and signed-policy SharedPreferences fields were never released.
-        return currentData.copy(legacyMigrated = true, ui = storedUi, roomSelections = rooms,
+        // Imported appearance values use v1 defaults and must pass through the v2 migration.
+        return currentData.copy(schemaVersion = 1, legacyMigrated = true, ui = storedUi, roomSelections = rooms,
             reminders = reminders).validate()
     }
 
