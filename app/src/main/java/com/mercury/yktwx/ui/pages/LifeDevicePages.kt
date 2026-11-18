@@ -26,13 +26,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -363,6 +368,12 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
             if (skus.size == 1) {
                 HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
                 LifeDeviceField(if (device.isShower) "出水口" else "接水选项") { Text(skus.single().name, fontSize = 12.sp) }
+            } else if (skus.size in 2..3 && skus.all { it.name.length <= 4 && it.available != false } &&
+                skus.any { it.id == state?.selectedSkuId }) {
+                HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
+                LifeDeviceField(if (device.isShower) "出水口" else "接水选项") {
+                    WaterOptionTabs(skus, skus.indexOfFirst { it.id == state?.selectedSkuId }, enabled, onSelect)
+                }
             } else if (skus.isNotEmpty()) {
                 HorizontalDivider(color = MiuixTheme.colorScheme.onSurface.copy(alpha = .04f))
                 Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -373,6 +384,33 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun WaterOptionTabs(skus: List<LifeSku>, selected: Int, enabled: Boolean, onSelect: (String) -> Unit) {
+    val disabledModifier = if (enabled) Modifier else Modifier
+        .semantics { disabled() }.focusProperties { canFocus = false }
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            }
+        }
+    Box(Modifier.widthIn(max = (skus.size * 64 + 10).dp).fillMaxWidth()
+        .testTag("water-option-tabs").then(disabledModifier)) {
+        val styles = MiuixTheme.textStyles
+        MiuixTheme(colors = MiuixTheme.colorScheme, textStyles = styles.copy(
+            body2 = styles.body2.copy(fontSize = 12.sp), subtitle = styles.subtitle.copy(fontSize = 12.sp))) {
+            AppTabRowWithContour(tabs = skus.map { it.name }, selectedTabIndex = selected,
+                onTabSelected = { if (enabled) onSelect(skus[it].id) },
+                minWidth = 64.dp, maxWidth = 64.dp, height = 34.dp, cornerRadius = 9.dp, itemSpacing = 0.dp,
+                contentAlignment = if (LocalGlassStyle.current) Alignment.CenterEnd else Alignment.Center,
+                colors = TabRowDefaults.tabRowColors(
+                    backgroundColor = if (isSystemInDarkTheme()) DashboardPalette.card else DashboardPalette.field,
+                    contentColor = DashboardPalette.muted,
+                    selectedBackgroundColor = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.secondaryVariant else DashboardPalette.card,
+                    selectedContentColor = DashboardPalette.ink))
         }
     }
 }

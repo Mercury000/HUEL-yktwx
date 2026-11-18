@@ -7,7 +7,10 @@ import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureLifeDeviceApi
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -31,6 +34,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.glass.GlassSegmentedTabRowDefaults
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.*
 import java.net.URL
@@ -239,6 +243,48 @@ class LifeDeviceUiTest {
         assertEquals(pages.size, backs)
     }
 
+    @Test fun compactWaterOptionsKeepSizeSelectionAndDisabledStateAcrossGlassChanges() {
+        val skus = listOf(LifeSku("hot", "热水", null), LifeSku("warm", "温水", null))
+        var selected by mutableIntStateOf(0)
+        var enabled by mutableStateOf(true)
+        var glass by mutableStateOf(false)
+        var selections = 0
+        compose.setContent { AppTheme(ColorSchemeMode.Light, glassStyle = glass) {
+            Column(Modifier.padding(20.dp)) {
+                LifeDeviceField("接水选项") {
+                    WaterOptionTabs(skus, selected, enabled) { id ->
+                        selected = skus.indexOfFirst { it.id == id }; selections++
+                    }
+                }
+            }
+        } }
+        val control = compose.onNodeWithTag("water-option-tabs", useUnmergedTree = true)
+        control.assertWidthIsEqualTo(138.dp).assertHeightIsEqualTo(34.dp)
+        val original = control.fetchSemanticsNode().boundsInRoot
+        for (appearance in listOf(false, true)) {
+            compose.runOnIdle { glass = appearance; enabled = true; selected = 0 }
+            compose.onNode(hasText("温水") and isSelectable()).performClick()
+            compose.runOnIdle { assertEquals(1, selected) }
+            compose.onNode(hasText("温水") and isSelectable()).assertIsSelected()
+            assertEquals(original, control.fetchSemanticsNode().boundsInRoot)
+            if (appearance) {
+                val material = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup) and
+                    hasAnyDescendant(hasText("热水")) and hasAnyDescendant(hasText("温水")), useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                val trackPadding = GlassSegmentedTabRowDefaults.TrackPadding.value *
+                    compose.activity.resources.displayMetrics.density
+                assertEquals("Glass selector aligns with the information column",
+                    original.right, material.right + trackPadding, 1f)
+            }
+            val before = selections
+            compose.runOnIdle { enabled = false }
+            control.assertIsNotEnabled()
+            compose.onNode(hasText("热水") and isSelectable()).performTouchInput { click() }
+            compose.runOnIdle { assertEquals(1, selected); assertEquals(before, selections) }
+            assertEquals(original, control.fetchSemanticsNode().boundsInRoot)
+        }
+    }
+
     @Test fun capturedWaterDeviceFitsNativePageAndDoesNotInventPrices() {
         val fixture = File("../tools/life-device-capture.json")
         assumeTrue("Optional local HAR device fixture", fixture.isFile)
@@ -249,10 +295,11 @@ class LifeDeviceUiTest {
         val captureClock = { times.longValue("runningAt") }
         val model = model()
         val settings = settings()
+        var glass by mutableStateOf(false)
         var state by mutableStateOf(LifeDevicesUiState(restoring = false, feature = LifeFeature.Water, device = device,
             selectedSkuId = device.skus.first().id))
         compose.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
+            CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme(glassStyle = glass) {
                 LifeDevicePage(state, settings, model, active = true, onBack = {}, nowMillis = captureClock)
             } }
         }
@@ -268,14 +315,20 @@ class LifeDeviceUiTest {
         compose.onNodeWithText("计价规则").assertDoesNotExist()
         compose.onNodeWithText("重新扫码").assertDoesNotExist()
         val hero = compose.onNodeWithTag("life-device-hero").fetchSemanticsNode().boundsInRoot
-        val glyph = compose.onNodeWithTag("life-device-glyph").fetchSemanticsNode().boundsInRoot
-        val name = compose.onNodeWithTag("life-device-name").fetchSemanticsNode().boundsInRoot
+        val glyph = compose.onNodeWithTag("life-device-glyph", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val name = compose.onNodeWithTag("life-device-name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertEquals(hero.center.x, glyph.center.x, 1f)
         assertEquals(hero.center.x, name.center.x, 1f)
         val footer = compose.onNodeWithTag("water-action-footer").fetchSemanticsNode().boundsInRoot
         val notice = compose.onNodeWithTag("water-usage-notice").fetchSemanticsNode().boundsInRoot
         assertTrue("Content must fit above fixed action", notice.bottom < footer.top)
         capture("03-water-device-from-capture")
+        compose.runOnIdle { glass = true }
+        compose.onRoot().captureToImage()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        capture("water-options-glass")
+        compose.runOnIdle { glass = false }
         compose.runOnIdle { state = state.copy(water = WaterSession(device, device.skus.first().id, phase = WaterPhase.Starting)) }
         compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("正在启动设备").assertIsDisplayed()
