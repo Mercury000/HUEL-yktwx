@@ -60,7 +60,7 @@ class LegacyPreferencesMigrationTest {
                 migrations = listOf(migration, AppearanceDefaultsMigration), scope = scope) { target }
             val saved = store.data.first()
             assertTrue(saved.legacyMigrated)
-            assertEquals(2, saved.ui.themeMode); assertFalse(saved.ui.preventScreenshots)
+            assertEquals(2, saved.ui.themeMode)
             assertFalse(saved.ui.paymentBrightness); assertTrue(saved.ui.swipeBack)
             assertEquals(2, saved.schemaVersion)
             assertTrue(saved.ui.floatingBottomBar); assertEquals(2, saved.ui.floatingBottomBarStyle)

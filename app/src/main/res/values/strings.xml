@@ -19,8 +19,9 @@
     <string name="blur_top_bar">Blur Top Bar</string>
     <string name="swipe_back">Swipe Back</string>
     <string name="nav_transition_style">Transition Style</string>
-    <string name="prevent_screenshots">Prevent Screenshots</string>
-    <string name="prevent_screenshots_summary">Also hide screen recordings and recent task previews</string>
+    <string name="payment_screenshot_title">Do not use payment code screenshots</string>
+    <string name="payment_screenshot_content">For your use only. Sharing may cause financial loss.</string>
+    <string name="payment_screenshot_acknowledge">Got it</string>
     <string name="link_open_failed">No app available to open this link</string>
     <string name="about_developer">Developer</string>
     <string name="about_source_code">Source Code</string>

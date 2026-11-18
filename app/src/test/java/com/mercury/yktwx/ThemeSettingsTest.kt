@@ -82,7 +82,6 @@ class ThemeSettingsTest {
         assertTrue(settings.glassStyle.value)
         assertTrue(settings.blurBottomBar.value)
         assertTrue(settings.blurTopBar.value)
-        assertTrue(settings.preventScreenshots.value)
         assertTrue(settings.automaticUpdates.value)
         assertTrue(settings.paymentBrightness.value)
         assertFalse(settings.swipeBack.value)
@@ -90,7 +89,7 @@ class ThemeSettingsTest {
         settings.setFloatingStyle(1); settings.setBlurBottom(true); settings.setBlurTop(true)
         settings.setSwipeBack(true); settings.setNavTransitionStyle(1)
         settings.setPaymentMotionDetection(true); settings.setPaymentBrightness(false)
-        settings.setPreventScreenshots(false); settings.setAutomaticUpdates(false)
+        settings.setAutomaticUpdates(false)
         settings.setNavigationRailExpanded(true)
         settings.dismissLifeLoginNotice(LifeProvider.Hui798)
         settings.setUpdateChannel("beta")
@@ -104,7 +103,7 @@ class ThemeSettingsTest {
         assertTrue(other.blurBottomBar.value); assertTrue(other.blurTopBar.value)
         assertTrue(other.swipeBack.value); assertEquals(1, other.navTransitionStyle.value)
         assertTrue(other.paymentMotionDetection.value); assertFalse(other.paymentBrightness.value)
-        assertFalse(other.preventScreenshots.value); assertFalse(other.automaticUpdates.value)
+        assertFalse(other.automaticUpdates.value)
         assertTrue(other.getNavigationRailExpanded(false)); assertTrue(other.hui798LoginNoticeDismissed.value)
         assertFalse(other.pangguiLoginNoticeDismissed.value); assertEquals("beta", other.updateChannel.value)
         assertEquals(repository.snapshot(), store.values.value)
@@ -121,13 +120,13 @@ class ThemeSettingsTest {
             repository.failures.collect { failures += it }
         }
         store.failure = java.io.IOException("disk full")
-        settings.setPreventScreenshots(false)
+        settings.setPaymentBrightness(false)
         runCurrent()
-        assertTrue(settings.preventScreenshots.value)
+        assertTrue(settings.paymentBrightness.value)
         assertEquals(PreferencesFailureKind.Storage, failures.single().kind)
         assertTrue(failures.single().detail.contains("IOException"))
         store.failure = null
-        settings.setPreventScreenshots(false); runCurrent()
-        assertFalse(settings.preventScreenshots.value)
+        settings.setPaymentBrightness(false); runCurrent()
+        assertFalse(settings.paymentBrightness.value)
     }
 }

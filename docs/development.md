@@ -29,7 +29,7 @@ adb install -r app/build/outputs/apk/preview/app-preview.apk
 adb shell am start -n com.mercury.yktwx.preview/com.mercury.yktwx.MainActivity --ez ui_preview true
 ```
 
-常规模式使用 `FLAG_SECURE` 限制截图与任务预览，预览模式允许截图。预览不读取真实账户、不请求业务服务，不能用于付款。
+应用允许截图；常规模式下，付款码在屏幕内展示（含放大弹窗）时通过 Android 截图回调显示使用提醒，进入后台或离开页面后停止监听。预览模式不弹提醒，不读取真实账户、不请求业务服务，不能用于付款。
 
 ## 测试
 

@@ -3,7 +3,6 @@ package com.mercury.yktwx
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -45,13 +44,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         preview = UiPreview.enabled && UiPreview.requested(intent)
-        // Hilt initializes the settings graph inside super.onCreate; protect the window first.
-        if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
         setContent {
             val loaded by preferences.state.collectAsStateWithLifecycle()
             if (loaded !is PreferencesLoadState.Ready) {
-                SideEffect { if (!preview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
                 LaunchedEffect(loaded) { stopBusiness() }
                 AppTheme(ColorSchemeMode.System, 0) {
                     PreferencesEntry((loaded as? PreferencesLoadState.Failed)?.failure, preferences::retry)
@@ -81,11 +77,6 @@ class MainActivity : ComponentActivity() {
                 preferences.failures.collect { failure ->
                     android.widget.Toast.makeText(this@MainActivity, "设置保存失败：${failure.detail}", android.widget.Toast.LENGTH_LONG).show()
                 }
-            }
-            val secure = !preview && settings.preventScreenshots.value
-            SideEffect {
-                if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
             CompositionLocalProvider(LocalConfiguration provides (latestConfig.value ?: LocalConfiguration.current)) {
                 val systemDark = isSystemInDarkTheme()

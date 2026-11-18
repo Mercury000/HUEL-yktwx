@@ -42,7 +42,7 @@ internal class LegacyPreferencesMigration internal constructor(
             glassStyle = false,
             swipeBack = boolean("swipe_back"), navTransitionStyle = integer("nav_transition_style").coerceIn(0, 1),
             paymentMotionDetection = boolean("payment_motion_detection"), paymentBrightness = boolean("payment_brightness", true),
-            preventScreenshots = boolean("prevent_screenshots", true), automaticUpdates = boolean("automatic_updates", true),
+            automaticUpdates = boolean("automatic_updates", true),
             pangguiLoginNoticeDismissed = boolean("panggui_login_notice_dismissed"), hui798LoginNoticeDismissed = boolean("hui798_login_notice_dismissed"),
             navigationRailExpanded = values["navigation_rail_expanded"] as? Boolean,
         )

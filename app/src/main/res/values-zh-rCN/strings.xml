@@ -19,8 +19,9 @@
     <string name="blur_top_bar">顶栏模糊</string>
     <string name="swipe_back">滑动返回</string>
     <string name="nav_transition_style">转场风格</string>
-    <string name="prevent_screenshots">禁止截图</string>
-    <string name="prevent_screenshots_summary">同时隐藏录屏和最近任务预览</string>
+    <string name="payment_screenshot_title">请勿截图使用付款码</string>
+    <string name="payment_screenshot_content">仅限本人使用，外传可能造成损失</string>
+    <string name="payment_screenshot_acknowledge">知道了</string>
     <string name="link_open_failed">没有可打开链接的应用</string>
     <string name="about_developer">开发者</string>
     <string name="about_source_code">源码</string>

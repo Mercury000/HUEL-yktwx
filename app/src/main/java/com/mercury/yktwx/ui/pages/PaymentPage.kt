@@ -8,6 +8,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.mercury.yktwx.ui.PaymentCodePresentationEffect
+import com.mercury.yktwx.ui.PaymentCodeScreenshotEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringResource
 import android.widget.Toast
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -40,6 +45,7 @@ import com.google.zxing.BarcodeFormat
 import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
 import com.mercury.yktwx.PaymentUiState
+import com.mercury.yktwx.R
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.life.LifeFeature
 import com.mercury.yktwx.data.life.LifeProvider
@@ -66,13 +72,19 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
     lifeSessionErrors: Map<String, String> = emptyMap(),
     lifeLoginExpired: Boolean = false, hui798LoginExpired: Boolean = false,
-    hellobikeLoginExpired: Boolean = false, showScanAction: Boolean = true) {
+    hellobikeLoginExpired: Boolean = false, showScanAction: Boolean = true, isVisible: Boolean = isActive) {
     // Restoration can precede the shell's first read; show code loading without card verification.
     val awaitingCode = !state.needsLogin && state.code == null && state.error == null &&
         (state.problem == null || state.problem == PaymentCodeProblem.StatusUnverified)
     val displayState = if (awaitingCode && !LocalReadOffline.current) state.copy(busy = true) else state
     val displayCode = displayState.code.takeIf { displayState.problem == null && !displayState.busy && displayState.error == null }
     PaymentCodePresentationEffect(isActive && displayCode != null, increaseBrightness = settings.paymentBrightness.value)
+    val listState = rememberLazyListState()
+    val codeItemInViewport by remember(listState) {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.index == 0 } }
+    }
+    var codeOnScreen by remember(displayCode) { mutableStateOf(false) }
+    var screenshotWarning by remember(state.username) { mutableStateOf(false) }
     var enlarged by rememberSaveable(state.username) { mutableStateOf<BarcodeFormat?>(null) }
     var restoringEnlargement by remember { mutableStateOf(enlarged != null) }
     LaunchedEffect(isActive, displayCode, state.needsLogin, state.error, state.problem) {
@@ -100,6 +112,12 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
             displayState.cardStatusLoading))
         .takeIf { initialError == null && readError == null && !displayState.busy }
     val showEnlarged = isActive && displayCode != null && enlarged != null
+    PaymentCodeScreenshotEffect(isVisible && displayCode != null && !state.preview &&
+        (showEnlarged || codeItemInViewport && codeOnScreen)) {
+        enlarged = null
+        screenshotWarning = true
+    }
+    LaunchedEffect(isVisible) { if (!isVisible) screenshotWarning = false }
     // Only the format survives exit. The popup may still compose its previous content
     // after the close action clears enlarged, so it must not unwrap that live state.
     val enlargedFormat = rememberWhileShown(showEnlarged, enlarged)
@@ -120,8 +138,14 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
             }
         }
     }
+    OverlayDialog(show = screenshotWarning && isVisible,
+        title = stringResource(R.string.payment_screenshot_title),
+        summary = stringResource(R.string.payment_screenshot_content),
+        onDismissRequest = { screenshotWarning = false }) {
+        TextButton(stringResource(R.string.payment_screenshot_acknowledge),
+            onClick = { screenshotWarning = false }, modifier = Modifier.fillMaxWidth())
+    }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
-    val listState = rememberLazyListState()
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
     val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scrollBehavior)
@@ -233,7 +257,12 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                                     // Measure static text only; no payment code is retained in measurement/cache.
                                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                                         val bodyHeight = paymentContentHeight(maxWidth)
-                                        Box(Modifier.fillMaxWidth().height(bodyHeight).testTag("payment-code-content"),
+                                        Box(Modifier.fillMaxWidth().height(bodyHeight).testTag("payment-code-content")
+                                            .onGloballyPositioned { coordinates ->
+                                                val bounds = coordinates.boundsInWindow()
+                                                codeOnScreen = bounds.width > 0 && bounds.height > 0 &&
+                                                    bounds.overlaps(coordinates.findRootCoordinates().boundsInWindow())
+                                            },
                                             contentAlignment = Alignment.Center) {
                                             if (state.busy) {
                                                 CircularProgressIndicator(Modifier.size(30.dp).testTag("payment-code-loading"))

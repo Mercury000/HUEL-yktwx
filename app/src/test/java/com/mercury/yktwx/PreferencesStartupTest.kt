@@ -56,14 +56,14 @@ class PreferencesStartupTest {
         val model = activity.viewModelStore[it]
         model is PaymentViewModel || model is BillViewModel || model is RechargeViewModel || model is FeeViewModel
     }
-    @Test fun loadingProtectsTheWindowAndLifecycleCallbacksDoNotCreateBusinessModels() {
+    @Test fun loadingAllowsScreenshotsAndLifecycleCallbacksDoNotCreateBusinessModels() {
         launch()
         compose.onNodeWithText("正在准备应用").assertIsDisplayed()
-        assertTrue(protected()); assertFalse(hasBusinessModel())
+        assertFalse(protected()); assertFalse(hasBusinessModel())
         scenario!!.moveToState(Lifecycle.State.CREATED)
         scenario!!.moveToState(Lifecycle.State.RESUMED)
-        assertTrue(protected()); assertFalse(hasBusinessModel())
-        loaded.complete(AppPreferences(legacyMigrated = true, ui = UiPreferences(preventScreenshots = false)))
+        assertFalse(protected()); assertFalse(hasBusinessModel())
+        loaded.complete(AppPreferences(legacyMigrated = true))
         compose.waitUntil(5_000) {
             shadowOf(Looper.getMainLooper()).idle()
             compose.onAllNodesWithTag("preferences-entry").fetchSemanticsNodes().isEmpty()
@@ -72,12 +72,12 @@ class PreferencesStartupTest {
         assertFalse(protected()); assertTrue(hasBusinessModel())
         compose.onNodeWithTag("usage-notice-body").assertExists()
     }
-    @Test fun failedReadShowsRetryAndPreservesProtectionUntilReadiness() {
+    @Test fun failedReadAndReadyConsentEntryAllowScreenshots() {
         fail = true; launch()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("重试").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("本机设置文件读写失败（IOException）").assertIsDisplayed()
         compose.onNodeWithText("temporary read failure", substring = true).assertDoesNotExist()
-        assertTrue(protected()); assertFalse(hasBusinessModel())
+        assertFalse(protected()); assertFalse(hasBusinessModel())
         fail = false
         loaded.complete(AppPreferences(legacyMigrated = true))
         compose.onNodeWithText("重试").performClick()
@@ -86,6 +86,6 @@ class PreferencesStartupTest {
             compose.onAllNodesWithTag("preferences-entry").fetchSemanticsNodes().isEmpty()
         }
         compose.waitForIdle()
-        assertTrue(protected()); assertTrue(hasBusinessModel())
+        assertFalse(protected()); assertTrue(hasBusinessModel())
     }
 }

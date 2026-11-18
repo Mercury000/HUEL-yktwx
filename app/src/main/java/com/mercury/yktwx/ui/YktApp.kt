@@ -845,6 +845,7 @@ private fun MainContent(
                                                     onRecharge = ::recharge,
                                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                                     isActive = paymentPageSelected && !paymentPageCovered,
+                                                    isVisible = paymentPageSelected,
                                                     onScan = ::openLifeScanner,
                                                     showScanAction = !settings.floatingBottomBar.value || shouldShowMainNavigationRail(settings),
                                                     scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&

@@ -18,6 +18,21 @@ import java.io.ByteArrayOutputStream
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AppPreferencesRepositoryTest {
+
+    @Test fun retiredScreenshotSettingIsIgnoredWhenLoadingOlderRecords() = runBlocking {
+        val output = ByteArrayOutputStream()
+        AppPreferencesSerializer.writeTo(AppPreferences(), output)
+        val record = Json.parseToJsonElement(output.toString(Charsets.UTF_8.name())).jsonObject
+        for (oldValue in listOf(true, false)) {
+            val oldUi = JsonObject(record.getValue("ui").jsonObject + ("preventScreenshots" to JsonPrimitive(oldValue)))
+            val oldRecord = JsonObject(record + ("ui" to oldUi))
+            val decoded = AppPreferencesSerializer.readFrom(ByteArrayInputStream(oldRecord.toString().toByteArray()))
+            assertEquals(AppPreferences(), decoded)
+            val rewritten = ByteArrayOutputStream()
+            AppPreferencesSerializer.writeTo(decoded, rewritten)
+            assertFalse(rewritten.toString(Charsets.UTF_8.name()).contains("preventScreenshots"))
+        }
+    }
     @Test fun persistedWriteWinsOverDelayedOlderObserverEmission() = runTest {
         val emissions = Channel<AppPreferences>(Channel.UNLIMITED)
         var persisted = AppPreferences(legacyMigrated = true)
@@ -31,7 +46,7 @@ class AppPreferencesRepositoryTest {
         val repository = appPreferencesRepositoryFixture(store, backgroundScope)
         emissions.send(persisted); runCurrent()
         val first = repository.update { it.copy(updateChannel = "beta") }
-        val second = repository.update { it.copy(ui = it.ui.copy(preventScreenshots = false)) }
+        val second = repository.update { it.copy(ui = it.ui.copy(paymentBrightness = false)) }
         emissions.send(first); runCurrent()
         assertEquals(second, repository.snapshot())
         assertEquals(second, (repository.composeState.value as PreferencesLoadState.Ready).preferences)
@@ -63,7 +78,7 @@ class AppPreferencesRepositoryTest {
         val (release, digest) = fixture.verifier.manifest(fixture.sign(fixture.json().withField("maxForcedVersionCode", 9)), "stable")
         val data = AppPreferences(legacyMigrated = true, writeRevision = 4, updateChannel = "beta",
             roomSelections = mapOf("owner.selection" to setOf("target")),
-            ui = UiPreferences(preventScreenshots = false, themeMode = 99, accentMode = -1,
+            ui = UiPreferences(paymentBrightness = false, themeMode = 99, accentMode = -1,
                 floatingBottomBarStyle = 99, navTransitionStyle = 7),
             policies = mapOf("${fixture.request.packageName}:stable" to AcceptedUpdatePolicy(release.policyRevision,
                 digest, 9, release.versionCode, release.signedManifest)))

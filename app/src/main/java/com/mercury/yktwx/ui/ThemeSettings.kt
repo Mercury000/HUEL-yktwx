@@ -24,7 +24,6 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     val navTransitionStyle = option(0..1) { it.navTransitionStyle }
     val paymentMotionDetection = ui { it.paymentMotionDetection }
     val paymentBrightness = ui { it.paymentBrightness }
-    val preventScreenshots = ui { it.preventScreenshots }
     val automaticUpdates = ui { it.automaticUpdates }
     val pangguiLoginNoticeDismissed = ui { it.pangguiLoginNoticeDismissed }
     val hui798LoginNoticeDismissed = ui { it.hui798LoginNoticeDismissed }
@@ -62,7 +61,6 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     fun setNavTransitionStyle(v: Int) = change { it.copy(navTransitionStyle = v.coerceIn(0, 1)) }
     fun setPaymentMotionDetection(v: Boolean) = change { it.copy(paymentMotionDetection = v) }
     fun setPaymentBrightness(v: Boolean) = change { it.copy(paymentBrightness = v) }
-    fun setPreventScreenshots(v: Boolean) = change { it.copy(preventScreenshots = v) }
     fun setAutomaticUpdates(v: Boolean) = change { it.copy(automaticUpdates = v) }
     fun setUpdateChannel(value: String) {
         require(value in setOf("stable", "beta"))

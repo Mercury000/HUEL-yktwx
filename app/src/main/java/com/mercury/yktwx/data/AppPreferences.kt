@@ -16,7 +16,7 @@ import java.io.OutputStream
     val glassStyle: Boolean = true,
     val swipeBack: Boolean = false, val navTransitionStyle: Int = 0,
     val paymentMotionDetection: Boolean = false, val paymentBrightness: Boolean = true,
-    val preventScreenshots: Boolean = true, val automaticUpdates: Boolean = true,
+    val automaticUpdates: Boolean = true,
     val pangguiLoginNoticeDismissed: Boolean = false, val hui798LoginNoticeDismissed: Boolean = false,
     val hellobikeLoginNoticeDismissed: Boolean = false,
     val navigationRailExpanded: Boolean? = null,
@@ -132,7 +132,7 @@ internal object AppPreferencesSerializer : Serializer<AppPreferences> {
             check(ui[it], "ui.$it", integer)
         }
         listOf("floatingBottomBar", "blurBottomBar", "blurTopBar", "glassStyle", "swipeBack", "paymentMotionDetection",
-            "paymentBrightness", "preventScreenshots", "automaticUpdates", "pangguiLoginNoticeDismissed",
+            "paymentBrightness", "automaticUpdates", "pangguiLoginNoticeDismissed",
             "hui798LoginNoticeDismissed", "hellobikeLoginNoticeDismissed").forEach { check(ui[it], "ui.$it", boolean) }
         check(ui["navigationRailExpanded"], "ui.navigationRailExpanded") { it == JsonNull || boolean(it) }
         listOf("roomSelections", "reminders", "skippedVersions", "policies").forEach { name ->

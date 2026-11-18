@@ -70,9 +70,6 @@ internal fun AppSettingsContent(
                     summary = stringResource(R.string.payment_motion_detection_summary),
                     checked = settings.paymentMotionDetection.value, onCheckedChange = settings::setPaymentMotionDetection,
                     modifier = Modifier.testTag("payment-motion-detection-switch"))
-                SwitchPreference(title = stringResource(R.string.prevent_screenshots),
-                    summary = stringResource(R.string.prevent_screenshots_summary),
-                    checked = settings.preventScreenshots.value, onCheckedChange = settings::setPreventScreenshots)
             }
         }
         item { SmallTitle("应用更新") }

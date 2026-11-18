@@ -23,7 +23,7 @@ class AppearanceDefaultsMigrationTest {
             ui = UiPreferences(themeMode = 2, accentMode = 1,
                 floatingBottomBar = false, floatingBottomBarStyle = 0, glassStyle = false,
                 blurBottomBar = false, blurTopBar = false, swipeBack = true,
-                paymentBrightness = false, preventScreenshots = false, automaticUpdates = false),
+                paymentBrightness = false, automaticUpdates = false),
             roomSelections = mapOf("owner.selection" to setOf("room")), updateChannel = "beta",
             reminders = mapOf("reminder" to UpdateReminder(123, UpdateCheckStore.HOUR, 9, 456)),
             skippedVersions = mapOf("beta" to 9),
