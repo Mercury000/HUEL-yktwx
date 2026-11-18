@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="430" viewBox="0 0 1280 430" role="img" aria-labelledby="title desc">
+  <title id="title">财小通 · CaiXiaoTong</title>
+  <desc id="desc">校园一卡通 Android 客户端。蓝色校园房屋图标与一卡通卡片组成的项目横幅。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f5f9ff"/>
+      <stop offset="1" stop-color="#e8f1ff"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#438cff"/>
+      <stop offset="1" stop-color="#2864df"/>
+    </linearGradient>
+    <linearGradient id="house" gradientUnits="userSpaceOnUse" x1="7.17" y1="6.4" x2="16.83" y2="19.8">
+      <stop stop-color="#40a0ff"/>
+      <stop offset="1" stop-color="#2868e8"/>
+    </linearGradient>
+    <linearGradient id="roof" gradientUnits="userSpaceOnUse" x1="3.1" y1="4.07" x2="20.8" y2="12.6">
+      <stop stop-color="#86d9ff"/>
+      <stop offset="1" stop-color="#58aff6"/>
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#2459aa" flood-opacity=".13"/>
+    </filter>
+    <g id="logo" fill-rule="evenodd">
+      <path fill="url(#house)" d="M5.1 10.6 10.7 6.7Q11.6 6.1 12.6 6.7L18.1 9.7Q18.9 10.2 18.9 11.2V18.2Q18.9 19.8 17.3 19.8H6.7Q5.1 19.8 5.1 18.2V10.6Z"/>
+      <path fill="url(#roof)" d="M3.1 9.05 10.9 4.4Q11.9 3.8 13 4.3L20.2 8.45Q21.4 9.05 20.2 9.65L12.9 12.6 3.1 9.05Z"/>
+      <path fill="#54adf2" d="M3.1 9.05 12.9 12.6 11.2 9.55 5.4 11.1 3.1 9.05Z"/>
+      <path fill="#fff" d="M9.345 12.9H11.325Q11.55 12.9 11.55 13.125V15.105Q11.55 15.33 11.325 15.33H9.345Q9.12 15.33 9.12 15.105V13.125Q9.12 12.9 9.345 12.9ZM9.8733 13.6533V14.5767H10.7967V13.6533H9.8733Z"/>
+      <path fill="#fff" d="M12.675 12.9H14.655Q14.88 12.9 14.88 13.125V15.105Q14.88 15.33 14.655 15.33H12.675Q12.45 15.33 12.45 15.105V13.125Q12.45 12.9 12.675 12.9ZM13.2033 13.6533V14.5767H14.1267V13.6533H13.2033Z"/>
+      <path fill="#fff" d="M9.345 16.23H11.325Q11.55 16.23 11.55 16.455V18.435Q11.55 18.66 11.325 18.66H9.345Q9.12 18.66 9.12 18.435V16.455Q9.12 16.23 9.345 16.23ZM9.8733 16.9833V17.9067H10.7967V16.9833H9.8733Z"/>
+      <path fill="#fff" d="M12.585 16.23H13.305Q13.44 16.23 13.44 16.365V17.085Q13.44 17.22 13.305 17.22H12.585Q12.45 17.22 12.45 17.085V16.365Q12.45 16.23 12.585 16.23ZM14.025 16.23H14.745Q14.88 16.23 14.88 16.365V18.525Q14.88 18.66 14.745 18.66H14.025Q13.89 18.66 13.89 18.525V16.365Q13.89 16.23 14.025 16.23ZM12.585 17.67H13.305Q13.44 17.67 13.44 17.805V18.525Q13.44 18.66 13.305 18.66H12.585Q12.45 18.66 12.45 18.525V17.805Q12.45 17.67 12.585 17.67Z"/>
+    </g>
+  </defs>
+  <rect width="1280" height="430" rx="28" fill="url(#bg)"/>
+  <circle cx="1130" cy="85" r="220" fill="#d9e8ff" opacity=".65"/>
+  <circle cx="1205" cy="35" r="148" fill="none" stroke="#fff" stroke-width="1.5" opacity=".85"/>
+  <circle cx="1205" cy="35" r="184" fill="none" stroke="#fff" stroke-width="1.5" opacity=".65"/>
+  <g font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+    <text x="72" y="93" fill="#4e78b3" font-size="16" font-weight="600" letter-spacing="2">校园一卡通 Android 客户端</text>
+    <text x="69" y="192" fill="#152b4c" font-size="76" font-weight="700">财小通</text>
+    <text x="76" y="236" fill="#3478f6" font-size="25" font-weight="600" letter-spacing="1.2">CaiXiaoTong</text>
+    <text x="73" y="293" fill="#526783" font-size="23">校园卡支付 · 充值缴费 · 账单查询</text>
+    <g transform="translate(72 329)">
+      <rect width="268" height="35" rx="17.5" fill="#fff" opacity=".85"/>
+      <circle cx="18" cy="17.5" r="4" fill="#3478f6"/>
+      <text x="33" y="23" fill="#506c92" font-size="13" font-weight="600" letter-spacing=".5">Kotlin · Jetpack Compose · miuix</text>
+    </g>
+  </g>
+  <g transform="translate(778 167) rotate(9 150 90)" filter="url(#shadow)">
+    <rect width="310" height="176" rx="23" fill="url(#card)"/>
+    <path d="M225 0C183 65 213 132 269 176H310V0Z" fill="#fff" opacity=".065"/>
+    <rect x="25" y="29" width="32" height="24" rx="6" fill="#fff" opacity=".85"/>
+    <path d="M25 37H57" stroke="#3478f6" stroke-width="3"/>
+    <text x="69" y="47" fill="#fff" font-family="Segoe UI, sans-serif" font-size="13" font-weight="600" letter-spacing="1.5">CAMPUS CARD</text>
+    <rect x="26" y="93" width="106" height="7" rx="3.5" fill="#fff" opacity=".9"/>
+    <rect x="26" y="113" width="74" height="6" rx="3" fill="#fff" opacity=".4"/>
+    <g fill="#fff" opacity=".8">
+      <circle cx="31" cy="147" r="3"/><circle cx="45" cy="147" r="3"/><circle cx="59" cy="147" r="3"/><circle cx="73" cy="147" r="3"/>
+    </g>
+    <path d="M266 127Q288 140 266 153M256 132Q270 140 256 148" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+  </g>
+  <g transform="translate(911 66) rotate(-8 91 91)" filter="url(#shadow)">
+    <rect width="182" height="182" rx="44" fill="#fff"/>
+    <use href="#logo" transform="translate(7 6) scale(7)"/>
+  </g>
+  <g transform="translate(720 76)" stroke="#7ea5df" stroke-width="2" fill="none" opacity=".65">
+    <path d="M0 9H18M9 0V18"/>
+    <circle cx="399" cy="276" r="5"/>
+  </g>
+</svg>
