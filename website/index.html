@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="财小通是面向河南财经政法大学的非官方第三方校园一卡通客户端。浏览付款、缴费、账单与生活服务界面，下载 Android 安装包。">
+  <title>财小通｜非官方第三方校园一卡通客户端</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <script src="site-theme.js"></script>
+  <link rel="preload" href="assets/fonts/campus-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+  <script src="static-preview.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+    <symbol id="icon-scan" viewBox="0 0 24 24"><path d="M8 3H4v5m12-5h4v5M4 16v4h4m12-4v4h-4M3 12h18"/></symbol>
+    <symbol id="icon-hall" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7"/></symbol>
+    <symbol id="icon-bill" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 7h6m-6 4h6m-6 4h3"/></symbol>
+    <symbol id="icon-user" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+    <symbol id="icon-water" viewBox="0 0 40 40"><path d="M20 4c-5 8-12 14-12 21a12 12 0 0 0 24 0c0-7-7-13-12-21ZM14 25a6 6 0 0 0 6 6"/></symbol>
+    <symbol id="icon-laundry" viewBox="0 0 40 40"><rect x="6" y="4" width="28" height="32" rx="5"/><path d="M6 12h28m-23-4h1m4 0h1"/><circle cx="20" cy="23" r="8"/><path d="M13 23c5-5 9 5 14 0"/></symbol>
+    <symbol id="icon-bike" viewBox="0 0 40 40"><circle cx="9" cy="28" r="7"/><circle cx="31" cy="28" r="7"/><path d="m9 28 9-15 8 15H9m9-15h10l3 15m-9-20h5l2 5M14 13h7"/></symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.2 15.2A8.5 8.5 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z"/></symbol>
+  </svg>
+  <header class="site-header" data-header>
+    <div class="nav-backdrop" data-nav-backdrop aria-hidden="true"></div>
+    <nav class="nav shell" aria-label="主导航">
+      <a class="brand" href="#top"><img src="assets/logo.svg" width="38" height="38" alt=""><span>财小通</span></a>
+      <div class="nav__links" id="nav-links"><a href="#experience">应用体验</a><a href="#life">校园生活</a><a href="#appearance">界面与主题</a><a href="#privacy">数据与隐私</a></div>
+      <div class="nav__actions">
+        <button class="nav-icon theme-toggle" type="button" data-site-theme aria-label="切换深色模式"><svg class="theme-toggle__moon" aria-hidden="true"><use href="#icon-moon"/></svg><svg class="theme-toggle__sun" aria-hidden="true"><use href="#icon-sun"/></svg></button>
+        <a class="nav-icon nav-github" href="https://github.com/Mercury000/HUEL-yktwx" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看项目" title="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg></a>
+        <a class="nav-icon nav-download" href="download.html" aria-label="下载财小通" title="下载财小通"><svg aria-hidden="true"><use href="#icon-download"/></svg></a>
+        <button class="nav-icon nav__toggle" type="button" aria-label="打开导航" aria-expanded="false" aria-controls="nav-links" data-nav-toggle><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"/></svg></button>
+      </div>
+    </nav>
+    <div class="reading-progress" role="progressbar" aria-label="页面阅读进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-reading-progress></span></div>
+  </header>
+  <main id="main">
+    <div class="hero-band">
+    <section class="hero shell" id="top" aria-labelledby="hero-title">
+      <div class="hero__copy">
+        <h1 id="hero-title"><span>校园日常，</span><span>一处就好。</span></h1>
+        <p class="project-identity">非官方第三方校园一卡通客户端。</p>
+      </div>
+      <div class="hero-gallery" data-parallax-stage aria-label="财小通最新应用界面">
+        <a class="gallery-screen gallery-screen--hall" href="#experience" data-jump-screen="hall" data-parallax="0.025"><div class="app-frame"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/hall-dark@2x.webp"><img src="assets/screens/hall-light@2x.webp" width="960" height="2081" alt="大厅页面，当前 OS4 悬浮底栏，水电缴费与校园网充值" fetchpriority="high"></picture></div><span>大厅</span></a>
+        <a class="gallery-screen gallery-screen--payment" href="#experience" data-jump-screen="payment" data-parallax="-0.035"><div class="app-frame"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/payment-dark@2x.webp"><img src="assets/screens/payment-light@2x.webp" width="960" height="2081" alt="付款页面，当前 OS4 悬浮底栏与独立扫码按钮" fetchpriority="high"></picture></div><span>付款</span></a>
+        <a class="gallery-screen gallery-screen--bill" href="#experience" data-jump-screen="bill" data-parallax="-0.015"><div class="app-frame"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/bill-dark@2x.webp"><img src="assets/screens/bill-light@2x.webp" width="960" height="2081" alt="账单页面，当前 OS4 悬浮底栏与交易明细" fetchpriority="high"></picture></div><span>账单</span></a>
+        <a class="gallery-screen gallery-screen--mine" href="#experience" data-jump-screen="mine" data-parallax="0.04"><div class="app-frame"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/mine-dark@2x.webp"><img src="assets/screens/mine-light@2x.webp" width="960" height="2081" alt="我的页面，当前 OS4 悬浮底栏与校园卡管理" fetchpriority="high"></picture></div><span>我的</span></a>
+      </div>
+      <div class="gallery-mobile-controls"><p>左右滑动，浏览四个页面</p><div><button type="button" data-gallery-prev aria-label="浏览上一个应用页面"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><button type="button" data-gallery-next aria-label="浏览下一个应用页面"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button></div></div>
+      <div class="hero-explore"><a href="#experience">继续了解<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></a></div>
+    </section>
+    </div>
+    <section class="experience shell section-space" id="experience" aria-labelledby="experience-title">
+      <div class="experience-layout" data-reveal>
+        <div class="experience-copy">
+          <h2 id="experience-title">每天会用的，<br>都在眼前。</h2>
+          <div class="preview-tabs" role="tablist" aria-label="应用页面" aria-orientation="horizontal">
+            <button type="button" id="tab-payment" role="tab" aria-selected="true" aria-controls="screen-panel screen-preview" tabindex="0" data-screen="payment"><svg aria-hidden="true"><use href="#icon-scan"/></svg>付款</button>
+            <button type="button" id="tab-hall" role="tab" aria-selected="false" aria-controls="screen-panel screen-preview" tabindex="-1" data-screen="hall"><svg aria-hidden="true"><use href="#icon-hall"/></svg>大厅</button>
+            <button type="button" id="tab-bill" role="tab" aria-selected="false" aria-controls="screen-panel screen-preview" tabindex="-1" data-screen="bill"><svg aria-hidden="true"><use href="#icon-bill"/></svg>账单</button>
+            <button type="button" id="tab-mine" role="tab" aria-selected="false" aria-controls="screen-panel screen-preview" tabindex="-1" data-screen="mine"><svg aria-hidden="true"><use href="#icon-user"/></svg>我的</button>
+          </div>
+          <div class="screen-detail" id="screen-panel" role="tabpanel" aria-labelledby="tab-payment" tabindex="0" data-screen-detail aria-live="polite"><h3 data-screen-title>吃饭前，打开财小通。</h3><p data-screen-description>二维码与条形码同屏展示，可隐藏码号、放大付款码，查看余额并充值。扫一扫进入生活服务，也能继续查看进行中的服务。</p></div>
+        </div>
+        <div class="experience-stage" id="screen-preview" role="tabpanel" aria-labelledby="tab-payment">
+          <div class="phone phone--preview" data-screen-phone><img data-screen-image src="assets/screens/payment-light@2x.webp" width="960" height="2081" alt="付款页面预览" loading="lazy"></div>
+          <p class="preview-caption">界面使用演示数据</p>
+        </div>
+      </div>
+    </section>
+    <section class="life-section" id="life" aria-labelledby="life-title">
+      <div class="shell">
+        <div class="section-heading" data-reveal><h2 id="life-title">校园里的小事，<br>也能顺手办好。</h2></div>
+        <div class="preview-tabs" role="tablist" aria-label="生活服务预览" aria-orientation="horizontal" data-reveal>
+          <button id="life-tab-water" role="tab" aria-selected="true" aria-controls="life-panel" tabindex="0" data-life="water"><svg aria-hidden="true"><use href="#icon-water"/></svg>饮水</button>
+          <button id="life-tab-shower" role="tab" aria-selected="false" aria-controls="life-panel" tabindex="-1" data-life="shower"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V7a4 4 0 0 1 8 0m-3 2h6m-5 4v2m4-2v2m-6 3v2m4-2v2m4-2v2"/></svg>淋浴</button>
+          <button id="life-tab-laundry" role="tab" aria-selected="false" aria-controls="life-panel" tabindex="-1" data-life="laundry"><svg aria-hidden="true"><use href="#icon-laundry"/></svg>洗衣</button>
+          <button id="life-tab-bike" role="tab" aria-selected="false" aria-controls="life-panel" tabindex="-1" data-life="bike"><svg aria-hidden="true"><use href="#icon-bike"/></svg>骑行</button>
+        </div>
+        <div class="life-panel" id="life-panel" role="tabpanel" aria-labelledby="life-tab-water" tabindex="0" data-reveal>
+          <div class="life-copy" aria-live="polite">
+            <h3 data-life-title>扫一下，<br>接好你的下一杯。</h3>
+            <p data-life-description>扫码或输入设备编号，开始接水、查看用水时间，用完后在应用里结束。</p>
+            <a class="text-link life-guide" href="life-services.html">生活服务使用说明</a>
+          </div>
+          <div class="life-gallery" data-life-gallery>
+            <figure><button type="button" class="screenshot-button" data-image-open aria-label="放大胖乖饮水界面"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/water-dark@2x.webp"><img src="assets/screens/water-light@2x.webp" width="960" height="2081" alt="胖乖生活饮水页面，设备信息、接水选项与开始接水" loading="lazy"></picture><span>放大查看<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></span></button><figcaption>胖乖生活 · 接水选项</figcaption></figure>
+            <figure><button type="button" class="screenshot-button" data-image-open aria-label="放大慧生活798界面"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/hui798-dark@2x.webp"><img src="assets/screens/hui798-light@2x.webp" width="960" height="2081" alt="慧生活798饮水页面，设备状态与开始用水" loading="lazy"></picture><span>放大查看<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></span></button><figcaption>慧生活798 · 开始用水</figcaption></figure>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="appearance shell section-space" id="appearance" aria-labelledby="appearance-title">
+      <div class="appearance-copy" data-reveal><h2 id="appearance-title">顺手，也顺眼。</h2><ul class="appearance-features"><li><strong>悬浮导航</strong><span>默认、iOS 和 OS4 样式可选。</span></li><li><strong>玻璃与模糊</strong><span>顶栏与底栏效果，按喜好开启。</span></li><li><strong>手机与平板</strong><span>大屏侧栏布局，手机也可选莫奈配色。</span></li><li><strong>转场与返回</strong><span>Miuix / AOSP 转场，可开启滑动返回。</span></li></ul></div>
+      <div class="appearance-stage" data-reveal><div class="phone phone--appearance"><picture data-theme-picture><source media="(prefers-color-scheme: dark)" srcset="assets/screens/theme-settings-dark@2x.webp?v=21bb4d51767e"><img src="assets/screens/theme-settings-light@2x.webp?v=a18be4382ad3" width="960" height="2081" alt="主题设置页面，OS4 导航、玻璃风格与顶栏及底栏模糊已开启" loading="lazy"></picture></div></div>
+    </section>
+    <section class="privacy shell section-space" id="privacy" aria-labelledby="privacy-title">
+      <div class="privacy-content" data-reveal>
+        <h2 id="privacy-title">数据与隐私</h2>
+        <div class="privacy-details">
+          <details><summary>本机存储<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10M10 5v10"/></svg></summary><p>登录信息与缓存内容在本机加密保存，不参与系统数据备份。</p></details>
+          <details><summary>付款码<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10M10 5v10"/></svg></summary><p>付款码不会保存到本机。离开付款页或切到后台后，应用会移除付款码。</p></details>
+          <details><summary>使用统计<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10M10 5v10"/></svg></summary><p>应用在使用须知中说明友盟统计的采集范围，你可以在应用内撤销同意。详见<a href="analytics.html">使用统计说明</a>。</p></details>
+        </div>
+      </div>
+    </section>
+  </main>
+  <dialog class="image-dialog" aria-labelledby="image-dialog-title" data-image-dialog><div class="image-dialog__header"><h2 id="image-dialog-title" data-image-title>界面预览</h2><button type="button" data-image-close aria-label="关闭界面预览"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div class="image-dialog__body"><img data-image-full alt=""></div></dialog>
+  <footer class="footer footer--download shell">
+    <section class="download-entry" aria-labelledby="download-title" data-reveal>
+      <div class="download-identity"><img src="assets/logo.svg" width="64" height="64" alt=""><div><h2 id="download-title">财小通</h2><p>Android 14 及以上 · ARM64</p></div></div>
+      <a class="button button--primary" href="download.html"><svg aria-hidden="true"><use href="#icon-download"/></svg>下载 Android 版</a>
+    </section>
+    <div class="footer__links"><a href="https://github.com/Mercury000/HUEL-yktwx/issues" target="_blank" rel="noreferrer">问题反馈</a><a href="license.html">GPL-3.0</a></div>
+  </footer>
+</body>
+</html>
