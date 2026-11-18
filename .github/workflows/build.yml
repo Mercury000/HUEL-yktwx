@@ -3,10 +3,10 @@ name: Build APK
 on:
   push:
     branches: [main, beta]
-    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md"]
+    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md", "website/**", ".github/workflows/pages.yml"]
   pull_request:
     branches: [main, beta]
-    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md"]
+    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md", "website/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
     inputs:
       build_type:

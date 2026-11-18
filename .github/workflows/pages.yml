@@ -1,0 +1,80 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "updates/**"
+      - "app/libs/README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "updates/**"
+      - "app/libs/README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - ".github/workflows/pages.yml"
+  release:
+    types: [published, edited, deleted]
+  workflow_run:
+    workflows: [Build APK, Publish app update metadata]
+    types: [completed]
+    branches: [main, beta]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: website/requirements.txt
+      - name: Install website dependencies
+        run: python -m pip install -r website/requirements.txt
+      - name: Build website from repository documents and releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python website/tools/build_pages.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/_site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
