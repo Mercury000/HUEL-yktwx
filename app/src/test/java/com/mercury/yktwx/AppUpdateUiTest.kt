@@ -121,7 +121,7 @@ class AppUpdateUiTest {
         capture("settings-entry")
         compose.onNodeWithTag("settings-page-list").performScrollToIndex(5)
         compose.onNodeWithText("普通更新提醒").assertExists()
-        compose.onNodeWithText("关闭后仍会检查版本，强制更新和手动检查不受影响").assertExists()
+        compose.onNodeWithText("关闭后仍会提示强制更新").assertExists()
         compose.onNode(isToggleable() and (hasTestTag("automatic-updates-switch") or
             hasAnyAncestor(hasTestTag("automatic-updates-switch")))).performSemanticsAction(SemanticsActions.OnClick)
         compose.runOnIdle { assertFalse(themeSettingsFixture(compose.activity).automaticUpdates.value) }

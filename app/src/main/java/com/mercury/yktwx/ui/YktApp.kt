@@ -1126,8 +1126,8 @@ private fun SecondaryPage(
                         listState = listState)
                     Screen.Theme -> ThemeSettingsPage(
                         modifier = modifier, listState = listState, contentPadding = contentPadding,
-                        themeMode = settings.themeMode, onThemeModeChange = settings::setTheme,
-                        accentMode = settings.accentMode, onAccentModeChange = settings::setAccent,
+                        themeMode = settings.themeMode, accentMode = settings.accentMode,
+                        onThemeSelectionChange = settings::setThemeSelection,
                         floatingBottomBar = settings.floatingBottomBar, onFloatingBottomBarChange = settings::setFloating,
                         floatingBottomBarStyle = settings.floatingBottomBarStyle, onFloatingBottomBarStyleChange = settings::setFloatingStyle,
                         blurBottomBar = settings.blurBottomBar, onBlurBottomBarChange = settings::setBlurBottom,

@@ -191,7 +191,7 @@ class UiSmokeTest {
         compose.onNodeWithText("顶栏模糊").assertExists()
         compose.runOnIdle { settings.setTheme(2); settings.setAccent(1); settings.setFloating(true); settings.setFloatingStyle(1) }
         compose.waitForIdle()
-        compose.onNodeWithText("主题颜色").assertExists()
+        compose.onNodeWithText("莫奈深色").assertExists()
         val restored = themeSettingsFixture(compose.activity)
         assertEquals(2, restored.themeMode.value)
         assertEquals(1, restored.accentMode.value)

@@ -507,9 +507,41 @@ class GlassAppearanceUiTest {
         compose.onNodeWithText("应用设置").performScrollTo().performClick()
         compose.onNodeWithText("主题").performClick()
         capture("glass-theme-Light")
+        val floatingNavigation = compose.activity.getString(R.string.floating_bottom_bar)
+        val navigationStyle = compose.activity.getString(R.string.floating_bottom_bar_style)
+        compose.onNodeWithText(navigationStyle).assertExists()
+        compose.onNodeWithText(floatingNavigation).performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText(navigationStyle).assertDoesNotExist()
+        compose.runOnIdle { assertEquals(2, settings.floatingBottomBarStyle.value) }
+        capture("theme-floating-navigation-off")
+        compose.onNodeWithText(floatingNavigation).performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText(navigationStyle).assertExists()
+        compose.runOnIdle { assertEquals(2, settings.floatingBottomBarStyle.value) }
+        compose.onNodeWithText("选择应用强调色样式").assertDoesNotExist()
+        compose.onNodeWithText("主题颜色").assertDoesNotExist()
+        val themeSelection = hasText("主题模式") and SemanticsMatcher.expectValue(
+            SemanticsProperties.Role, androidx.compose.ui.semantics.Role.DropdownList)
+        for ((index, label) in listOf("系统", "浅色", "深色", "莫奈系统", "莫奈浅色", "莫奈深色").withIndex()) {
+            compose.onNode(themeSelection).performClick()
+            compose.onNodeWithText(label).performClick()
+            compose.mainClock.advanceTimeBy(600)
+            compose.runOnIdle {
+                assertEquals(index % 3, settings.themeMode.value)
+                assertEquals(index / 3, settings.accentMode.value)
+                val restored = themeSettingsFixture(compose.activity)
+                assertEquals(index % 3, restored.themeMode.value)
+                assertEquals(index / 3, restored.accentMode.value)
+            }
+        }
+        compose.onNode(themeSelection).performClick()
+        capture("theme-options")
+        compose.onNodeWithText("莫奈浅色").performClick()
+        compose.onNodeWithText("动态取色").assertDoesNotExist()
+        capture("theme-settings")
         val topBlur = compose.activity.getString(R.string.blur_top_bar)
         val glassStyle = compose.activity.getString(R.string.glass_style)
-        compose.onNodeWithText(compose.activity.getString(R.string.blur_glass_top_bar_summary)).assertExists()
         compose.onNodeWithText(topBlur).performScrollTo().performClick()
         compose.runOnIdle {
             assertTrue(settings.blurTopBar.value)
@@ -524,7 +556,6 @@ class GlassAppearanceUiTest {
             assertFalse(settings.blurBottomBar.value)
             assertEquals(2, settings.floatingBottomBarStyle.value)
         }
-        compose.onNodeWithText(compose.activity.getString(R.string.blur_top_bar_summary)).assertExists()
         compose.onNodeWithText(glassStyle).performClick()
         compose.runOnIdle { settings.setTheme(2) }
         compose.onNodeWithText(topBlur).assertExists()

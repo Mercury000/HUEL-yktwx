@@ -79,7 +79,6 @@ internal fun UpdateSettingsCard(state: AppUpdateUiState, reminders: Boolean,
     channel: String = "stable", onChannelChange: (String) -> Unit = {}) {
     Card(Modifier.fillMaxWidth()) {
         SwitchPreference(title = "接收测试版更新",
-            summary = "同时接收正式版和测试版更新",
             checked = channel == "beta", onCheckedChange = { onChannelChange(if (it) "beta" else "stable") },
             modifier = Modifier.testTag("update-channel-switch"))
         SwitchPreference(title = stringResource(R.string.automatic_updates),

@@ -1,5 +1,6 @@
 package com.mercury.yktwx.ui.pages
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -23,9 +24,8 @@ fun ThemeSettingsPage(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     themeMode: State<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {},
     accentMode: State<Int> = mutableStateOf(0),
-    onAccentModeChange: (Int) -> Unit = {},
+    onThemeSelectionChange: (Int) -> Unit = {},
     floatingBottomBar: State<Boolean> = mutableStateOf(false),
     onFloatingBottomBarChange: (Boolean) -> Unit = {},
     blurBottomBar: State<Boolean> = mutableStateOf(false),
@@ -46,10 +46,9 @@ fun ThemeSettingsPage(
         stringResource(R.string.theme_follow_system),
         stringResource(R.string.theme_light),
         stringResource(R.string.theme_dark),
-    )
-    val accentOptions = listOf(
-        stringResource(R.string.color_default),
-        stringResource(R.string.color_monet),
+        stringResource(R.string.theme_monet_system),
+        stringResource(R.string.theme_monet_light),
+        stringResource(R.string.theme_monet_dark),
     )
 
     val floatingStyleOptions = listOf(
@@ -78,47 +77,36 @@ fun ThemeSettingsPage(
                     contentPadding.calculateBottomPadding() + 24.dp).fillParentMaxHeight())
                 Card {
                     RestorableDropdownPreference(
-                        title = stringResource(R.string.theme_title),
+                        title = stringResource(R.string.theme_mode_title),
                         items = themeOptions,
-                        selectedIndex = themeMode.value.coerceIn(themeOptions.indices),
-                        onSelectedIndexChange = { onThemeModeChange(it) },
-                    )
-                    RestorableDropdownPreference(
-                        title = stringResource(R.string.theme_color),
-                        summary = stringResource(R.string.theme_color_summary),
-                        items = accentOptions,
-                        selectedIndex = accentMode.value.coerceIn(accentOptions.indices),
-                        onSelectedIndexChange = { onAccentModeChange(it) },
+                        selectedIndex = themeMode.value.coerceIn(0, 2) + accentMode.value.coerceIn(0, 1) * 3,
+                        onSelectedIndexChange = onThemeSelectionChange,
                     )
                     SwitchPreference(
                         title = stringResource(R.string.floating_bottom_bar),
-                        summary = stringResource(R.string.floating_bottom_bar_summary),
                         checked = floatingBottomBar.value,
                         onCheckedChange = { onFloatingBottomBarChange(it) },
                     )
-                    RestorableDropdownPreference(
-                        title = stringResource(R.string.floating_bottom_bar_style),
-                        items = floatingStyleOptions,
-                        selectedIndex = if (floatingBottomBar.value)
-                            floatingBottomBarStyle.value.coerceIn(floatingStyleOptions.indices) else 0,
-                        onSelectedIndexChange = { onFloatingBottomBarStyleChange(it) },
-                    )
+                    AnimatedVisibility(visible = floatingBottomBar.value) {
+                        RestorableDropdownPreference(
+                            title = stringResource(R.string.floating_bottom_bar_style),
+                            items = floatingStyleOptions,
+                            selectedIndex = floatingBottomBarStyle.value.coerceIn(floatingStyleOptions.indices),
+                            onSelectedIndexChange = { onFloatingBottomBarStyleChange(it) },
+                        )
+                    }
                     SwitchPreference(
                         title = stringResource(R.string.glass_style),
-                        summary = stringResource(R.string.glass_style_summary),
                         checked = glassStyle.value,
                         onCheckedChange = onGlassStyleChange,
                     )
                     SwitchPreference(
                         title = stringResource(R.string.blur_bottom_bar),
-                        summary = stringResource(R.string.blur_bottom_bar_summary),
                         checked = blurBottomBar.value,
                         onCheckedChange = { onBlurBottomBarChange(it) },
                     )
                     SwitchPreference(
                         title = stringResource(R.string.blur_top_bar),
-                        summary = stringResource(if (glassStyle.value) R.string.blur_glass_top_bar_summary
-                            else R.string.blur_top_bar_summary),
                         checked = blurTopBar.value,
                         onCheckedChange = { onBlurTopBarChange(it) },
                     )
@@ -130,7 +118,6 @@ fun ThemeSettingsPage(
                     )
                     SwitchPreference(
                         title = stringResource(R.string.swipe_back),
-                        summary = stringResource(R.string.swipe_back_summary),
                         checked = swipeBack.value,
                         onCheckedChange = { onSwipeBackChange(it) },
                     )

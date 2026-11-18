@@ -66,7 +66,7 @@ class DarkModeAuditTest {
             name.endsWith("-about") -> compose.onNodeWithText("关于").assertExists()
             name.endsWith("-about-footer") -> compose.onNodeWithText("引用").assertIsDisplayed()
             name.endsWith("-settings") -> compose.onNodeWithText("退出登录").assertIsDisplayed()
-            name.endsWith("-theme-top") -> compose.onNodeWithText("主题颜色").assertIsDisplayed()
+            name.endsWith("-theme-top") -> compose.onNodeWithTag("theme-page-list").assertIsDisplayed()
         }
         File(output, "$name.png").apply { parentFile?.mkdirs() }.outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
@@ -344,7 +344,7 @@ class DarkModeAuditTest {
             compose.onNodeWithText("应用设置").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) { it() }
             capture("$prefix-settings")
             text("主题"); capture("$prefix-theme-top")
-            text("主题颜色"); capture("$prefix-accent-dropdown"); back()
+            text("主题模式"); capture("$prefix-theme-dropdown"); back()
             compose.onNodeWithText("预测性返回动画").performScrollTo(); capture("$prefix-theme-bottom")
             back(); text("退出登录"); capture("$prefix-logout-confirm"); back(); back()
             tab("付款")

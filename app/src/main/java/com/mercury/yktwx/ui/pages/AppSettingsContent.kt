@@ -64,7 +64,6 @@ internal fun AppSettingsContent(
             Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
                 ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)
                 SwitchPreference(title = stringResource(R.string.payment_brightness),
-                    summary = stringResource(R.string.payment_brightness_summary),
                     checked = settings.paymentBrightness.value, onCheckedChange = settings::setPaymentBrightness,
                     modifier = Modifier.testTag("payment-brightness-switch"))
                 SwitchPreference(title = stringResource(R.string.payment_motion_detection),

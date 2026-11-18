@@ -46,6 +46,10 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     fun setNavigationRailExpanded(v: Boolean) = change { it.copy(navigationRailExpanded = v) }
     fun setTheme(v: Int) = change { it.copy(themeMode = v.coerceIn(0, 2)) }
     fun setAccent(v: Int) = change { it.copy(accentMode = v.coerceIn(0, 1)) }
+    fun setThemeSelection(v: Int) = change {
+        val selection = v.coerceIn(0, 5)
+        it.copy(themeMode = selection % 3, accentMode = selection / 3)
+    }
     fun setFloating(v: Boolean) = change { it.copy(floatingBottomBar = v) }
     fun setFloatingStyle(v: Int) = change {
         val style = v.coerceIn(0, 2)
