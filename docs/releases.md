@@ -13,6 +13,8 @@ main 和 beta 都使用 Release Please 的版本 PR 流程；机器人生成的�
 
 提交信息影响自动版本：`fix:` 通常提升补丁版本，`feat:` 通常提升次版本，`feat!:` 或 `BREAKING CHANGE:` 声明不兼容变更。工具根据提交信息计算，不分析代码语义。合并时的 squash 提交标题也应保留准确的 type 和描述；不能为了发版改变实际改动的类型。
 
+需要指定下一版时，在目标分支提交带 `Release-As` 正文的提交，例如 `git commit --allow-empty -m "chore: release 1.5.2" -m "Release-As: 1.5.2"` 后推送。`Check Release PR` 不使用文件路径过滤，会检查这次推送的全部提交并自动刷新版本 PR，因此空提交也能生效；beta 使用完整预发布版本，如 `1.5.2-beta`。该工作流只更新版本 PR，不创建 Release 或构建 APK，也可手动运行恢复检查。
+
 ### 测试版
 
 1. 将代码推送到 `beta`。普通提交只构建 Debug 产物，Release Please 自动创建或更新面向 beta 的版本 PR。

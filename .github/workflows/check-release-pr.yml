@@ -1,6 +1,8 @@
 name: Check Release PR
 
 on:
+  push:
+    branches: [main, beta]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,34 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@v7.0.1
+        if: github.event_name == 'push'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect explicit release versions in pushed commits
+        if: github.event_name == 'push'
+        id: override
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+            overrides=$(git log -1 --format=%H --regexp-ignore-case --grep='^Release-As:' "$GITHUB_SHA")
+          else
+            if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              git fetch --no-tags origin "$BEFORE"
+            fi
+            overrides=$(git log --format=%H --regexp-ignore-case --grep='^Release-As:' "$BEFORE..$GITHUB_SHA")
+          fi
+          if [ -n "$overrides" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create or update the release PR
+        if: github.event_name == 'workflow_dispatch' || steps.override.outputs.found == 'true'
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
