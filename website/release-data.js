@@ -40,5 +40,78 @@
     if (result.protocol !== 'https:') throw new Error('Invalid download URL');
     return result.href;
   };
-  window.releaseData = Object.freeze({ load, downloadUrl });
+  const selections = new Map();
+  const probeSource = async (asset, source, signal) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => controller.abort(), 8000);
+    let reader;
+    try {
+      const url = downloadUrl(asset, source.template);
+      const sampleSize = Math.min(16384, asset.sizeBytes);
+      const started = performance.now();
+      const response = await fetch(url, {
+        mode: 'cors', credentials: 'omit', cache: 'no-store',
+        headers: { Range: `bytes=0-${sampleSize - 1}` }, signal: controller.signal
+      });
+      if (![200, 206].includes(response.status) || !response.body) return null;
+      const type = response.headers.get('content-type') || '';
+      if (/text\/|html|json|xml/i.test(type)) return null;
+      const range = response.headers.get('content-range');
+      if (range && range !== `bytes 0-${sampleSize - 1}/${asset.sizeBytes}`) return null;
+      const length = response.headers.get('content-length');
+      if (length && Number(length) !== (response.status === 206 ? sampleSize : asset.sizeBytes)) return null;
+      reader = response.body.getReader();
+      const signature = [];
+      let received = 0;
+      while (received < sampleSize) {
+        const { done, value } = await reader.read();
+        if (done) return null;
+        for (const byte of value.subarray(0, 4 - signature.length)) signature.push(byte);
+        received += value.length;
+        if (signature.length === 4 && !signature.every((byte, index) => byte === [80, 75, 3, 4][index])) return null;
+      }
+      if (signature.length !== 4) return null;
+      return { url, label: source.label, elapsed: performance.now() - started };
+    } catch {
+      // CORS failures, redirects to unreadable pages and timeouts exclude only this attempt.
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      if (reader) void reader.cancel().catch(() => {});
+      controller.abort();
+    }
+  };
+  const selectDownloadSource = (asset, sources) => {
+    const key = JSON.stringify([asset.downloadUrl, asset.sizeBytes, sources]);
+    const cached = selections.get(key);
+    if (cached && (cached.pending || cached.expires > Date.now())) return cached.promise;
+    const entry = { pending: true, expires: 0 };
+    entry.promise = (async () => {
+      const unique = [...new Map(sources.map((source) => [source.template, source])).values()];
+      const controller = new AbortController();
+      let best;
+      try {
+        best = await Promise.any(unique.map(async (source) => {
+          const result = await probeSource(asset, source, controller.signal);
+          if (!result) throw new Error('Unavailable download source');
+          return result;
+        }));
+      } catch {
+        best = null;
+      } finally {
+        controller.abort();
+      }
+      entry.pending = false;
+      if (best) entry.expires = Date.now() + 120000;
+      else selections.delete(key);
+      return best;
+    })();
+    if (selections.size >= 100) selections.delete(selections.keys().next().value);
+    selections.set(key, entry);
+    return entry.promise;
+  };
+  window.releaseData = Object.freeze({ load, downloadUrl, selectDownloadSource });
 })();

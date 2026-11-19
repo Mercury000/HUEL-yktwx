@@ -165,6 +165,53 @@
     showPackage(opener);
   };
 
+  const prepareDownload = (link, release, asset, eager = false) => {
+    link.downloadCleanup?.();
+    link.href = downloadUrl(asset);
+    let active = true;
+    let busy = false;
+    const choose = async () => {
+      const source = await window.releaseData.selectDownloadSource(asset, downloadSources);
+      if (active) {
+        link.href = source?.url || downloadUrl(asset);
+      }
+      return source;
+    };
+    const click = async (event) => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (busy) return;
+      busy = true;
+      link.setAttribute('aria-busy', 'true');
+      try {
+        const source = await choose();
+        if (!active || !link.isConnected) return;
+        if (!source) {
+          openPackage(release, asset, link);
+          return;
+        }
+        const download = make('a');
+        download.href = source.url;
+        download.setAttribute('download', asset.name);
+        download.rel = 'noreferrer';
+        download.hidden = true;
+        document.body.append(download);
+        download.click();
+        download.remove();
+      } finally {
+        busy = false;
+        if (active) link.removeAttribute('aria-busy');
+      }
+    };
+    link.addEventListener('click', click);
+    link.downloadCleanup = () => {
+      active = false;
+      link.removeEventListener('click', click);
+      link.removeAttribute('aria-busy');
+    };
+    if (eager) void choose();
+  };
+
   let latestRelease;
   let selectedAsset;
   let latestRequest;
@@ -182,6 +229,7 @@
     get('download-link').href = downloadUrl(asset);
     get('download-link').setAttribute('download', asset.name);
     get('download-link').setAttribute('aria-label', `下载财小通 ${latestRelease.versionName}，${asset.name}`);
+    prepareDownload(get('download-link'), latestRelease, asset, true);
   };
   const loadLatest = async (retry = false) => {
     clearTimeout(latestRetryTimer);
@@ -352,6 +400,7 @@
       link.setAttribute('download', asset.name);
       link.setAttribute('aria-label', `下载 ${asset.name}`);
       link.append(icon('M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 16h12'));
+      prepareDownload(link, release, asset);
       row.append(info, link);
       assets.append(row);
     }
