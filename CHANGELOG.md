@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.5.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0...v1.5.1) (2026-11-19)
+
+
+### Features
+
+* **payment:** 将付款码禁止截图改为截图提醒 ([690e347](https://github.com/Mercury000/HUEL-yktwx/commit/690e34744bd95709fab7b5993a71fee8c31748f8))
+* **settings:** 默认启用 OS4 玻璃导航与模糊效果 ([cb74f3a](https://github.com/Mercury000/HUEL-yktwx/commit/cb74f3aa72ef059578858800cde9a498775c1f55))
+
+
+### Bug Fixes
+
+* **life:** 接水选项采用紧凑玻璃分段选择器 ([ff2726e](https://github.com/Mercury000/HUEL-yktwx/commit/ff2726e3b2c13490bbdc959f98ba7241ebd50a74))
+
+
+### Miscellaneous Chores
+
+* release 1.5.1 ([e5f7977](https://github.com/Mercury000/HUEL-yktwx/commit/e5f79779f341479b0f8fa0544df26e75fe65ea7a))
+
 ## [1.5.0](https://github.com/Mercury000/HUEL-yktwx/compare/1efc687c78bce3d077f6ecca687f5756d2f5dd8d...v1.5.0) (2026-11-17)
 
 
