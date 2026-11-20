@@ -2,7 +2,7 @@
 <resources>
     <string name="about_tab">关于</string>
     <string name="theme_title">主题</string>
-    <string name="theme_mode_title">主题模式</string>
+    <string name="theme_mode_title">颜色模式</string>
     <string name="theme_follow_system">系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>

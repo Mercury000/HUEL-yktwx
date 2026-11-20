@@ -2,7 +2,7 @@
 <resources>
     <string name="about_tab">About</string>
     <string name="theme_title">Theme</string>
-    <string name="theme_mode_title">Theme Mode</string>
+    <string name="theme_mode_title">Color Mode</string>
     <string name="theme_follow_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>

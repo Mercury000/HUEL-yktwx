@@ -521,7 +521,7 @@ class GlassAppearanceUiTest {
         compose.runOnIdle { assertEquals(2, settings.floatingBottomBarStyle.value) }
         compose.onNodeWithText("选择应用强调色样式").assertDoesNotExist()
         compose.onNodeWithText("主题颜色").assertDoesNotExist()
-        val themeSelection = hasText("主题模式") and SemanticsMatcher.expectValue(
+        val themeSelection = hasText("颜色模式") and SemanticsMatcher.expectValue(
             SemanticsProperties.Role, androidx.compose.ui.semantics.Role.DropdownList)
         for ((index, label) in listOf("系统", "浅色", "深色", "莫奈系统", "莫奈浅色", "莫奈深色").withIndex()) {
             compose.onNode(themeSelection).performClick()

@@ -344,7 +344,7 @@ class DarkModeAuditTest {
             compose.onNodeWithText("应用设置").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) { it() }
             capture("$prefix-settings")
             text("主题"); capture("$prefix-theme-top")
-            text("主题模式"); capture("$prefix-theme-dropdown"); back()
+            text("颜色模式"); capture("$prefix-theme-dropdown"); back()
             compose.onNodeWithText("预测性返回动画").performScrollTo(); capture("$prefix-theme-bottom")
             back(); text("退出登录"); capture("$prefix-logout-confirm"); back(); back()
             tab("付款")
