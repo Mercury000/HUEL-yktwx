@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.mercury.yktwx.benchmark"
     compileSdk = 37
+    compileSdkMinor = 2
     targetProjectPath = ":app"
     defaultConfig {
         minSdk = 34

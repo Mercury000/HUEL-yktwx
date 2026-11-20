@@ -48,6 +48,7 @@ require(updateChannel in listOf("stable", "beta"))
 android {
     namespace = "com.mercury.yktwx"
     compileSdk = 37
+    compileSdkMinor = 2
     defaultConfig {
         applicationId = "com.mercury.yktwx"
         minSdk = 34

@@ -91,7 +91,7 @@
 <details>
 <summary><strong>本地构建</strong></summary>
 
-准备 **JDK 22** 和 **Android SDK Platform 37**，在仓库根目录的 `local.properties` 中设置 SDK 路径。依赖访问凭证与生活服务配置按 [开发说明](https://github.com/Mercury000/HUEL-yktwx/blob/main/docs/development.md) 设置。
+准备 **JDK 22** 和 **Android SDK Platform 37.2**，在仓库根目录的 `local.properties` 中设置 SDK 路径。生活服务配置按 [开发说明](https://github.com/Mercury000/HUEL-yktwx/blob/main/docs/development.md) 设置。
 
 Windows：
 

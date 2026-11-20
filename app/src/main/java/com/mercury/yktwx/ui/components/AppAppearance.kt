@@ -154,10 +154,12 @@ internal fun AppTopAppBar(
             actions = actions, bottomContent = bottomContent,
             defaultWindowInsetsPadding = defaultWindowInsetsPadding)
     } else {
-        BlurTopAppBar(title = title, largeTitleBlurRadius = 0.dp, modifier = modifier,
+        // The public layout preserves the navigation title's draw-phase alpha.
+        TopAppBarLayout(title = title, titleBlurRadius = 0.dp, modifier = modifier,
             expandable = expandable, color = color, titleColor = titleColor, largeTitle = largeTitle,
             largeTitleColor = largeTitleColor, subtitle = subtitle, subtitleColor = subtitleColor,
-            navigationIcon = navigationIcon, actions = actions, scrollBehavior = scrollBehavior,
+            navigationIcon = navigationIcon,
+            actions = { Row(horizontalArrangement = Arrangement.End, content = actions) }, scrollBehavior = scrollBehavior,
             defaultWindowInsetsPadding = defaultWindowInsetsPadding, titlePadding = titlePadding,
             navigationIconPadding = navigationIconPadding, actionIconPadding = actionIconPadding,
             titleAlpha = navigationTitleAlpha, bottomContent = bottomContent)
@@ -191,9 +193,10 @@ internal fun AppSmallTopAppBar(
                 expandable = false,
                 subtitle = subtitle, navigationIcon = navigationIcon, actions = actions,
                 bottomContent = bottomContent, defaultWindowInsetsPadding = defaultWindowInsetsPadding)
-        } else if (glassRail) BlurTopAppBar(title = title, largeTitleBlurRadius = 0.dp, expandable = false, modifier = modifier,
-            color = color, titleColor = titleColor,
-            subtitle = subtitle, subtitleColor = subtitleColor, navigationIcon = navigationIcon, actions = actions,
+        } else if (glassRail) TopAppBarLayout(title = title, titleBlurRadius = 0.dp, expandable = false, modifier = modifier,
+            color = color, titleColor = titleColor, largeTitleColor = MiuixTheme.colorScheme.onSurface,
+            subtitle = subtitle, subtitleColor = subtitleColor, navigationIcon = navigationIcon,
+            actions = { Row(horizontalArrangement = Arrangement.End, content = actions) },
             scrollBehavior = scrollBehavior, defaultWindowInsetsPadding = defaultWindowInsetsPadding,
             titlePadding = titlePadding,
             navigationIconPadding = navigationIconPadding, actionIconPadding = actionIconPadding,

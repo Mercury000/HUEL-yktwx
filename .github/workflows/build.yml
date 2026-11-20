@@ -107,9 +107,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
-    env:
-      MIUIX_PACKAGES_TOKEN: ${{ secrets.MIUIX_PACKAGES_TOKEN || github.token }}
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
       channel: ${{ steps.version.outputs.channel }}
