@@ -24,7 +24,7 @@ on:
   release:
     types: [published, edited, deleted]
   workflow_run:
-    workflows: [Build APK, Publish app update metadata]
+    workflows: [Publish app update metadata]
     types: [completed]
     branches: [main, beta]
   workflow_dispatch:
@@ -33,12 +33,30 @@ permissions:
   contents: read
 
 concurrency:
-  group: website-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
+  group: website-${{ github.event_name == 'release' && 'release-refresh' || github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
   cancel-in-progress: false
 
 jobs:
+  refresh-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      # A checkout of main does not change a release event's tag ref. Dispatch
+      # new runs from main; version tags remain allowed for legacy workflows.
+      - name: Refresh website from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --ref main --repo "$GH_REPO"
+
   build:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name != 'release' &&
+      (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -63,7 +81,7 @@ jobs:
           path: website/_site
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

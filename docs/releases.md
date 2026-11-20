@@ -53,6 +53,14 @@ Gradle 仅在明确设置 `APP_BUILD_VERSION_FILE` 时读取构建生成文件�
 
 APK 签名需要 `SIGNING_KEY`、`ALIAS`、`KEYSTORE_PASSWORD`，接口配置见[开发说明](development.md)。更新私钥使用 `UPDATE_SIGNING_KEY`，见[清单配置](../updates/README.md)。清单任务需要受控提交 main 和更新 Latest 的权限；分支保护限制默认 Token 时，按已有授权配置 `UPDATE_PUBLISH_TOKEN`，不能强推覆盖保护。
 
+## 官网部署
+
+`Deploy website` 构建仓库内的官网、文档和公开正式版下载数据。官网相关文件推送到 main、更新清单任务成功完成，或在 main 手动运行该工作流时自动部署；普通 APK 构建完成不再额外触发官网部署。PR 只构建验证，不发布。
+
+Release 发布、编辑和删除事件先用 `GITHUB_TOKEN` 的 Actions 写权限调用 `workflow_dispatch`，在 main 重新运行官网工作流。Release 事件自身不进入部署环境，非 main 的手动运行也不构建或部署。转发任务与生产部署使用不同并发组，避免转发时占用生产部署队列。
+
+`github-pages` 环境允许 main 分支和 `v*` 标签部署。已有 Release 标签会使用标签里的旧版工作流，main 的修改不会替换它们；保留标签部署规则可避免旧版本的 Release 编辑事件继续被环境拒绝。新工作流统一从 main 部署，仍会读取 main 上的官网代码和最新公开 Release 数据。
+
 ## 故障恢复
 
 - 构建或签名失败：修正后重跑，缺少签名材料时不发布未签名产物。
