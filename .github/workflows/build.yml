@@ -3,10 +3,38 @@ name: Build APK
 on:
   push:
     branches: [main, beta]
-    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md", "website/**", ".github/workflows/pages.yml"]
+    paths:
+      - "app/**"
+      - "benchmark/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - "gradlew*"
+      - "ci-version.properties"
+      - "version.txt"
+      - "updates/public-key.txt"
+      - "release-please-config*.json"
+      - ".release-please-manifest*.json"
+      - ".github/workflows/build.yml"
+      - ".github/scripts/prepare_build_version.py"
+      - ".github/scripts/verify_profiles.py"
   pull_request:
     branches: [main, beta]
-    paths-ignore: ["updates/stable/**", "updates/beta/**", "updates/policy.json", "updates/sources.json", "docs/**", "*.md", "website/**", ".github/workflows/pages.yml"]
+    paths:
+      - "app/**"
+      - "benchmark/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - "gradlew*"
+      - "ci-version.properties"
+      - "version.txt"
+      - "updates/public-key.txt"
+      - "release-please-config*.json"
+      - ".release-please-manifest*.json"
+      - ".github/workflows/build.yml"
+      - ".github/scripts/prepare_build_version.py"
+      - ".github/scripts/verify_profiles.py"
   workflow_dispatch:
     inputs:
       build_type:

@@ -43,6 +43,6 @@ adb shell am start -n com.mercury.yktwx.preview/com.mercury.yktwx.MainActivity -
 python -m unittest discover -s .github/scripts -p "test_verify_profiles.py"
 ```
 
-数据与界面测试使用独立样本和模拟响应。发布脚本的 Python 测试依赖 `cryptography`，Release Please 测试依赖与工作流版本匹配的 `release-please` 模块，可通过 `RELEASE_PLEASE_MODULE` 指定位置。
+数据与界面测试使用独立样本和模拟响应。额外的本地验证脚本放在已忽略的 `.agent/`，不提交到 CI 目录；只有 CI 实际调用的验证脚本维护在 `.github/scripts/`。
 
 本地依赖的来源、摘要及许可证见 [app/libs/README.md](../app/libs/README.md)，版权与许可声明随对应源码保留。
