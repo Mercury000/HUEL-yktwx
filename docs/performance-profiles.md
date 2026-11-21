@@ -18,6 +18,7 @@ UI Automator 使用现有页面语义、账单列表与行标识，不新增产�
 
 - 冷启动：进入可交互的付款主界面。只有这个流程设置 `includeInStartupProfile=true`。
 - 常用交互：大厅、我的、账单切换，打开并返回账单详情，账单上下滚动。
+- 扫码采集：从付款页打开独立 `ScannerActivity`，等待 CameraX 预览进入 STREAMING，再保留一秒识别采样并返回。扫码只进入 Baseline Profile，不加入冷启动的 Startup Profile。
 - 测量：冷启动 10 次，交互 5 次；分别使用 `CompilationMode.None` 与要求成功安装 Baseline Profile 的 `CompilationMode.Partial(BaselineProfileMode.Require)`。
 
 生成的资料合入 `app/src/main/generated/baselineProfiles/`，排除 `preview` 包中的样本生成代码。Startup Profile 用于 R8 的启动 DEX 布局优化；Baseline Profile 用于 ART 编译常用方法。生成后的文本可以提交，构建输出和设备诊断不提交。不在普通构建中自动启动设备或重新生成 Profile。
@@ -45,6 +46,8 @@ python .github/scripts/verify_profiles.py app/build/outputs/apk/release/app-rele
 ## 手动 CI
 
 在 GitHub Actions 选择 `Generate application profiles`，手动运行需要更新的分支。采集工作流只接受 `workflow_dispatch`，不会因提交、PR 或普通打包自动运行。先在 API 36 模拟器采集，再检查优化性能 APK 和正式 APK；生成结果与诊断文件上传为制品。
+
+CI 启用后置模拟摄像头，扫码场景必须到达预览就绪状态；不以页面出现或固定等待替代预览成功。采集后检查 `ScannerActivity.onCreate`、Compose 扫码页面、CameraX 绑定及解码器 `decode/prepare` 的方法规则，缺少覆盖就失败。x86_64 模拟器依靠系统镜像的 ARM64 原生桥接运行正式解码库，ABI 和桥接配置输出到采集日志；原生代码本身不属于 ART Profile 的编译范围。此流程验证编译资料覆盖，不提供实机转场掉帧结论。
 
 在 main 或 beta 上运行成功后，分别使用 `perf/baseline-profiles-main` 或 `perf/baseline-profiles-beta` 创建更新 PR，只包含两份生成文件。其他分支提供生成制品。
 

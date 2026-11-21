@@ -29,11 +29,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.disabled
@@ -43,15 +43,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.LifeDevicesUiState
 import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
-import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Info
@@ -103,62 +100,46 @@ internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, on
 @Composable
 internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
     active: Boolean, onBack: () -> Unit, nowMillis: () -> Long = System::currentTimeMillis,
-    onScanned: (String) -> Unit = model::scanned, previewStartAllowed: Boolean = true,
+    onRequestScan: () -> Unit = model::scan,
+    onScanned: (String) -> Unit = model::scanned, recognitionStartAllowed: Boolean = true,
     onManualScanned: (DeviceScanRoute) -> Unit = { onScanned(it.code) }) {
-    var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
-    var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
-    var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
-    val keyboard = LocalSoftwareKeyboardController.current
     DisposableEffect(model, active) { model.pageVisible(active); onDispose { model.pageVisible(false) } }
-    LaunchedEffect(state.scanning, active) {
-        if (!state.scanning || !active) manual = false
-        if (!active) help = false
-    }
     val scanning = state.scanning
+    if (scanning) {
+        LifeScannerPage(state, active, onBack, onScanned, recognitionStartAllowed, onManualScanned)
+        return
+    }
+    var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
+    LaunchedEffect(active) { if (!active) help = false }
     val retryFeedback = rememberRetryFeedbackState(model.restorationOwner to
         (state.laundry?.sessionId ?: state.scannedSerial ?: state.device?.id))
     if (state.feature == LifeFeature.Water && !scanning) {
-        PangguiWaterDevicePage(state, settings, model, active, onBack, nowMillis)
+        PangguiWaterDevicePage(state, settings, model, active, onBack, nowMillis, onRequestScan)
         return
     }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     var topBarListState by remember { mutableStateOf<LazyListState?>(null) }
-    val view = LocalView.current
-    if (scanning && active) DisposableEffect(view) {
-        val window = (view.context as? android.app.Activity)?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val oldStatus = controller?.isAppearanceLightStatusBars
-        val oldNavigation = controller?.isAppearanceLightNavigationBars
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
-        onDispose {
-            oldStatus?.let { controller.isAppearanceLightStatusBars = it }
-            oldNavigation?.let { controller.isAppearanceLightNavigationBars = it }
-        }
-    }
     val title = when {
-        scanning -> "扫一扫"
         state.feature == LifeFeature.Laundry && state.laundry?.phase == LaundryPhase.Ended -> "洗衣完成"
         state.feature == LifeFeature.Laundry && state.laundry?.phase in setOf(LaundryPhase.Closed, LaundryPhase.Refunding) -> "洗衣订单"
         state.feature == LifeFeature.Laundry && state.laundry != null -> "洗衣进度"
         else -> "扫码洗衣"
     }
     val awaitingAccount = state.scannedSerial != null && (state.restoring || state.connectedPhone.isBlank())
-    LifeDeviceShell(title, settings, scanning, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
+    LifeDeviceShell(title, settings, scrollBehavior, onBack, onHelp = { help = true }, showHelp = true,
         listState = topBarListState,
         footer = {
-            if (state.feature == LifeFeature.Laundry && !scanning) {
+            if (state.feature == LifeFeature.Laundry) {
                 if (awaitingAccount) LifeDeviceActionFooter("laundry-action-footer") {
                     Button(onClick = { model.connectAccount(clearPending = false) }, enabled = active && !state.restoring,
                         modifier = Modifier.fillMaxWidth().testTag("laundry-primary-action"), colors = ButtonDefaults.buttonColorsPrimary()) {
                         Text(if (state.restoring) "正在恢复账号…" else "登录并继续")
                     }
-                    Button(onClick = model::scan, enabled = active, modifier = Modifier.fillMaxWidth()) { Text("重新扫码") }
-                } else LaundryActions(state, model, active, onBack, nowMillis, retryFeedback)
+                    Button(onClick = onRequestScan, enabled = active, modifier = Modifier.fillMaxWidth()) { Text("重新扫码") }
+                } else LaundryActions(state, model, active, onBack, nowMillis, retryFeedback, onRequestScan)
             }
         }) { padding ->
         val stage = when {
-            scanning -> "scan"
             state.feature == LifeFeature.Laundry -> "laundry-${when (state.laundry?.phase) {
                 null -> "ready"
                 LaundryPhase.Running -> "running"
@@ -177,23 +158,6 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
         val stageActive = active && displayedStage == stage
         // Animate routes only; retain display data while an outgoing stage finishes.
         val state = rememberWhileShown(displayedStage == stage, state.copy(code = "", paymentLaunch = null))
-        if (displayedStage == "scan") Box(Modifier.fillMaxSize().testTag("life-device-page")) {
-            DeviceScanner(stageActive, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
-                onManualInput = { manual = true }, previewStartAllowed = previewStartAllowed)
-            if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
-            if (!state.error.isNullOrBlank() && !manual) {
-                val errorPadding = remember(padding) {
-                    object : PaddingValues {
-                        override fun calculateLeftPadding(layoutDirection: LayoutDirection) = 24.dp
-                        override fun calculateTopPadding() = padding.calculateTopPadding() + 16.dp
-                        override fun calculateRightPadding(layoutDirection: LayoutDirection) = 24.dp
-                        override fun calculateBottomPadding() = 0.dp
-                    }
-                }
-                Text(state.error, Modifier.align(Alignment.TopCenter).padding(errorPadding),
-                    fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
-            }
-        } else {
         val listState = rememberLazyListState()
         SideEffect { if (displayedStage == stage) topBarListState = listState }
         LazyColumn(Modifier.fillMaxSize().topBarOverscroll(scrollBehavior)
@@ -218,36 +182,78 @@ internal fun LifeDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, 
             } else laundryContent(state, model, stageActive, nowMillis, retryFeedback)
         }
         }
-        }
     }
-    LifeManualDeviceSheet(active && manual && state.scanning, state, serial,
-        onValue = { serial = it },
-        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
-    LifeDeviceHelpSheet(active && help, state, model, onDismiss = { help = false }, retryFeedback = retryFeedback)
+    LifeDeviceHelpSheet(active && help, state, model, onScan = onRequestScan,
+        onDismiss = { help = false }, retryFeedback = retryFeedback)
     LaundryPaymentSheet(active && state.paymentVisible, state, model, nowMillis)
 }
 
 @Composable
-internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: Boolean, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
+internal fun LifeScannerPage(state: LifeDevicesUiState, active: Boolean,
+    onBack: () -> Unit, onScanned: (String) -> Unit, recognitionStartAllowed: Boolean,
+    onManualScanned: (DeviceScanRoute) -> Unit,
+    cameraBackendFactory: (android.content.Context) -> DeviceCameraBackend = ::CameraXDeviceCameraBackend) {
+    var serial by rememberSaveable(state.entryRequest) { mutableStateOf("") }
+    var manual by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
+    var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(active) { if (!active) { manual = false; help = false } }
+    // Scanning has its own full-screen composition; it never instantiates the generic page shell.
+    LifeScannerShell(
+        topBar = {
+            Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
+                SmallTopAppBar(title = "扫一扫", color = Color.Transparent, titleColor = Color.White, glassStyle = false,
+                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
+                        IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
+                    }, actions = {
+                        IconButton(onClick = { help = true }) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
+                    })
+            }
+        },
+        belowTopBar = {
+            if (!state.error.isNullOrBlank() && !manual) Box(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                contentAlignment = Alignment.TopCenter) {
+                Text(state.error, Modifier.padding(horizontal = 24.dp),
+                    fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
+            }
+        },
+    ) {
+        Box(Modifier.fillMaxSize().testTag("life-device-page")) {
+            DeviceScanner(active, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
+                onManualInput = { manual = true }, recognitionStartAllowed = recognitionStartAllowed,
+                cameraBackendFactory = cameraBackendFactory)
+            if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
+        }
+    }
+    LifeManualDeviceSheet(active && manual, state, serial,
+        onValue = { serial = it },
+        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
+    ScannerHelpSheet(active && help) { help = false }
+}
+
+@Composable
+private fun ScannerHelpSheet(show: Boolean, onDismiss: () -> Unit) {
+    if (!rememberOverlayMounted(show)) return
+    OverlayBottomSheet(show = show, startAction = { SheetTitle("扫码帮助") }, onDismissRequest = onDismiss,
+        renderInRootScaffold = true) {
+        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。也可手动输入设备编号；出现平台选项时，选择设备上的平台。已有服务进度可从付款页的状态卡查看。",
+                fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), enabled = show,
+                colors = ButtonDefaults.buttonColorsPrimary()) { Text("知道了") }
+        }
+    }
+}
+
+@Composable
+internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
     onHelp: () -> Unit, showHelp: Boolean, listState: LazyListState?,
     footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
     val topBarOffset = rememberLazyListTopBarOffset(listState, scrollBehavior)
     val currentContent by rememberUpdatedState(content)
-    // Preserve the stage transition and preview identity when the shell switches layouts.
     val body = remember { movableContentOf<PaddingValues> { padding -> currentContent(padding) } }
-    if (scanning) {
-        LifeScannerShell(topBar = {
-            Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                SmallTopAppBar(title = title, color = Color.Transparent, titleColor = Color.White, glassStyle = false,
-                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
-                        IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
-                    }, actions = {
-                        if (showHelp) IconButton(onClick = onHelp) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
-                    })
-            }
-        }, content = body)
-        return
-    }
     val surface = MiuixTheme.colorScheme.surface
     val ink = MiuixTheme.colorScheme.onSurface
     BarBlurHost(false, settings.blurTopBar.value) {
@@ -273,37 +279,23 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scanning: B
 
 /** The scanner needs only a full-page body and an overlaid bar, not Scaffold's seven slots. */
 @Composable
-internal fun LifeScannerShell(topBar: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
-    val padding = remember {
-        object : PaddingValues {
-            var values by mutableStateOf<PaddingValues>(PaddingValues(0.dp))
-            override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp = values.calculateLeftPadding(layoutDirection)
-            override fun calculateTopPadding(): Dp = values.calculateTopPadding()
-            override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp = values.calculateRightPadding(layoutDirection)
-            override fun calculateBottomPadding(): Dp = values.calculateBottomPadding()
-        }
-    }
-    var consumedInsets by remember { mutableStateOf(WindowInsets(0, 0, 0, 0)) }
-    val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout).exclude(consumedInsets)
+internal fun LifeScannerShell(topBar: @Composable () -> Unit, belowTopBar: @Composable () -> Unit = {},
+    content: @Composable () -> Unit) {
     // The app's outer Scaffold owns the root overlays. Keep preview pixels out of its blur capture.
     BarBlurHost(false, false) {
         Layout(content = {
-            Box(Modifier.fillMaxSize().background(Color(0xFF1B2025))) { content(padding) }
+            Box(Modifier.fillMaxSize().background(Color.Black)) { content() }
             Box { topBar() }
-        }, modifier = Modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) { measurables, constraints ->
+            Box { belowTopBar() }
+        }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
             val loose = constraints.copy(minWidth = 0, minHeight = 0)
             val bar = measurables[1].measure(loose)
-            padding.values = PaddingValues(
-                start = (if (layoutDirection == LayoutDirection.Ltr) insets.getLeft(this, layoutDirection)
-                    else insets.getRight(this, layoutDirection)).toDp(),
-                top = (if (bar.width == 0 && bar.height == 0) insets.getTop(this) else bar.height).toDp(),
-                end = (if (layoutDirection == LayoutDirection.Ltr) insets.getRight(this, layoutDirection)
-                    else insets.getLeft(this, layoutDirection)).toDp(),
-                bottom = insets.getBottom(this).toDp())
+            val below = measurables[2].measure(loose)
             val body = measurables[0].measure(loose)
             layout(constraints.maxWidth, constraints.maxHeight) {
                 body.place(0, 0)
                 bar.place(0, 0)
+                below.place(0, bar.height)
             }
         }
     }
@@ -428,7 +420,7 @@ private fun LifePaymentValue(device: LifeDevice) {
 
 @Composable
 private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSettings, model: LifeDevicesViewModel,
-    active: Boolean, onBack: () -> Unit, nowMillis: () -> Long) {
+    active: Boolean, onBack: () -> Unit, nowMillis: () -> Long, onRequestScan: () -> Unit) {
     val water = state.water
     val device = water?.device ?: state.device
     val action = device?.waterAction ?: "接水"
@@ -476,12 +468,12 @@ private fun PangguiWaterDevicePage(state: LifeDevicesUiState, settings: ThemeSet
             exceptional -> model.rescanWaterException()
             failedCommand -> model.retryWater()
             phase == WaterPhase.Running -> model.stopWater()
-            phase == WaterPhase.Ended -> model.scan()
+            phase == WaterPhase.Ended -> onRequestScan()
             else -> model.startWater()
         }
     }
     WaterDevicePage(display, settings, active, primary,
-        scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, model::scan),
+        scanAction = WaterDeviceAction("重新扫码", !state.waterBusy && !state.loadingDevice, onRequestScan),
         refreshAction = WaterDeviceAction("刷新设备", !state.restoring && !loginRequired && !state.waterBusy && !state.loadingDevice, model::refreshDevice),
         onBack = onBack, footerNote = if (phase == WaterPhase.Ready) "支付宝免密后付" else display.feeNotice, nowMillis = nowMillis,
         loginAction = if (loginRequired) WaterDeviceAction("登录并继续", true) { model.connectAccount(clearPending = false) } else null,
@@ -545,7 +537,8 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
 }
 
 @Composable
-private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel, onDismiss: () -> Unit,
+private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model: LifeDevicesViewModel,
+    onScan: () -> Unit, onDismiss: () -> Unit,
     retryFeedback: RetryFeedbackState) {
     if (!rememberOverlayMounted(show)) return
     OverlayBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
@@ -563,7 +556,7 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
                 }
                 if ((if (display.feature == LifeFeature.Water) display.water?.active != true && display.water?.phase != WaterPhase.Ended else display.laundry == null)) Row(
                     Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { onDismiss(); model.scan() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy) { Text("重新扫码") }
+                    Button(onClick = { onDismiss(); onScan() }, modifier = Modifier.weight(1f), enabled = show && !display.waterBusy && !display.laundryBusy) { Text("重新扫码") }
                     Button(onClick = { onDismiss(); retryFeedback.dispatch(model::refreshDevice) }, modifier = Modifier.weight(1f),
                         enabled = show && !display.waterBusy && !display.laundryBusy && !display.loadingDevice && !retryFeedback.dispatching) { Text("刷新设备") }
                 }

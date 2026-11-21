@@ -7,6 +7,8 @@ import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
 import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -41,6 +43,9 @@ import com.mercury.yktwx.AvatarViewModel
 import com.mercury.yktwx.MyUiState
 import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.LifeDevicesViewModel
+import com.mercury.yktwx.LifeScannerResult
+import com.mercury.yktwx.ScannerActivity
+import com.mercury.yktwx.ScannerWindowMotion
 import com.mercury.yktwx.Hui798ViewModel
 import com.mercury.yktwx.HellobikeViewModel
 import com.mercury.yktwx.HellobikeCardsState
@@ -72,6 +77,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.app.ActivityOptionsCompat
 import com.mercury.yktwx.BillViewModel
 import com.mercury.yktwx.PaymentViewModel
 import com.mercury.yktwx.PaymentUiState
@@ -85,7 +91,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
-import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
@@ -389,6 +394,13 @@ private fun MainContent(
     onInstallUpdate: () -> Unit,
 ) {
     val context = LocalContext.current
+    var scannerScope by rememberSaveable { mutableStateOf<String?>(null) }
+    var scannerOpen by rememberSaveable(navigation.scope) { mutableStateOf(false) }
+    var scannerResult by rememberSaveable(stateSaver = LifeScannerResult.StateSaver) { mutableStateOf<LifeScannerResult?>(null) }
+    val scannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        scannerOpen = false
+        scannerResult = LifeScannerResult.read(result.resultCode, result.data)
+    }
     val paymentSuccess by viewModel.paymentSuccess.collectAsStateWithLifecycle()
     val rechargeState by rechargeModel.state.collectAsStateWithLifecycle()
     val feeState by feeModel.state.collectAsStateWithLifecycle()
@@ -604,11 +616,28 @@ private fun MainContent(
     }
     fun openLifeScanner() {
         if (!isActive ||
+            scannerOpen ||
             lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || hellobikeState.busy ||
             lifeState.paymentLaunch != null || hellobikeState.paymentInFlight) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        lifeModel.openUnifiedScan()
-        navigation.showLife(Screen.LifeDevice())
+        scannerOpen = true
+        scannerScope = navigation.scope
+        try {
+            val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 1)
+            val motion = ScannerWindowMotion.forStyle(transitionStyle)
+            scannerLauncher.launch(
+                ScannerActivity.intent(context, transitionStyle),
+                ActivityOptionsCompat.makeCustomAnimation(
+                    context,
+                    motion.openEnter,
+                    motion.openExit,
+                ),
+            )
+        } catch (_: Exception) {
+            scannerOpen = false
+            scannerScope = null
+            Toast.makeText(context, "无法启动相机", Toast.LENGTH_SHORT).show()
+        }
     }
     fun connectLifeAccount() {
         if (!isActive || layers.isNotEmpty()) return
@@ -663,16 +692,42 @@ private fun MainContent(
         hellobikeModel.openSession(id)
         navigation.showLife(Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = id, account = hellobikeModel.restorationOwner))
     }
-    fun scannedLifeDevice(raw: String, manualRoute: DeviceScanRoute? = null) {
-        if (!isActive || lifeProvider != LifeProvider.Panggui || layers.lastOrNull() !is Screen.LifeDevice ||
-            hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy || hellobikeState.busy || hellobikeState.paymentInFlight) return
-        val route = manualRoute ?: UnifiedDeviceCode.identify(raw)
-        when (route?.provider) {
+    LaunchedEffect(scannerResult, isActive, navigation.scope, foreground, lifeState.restoring, hui798State.restoring,
+        hellobikeState.restoring) {
+        val result = scannerResult ?: return@LaunchedEffect
+        if (!isActive || !foreground) return@LaunchedEffect
+        if (scannerScope != navigation.scope) {
+            scannerResult = null
+            return@LaunchedEffect
+        }
+        if (hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy || hellobikeState.busy ||
+            hellobikeState.paymentInFlight) {
+            scannerResult = null
+            Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
+        }
+        val route = result.route()
+        if (route == null) {
+            scannerResult = null
+            Toast.makeText(context, "未识别到支持的设备", Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
+        }
+        // An Activity result can arrive after process recreation, before the platform store loads.
+        val restoring = when (route.provider) {
+            LifeProvider.Panggui -> lifeState.restoring
+            LifeProvider.Hui798 -> hui798State.restoring
+            LifeProvider.Hellobike -> hellobikeState.restoring
+        }
+        if (restoring) return@LaunchedEffect
+        scannerResult = null
+        when (route.provider) {
+            LifeProvider.Panggui -> {
+                lifeModel.restoreDevice(route.feature, route.code, null)
+            }
             LifeProvider.Hui798 -> hui798Model.openDevice(route.code)
             LifeProvider.Hellobike -> hellobikeModel.openDevice(route.code)
-            else -> lifeModel.scanned(raw)
         }
-        if (route != null) navigation.showLife(Screen.LifeDevice(route.provider, route.feature, deviceId = route.code,
+        navigation.showLife(Screen.LifeDevice(route.provider, route.feature, deviceId = route.code,
             account = when (route.provider) {
                 LifeProvider.Panggui -> lifeModel.restorationOwner
                 LifeProvider.Hui798 -> hui798Model.restorationOwner
@@ -1022,11 +1077,18 @@ private fun MainContent(
                                         active = isActive && backStack.lastOrNull() == screen, onScan = ::openLifeScanner, onBack = ::close)
                                     LifeProvider.Hellobike -> HellobikeDevicePage(hellobikeState, settings, hellobikeModel,
                                         active = isActive && backStack.lastOrNull() == screen, onScan = ::openLifeScanner, onBack = ::close)
-                                    LifeProvider.Panggui -> LifeDevicePage(lifeState, settings, lifeModel,
-                                        // Read the live stack so camera ownership ends when the pop commits.
+                                    LifeProvider.Panggui -> if (lifeState.scanning) {
+                                        // Old saved scan routes and exception rescans use the same Activity entry.
+                                        LaunchedEffect(screen, isActive, foreground) {
+                                            if (isActive && foreground && backStack.lastOrNull() == screen) {
+                                                openLifeScanner()
+                                                navigation.close()
+                                            }
+                                        }
+                                        Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface))
+                                    } else LifeDevicePage(lifeState, settings, lifeModel,
                                         active = isActive && backStack.lastOrNull() == screen, onBack = ::close,
-                                        onScanned = { scannedLifeDevice(it) }, onManualScanned = { scannedLifeDevice(it.code, manualRoute = it) },
-                                        previewStartAllowed = !LocalNavTransitionScope.current.isRunning)
+                                        onRequestScan = ::openLifeScanner)
                                 }
                                 else -> SecondaryPage(
                                     screen = screen,

@@ -17,6 +17,18 @@
         <item name="android:windowDisablePreview">true</item>
     </style>
     <style name="Theme.AlipayBridge" parent="Theme.UnionPayBridge" />
+    <style name="Theme.Scanner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorAccent">#7CE2B0</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+    </style>
     <string name="about_references_description">The implementation of CaiXiaoTong references the following open-source projects.</string>
     <string name="about_reference_projects">Reference projects</string>
     <string name="unknown_generic">Unknown</string>

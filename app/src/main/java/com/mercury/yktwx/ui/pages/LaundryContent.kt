@@ -196,7 +196,8 @@ private fun laundryTime(millis: Long): String = DateTimeFormatter.ofPattern("MM-
 
 @Composable
 internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewModel, active: Boolean, onBack: () -> Unit,
-    nowMillis: () -> Long = System::currentTimeMillis, retryFeedback: RetryFeedbackState? = null) {
+    nowMillis: () -> Long = System::currentTimeMillis, retryFeedback: RetryFeedbackState? = null,
+    onRequestScan: () -> Unit = model::scan) {
     val session = state.laundry
     val feedback = retryFeedback ?: rememberRetryFeedbackState(model.restorationOwner to (session?.sessionId ?: state.scannedSerial))
     val loading = state.loadingDevice || state.laundryBusy || feedback.dispatching
@@ -232,7 +233,7 @@ internal fun LaundryActions(state: LifeDevicesUiState, model: LifeDevicesViewMod
             fontSize = 12.sp, color = DashboardPalette.muted)
         Button(onClick = {
             when {
-                ended -> model.scan()
+                ended -> onRequestScan()
                 session?.canDismissUnknownCreation == true -> model.rescanLaundryException()
                 session?.phase == LaundryPhase.Paying -> model.showLaundryPayment()
                 session?.phase == LaundryPhase.Checking && !session.createSent -> model.showLaundryPayment()

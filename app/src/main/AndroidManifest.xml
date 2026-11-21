@@ -82,6 +82,10 @@
         <activity android:name=".LifeUnionPayActivity" android:exported="false"
             android:theme="@style/Theme.UnionPayBridge"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+        <activity android:name=".ScannerActivity" android:exported="false"
+            android:theme="@style/Theme.Scanner"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name="com.unionpay.UPPayWapActivity" android:exported="false"
             android:configChanges="orientation|keyboardHidden"
             android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize"

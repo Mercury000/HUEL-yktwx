@@ -48,5 +48,10 @@ internal fun NavEntryBuilder.appEntries(swipe: NavSwipeDirection, content: @Comp
     entry<AppRoute.Theme>(swipeDismiss = swipe, content = content)
     entry<AppRoute.References>(swipeDismiss = swipe, content = content)
     entry<AppRoute.BillDetail>(swipeDismiss = swipe, content = content)
-    entry<AppRoute.LifeDevice>(contentKey = { "life-device" }, swipeDismiss = swipe, content = content)
+    entry<AppRoute.LifeDevice>(
+        contentKey = { "life-device" },
+        transition = ScannerNavigationTransition,
+        swipeDismiss = NavSwipeDirection.None,
+        content = content,
+    )
 }
