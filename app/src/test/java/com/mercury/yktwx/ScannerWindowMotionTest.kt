@@ -2,6 +2,7 @@ package com.mercury.yktwx
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.view.animation.AlphaAnimation
 import android.view.animation.AnimationSet
 import android.view.animation.AnimationUtils
@@ -67,5 +68,12 @@ class ScannerWindowMotionTest {
         assertNull(LifeScannerResult.read(Activity.RESULT_CANCELED, qr.toIntent()))
         assertNull(LifeScannerResult.read(Activity.RESULT_OK, LifeScannerResult("unknown").toIntent()))
         assertNull(LifeScannerResult.read(Activity.RESULT_OK, LifeScannerResult(raw, LifeProvider.Panggui).toIntent()))
+    }
+
+    @Test fun appearanceSnapshotCarriesTheAppSettingsAndUsesLegacyDefaults() {
+        val configured = ScannerAppearance(themeMode = 2, accentMode = 1, glassStyle = true)
+        assertEquals(configured, ScannerAppearance.read(ScannerActivity.intent(context, transitionStyle = 1, configured)))
+        assertEquals(ScannerAppearance(themeMode = 0, accentMode = 0, glassStyle = false),
+            ScannerAppearance.read(Intent()))
     }
 }

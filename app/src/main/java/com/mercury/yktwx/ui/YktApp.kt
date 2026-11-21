@@ -45,6 +45,7 @@ import com.mercury.yktwx.HallViewModel
 import com.mercury.yktwx.LifeDevicesViewModel
 import com.mercury.yktwx.LifeScannerResult
 import com.mercury.yktwx.ScannerActivity
+import com.mercury.yktwx.ScannerAppearance
 import com.mercury.yktwx.ScannerWindowMotion
 import com.mercury.yktwx.Hui798ViewModel
 import com.mercury.yktwx.HellobikeViewModel
@@ -112,11 +113,7 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         }
         return
     }
-    val mode = when (settings.themeMode.value) {
-        1 -> ColorSchemeMode.Light
-        2 -> ColorSchemeMode.Dark
-        else -> ColorSchemeMode.System
-    }
+    val mode = themeColorSchemeMode(settings.themeMode.value)
     AppTheme(mode, settings.accentMode.value, glassStyle = settings.glassStyle.value) {
         val state by viewModel.state.collectAsStateWithLifecycle()
         val session by viewModel.sessionState.collectAsStateWithLifecycle()
@@ -629,8 +626,13 @@ private fun MainContent(
         try {
             val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 1)
             val motion = ScannerWindowMotion.forStyle(transitionStyle)
+            val appearance = ScannerAppearance(
+                themeMode = settings.themeMode.value,
+                accentMode = settings.accentMode.value,
+                glassStyle = settings.glassStyle.value,
+            )
             scannerLauncher.launch(
-                ScannerActivity.intent(context, transitionStyle),
+                ScannerActivity.intent(context, transitionStyle, appearance),
                 ActivityOptionsCompat.makeCustomAnimation(
                     context,
                     motion.openEnter,

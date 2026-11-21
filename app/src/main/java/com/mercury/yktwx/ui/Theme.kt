@@ -12,6 +12,13 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
+/** Persisted color mode values: 0 follows the system, 1 is light and 2 is dark. */
+internal fun themeColorSchemeMode(themeMode: Int): ColorSchemeMode = when (themeMode) {
+    1 -> ColorSchemeMode.Light
+    2 -> ColorSchemeMode.Dark
+    else -> ColorSchemeMode.System
+}
+
 @Composable
 fun AppTheme(
     colorSchemeMode: ColorSchemeMode = ColorSchemeMode.System,

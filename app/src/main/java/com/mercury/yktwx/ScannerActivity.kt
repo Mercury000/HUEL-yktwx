@@ -25,13 +25,14 @@ import com.mercury.yktwx.data.life.DeviceScanRoute
 import com.mercury.yktwx.data.life.LifeProvider
 import com.mercury.yktwx.data.life.UnifiedDeviceCode
 import com.mercury.yktwx.ui.AppTheme
+import com.mercury.yktwx.ui.components.AppearanceBackdropContent
 import com.mercury.yktwx.ui.components.CameraXDeviceCameraBackend
 import com.mercury.yktwx.ui.components.DeviceCameraBackend
 import com.mercury.yktwx.ui.pages.LifeScannerPage
+import com.mercury.yktwx.ui.themeColorSchemeMode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 /** Preserve manual platform selection when several providers accept the same number. */
 @Serializable
@@ -62,6 +63,30 @@ internal data class LifeScannerResult(val raw: String, val manualProvider: LifeP
     }
 }
 
+/** A snapshot of the app's appearance settings for the scanner window's own Compose host. */
+internal data class ScannerAppearance(
+    val themeMode: Int = 0,
+    val accentMode: Int = 0,
+    val glassStyle: Boolean = false,
+) {
+    fun writeTo(intent: Intent): Intent = intent
+        .putExtra(ExtraThemeMode, themeMode.coerceIn(0, 2))
+        .putExtra(ExtraAccentMode, accentMode.coerceIn(0, 1))
+        .putExtra(ExtraGlassStyle, glassStyle)
+
+    companion object {
+        private const val ExtraThemeMode = "scanner.theme_mode"
+        private const val ExtraAccentMode = "scanner.accent_mode"
+        private const val ExtraGlassStyle = "scanner.glass_style"
+
+        fun read(intent: Intent): ScannerAppearance = ScannerAppearance(
+            themeMode = intent.getIntExtra(ExtraThemeMode, 0).coerceIn(0, 2),
+            accentMode = intent.getIntExtra(ExtraAccentMode, 0).coerceIn(0, 1),
+            glassStyle = intent.getBooleanExtra(ExtraGlassStyle, false),
+        )
+    }
+}
+
 /** The window transition carries the Compose UI and camera SurfaceView as one hierarchy. */
 class ScannerActivity : ComponentActivity() {
     private var entryFinished by mutableStateOf(false)
@@ -77,27 +102,31 @@ class ScannerActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
         )
         window.isNavigationBarContrastEnforced = false
+        val appearance = ScannerAppearance.read(intent)
         setContent {
-            AppTheme(ColorSchemeMode.Dark) {
+            AppTheme(themeColorSchemeMode(appearance.themeMode), appearance.accentMode,
+                glassStyle = appearance.glassStyle) {
                 Scaffold(Modifier.fillMaxSize().background(Color.Black).semantics { testTagsAsResourceId = true }) {
-                    var error by remember { mutableStateOf<String?>(null) }
-                    val cameraFactory: (Context) -> DeviceCameraBackend = remember {
-                        { context -> CameraXDeviceCameraBackend(context, PreviewView.ImplementationMode.PERFORMANCE) }
+                    AppearanceBackdropContent {
+                        var error by remember { mutableStateOf<String?>(null) }
+                        val cameraFactory: (Context) -> DeviceCameraBackend = remember {
+                            { context -> CameraXDeviceCameraBackend(context, PreviewView.ImplementationMode.PERFORMANCE) }
+                        }
+                        LifeScannerPage(
+                            state = LifeDevicesUiState(restoring = false, scanning = true, error = error),
+                            active = true,
+                            onBack = ::finish,
+                            onScanned = { raw ->
+                                val result = LifeScannerResult(raw)
+                                if (result.route() == null) error = "未知设备"
+                                else complete(result)
+                            },
+                            // Opening and preview do not wait; native recognition waits for window motion.
+                            recognitionStartAllowed = entryFinished,
+                            onManualScanned = { route -> complete(LifeScannerResult(route.code, route.provider)) },
+                            cameraBackendFactory = cameraFactory,
+                        )
                     }
-                    LifeScannerPage(
-                        state = LifeDevicesUiState(restoring = false, scanning = true, error = error),
-                        active = true,
-                        onBack = ::finish,
-                        onScanned = { raw ->
-                            val result = LifeScannerResult(raw)
-                            if (result.route() == null) error = "未知设备"
-                            else complete(result)
-                        },
-                        // Opening and preview do not wait; native recognition waits for window motion.
-                        recognitionStartAllowed = entryFinished,
-                        onManualScanned = { route -> complete(LifeScannerResult(route.code, route.provider)) },
-                        cameraBackendFactory = cameraFactory,
-                    )
                 }
             }
         }
@@ -117,8 +146,9 @@ class ScannerActivity : ComponentActivity() {
 
     companion object {
         private const val ExtraTransitionStyle = "scanner.transition_style"
-        internal fun intent(context: Context, transitionStyle: Int): Intent =
-            Intent(context, ScannerActivity::class.java).putExtra(ExtraTransitionStyle, transitionStyle.coerceIn(0, 1))
+        internal fun intent(context: Context, transitionStyle: Int, appearance: ScannerAppearance): Intent =
+            appearance.writeTo(Intent(context, ScannerActivity::class.java)
+                .putExtra(ExtraTransitionStyle, transitionStyle.coerceIn(0, 1)))
     }
 }
 

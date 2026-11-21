@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.components.DashboardPalette
+import com.mercury.yktwx.ui.themeColorSchemeMode
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -33,6 +34,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Config(sdk = [35], qualifiers = "zh-rCN-w411dp-h891dp-hdpi")
 class ThemeBehaviorTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
+
+    @Test fun persistedColorModeValuesMapToTheSameThemeModes() {
+        assertEquals(ColorSchemeMode.System, themeColorSchemeMode(0))
+        assertEquals(ColorSchemeMode.Light, themeColorSchemeMode(1))
+        assertEquals(ColorSchemeMode.Dark, themeColorSchemeMode(2))
+    }
 
     @Test fun explicitAndSystemThemesKeepPaletteConfigurationAndPageStateConsistent() {
         val mode = mutableStateOf(ColorSchemeMode.System)
