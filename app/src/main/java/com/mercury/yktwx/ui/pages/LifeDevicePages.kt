@@ -50,6 +50,8 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -198,38 +200,47 @@ internal fun LifeScannerPage(state: LifeDevicesUiState, active: Boolean,
     var help by rememberSaveable(state.entryRequest) { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(active) { if (!active) { manual = false; help = false } }
-    // Scanning has its own full-screen composition; it never instantiates the generic page shell.
-    LifeScannerShell(
-        topBar = {
-            Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
-                SmallTopAppBar(title = "扫一扫", color = Color.Transparent, titleColor = Color.White, glassStyle = false,
-                    modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
-                        IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
-                    }, actions = {
-                        IconButton(onClick = { help = true }) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
-                    })
+    // The camera preview is a SurfaceView, so the app's recorded backdrop has a transparent
+    // hole where it sits. Sample a local opaque layer for the scanner sheets instead, using
+    // the same surface color as the home page in both light and dark mode.
+    val sheetSurface = MiuixTheme.colorScheme.surface
+    val sheetBackdrop = rememberLayerBackdrop { drawRect(sheetSurface) }
+    CompositionLocalProvider(LocalAppearanceBackdrop provides sheetBackdrop) {
+        Box(Modifier.fillMaxSize().layerBackdrop(sheetBackdrop)) {
+            // Scanning has its own full-screen composition; it never instantiates the generic page shell.
+            LifeScannerShell(
+                topBar = {
+                    Box(Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .3f), Color.Transparent)))) {
+                        SmallTopAppBar(title = "扫一扫", color = Color.Transparent, titleColor = Color.White, glassStyle = false,
+                            modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = {
+                                IconButton(onClick = onBack) { AppBackIcon("返回", tint = Color.White) }
+                            }, actions = {
+                                IconButton(onClick = { help = true }) { Icon(MiuixIcons.Info, "帮助", tint = Color.White) }
+                            })
+                    }
+                },
+                belowTopBar = {
+                    if (!state.error.isNullOrBlank() && !manual) Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                        contentAlignment = Alignment.TopCenter) {
+                        Text(state.error, Modifier.padding(horizontal = 24.dp),
+                            fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
+                    }
+                },
+            ) {
+                Box(Modifier.fillMaxSize().testTag("life-device-page")) {
+                    DeviceScanner(active, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
+                        onManualInput = { manual = true }, recognitionStartAllowed = recognitionStartAllowed,
+                        cameraBackendFactory = cameraBackendFactory)
+                    if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
+                }
             }
-        },
-        belowTopBar = {
-            if (!state.error.isNullOrBlank() && !manual) Box(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                contentAlignment = Alignment.TopCenter) {
-                Text(state.error, Modifier.padding(horizontal = 24.dp),
-                    fontSize = 12.sp, lineHeight = 20.sp, color = Color.White, textAlign = TextAlign.Center)
-            }
-        },
-    ) {
-        Box(Modifier.fillMaxSize().testTag("life-device-page")) {
-            DeviceScanner(active, { code -> if (!manual && !help && !state.loadingDevice) onScanned(code) }, immersive = true,
-                onManualInput = { manual = true }, recognitionStartAllowed = recognitionStartAllowed,
-                cameraBackendFactory = cameraBackendFactory)
-            if (state.loadingDevice) Text("正在识别设备…", Modifier.align(Alignment.Center), fontSize = 14.sp, color = Color.White)
         }
+        LifeManualDeviceSheet(active && manual, state, serial,
+            onValue = { serial = it },
+            onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
+        ScannerHelpSheet(active && help) { help = false }
     }
-    LifeManualDeviceSheet(active && manual, state, serial,
-        onValue = { serial = it },
-        onDismiss = { manual = false; keyboard?.hide() }, onIdentify = { keyboard?.hide(); onManualScanned(it) })
-    ScannerHelpSheet(active && help) { help = false }
 }
 
 @Composable
@@ -502,39 +513,44 @@ internal fun LifeDeviceActionFooter(tag: String, content: @Composable ColumnScop
 private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, serial: String,
     onValue: (String) -> Unit, onDismiss: () -> Unit, onIdentify: (DeviceScanRoute) -> Unit) {
     if (!rememberOverlayMounted(show)) return
+    // The sheet content is hosted by the root scaffold, so composition locals from the
+    // scanner page do not reach it. Re-provide the scanner backdrop around the content.
+    val sheetBackdrop = LocalAppearanceBackdrop.current
     OverlayBottomSheet(show = show, startAction = { SheetTitle("输入设备编号") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
-        val value = rememberWhileShown(show, serial)
-        val candidates = remember(value) { UnifiedDeviceCode.manualCandidates(value) }
-        var selectedProvider by rememberSaveable(show, serial) { mutableStateOf<LifeProvider?>(null) }
-        // A tab row always has a selection; keep the first platform as the default when the
-        // number is ambiguous, then follow the user's choice while it is still a candidate.
-        val selectedIndex = candidates.indexOfFirst { it.provider == selectedProvider }
-            .takeIf { it >= 0 } ?: 0
-        val route = UnifiedDeviceCode.identifyManual(serial, candidates.getOrNull(selectedIndex)?.provider)
-        val identify = { if (show && !state.loadingDevice) route?.let(onIdentify); Unit }
-        // Own the sheet's height transition so the platform row expands into place instead
-        // of snapping the drawer taller in one frame.
-        ReadLayout(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-                DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
-                    modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
-                if (candidates.size > 1) {
-                    val tabsEnabled = show && !state.loadingDevice
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("选择设备上的平台", fontSize = 12.sp, color = DashboardPalette.muted)
-                        Box(Modifier.fillMaxWidth().testTag("life-manual-provider-tabs")) {
-                            HallNeutralTabs(candidates.map { it.provider.displayName }, selectedIndex, tabsEnabled) {
-                                selectedProvider = candidates[it].provider
+        CompositionLocalProvider(LocalAppearanceBackdrop provides sheetBackdrop) {
+            val value = rememberWhileShown(show, serial)
+            val candidates = remember(value) { UnifiedDeviceCode.manualCandidates(value) }
+            var selectedProvider by rememberSaveable(show, serial) { mutableStateOf<LifeProvider?>(null) }
+            // A tab row always has a selection; keep the first platform as the default when the
+            // number is ambiguous, then follow the user's choice while it is still a candidate.
+            val selectedIndex = candidates.indexOfFirst { it.provider == selectedProvider }
+                .takeIf { it >= 0 } ?: 0
+            val route = UnifiedDeviceCode.identifyManual(serial, candidates.getOrNull(selectedIndex)?.provider)
+            val identify = { if (show && !state.loadingDevice) route?.let(onIdentify); Unit }
+            // Own the sheet's height transition so the platform row expands into place instead
+            // of snapping the drawer taller in one frame.
+            ReadLayout(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+                    DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
+                        modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
+                    if (candidates.size > 1) {
+                        val tabsEnabled = show && !state.loadingDevice
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("选择设备上的平台", fontSize = 12.sp, color = DashboardPalette.muted)
+                            Box(Modifier.fillMaxWidth().testTag("life-manual-provider-tabs")) {
+                                HallNeutralTabs(candidates.map { it.provider.displayName }, selectedIndex, tabsEnabled) {
+                                    selectedProvider = candidates[it].provider
+                                }
                             }
                         }
                     }
-                }
-                InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
-                    Button(onClick = identify, enabled = show && !state.loadingDevice && route != null,
-                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-                        Text(if (state.loadingDevice) "正在识别…" else "识别设备")
+                    InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
+                        Button(onClick = identify, enabled = show && !state.loadingDevice && route != null,
+                            modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+                            Text(if (state.loadingDevice) "正在识别…" else "识别设备")
+                        }
                     }
                 }
             }
