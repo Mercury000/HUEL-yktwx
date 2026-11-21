@@ -177,7 +177,8 @@ class Hui798ViewModelTest {
         model(api, store); runCurrent()
         val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
         nav.bind("campus", false, 1)
-        nav.showLife(AppRoute.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = running().sessionId, account = account.phone))
+        nav.showLife(AppRoute.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = running().sessionId,
+            account = account.phone), LifeEntryOrigin.User)
         val nextHandle = handle.recreated(); models.clear()
         val next = model(api, store); runCurrent()
         val nextNav = AppNavigationViewModel(nextHandle).apply { bind("campus", false, 1) }

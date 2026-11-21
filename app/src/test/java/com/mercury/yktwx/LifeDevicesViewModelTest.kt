@@ -154,7 +154,8 @@ class LifeDevicesViewModelTest {
         val before = model(api, store); runCurrent()
         val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
         nav.bind("campus", false, 1)
-        nav.showLife(AppRoute.LifeDevice(deviceId = device.serial, account = before.restorationOwner, skuId = "saved"))
+        nav.showLife(AppRoute.LifeDevice(deviceId = device.serial, account = before.restorationOwner, skuId = "saved"),
+            LifeEntryOrigin.User)
         val nextHandle = handle.recreated(); viewModels.clear()
         val after = model(api, store); runCurrent()
         val restoredNav = AppNavigationViewModel(nextHandle).apply { bind("campus", false, 1) }

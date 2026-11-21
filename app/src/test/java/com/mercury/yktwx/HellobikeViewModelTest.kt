@@ -475,7 +475,7 @@ class HellobikeViewModelTest {
         val handle = SavedStateHandle(); val nav = AppNavigationViewModel(handle)
         nav.bind("campus", false, 1)
         nav.showLife(AppRoute.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = fixtureBikeSession.sessionId,
-            account = original.restorationOwner))
+            account = original.restorationOwner), LifeEntryOrigin.User)
         val restoredHandle = handle.recreated(); models.clear()
         val next = model(api, store)
         val restoredNav = AppNavigationViewModel(restoredHandle).apply { bind("campus", false, 1) }

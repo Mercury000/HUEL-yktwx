@@ -12,6 +12,7 @@ import com.mercury.yktwx.data.*
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.state.*
 import com.mercury.yktwx.ui.nav.AppRoute
+import com.mercury.yktwx.ui.nav.LifeEntryOrigin
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -62,7 +63,9 @@ class StateRestorationTest {
         val routes = listOf(AppRoute.Profile, AppRoute.Account, AppRoute.Settings, AppRoute.Theme, AppRoute.About,
             AppRoute.References, AppRoute.BillDetail(reference), AppRoute.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride,
                 sessionId = "ride-id", account = "bike-owner"))
-        routes.forEach(before::open)
+        routes.forEach { route ->
+            if (route is AppRoute.LifeDevice) before.showLife(route, LifeEntryOrigin.User) else before.open(route)
+        }
         val scope = before.scope
         val recreated = handle.recreated(); models.clear()
         val after = navigation(recreated)
@@ -73,6 +76,36 @@ class StateRestorationTest {
         after.bind("owner", false, 2)
         assertEquals(listOf(AppRoute.Main), after.backStack.toList()); assertEquals(0, after.tab)
         assertNotEquals(scope, after.scope)
+    }
+
+    @Test fun lifeEntryOriginTracksUserScannerUpdatesAndRestoration() {
+        val handle = SavedStateHandle()
+        val nav = navigation(handle)
+        nav.bind("owner", false, 1)
+        val device = AppRoute.LifeDevice(deviceId = "water", account = "owner")
+        nav.showLife(device, LifeEntryOrigin.User)
+        assertEquals(LifeEntryOrigin.User, nav.lifeEntryOrigin)
+        nav.showLife(AppRoute.LifeDevice(sessionId = "session", account = "owner"), LifeEntryOrigin.Scanner)
+        assertEquals(LifeEntryOrigin.Scanner, nav.lifeEntryOrigin)
+        val synced = AppRoute.LifeDevice(sessionId = "session-2", account = "owner")
+        nav.updateLife(synced)
+        assertEquals(LifeEntryOrigin.Scanner, nav.lifeEntryOrigin)
+        assertEquals("session-2", (nav.backStack.last() as AppRoute.LifeDevice).sessionId)
+
+        val restoredHandle = handle.recreated()
+        models.clear()
+        val restored = navigation(restoredHandle)
+        restored.bind("owner", false, 1)
+        assertEquals(LifeEntryOrigin.Restored, restored.lifeEntryOrigin)
+        assertTrue(restored.needsLifeRestore(synced))
+
+        restored.close()
+        assertNull(restored.lifeEntryOrigin)
+        restored.showLife(device, LifeEntryOrigin.User)
+        restored.returnToMain()
+        assertNull(restored.lifeEntryOrigin)
+        restored.updateLife(device)
+        assertEquals(listOf(AppRoute.Main), restored.backStack.toList())
     }
 
     @Test fun waitingForIdentityPreservesSnapshotWhileAnotherOwnerAndPreviewCannotConsumeIt() {

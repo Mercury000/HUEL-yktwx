@@ -17,8 +17,9 @@ internal fun miuixNavigationTransition(style: Int): NavTransition =
     if (style == 1) CrossActivityTransition else NavTransitions.MiuixDefault
 
 /**
- * Reveal the device route behind ScannerActivity without a second visible entry animation.
- * Returning from the device page still uses the selected page motion and back gestures.
+ * Reveal a device route that is already presented by ScannerActivity or by state restoration
+ * without a second visible entry animation. Returning from the device page still uses the
+ * selected page motion and back gestures.
  */
 private val ScannerArrivalTransition: NavTransition = navGraphicsTransition(
     opaqueDepth = 1f,

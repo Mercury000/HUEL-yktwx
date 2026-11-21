@@ -685,18 +685,21 @@ private fun MainContent(
         if (!isActive) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeModel.openSession(feature, sessionId)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Panggui, feature, sessionId = sessionId, account = lifeModel.restorationOwner))
+        navigation.showLife(Screen.LifeDevice(LifeProvider.Panggui, feature, sessionId = sessionId,
+            account = lifeModel.restorationOwner), LifeEntryOrigin.User)
     }
     fun openHui798Session(id: String) {
         if (!isActive || hui798State.busy) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hui798Model.openSession(id)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = id, account = hui798Model.restorationOwner))
+        navigation.showLife(Screen.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = id,
+            account = hui798Model.restorationOwner), LifeEntryOrigin.User)
     }
     fun openHellobikeSession(id: String) {
         if (!isActive || hellobikeState.busy || hellobikeState.paymentInFlight || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hellobikeModel.openSession(id)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = id, account = hellobikeModel.restorationOwner))
+        navigation.showLife(Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = id,
+            account = hellobikeModel.restorationOwner), LifeEntryOrigin.User)
     }
     LaunchedEffect(scannerResult, isActive, navigation.scope, foreground, lifeState.restoring, hui798State.restoring,
         hellobikeState.restoring) {
@@ -738,7 +741,7 @@ private fun MainContent(
                 LifeProvider.Panggui -> lifeModel.restorationOwner
                 LifeProvider.Hui798 -> hui798Model.restorationOwner
                 LifeProvider.Hellobike -> hellobikeModel.restorationOwner
-            }))
+            }), LifeEntryOrigin.Scanner)
     }
     // Apply a restored route only after its encrypted platform store is ready.
     LaunchedEffect(lifeRoute, lifeState.paymentRestorePending, hellobikeState.paymentRestorePending, lifeState.cancelOrderConfirmation) {
@@ -805,7 +808,7 @@ private fun MainContent(
             LifeProvider.Hellobike -> route.copy(sessionId = hellobikeState.selectedSessionId,
                 deviceId = hellobikeState.scannedBikeNo.takeIf { hellobikeState.selectedSessionId == null }, account = hellobikeModel.restorationOwner)
         }
-        if (current != route) navigation.showLife(current)
+        if (current != route) navigation.updateLife(current)
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
         if (!isActive) return
@@ -858,7 +861,12 @@ private fun MainContent(
         else -> NavSwipeDirection.LeftToRight
     }
     val navigationTransition = miuixNavigationTransition(settings.navTransitionStyle.value)
-    val deviceTransition = remember(navigationTransition) { scannerNavigationTransition(navigationTransition) }
+    val lifeTransition = remember(navigationTransition, navigation.lifeEntryOrigin) {
+        when (navigation.lifeEntryOrigin) {
+            LifeEntryOrigin.Scanner, LifeEntryOrigin.Restored -> scannerNavigationTransition(navigationTransition)
+            LifeEntryOrigin.User, null -> navigationTransition
+        }
+    }
     val navigationEffects = rememberMiuixNavigationEffects(wideScreen = wideScreen, transitionStyle = settings.navTransitionStyle.value)
     CompositionLocalProvider(LocalReadOffline provides (network.online == false)) {
         // Chrome stays outside page transitions; glass chrome samples the pane beneath it.
@@ -874,7 +882,7 @@ private fun MainContent(
                 transition = navigationTransition,
                 effects = navigationEffects,
             ) {
-                appEntries(swipeDirection, deviceTransition) { screen ->
+                appEntries(swipeDirection, lifeTransition) { screen ->
                     Box(Modifier.fillMaxSize().mainNavigationPageInsets()) {
                         if (screen == Screen.Main) {
                             BarBlurHost(settings.blurBottomBar.value, false) {

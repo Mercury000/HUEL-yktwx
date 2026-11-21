@@ -8,6 +8,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import com.mercury.yktwx.state.RestorableState
 import com.mercury.yktwx.ui.nav.AppRoute
+import com.mercury.yktwx.ui.nav.LifeEntryOrigin
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.serialization.Serializable
@@ -20,6 +21,10 @@ internal class AppNavigationViewModel @Inject constructor(handle: SavedStateHand
     private var binding by mutableStateOf<Pair<String?, Boolean>?>(null)
     private var generation: Long? = null
     private var restoredLife by mutableStateOf<AppRoute.LifeDevice?>(null)
+
+    /** Selects the LifeDevice push motion without coupling it to the destination route type. */
+    var lifeEntryOrigin by mutableStateOf<LifeEntryOrigin?>(null)
+        private set
     var scope by mutableStateOf(java.util.UUID.randomUUID().toString())
         private set
     private val saved = RestorableState(handle, "navigation", NavigationSnapshot.serializer(), { it.valid }) {
@@ -32,27 +37,47 @@ internal class AppNavigationViewModel @Inject constructor(handle: SavedStateHand
         if (binding == (owner to preview) && this.generation == generation) return
         val renewed = this.generation != null && this.generation != generation
         val snapshot = saved.bind(owner, preview, renewed)
+        val routes = snapshot?.routes ?: listOf(AppRoute.Main)
+        val restoredLifeRoute = routes.lastOrNull() as? AppRoute.LifeDevice
         binding = owner to preview; this.generation = generation
-        backStack.clear(); backStack.addAll(snapshot?.routes ?: listOf(AppRoute.Main))
+        // Set the origin before the stack changes so the restored entry is built with the
+        // static arrival motion instead of animating a page that was already visible.
+        lifeEntryOrigin = restoredLifeRoute?.let { LifeEntryOrigin.Restored }
+        backStack.clear(); backStack.addAll(routes)
         tab = snapshot?.tab ?: 0
         scope = snapshot?.scope ?: java.util.UUID.randomUUID().toString()
-        restoredLife = backStack.lastOrNull() as? AppRoute.LifeDevice
+        restoredLife = restoredLifeRoute
     }
 
     fun needsLifeRestore(route: AppRoute.LifeDevice) = restoredLife == route
     fun lifeRestored() { restoredLife = null }
+    /** Push a non-LifeDevice page. LifeDevice entries use [showLife] so their motion is explicit. */
     fun open(route: AppRoute) { if (route !in backStack) backStack.add(route) }
-    fun showLife(route: AppRoute.LifeDevice) {
+
+    /** Push or replace a LifeDevice page; [origin] must describe why the page appears. */
+    fun showLife(route: AppRoute.LifeDevice, origin: LifeEntryOrigin) {
+        // Publish the origin first so the new entry is composed with the matching motion.
+        lifeEntryOrigin = origin
         restoredLife = null
         if (backStack.lastOrNull() is AppRoute.LifeDevice) backStack[backStack.lastIndex] = route else open(route)
     }
+
+    /** Replace the visible LifeDevice route after a state sync; never changes how it was entered. */
+    fun updateLife(route: AppRoute.LifeDevice) {
+        if (backStack.lastOrNull() is AppRoute.LifeDevice) backStack[backStack.lastIndex] = route
+    }
+
     fun close() {
         restoredLife = null
+        val leavingLife = backStack.lastOrNull() is AppRoute.LifeDevice
         if (backStack.size > 1) backStack.removeLastOrNull()
+        if (leavingLife) lifeEntryOrigin = null
     }
+
     fun returnToMain() {
         restoredLife = null
         while (backStack.size > 1) backStack.removeLastOrNull()
+        lifeEntryOrigin = null
     }
 
     @Serializable private data class NavigationSnapshot(val tab: Int, val routes: List<AppRoute>, val scope: String) {

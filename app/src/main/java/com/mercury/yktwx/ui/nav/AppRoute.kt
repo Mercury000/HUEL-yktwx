@@ -38,10 +38,13 @@ internal sealed interface AppRoute : NavKey {
     }
 }
 
-/** Miuix registers concrete runtime types; the sealed serializer alone does not register entries. */
+/**
+ * Miuix registers concrete runtime types; the sealed serializer alone does not register entries.
+ * [lifeTransition] is selected from the LifeDevice entry origin, not from the route type.
+ */
 internal fun NavEntryBuilder.appEntries(
     swipe: NavSwipeDirection,
-    deviceTransition: NavTransition,
+    lifeTransition: NavTransition,
     content: @Composable (AppRoute) -> Unit,
 ) {
     entry<AppRoute.Main>(swipeDismiss = swipe, content = content)
@@ -55,7 +58,7 @@ internal fun NavEntryBuilder.appEntries(
     entry<AppRoute.BillDetail>(swipeDismiss = swipe, content = content)
     entry<AppRoute.LifeDevice>(
         contentKey = { "life-device" },
-        transition = deviceTransition,
+        transition = lifeTransition,
         swipeDismiss = swipe,
         content = content,
     )

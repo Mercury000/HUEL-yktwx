@@ -36,6 +36,7 @@ class ScannerDeviceNavigationTest {
     private val stack = navBackStackOf(AppRoute.Main)
     private var style by mutableIntStateOf(0)
     private var swipeEnabled by mutableStateOf(true)
+    private var origin by mutableStateOf(LifeEntryOrigin.Scanner)
     private val device get() = compose.onNodeWithTag("device")
     private val main get() = compose.onNodeWithTag("main")
     private val routes = listOf(
@@ -49,10 +50,15 @@ class ScannerDeviceNavigationTest {
         compose.setContent {
             AppTheme {
                 val pageTransition = miuixNavigationTransition(style)
-                val deviceTransition = remember(pageTransition) { scannerNavigationTransition(pageTransition) }
+                val lifeTransition = remember(pageTransition, origin) {
+                    when (origin) {
+                        LifeEntryOrigin.Scanner, LifeEntryOrigin.Restored -> scannerNavigationTransition(pageTransition)
+                        LifeEntryOrigin.User -> pageTransition
+                    }
+                }
                 val swipeDirection = if (swipeEnabled) NavSwipeDirection.LeftToRight else NavSwipeDirection.None
                 NavDisplay(stack, onBack = { stack.removeLastOrNull() }, transition = pageTransition) {
-                    appEntries(swipeDirection, deviceTransition) { route ->
+                    appEntries(swipeDirection, lifeTransition) { route ->
                         Box(Modifier.fillMaxSize().background(if (route == AppRoute.Main) Color.Blue else Color.Red)
                             .testTag(if (route == AppRoute.Main) "main" else "device"))
                     }
@@ -70,8 +76,9 @@ class ScannerDeviceNavigationTest {
             coordinates.localToRoot(Offset.Zero).x
     }
 
-    private fun open(selectedStyle: Int, route: AppRoute.LifeDevice = routes.first()) {
-        compose.runOnIdle { style = selectedStyle; stack.add(route) }
+    private fun open(selectedStyle: Int, route: AppRoute.LifeDevice = routes.first(),
+        entryOrigin: LifeEntryOrigin = LifeEntryOrigin.Scanner) {
+        compose.runOnIdle { style = selectedStyle; origin = entryOrigin; stack.add(route) }
         advanceFrames(600)
         compose.waitForIdle()
     }
@@ -97,7 +104,7 @@ class ScannerDeviceNavigationTest {
 
     @Test fun scannerArrivalShowsTheDeviceWithoutMovingEitherPage() {
         for (selectedStyle in 0..1) {
-            compose.runOnIdle { style = selectedStyle }
+            compose.runOnIdle { style = selectedStyle; origin = LifeEntryOrigin.Scanner }
             val originalLeft = left(main)
             compose.mainClock.autoAdvance = false
             try {
@@ -116,31 +123,54 @@ class ScannerDeviceNavigationTest {
         }
     }
 
-    @Test fun ordinaryBackAnimatesEveryDeviceRouteInBothStyles() {
-        for (selectedStyle in 0..1) for (route in routes) {
-            open(selectedStyle, route)
-            val originalLeft = left(device)
-            val width = drawnWidth()
+    @Test fun islandArrivalUsesThePageTransition() {
+        for (selectedStyle in 0..1) {
+            compose.runOnIdle { style = selectedStyle; origin = LifeEntryOrigin.User }
+            val originalLeft = left(main)
             compose.mainClock.autoAdvance = false
             try {
-                compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-                advanceFrames(144)
-                val distance = left(device) - originalLeft
-                assertTrue("Device return must move before it completes: $selectedStyle/$route", distance > 1f)
-                assertTrue("The departing device must remain visible during return", distance < width)
+                compose.runOnIdle { stack.add(routes.first()) }
+                advanceFrames(64)
+                device.assertIsDisplayed()
+                assertTrue("An island entry must animate the device page: style=$selectedStyle",
+                    left(device) - originalLeft > 1f)
             } finally {
                 compose.mainClock.autoAdvance = true
             }
+            advanceFrames(600)
             compose.waitForIdle()
-            device.assertDoesNotExist()
-            main.assertIsDisplayed()
-            compose.runOnIdle { assertEquals(listOf(AppRoute.Main), stack.toList()) }
+            compose.runOnIdle { stack.removeLastOrNull() }
+            compose.waitForIdle()
         }
     }
 
+    @Test fun ordinaryBackAnimatesEveryDeviceRouteInBothStyles() {
+        for (selectedStyle in 0..1) for (entryOrigin in listOf(LifeEntryOrigin.User, LifeEntryOrigin.Scanner))
+            for (route in routes) {
+                open(selectedStyle, route, entryOrigin)
+                val originalLeft = left(device)
+                val width = drawnWidth()
+                compose.mainClock.autoAdvance = false
+                try {
+                    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+                    advanceFrames(144)
+                    val distance = left(device) - originalLeft
+                    assertTrue("Device return must move before it completes: $selectedStyle/$entryOrigin/$route",
+                        distance > 1f)
+                    assertTrue("The departing device must remain visible during return", distance < width)
+                } finally {
+                    compose.mainClock.autoAdvance = true
+                }
+                compose.waitForIdle()
+                device.assertDoesNotExist()
+                main.assertIsDisplayed()
+                compose.runOnIdle { assertEquals(listOf(AppRoute.Main), stack.toList()) }
+            }
+    }
+
     @Test fun predictiveBackAnimatesCancelsAndCommitsInBothStyles() {
-        for (selectedStyle in 0..1) {
-            open(selectedStyle)
+        for (selectedStyle in 0..1) for (entryOrigin in listOf(LifeEntryOrigin.User, LifeEntryOrigin.Scanner)) {
+            open(selectedStyle, entryOrigin = entryOrigin)
             val originalLeft = left(device)
             val originalWidth = drawnWidth()
             compose.mainClock.autoAdvance = false
