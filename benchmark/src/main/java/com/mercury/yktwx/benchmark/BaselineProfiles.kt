@@ -26,6 +26,12 @@ class BaselineProfiles {
         device.visitBillDetail()
         device.scrollBills()
     }
+
+    @Test fun deviceScanner() = profile.collect(packageName = TARGET_PACKAGE, filterPredicate = ::productionRule) {
+        pressHome()
+        startFixture()
+        device.visitDeviceScanner()
+    }
 }
 
 private fun productionRule(rule: String) = !rule.contains("Lcom/mercury/yktwx/preview/")

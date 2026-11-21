@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.NavEntryBuilder
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.nav.transition.NavTransition
 import androidx.compose.runtime.Composable
 
 @Serializable
@@ -38,7 +39,11 @@ internal sealed interface AppRoute : NavKey {
 }
 
 /** Miuix registers concrete runtime types; the sealed serializer alone does not register entries. */
-internal fun NavEntryBuilder.appEntries(swipe: NavSwipeDirection, content: @Composable (AppRoute) -> Unit) {
+internal fun NavEntryBuilder.appEntries(
+    swipe: NavSwipeDirection,
+    deviceTransition: NavTransition,
+    content: @Composable (AppRoute) -> Unit,
+) {
     entry<AppRoute.Main>(swipeDismiss = swipe, content = content)
     entry<AppRoute.Profile>(swipeDismiss = swipe, content = content)
     entry<AppRoute.Account>(swipeDismiss = swipe, content = content)
@@ -48,5 +53,10 @@ internal fun NavEntryBuilder.appEntries(swipe: NavSwipeDirection, content: @Comp
     entry<AppRoute.Theme>(swipeDismiss = swipe, content = content)
     entry<AppRoute.References>(swipeDismiss = swipe, content = content)
     entry<AppRoute.BillDetail>(swipeDismiss = swipe, content = content)
-    entry<AppRoute.LifeDevice>(contentKey = { "life-device" }, swipeDismiss = swipe, content = content)
+    entry<AppRoute.LifeDevice>(
+        contentKey = { "life-device" },
+        transition = deviceTransition,
+        swipeDismiss = swipe,
+        content = content,
+    )
 }

@@ -88,7 +88,7 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
         WaterPhase.Running, WaterPhase.Stopping -> "${state.action}进度"
         else -> "扫码${state.action}"
     }
-    LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true,
+    LifeDeviceShell(title, settings, scrollBehavior, onBack, { help = true }, true,
         listState = topBarListState,
         footer = { WaterDeviceActions(state, active, primary, scanAction, onBack, footerNote, showRescan, loading) }) { padding ->
         AnimatedContent(WaterDevicePresentation(state, paymentContent), contentKey = { it.state.phase.pageStage },

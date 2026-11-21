@@ -40,8 +40,12 @@ jobs:
           target: google_apis_playstore
           arch: x86_64
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 2048
-          script: ./gradlew :app:generateBaselineProfile --no-daemon --no-configuration-cache --max-workers=2 --console=plain
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -camera-front none -memory 2048
+          script: |
+            adb shell getprop ro.product.cpu.abilist
+            adb shell getprop ro.dalvik.vm.native.bridge
+            ./gradlew :app:generateBaselineProfile --no-daemon --no-configuration-cache --max-workers=2 --console=plain
+            python .github/scripts/verify_scanner_profile.py app/src/main/generated/baselineProfiles/baseline-prof.txt
       - name: Verify optimized APK packaging
         run: |
           ./gradlew :app:assembleBenchmarkPerformance :app:assembleRelease --no-daemon --no-configuration-cache --max-workers=2 --console=plain
@@ -70,6 +74,6 @@ jobs:
           commit-message: 'perf(profile): 更新应用启动与常用操作编译资料'
           title: 'perf(profile): 更新应用启动与常用操作编译资料'
           body: |
-            在 API 36 模拟器上运行冷启动、主标签、账单详情和滚动场景，更新 Baseline/Startup Profile。已检查优化性能 APK 和正式 APK 中的编译资料。
+            在 API 36 模拟器上运行冷启动、主标签、账单详情、滚动和扫码预览场景，更新 Baseline/Startup Profile。已检查扫码方法覆盖以及优化性能 APK 和正式 APK 中的编译资料。
 
             编译资料、测试结果与打包检查报告保存在本次工作流制品中。

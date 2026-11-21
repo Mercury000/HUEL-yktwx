@@ -1,18 +1,32 @@
 package com.mercury.yktwx.ui.nav
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.nav.core.NavCornerClipMode
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.transition.NavTransition
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
+import top.yukonga.miuix.kmp.nav.transition.navDirectionalTransition
+import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun miuixNavigationTransition(style: Int): NavTransition =
     if (style == 1) CrossActivityTransition else NavTransitions.MiuixDefault
+
+/**
+ * Reveal the device route behind ScannerActivity without a second visible entry animation.
+ * Returning from the device page still uses the selected page motion and back gestures.
+ */
+private val ScannerArrivalTransition: NavTransition = navGraphicsTransition(
+    opaqueDepth = 1f,
+    scrim = { 0f },
+) {}
+
+internal fun scannerNavigationTransition(pageTransition: NavTransition): NavTransition =
+    navDirectionalTransition(push = ScannerArrivalTransition, pop = pageTransition, predictivePop = pageTransition)
 
 /** Match the demo's effects for its Miuix and AOSP styles. */
 @Composable

@@ -190,7 +190,7 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
     val stage = when (phase) { null -> "ready"; HellobikePhase.Ended -> "ended"; else -> "progress" }
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     var topBarListState by remember { mutableStateOf<LazyListState?>(null) }
-    LifeDeviceShell(title, settings, false, scrollBehavior, onBack, { help = true }, true,
+    LifeDeviceShell(title, settings, scrollBehavior, onBack, { help = true }, true,
         listState = topBarListState, footer = {
         LifeDeviceActionFooter("hellobike-action-footer") {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
