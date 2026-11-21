@@ -251,7 +251,6 @@ private fun ScannerHelpSheet(show: Boolean, onDismiss: () -> Unit) {
 internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scrollBehavior: ScrollBehavior, onBack: () -> Unit,
     onHelp: () -> Unit, showHelp: Boolean, listState: LazyListState?,
     footer: @Composable () -> Unit, content: @Composable (PaddingValues) -> Unit) {
-    val topBarOffset = rememberLazyListTopBarOffset(listState, scrollBehavior)
     val currentContent by rememberUpdatedState(content)
     val body = remember { movableContentOf<PaddingValues> { padding -> currentContent(padding) } }
     val surface = MiuixTheme.colorScheme.surface
@@ -268,7 +267,7 @@ internal fun LifeDeviceShell(title: String, settings: ThemeSettings, scrollBehav
             }
             BlurredBar(topGradient = true) {
                 TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scrollBehavior,
-                    isContentScrolled = listState?.canScrollBackward == true, visualContentOffset = topBarOffset,
+                    isContentScrolled = listState?.canScrollBackward == true,
                     modifier = Modifier.testTag("life-device-top-bar"), navigationIcon = navigationIcon, actions = actions)
             }
         }, bottomBar = { footer() }) { padding ->
@@ -507,29 +506,36 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
         val value = rememberWhileShown(show, serial)
         val candidates = remember(value) { UnifiedDeviceCode.manualCandidates(value) }
         var selectedProvider by rememberSaveable(show, serial) { mutableStateOf<LifeProvider?>(null) }
-        val route = UnifiedDeviceCode.identifyManual(serial, selectedProvider)
+        // A tab row always has a selection; keep the first platform as the default when the
+        // number is ambiguous, then follow the user's choice while it is still a candidate.
+        val selectedIndex = candidates.indexOfFirst { it.provider == selectedProvider }
+            .takeIf { it >= 0 } ?: 0
+        val route = UnifiedDeviceCode.identifyManual(serial, candidates.getOrNull(selectedIndex)?.provider)
         val identify = { if (show && !state.loadingDevice) route?.let(onIdentify); Unit }
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
-            DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
-                modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
-            if (candidates.size > 1) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("选择设备上的平台", fontSize = 12.sp, color = DashboardPalette.muted)
-                    candidates.forEach { candidate ->
-                        PaymentSelectionCard(selected = selectedProvider == candidate.provider,
-                            onClick = { selectedProvider = candidate.provider }, enabled = show && !state.loadingDevice,
-                            modifier = Modifier.testTag("life-manual-provider-${candidate.provider.tag}")) {
-                            Text(candidate.provider.displayName, fontSize = 13.sp, color = it)
+        // Own the sheet's height transition so the platform row expands into place instead
+        // of snapping the drawer taller in one frame.
+        ReadLayout(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
+                DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
+                    modifier = Modifier.fillMaxWidth().testTag("life-device-serial"), keyboardActions = KeyboardActions(onDone = { identify() }))
+                if (candidates.size > 1) {
+                    val tabsEnabled = show && !state.loadingDevice
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("选择设备上的平台", fontSize = 12.sp, color = DashboardPalette.muted)
+                        Box(Modifier.fillMaxWidth().testTag("life-manual-provider-tabs")) {
+                            HallNeutralTabs(candidates.map { it.provider.displayName }, selectedIndex, tabsEnabled) {
+                                selectedProvider = candidates[it].provider
+                            }
                         }
                     }
                 }
-            }
-            InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
-                Button(onClick = identify, enabled = show && !state.loadingDevice && route != null,
-                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
-                    Text(if (state.loadingDevice) "正在识别…" else "识别设备")
+                InlineErrorGroup(state.error, 16.dp, preserveMessage = true) {
+                    Button(onClick = identify, enabled = show && !state.loadingDevice && route != null,
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColorsPrimary()) {
+                        Text(if (state.loadingDevice) "正在识别…" else "识别设备")
+                    }
                 }
             }
         }
