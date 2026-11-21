@@ -34,7 +34,7 @@ internal fun LazyListScope.billStatsTabs(stats: BillStatsState, onTypeChange: (I
 
 @Composable
 internal fun BillStatsTypeTabs(selectedType: Int, onTypeChange: (Int) -> Unit) {
-    TabRow(
+    AppTabRow(
         tabs = listOf("支出", "收入"),
         selectedTabIndex = if (selectedType == 2) 0 else 1,
         onTabSelected = { index -> onTypeChange(if (index == 0) 2 else 1) },

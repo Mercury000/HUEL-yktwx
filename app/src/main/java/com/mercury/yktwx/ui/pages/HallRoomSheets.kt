@@ -19,8 +19,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -52,8 +62,7 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, enabled: Boolean
         val glass = LocalGlassStyle.current
         val background = if (glass && LocalGlassOverlay.current) glassControlFill()
             else if (isSystemInDarkTheme()) MiuixTheme.colorScheme.surface else DashboardPalette.field
-        val content = if (enabled) MiuixTheme.colorScheme.onSurfaceVariantSummary
-            else MiuixTheme.colorScheme.onSurface.copy(alpha = .38f)
+        val content = MiuixTheme.colorScheme.onSurfaceVariantSummary
         val selectedBackground = if (glass && LocalGlassOverlay.current) {
             if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onSurface.copy(alpha = .10f)
             else Color.White.copy(alpha = .75f)
@@ -62,12 +71,13 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, enabled: Boolean
             backgroundColor = background, contentColor = content,
             selectedBackgroundColor = selectedBackground,
             selectedContentColor = MiuixTheme.colorScheme.onSurface)
-            else if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors() else TabRowDefaults.tabRowColors(backgroundColor = background,
-                contentColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            else if (isSystemInDarkTheme()) TabRowDefaults.tabRowColors()
+            else TabRowDefaults.tabRowColors(backgroundColor = background,
+                contentColor = content,
                 selectedBackgroundColor = DashboardPalette.card, selectedContentColor = MiuixTheme.colorScheme.onSurface)
         // Miuix scrolls directly to selectedTabIndex. A genuinely unselected list must
         // not pass -1 to its LazyListState or visually select a different payment method.
-        if (selected !in tabs.indices || !enabled) {
+        if (selected !in tabs.indices) {
             val shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)
             Row(Modifier.fillMaxWidth().height(TabRowDefaults.TabRowWithContourHeight)
                 .clip(RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius + 5.dp))
@@ -83,11 +93,46 @@ internal fun HallNeutralTabs(tabs: List<String>, selected: Int, enabled: Boolean
                     }
                 }
             }
-        } else TabRowWithContour(tabs = tabs, selectedTabIndex = selected, onTabSelected = onSelect, colors = colors,
-            // Use the native selector feedback on glass. A theme-dependent indication
-            // adds another offscreen clip around each label inside the sampled sheet.
-            indication = if (glass) null else rememberPressFeedback(
-                shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
+        } else {
+            // Keep the glass row mounted while a request is in flight. Swapping it for a
+            // plain row made the material fade back in from zero after every selection.
+            val disabledModifier = if (enabled) Modifier else Modifier
+                .semantics { disabled() }.focusProperties { canFocus = false }
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                    }
+                }
+            Box(Modifier.fillMaxWidth().then(disabledModifier)) {
+                AppTabRowWithContour(tabs = tabs, selectedTabIndex = selected,
+                    onTabSelected = { if (enabled) onSelect(it) }, colors = colors,
+                    // Hide the live row from accessibility while disabled; the overlay below
+                    // exposes the same tabs with a disabled state.
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (enabled) Modifier else Modifier.clearAndSetSemantics {}),
+                    // Use the native selector feedback on glass. A theme-dependent indication
+                    // adds another offscreen clip around each label inside the sampled sheet.
+                    indication = if (glass) null else rememberPressFeedback(
+                        shape = RoundedCornerShape(TabRowDefaults.TabRowWithContourCornerRadius)))
+                if (!enabled) DisabledTabSemantics(tabs, selected)
+            }
+        }
+    }
+}
+
+/** Accessibility-only layer for a tab row that must stay mounted but cannot be used. */
+@Composable
+private fun BoxScope.DisabledTabSemantics(tabs: List<String>, selected: Int) {
+    Row(Modifier.matchParentSize().padding(5.dp).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        tabs.forEachIndexed { index, label ->
+            Box(Modifier.weight(1f).fillMaxHeight().semantics(mergeDescendants = true) {
+                role = Role.Tab
+                this.selected = index == selected
+                disabled()
+                text = AnnotatedString(label)
+            })
+        }
     }
 }
 
