@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.2](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.1...v1.5.2) (2026-11-21)
+
+
+### Performance Improvements
+
+* **camera:** 使用独立扫码窗口优化启动与进入体验 ([62845c4](https://github.com/Mercury000/HUEL-yktwx/commit/62845c4c6d58e7263722da5a27160fbde740bb99))
+* **profile:** 更新应用启动与常用操作编译资料 ([#14](https://github.com/Mercury000/HUEL-yktwx/issues/14)) ([c9eadf4](https://github.com/Mercury000/HUEL-yktwx/commit/c9eadf4360bd0ab8b4d411d0a9008547293b5ccf))
+
 ## [1.5.1](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.0...v1.5.1) (2026-11-19)
 
 
