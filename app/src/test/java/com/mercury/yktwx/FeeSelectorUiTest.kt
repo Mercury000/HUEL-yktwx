@@ -418,7 +418,7 @@ class FeeSelectorUiTest {
         compose.runOnIdle { current = state(FeeProject.FamilyElectric, complete = false) }
         compose.mainClock.advanceTimeBy(1500)
         val initialFormHeight = compose.onNodeWithTag("hall-payment-content").getUnclippedBoundsInRoot().let { it.bottom - it.top }
-        assertEquals("Temporary payment skeleton must reserve the room binding row",
+        assertEquals("Temporary payment skeleton must match the initial form height",
             loadingHeight.value, initialFormHeight.value, 1f)
         compose.runOnIdle { current = state(FeeProject.FamilyElectric) }
         assertSelecting()

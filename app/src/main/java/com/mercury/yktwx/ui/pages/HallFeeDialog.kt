@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -144,7 +143,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                 ReadContent(config == null && form.loading, Modifier.fillMaxWidth(), pending = { it }) { reading ->
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         if (reading) {
-                            HallFeeTargetPlaceholder(showRoomBinding = !saveOnly && displayProject in bindingProjects)
+                            HallFeeTargetPlaceholder()
                         } else if (config == null) {
                             AnimatedInlineError(form.error)
                             if (form.error != null) TextButton("重试", onRetry, enabled = active)
@@ -162,14 +161,9 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
                                 }
                             }
                             InlineErrorGroup(form.error, 16.dp) {
-                                if (!saveOnly && config.roomBindingEnabled && form.roomBindingKnown && form.roomAction == FeeRoomAction.Save) Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(state = if (draft.saveCommon) ToggleableState.On else ToggleableState.Off,
-                                        onClick = { change(draft.copy(saveCommon = !draft.saveCommon)) }, enabled = targetEnabled && ready)
-                                    Text(if (form.roomBinding == null) "绑定此房间" else "替换已绑定房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
-                                }
                                 Button(onClick = {
                                     if (targetEnabled && ready) {
-                                        if ((saveOnly || draft.saveCommon) && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
+                                        if (saveOnly && config.roomBindingEnabled && state.roomAction == FeeRoomAction.Save) {
                                             change(draft.copy(bindingPending = true)); onRoomAction()
                                         } else if (saveOnly) onDismiss() else change(draft.copy(amountStep = true))
                                     }
@@ -258,18 +252,12 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
 }
 
 @Composable
-private fun HallFeeTargetPlaceholder(showRoomBinding: Boolean) {
+private fun HallFeeTargetPlaceholder() {
     Column(Modifier.fillMaxWidth().semantics { contentDescription = "正在读取房间选项" },
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             repeat(3) {
                 PaymentControlPlaceholder { FeeLocationDropdownPlaceholder() }
-            }
-        }
-        if (showRoomBinding) PaymentControlPlaceholder {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(state = ToggleableState.Off, onClick = {}, enabled = false)
-                Text("绑定此房间", Modifier.padding(start = 8.dp), fontSize = 14.sp)
             }
         }
         PaymentControlPlaceholder { PaymentButtonGeometry("选择房间") }
@@ -408,8 +396,7 @@ private fun HallFeeTargetOptions(state: HallFeeFormDisplay, onSelect: (FeeLevel,
 @Composable
 private fun FeeMeterTypeSelector(label: String, types: List<String>, selected: Int,
     enabled: Boolean, onSelect: (Int) -> Unit) {
-    Column(Modifier.fillMaxWidth().testTag("fee-meter-type"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    Column(Modifier.fillMaxWidth().testTag("fee-meter-type").semantics { contentDescription = label }) {
         HallNeutralTabs(types, selected, enabled, onSelect)
     }
 }

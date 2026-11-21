@@ -213,7 +213,8 @@ class HallPreviewTest {
         assertEquals("demo-building-B-AirConditioning", fee.state.value.selections["building"])
         assertEquals("demo-floor-AirConditioning", fee.state.value.selections["floor"])
         assertEquals("demo-B-AirConditioning", fee.state.value.selections["room"])
-        compose.onNode(isToggleable()).assertIsOff()
+        // Temporary payment leaves room binding to the dedicated management entry.
+        compose.onNode(isToggleable()).assertDoesNotExist()
         capture("07-wenbei-selected")
         compose.onNodeWithText("下一步").performClick()
         compose.onNodeWithTag("hall-payment-target").assertIsDisplayed()
@@ -477,14 +478,13 @@ class HallPreviewTest {
             query = FeeQuery(thirdParty = "{}"), roomBindingKnown = known, roomBusy = busy,
             error = error, roomNotice = notice, roomDialog = dialog)
         var state by mutableStateOf(queryState())
-        var saveOnly by mutableStateOf(false)
         var requests = 0
         var consumed = 0
         compose.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme { Scaffold {
                     HallFeeDialog(state = state, visible = true, project = FeeProject.Zhengdong,
-                        fixedTarget = null, saveOnly = saveOnly, onDismiss = {}, onSelect = { _, _ -> }, onRetry = {},
+                        fixedTarget = null, saveOnly = true, onDismiss = {}, onSelect = { _, _ -> }, onRetry = {},
                         onCreate = { _, _ -> }, onMethod = {}, onPayAccount = { _, _ -> }, onCancelPayment = {},
                         onFinish = {}, onContinuePayment = {}, onRoomAction = {
                             requests++; state = queryState(dialog = FeeRoomDialog(FeeRoomAction.Save, target, null))
@@ -493,17 +493,16 @@ class HallPreviewTest {
                 } }
             }
         }
-        compose.onNode(isToggleable()).performClick()
-        compose.onNodeWithText("下一步").performClick()
+        compose.onNodeWithText("绑定房间").performClick()
         compose.onNodeWithText("绑定").performClick()
         compose.runOnIdle { state = queryState(error = "绑定未更新") }
         compose.onNodeWithText("绑定未更新").assertIsDisplayed()
-        compose.onNodeWithText("下一步").assertIsDisplayed()
+        compose.onNodeWithText("绑定房间").assertIsDisplayed()
         compose.onNodeWithText("充值金额").assertDoesNotExist()
         compose.runOnIdle { state = queryState(notice = "已保存为我的房间") }
-        compose.onNodeWithText("下一步").assertIsDisplayed()
+        compose.onNodeWithText("绑定房间").assertIsDisplayed()
         assertEquals(0, consumed)
-        compose.runOnIdle { saveOnly = true; state = queryState(known = false, error = "绑定结果无法确认") }
+        compose.runOnIdle { state = queryState(known = false, error = "绑定结果无法确认") }
         compose.onNodeWithText("绑定房间").assertIsNotEnabled()
         assertEquals(1, requests)
     }
