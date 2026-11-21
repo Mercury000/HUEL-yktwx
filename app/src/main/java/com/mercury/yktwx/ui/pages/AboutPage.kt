@@ -153,14 +153,6 @@ internal fun AboutPage(
                     ),
                     backgroundAlpha = { if (collapsed) 1f else 0f },
                     isContentScrolled = lazyListState.canScrollBackward,
-                    // Pair exact overlap with exact visual offset, as GlassTopAppBar recommends.
-                    // Programmatic scrolling also restores the native band and shadow ramps.
-                    visualContentOffset = {
-                        val preceding = if (lazyListState.firstVisibleItemIndex > 0) {
-                            with(density) { heroSpacerHeight.toPx() }
-                        } else 0f
-                        -preceding - lazyListState.firstVisibleItemScrollOffset + topAppBarScrollBehavior.state.overscrollOffset
-                    },
                 )
             }
         },

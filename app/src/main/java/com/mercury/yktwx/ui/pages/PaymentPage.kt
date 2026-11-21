@@ -148,7 +148,6 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
-    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scrollBehavior)
     val context = LocalContext.current
     fun dismissLoginNotice(provider: LifeProvider) {
         if (!isActive) return
@@ -176,7 +175,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 DashboardTopBar("付款", scrollBehavior = scrollBehavior,
-                    isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset) {
+                    isContentScrolled = topBarListState.canScrollBackward) {
                     val enabled = isActive && scanEnabled
                     if (showScanAction) IconButton(onClick = { if (isActive && scanEnabled) { enlarged = null; onScan() } },
                         modifier = Modifier.padding(end = 16.dp).testTag("payment-scan-button")

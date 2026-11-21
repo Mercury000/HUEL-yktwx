@@ -175,10 +175,6 @@ fun BillPage(
     val expenseState = key(state.stats.period) { rememberLazyListState() }
     val incomeState = key(state.stats.period) { rememberLazyListState() }
     val pageScroll = rememberBillPageScroll()
-    val bodyTopBarOffset = rememberLazyListTopBarOffset(pageScroll.body, scrollBehavior)
-    val topBarOffset: () -> Float = {
-        -pageScroll.controlsOffset - (if (pageScroll.statistics) pageScroll.typeOffset else 0f) + bodyTopBarOffset()
-    }
     val scrollScope = rememberCoroutineScope()
     val listState = if (!state.statsVisible) detailsState else if (state.stats.type == 2) expenseState else incomeState
     SideEffect {
@@ -220,12 +216,11 @@ fun BillPage(
             Box(Modifier.testTag("bill-top-bar")) {
                 BlurredBar(topGradient = true) {
                     if (!showBack) DashboardTopBar("账单", scrollBehavior = scrollBehavior,
-                        isContentScrolled = pageScroll.isContentScrolled, visualContentOffset = topBarOffset) else TopAppBar(
+                        isContentScrolled = pageScroll.isContentScrolled) else TopAppBar(
                         title = "账单",
                         largeTitle = "账单",
                         scrollBehavior = scrollBehavior,
                         isContentScrolled = pageScroll.isContentScrolled,
-                        visualContentOffset = topBarOffset,
                         color = Color.Transparent,
                         navigationIcon = {
                             if (showBack) IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") }

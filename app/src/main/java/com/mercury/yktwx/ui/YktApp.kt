@@ -1169,14 +1169,12 @@ private fun SecondaryPage(
     }
     val scroll = MiuixScrollBehavior(rememberTopAppBarState())
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val topBarOffset = rememberLazyListTopBarOffset(listState, scroll)
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 TopAppBar(title = title, largeTitle = title, color = Color.Transparent, scrollBehavior = scroll,
                     modifier = if (screen == Screen.Theme) Modifier.testTag("theme-top-bar") else Modifier,
                     isContentScrolled = listState.canScrollBackward,
-                    visualContentOffset = topBarOffset,
                     navigationIcon = { IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") } })
             }
         }) { padding ->

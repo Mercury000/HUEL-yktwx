@@ -142,7 +142,7 @@ internal fun AppTopAppBar(
     scrollBehavior: ScrollBehavior? = null, defaultWindowInsetsPadding: Boolean = true,
     titlePadding: Dp = TopAppBarDefaults.TitlePadding, navigationIconPadding: Dp = TopAppBarDefaults.NavigationIconPadding,
     actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding, bottomContent: @Composable () -> Unit = {},
-    isContentScrolled: Boolean? = null, visualContentOffset: (() -> Float)? = null,
+    isContentScrolled: Boolean? = null,
 ) {
     val navigationTitleAlpha = LocalMainNavigationTitleAlpha.current
     val expandable = !isMainNavigationWideScreen()
@@ -150,7 +150,7 @@ internal fun AppTopAppBar(
         AppGlassTopAppBar(title = title, largeTitle = largeTitle, subtitle = subtitle,
             modifier = modifier, titleAlpha = { titleColor.alpha * navigationTitleAlpha() }, expandable = expandable,
             scrollBehavior = scrollBehavior, isContentScrolled = isContentScrolled,
-            visualContentOffset = visualContentOffset, navigationIcon = navigationIcon,
+            navigationIcon = navigationIcon,
             actions = actions, bottomContent = bottomContent,
             defaultWindowInsetsPadding = defaultWindowInsetsPadding)
     } else {
@@ -177,7 +177,6 @@ internal fun AppSmallTopAppBar(
     actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding, bottomContent: @Composable () -> Unit = {},
     backgroundAlpha: () -> Float = { 1f },
     isContentScrolled: Boolean? = null,
-    visualContentOffset: (() -> Float)? = null,
     glassStyle: Boolean = LocalGlassStyle.current,
 ) {
     val glass = glassStyle
@@ -188,7 +187,6 @@ internal fun AppSmallTopAppBar(
         if (glass) {
             AppGlassTopAppBar(title = title, modifier = modifier,
                 isContentScrolled = scrolled, scrollBehavior = scrollBehavior,
-                visualContentOffset = visualContentOffset,
                 titleAlpha = { titleColor.alpha * navigationTitleAlpha() }, backgroundAlpha = backgroundAlpha,
                 expandable = false,
                 subtitle = subtitle, navigationIcon = navigationIcon, actions = actions,
@@ -215,7 +213,7 @@ private fun AppGlassTopAppBar(
     title: String, modifier: Modifier,
     expandable: Boolean = true,
     largeTitle: String = title, subtitle: String = "", scrollBehavior: ScrollBehavior?,
-    isContentScrolled: Boolean?, visualContentOffset: (() -> Float)?,
+    isContentScrolled: Boolean?,
     titleAlpha: () -> Float, backgroundAlpha: () -> Float = { 1f },
     navigationIcon: @Composable () -> Unit, actions: @Composable RowScope.() -> Unit,
     bottomContent: @Composable () -> Unit, defaultWindowInsetsPadding: Boolean,
@@ -226,7 +224,7 @@ private fun AppGlassTopAppBar(
         GlassTopAppBar(title = title, largeTitle = largeTitle, subtitle = subtitle,
             expandable = expandable,
             modifier = modifier.testTag("glass-top-bar"), backdrop = backdrop,
-            isContentScrolled = scrolled, visualContentOffset = visualContentOffset,
+            isContentScrolled = scrolled,
             // This is Glass Top Bar Progressive Blur, not the demo's global Enable Blur Effect.
             // Native defaults retain the gradient band and button material when it is off.
             progressiveBlur = LocalTopBarBlurEnabled.current, scrollBehavior = scrollBehavior,
@@ -277,23 +275,26 @@ internal fun AppBackIcon(contentDescription: String? = "返回", modifier: Modif
 @Composable
 private fun InlineGlassTabs(
     tabs: List<String>, selected: Int, onSelected: (Int) -> Unit, modifier: Modifier,
-    minWidth: Dp, maxWidth: Dp, height: Dp, spacing: Dp, segmented: Boolean, contentAlignment: Alignment,
+    height: Dp, spacing: Dp, segmented: Boolean, contentAlignment: Alignment,
 ) {
     val surface = MiuixTheme.colorScheme.surface
     val inlineBackdrop = rememberLayerBackdrop { drawRect(surface) }
     val overlayBackdrop = LocalAppearanceBackdrop.current.takeIf { LocalGlassOverlay.current }
     val backdrop = overlayBackdrop ?: inlineBackdrop
     Box(Modifier.fillMaxWidth().then(modifier).height(height), contentAlignment = contentAlignment) {
-        val tabModifier = Modifier.widthIn(
-            min = minWidth * tabs.size + spacing * (tabs.size - 1),
-            max = maxWidth * tabs.size + spacing * (tabs.size - 1)).fillMaxWidth()
-        Box(tabModifier) {
+        // Glass tabs share the row equally; the parent, not TabRow's min/max width,
+        // decides how wide the row may be.
+        Box(Modifier.fillMaxWidth()) {
             val underlayShape = if (segmented) GlassSegmentedTabRowDefaults.shape(height)
                 else androidx.compose.ui.graphics.RectangleShape
             if (overlayBackdrop == null) Box(Modifier.matchParentSize().clip(underlayShape).layerBackdrop(inlineBackdrop))
             if (segmented) {
+                // beta03: a segmented track resting in page content keeps its plain fill instead
+                // of painting the material mask. Overlay sheets already sample the page backdrop,
+                // so they keep the full material.
                 GlassSegmentedTabRow(tabs = tabs, selectedIndex = selected, onSelect = onSelected,
-                    backdrop = backdrop, modifier = Modifier.fillMaxWidth(), height = height, shadow = null)
+                    backdrop = backdrop, modifier = Modifier.fillMaxWidth(), height = height, shadow = null,
+                    surfaceAlpha = if (LocalGlassOverlay.current) 1f else 0f)
             } else {
                 GlassTabRow(tabs = tabs, selectedIndex = selected, onSelect = onSelected, backdrop = backdrop,
                     modifier = Modifier.fillMaxWidth(), height = height, tabGap = spacing, shadow = null)
@@ -311,8 +312,8 @@ internal fun AppTabRow(
     contentAlignment: Alignment = Alignment.Center, listState: LazyListState? = null,
     interactionSource: MutableInteractionSource? = null, indication: Indication? = null,
 ) {
-    if (LocalGlassStyle.current && tabs.size in 2..4 && selectedTabIndex in tabs.indices) {
-        InlineGlassTabs(tabs, selectedTabIndex, onTabSelected, modifier, minWidth, maxWidth, height, itemSpacing, false, contentAlignment)
+    if (LocalGlassStyle.current && tabs.size in 1..4 && selectedTabIndex in tabs.indices) {
+        InlineGlassTabs(tabs, selectedTabIndex, onTabSelected, modifier, height, itemSpacing, false, contentAlignment)
     } else TabRow(tabs, selectedTabIndex, onTabSelected, modifier, colors, minWidth, maxWidth, height,
         cornerRadius, itemSpacing, contentAlignment, listState, interactionSource, indication)
 }
@@ -326,8 +327,8 @@ internal fun AppTabRowWithContour(
     contentAlignment: Alignment = Alignment.Center, listState: LazyListState? = null,
     interactionSource: MutableInteractionSource? = null, indication: Indication? = null,
 ) {
-    if (LocalGlassStyle.current && tabs.size in 2..4 && selectedTabIndex in tabs.indices) {
-        InlineGlassTabs(tabs, selectedTabIndex, onTabSelected, modifier, minWidth, maxWidth, height, itemSpacing, true, contentAlignment)
+    if (LocalGlassStyle.current && tabs.size in 1..4 && selectedTabIndex in tabs.indices) {
+        InlineGlassTabs(tabs, selectedTabIndex, onTabSelected, modifier, height, itemSpacing, true, contentAlignment)
     } else TabRowWithContour(tabs, selectedTabIndex, onTabSelected, modifier, colors, minWidth, maxWidth, height,
         cornerRadius, itemSpacing, contentAlignment, listState, interactionSource, indication)
 }

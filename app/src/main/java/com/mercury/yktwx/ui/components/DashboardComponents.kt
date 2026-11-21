@@ -74,11 +74,11 @@ internal fun ServiceIcon(icon: ImageVector, modifier: Modifier = Modifier, size:
 /** Use Miuix's large title and centered collapsed title on every dashboard page. */
 @Composable
 internal fun DashboardTopBar(title: String, subtitle: String? = null, scrollBehavior: ScrollBehavior? = null,
-    isContentScrolled: Boolean? = null, visualContentOffset: (() -> Float)? = null,
+    isContentScrolled: Boolean? = null,
     actions: @Composable RowScope.() -> Unit = {}) {
     TopAppBar(title = title, largeTitle = title, subtitle = subtitle.orEmpty(),
         color = Color.Transparent, scrollBehavior = scrollBehavior,
-        isContentScrolled = isContentScrolled, visualContentOffset = visualContentOffset, actions = actions)
+        isContentScrolled = isContentScrolled, actions = actions)
 }
 
 /** Background reads keep the list usable; only a user pull owns the refresh indicator. */

@@ -1,7 +1,6 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,8 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
@@ -80,25 +77,6 @@ internal fun Modifier.topBarOverscroll(scrollBehavior: ScrollBehavior): Modifier
     val state = scrollBehavior.state
     val reportOffset: (Float) -> Unit = remember(state) { { state.overscrollOffset = it } }
     return overScrollVertical(onOffsetChanged = reportOffset)
-}
-
-/**
- * Drive the native band/shadow from list position, including programmatic scrolls.
- * Past item zero the absolute distance is unavailable; saturate the native 32/48dp
- * ramps instead of reusing accumulated nested-scroll deltas. Elastic offset stays native.
- */
-@Composable
-internal fun rememberLazyListTopBarOffset(listState: LazyListState?, scrollBehavior: ScrollBehavior): () -> Float {
-    val rampDistance = with(LocalDensity.current) { 48.dp.toPx() }
-    return remember(listState, scrollBehavior, rampDistance) {
-        {
-            val distance = listState?.let {
-                if (it.firstVisibleItemIndex == 0) it.firstVisibleItemScrollOffset.toFloat()
-                else maxOf(rampDistance, it.firstVisibleItemScrollOffset.toFloat())
-            } ?: 0f
-            -distance + scrollBehavior.state.overscrollOffset
-        }
-    }
 }
 
 /**

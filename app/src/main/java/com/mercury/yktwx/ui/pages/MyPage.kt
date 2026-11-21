@@ -83,12 +83,11 @@ internal fun MyPage(
     val listState = rememberLazyListState()
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
-    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scroll)
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 DashboardTopBar("我的", scrollBehavior = scroll,
-                    isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset)
+                    isContentScrolled = topBarListState.canScrollBackward)
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
@@ -398,11 +397,10 @@ private fun ProfileDetailScaffold(title: String, settings: ThemeSettings, onBack
     val listState = rememberLazyListState()
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
-    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scroll)
     BarBlurHost(false, settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) { TopAppBar(title = title, largeTitle = title, scrollBehavior = scroll, color = Color.Transparent,
-                isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset,
+                isContentScrolled = topBarListState.canScrollBackward,
                 navigationIcon = { IconButton(onClick = onBack) { AppBackIcon("返回") } }) }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {

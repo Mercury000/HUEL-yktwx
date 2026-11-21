@@ -32,7 +32,6 @@ fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, loading: Boolea
     onRetry: () -> Unit = {}, onBack: () -> Unit) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val listState = rememberLazyListState()
-    val topBarOffset = rememberLazyListTopBarOffset(listState, scrollBehavior)
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
@@ -41,7 +40,6 @@ fun BillDetailPage(record: BillRecord?, settings: ThemeSettings, loading: Boolea
                     largeTitle = "账单详情",
                     scrollBehavior = scrollBehavior,
                     isContentScrolled = listState.canScrollBackward,
-                    visualContentOffset = topBarOffset,
                     color = Color.Transparent,
                     navigationIcon = {
                         IconButton(onClick = onBack) { AppBackIcon(contentDescription = "返回") }

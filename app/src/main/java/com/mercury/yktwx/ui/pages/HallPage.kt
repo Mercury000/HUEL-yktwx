@@ -82,12 +82,11 @@ fun HallPage(
     val listState = rememberLazyListState()
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
-    val topBarOffset = rememberLazyListTopBarOffset(topBarListState, scrollBehavior)
     BarBlurHost(bottomBarBlurEnabled = false, topBarBlurEnabled = settings.blurTopBar.value) {
         Scaffold(topBar = {
             BlurredBar(topGradient = true) {
                 DashboardTopBar("大厅", scrollBehavior = scrollBehavior,
-                    isContentScrolled = topBarListState.canScrollBackward, visualContentOffset = topBarOffset)
+                    isContentScrolled = topBarListState.canScrollBackward)
             }
         }) { padding ->
             BarBackdropContent(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
