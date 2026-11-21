@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.2...v1.6.0) (2026-11-21)
+
+
+### Features
+
+* **startup:** 接入系统启动遮罩覆盖应用初始化阶段 ([1c9fde3](https://github.com/Mercury000/HUEL-yktwx/commit/1c9fde33df7c2a174763ebbe8c54117394931b10))
+
+
+### Bug Fixes
+
+* **update:** 关闭接收测试版更新时自动检查更新 ([019ad84](https://github.com/Mercury000/HUEL-yktwx/commit/019ad8451efab9fb8000e27eb392748e0d58ab99))
+
 ## [1.5.2](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.1...v1.5.2) (2026-11-21)
 
 
