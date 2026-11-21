@@ -145,7 +145,7 @@ class AppUpdateViewModelTest {
         assertFalse(model.state.value.noticeVisible)
     }
 
-    @Test fun changingChannelCancelsTheOldCheckAndChecksImmediatelyWithRemindersDisabled() = runTest(dispatcher) {
+    @Test fun enablingBetaCancelsTheOldCheckAndChecksImmediatelyWithRemindersDisabled() = runTest(dispatcher) {
         val pending = CompletableDeferred<UpdateCheckResult>()
         val model = model { count++; if (count == 1) pending.await() else update }
         model.configure(true, true, true)
@@ -159,6 +159,77 @@ class AppUpdateViewModelTest {
         pending.complete(UpdateCheckResult(UpdateCheckReason.CurrentOrNewer))
         runCurrent()
         assertEquals(update.release, model.state.value.release)
+    }
+
+    @Test fun disablingBetaCancelsThePendingCheckWithoutStartingStableButAllowsAManualCheck() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v3")
+        store.repository.update { it.copy(updateChannel = "beta") }
+        val pending = CompletableDeferred<UpdateCheckResult>()
+        val channels = mutableListOf<String>()
+        val model = model {
+            channels += store.channel
+            if (channels.size == 1) withContext(NonCancellable) { pending.await() }
+            else UpdateCheckResult(UpdateCheckReason.NoPublishedRelease)
+        }
+        model.configure(false, true, true); runCurrent()
+        model.checkManually(); runCurrent()
+        assertTrue(model.state.value.checking)
+        store.repository.update { it.copy(updateChannel = "stable") }; runCurrent()
+        // Compose and lifecycle callbacks can configure again after the repository observer.
+        repeat(2) { model.configure(false, true, true); runCurrent() }
+        assertTrue(store.automaticDue(time))
+        assertEquals(listOf("beta"), channels)
+        assertFalse(model.state.value.checking)
+        pending.complete(update.copy(release = update.release!!.copy(channel = "beta"))); runCurrent()
+        assertNull(model.state.value.release)
+        assertFalse(model.state.value.detailsPending)
+        assertTrue(events.isEmpty())
+        model.checkManually(); runCurrent()
+        assertEquals(listOf("beta", "stable"), channels)
+        assertEquals(listOf(UpdateFeedback.NoRelease), events)
+    }
+
+    @Test fun disablingBetaClearsOptionalUpdateAndDefersAutomaticCheckUntilNextForeground() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v3")
+        store.repository.update { it.copy(updateChannel = "beta") }
+        val beta = update.copy(release = update.release!!.copy(channel = "beta"))
+        store.cacheRelease(beta.release)
+        val channels = mutableListOf<String>()
+        val model = model {
+            channels += store.channel
+            if (store.channel == "beta") beta else UpdateCheckResult(UpdateCheckReason.CurrentOrNewer)
+        }
+        model.configure(true, true, true); runCurrent()
+        model.openDetails()
+        assertTrue(model.state.value.visible)
+        assertTrue(model.state.value.noticeVisible)
+        store.repository.update { it.copy(updateChannel = "stable") }; runCurrent()
+        model.configure(false, true, true); model.configure(true, true, true); runCurrent()
+        assertEquals(listOf("beta"), channels)
+        assertNull(model.state.value.release)
+        assertFalse(model.state.value.visible)
+        assertFalse(model.state.value.noticeVisible)
+        assertTrue(events.isEmpty())
+        model.configure(true, true, false)
+        model.configure(true, true, true); runCurrent()
+        assertEquals(listOf("beta", "stable"), channels)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun disablingBetaRetainsConfirmedForcedUpdateWithoutRechecking() = runTest(dispatcher) {
+        val store = updateStoreFixture(prefs, "v3")
+        store.repository.update { it.copy(updateChannel = "beta") }
+        val forced = update.copy(release = update.release!!.copy(channel = "beta", versionCode = 10, maxForcedVersionCode = 9))
+        store.cacheRelease(forced.release)
+        val model = model { count++; forced }
+        model.configure(true, true, true); runCurrent()
+        store.repository.update { it.copy(updateChannel = "stable") }; runCurrent()
+        model.configure(true, true, true); runCurrent()
+        assertEquals(1, count)
+        assertEquals("beta", model.state.value.release?.channel)
+        assertTrue(model.state.value.required)
+        assertTrue(model.state.value.visible)
+        assertTrue(events.isEmpty())
     }
 
     @Test fun automaticChecksAreThrottledAcrossForegroundsAndRestartsButNewInstallVersionChecksAgain() = runTest(dispatcher) {

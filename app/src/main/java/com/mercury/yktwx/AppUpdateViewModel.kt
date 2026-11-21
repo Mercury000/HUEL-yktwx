@@ -74,6 +74,7 @@ internal class AppUpdateViewModel internal constructor(
     private var remindersEnabled = false
     private var networkAllowed = false
     private var foreground = false
+    private var automaticCheckDeferred = false
     private var manualRequest = false
     private var downloadJob: Job? = null
     @Volatile private var downloadGeneration = 0L
@@ -126,6 +127,8 @@ internal class AppUpdateViewModel internal constructor(
         val channel = store.channel
         val channelChanged = activeChannel != channel
         if (channelChanged) {
+            // Disabling beta changes the subscription without requesting a stable check.
+            automaticCheckDeferred = channel == "stable"
             restoredDetails = null
             generation++
             job?.cancel(); job = null
@@ -152,6 +155,7 @@ internal class AppUpdateViewModel internal constructor(
         networkAllowed = allowed
         foreground = inForeground
         if (!allowed || !inForeground) {
+            automaticCheckDeferred = false
             generation++
             job?.cancel(); job = null
             manualRequest = false
@@ -177,8 +181,8 @@ internal class AppUpdateViewModel internal constructor(
                     download = if (restored.interrupted) UpdateDownloadState(UpdateDownloadPhase.Failed,
                         error = "更新操作已中断，请重新下载") else UpdateDownloadState())
             } else check(manual = true)
-        } else if (allowed && inForeground && channelChanged) check(manual = true)
-        else if (allowed && inForeground && job == null && store.automaticDue(now())) check(manual = false)
+        } else if (allowed && inForeground && channelChanged && channel == "beta") check(manual = true)
+        else if (allowed && inForeground && !automaticCheckDeferred && job == null && store.automaticDue(now())) check(manual = false)
     }
 
     fun checkManually() {
