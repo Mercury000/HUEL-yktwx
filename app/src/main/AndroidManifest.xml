@@ -91,6 +91,7 @@
             android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.UnionPay" />
         <activity android:name=".MainActivity" android:exported="true"
+            android:theme="@style/Theme.YktWx.Splash"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

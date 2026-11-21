@@ -2,6 +2,7 @@
 agp = "9.5.1"
 kotlin = "2.4.21"
 androidx-core = "1.19.1"
+androidx-core-splashscreen = "1.2.0"
 androidx-activity = "1.13.0"
 compose-bom = "2026.11.01"
 lifecycle = "2.11.1"
@@ -33,6 +34,7 @@ hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hil
 hilt-testing = { module = "com.google.dagger:hilt-android-testing", version.ref = "hilt" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "androidx-core-splashscreen" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }

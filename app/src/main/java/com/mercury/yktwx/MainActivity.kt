@@ -4,6 +4,8 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.core.splashscreen.SplashScreen
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,6 +29,7 @@ import com.mercury.yktwx.ui.UsageConsent
 @dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: PaymentViewModel by viewModels()
+    private val navigationViewModel: AppNavigationViewModel by viewModels()
     private val billViewModel: BillViewModel by viewModels()
     private val rechargeViewModel: RechargeViewModel by viewModels()
     private val feeViewModel: FeeViewModel by viewModels()
@@ -44,6 +47,8 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         preview = UiPreview.enabled && UiPreview.requested(intent)
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { shouldHoldSplash() }
         super.onCreate(savedInstanceState)
         setContent {
             val loaded by preferences.state.collectAsStateWithLifecycle()
@@ -93,6 +98,18 @@ class MainActivity : ComponentActivity() {
                     onExit = ::finishAndRemoveTask)
             }
         }
+    }
+    private fun shouldHoldSplash(): Boolean {
+        if (!::preferences.isInitialized) return true
+        if (preferences.state.value is PreferencesLoadState.Failed) return false
+        if (preferences.state.value !is PreferencesLoadState.Ready) return true
+        val state = updateViewModel.state.value
+        if (!state.ready && state.loadFailure == null) return true
+        val payment = viewModel.state.value
+        if (payment.restoringLogin) return true
+        if (!preview && !consent.accepted) return false
+        if (payment.needsLogin || state.required) return false
+        return !navigationViewModel.readyFor(payment.username.orEmpty(), payment.preview)
     }
     private fun initializePayment(preview: Boolean) {
         viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))

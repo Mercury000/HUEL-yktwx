@@ -1,0 +1,5 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Same foreground as the launcher icon; background tracks the splash window color. -->
+    <background android:drawable="@drawable/ic_splash_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

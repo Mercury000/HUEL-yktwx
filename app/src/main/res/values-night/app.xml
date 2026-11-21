@@ -1,0 +1,3 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <color name="splash_background" tools:override="true">#000000</color>
+</resources>
