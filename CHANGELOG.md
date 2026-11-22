@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.3](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.2...v1.5.3) (2026-11-22)
+
+
+### Features
+
+* **startup:** 接入系统启动遮罩覆盖应用初始化阶段 ([1c9fde3](https://github.com/Mercury000/HUEL-yktwx/commit/1c9fde33df7c2a174763ebbe8c54117394931b10))
+
+
+### Bug Fixes
+
+* **life:** 修正扫码页抽屉的背景采样 ([2f7de01](https://github.com/Mercury000/HUEL-yktwx/commit/2f7de01f5c3b7cb28aa683f19b247b96e0306453))
+* **nav:** 按入口来源选择生活设备页转场 ([9c18f53](https://github.com/Mercury000/HUEL-yktwx/commit/9c18f537307f4d5681fad4dd5ec2da91b40db858))
+* **scanner:** 让独立扫码页跟随应用外观设置 ([6f8e46f](https://github.com/Mercury000/HUEL-yktwx/commit/6f8e46ffe546c051dc1a2b72224376742053ead5))
+* **update:** 关闭接收测试版更新时自动检查更新 ([019ad84](https://github.com/Mercury000/HUEL-yktwx/commit/019ad8451efab9fb8000e27eb392748e0d58ab99))
+
+
+### Miscellaneous Chores
+
+* release 1.5.3 ([0ac2dd5](https://github.com/Mercury000/HUEL-yktwx/commit/0ac2dd5e63e0850373e5c4ebd800771a8d02ac88))
+
 ## [1.5.2](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.1...v1.5.2) (2026-11-21)
 
 
