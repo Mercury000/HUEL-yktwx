@@ -15,7 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.*
@@ -63,7 +62,7 @@ internal fun FeePasswordDialog(show: Boolean, amountCents: Long, preparation: Fe
                 if (next != password) { password = next; onInputEdited(FormField.Password) }
             },
                 label = "六位支付密码", maxDigits = 6, enabled = enabled,
-                visualTransformation = PasswordVisualTransformation(),
+                masked = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { pay() }), modifier = Modifier.fillMaxWidth())
             InlineErrorGroup(display.error, 16.dp) {

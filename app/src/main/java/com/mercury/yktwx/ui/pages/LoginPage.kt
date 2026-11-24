@@ -32,8 +32,6 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.PaymentUiState
@@ -171,7 +169,7 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Username })
         }
         StableTextField(value = password, onValueChange = { if (it != password) { password = it; onInputEdited(FormField.Password) } }, label = "密码", useLabelAsPlaceholder = false, enabled = !state.busy,
-            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            masked = !visible,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onDone = { submit() }),
             trailingIcon = {

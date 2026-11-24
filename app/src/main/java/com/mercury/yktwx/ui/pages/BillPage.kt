@@ -24,8 +24,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,9 +46,7 @@ import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.scrollToIndex
 import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -147,7 +147,7 @@ fun BillPage(
     val focus = LocalFocusManager.current
     fun dismissSearch() { focus.clearFocus(); keyboard?.hide() }
     var showFilter by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(state.info, TextRange(state.info.length))) }
+    val query = rememberTextFieldState(state.info)
     var submittedQuery by rememberSaveable { mutableStateOf(state.info) }
     val currentInfo by rememberUpdatedState(state.info)
     val currentOnSearch by rememberUpdatedState(onSearch)
@@ -159,14 +159,14 @@ fun BillPage(
         // Acknowledging our search must preserve the draft, cursor and IME composition.
         // External condition removal still updates the input immediately.
         if (state.needsLogin || state.info != submittedQuery) {
-            query = TextFieldValue(state.info, TextRange(state.info.length))
+            query.setTextAndPlaceCursorAtEnd(state.info)
             submittedQuery = state.info
         }
     }
-    LaunchedEffect(query.text, query.composition, isActive, state.statsVisible, state.needsLogin) {
+    LaunchedEffect(query.text.toString(), query.composition, isActive, state.statsVisible, state.needsLogin) {
         if (!isActive || state.statsVisible || state.needsLogin || query.composition != null || query.text.trim() == currentInfo) return@LaunchedEffect
         if (query.text.isNotBlank()) delay(350)
-        submitSearch(query.text)
+        submitSearch(query.text.toString())
     }
     val recordArrival = rememberContentArrivalState(state.listUpdateId)
     val detailsState = key(state.dateFilter, state.typeId, state.amountFromCents, state.amountToCents, state.info) { rememberLazyListState() }
@@ -379,14 +379,13 @@ fun BillPage(
                                                     Column {
                                                         Box(Modifier.fillMaxWidth()) {
                                                             TextField(
-                                                                value = query,
-                                                                onValueChange = { query = it },
+                                                                state = query,
                                                                 modifier = Modifier.trackInputFocus().fillMaxWidth().heightIn(min = 45.dp).testTag("bill-search")
                                                                     .semantics { contentDescription = "搜索商户或摘要" },
                                                                 insideMargin = androidx.compose.ui.unit.DpSize(14.dp, 10.dp),
                                                                 label = "搜索商户或摘要",
                                                                 useLabelAsPlaceholder = true,
-                                                                singleLine = true,
+                                                                lineLimits = TextFieldLineLimits.SingleLine,
                                                                 enabled = !requestedState.statsVisible,
                                                                 cornerRadius = 14.dp,
                                                                 colors = TextFieldDefaults.textFieldColors(),
@@ -403,17 +402,17 @@ fun BillPage(
                                                                     }
                                                                 },
                                                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                                                keyboardActions = KeyboardActions(onSearch = {
+                                                                onKeyboardAction = {
                                                                     dismissSearch()
-                                                                    submitSearch(query.text)
+                                                                    submitSearch(query.text.toString())
                                                                     if (query.text.isNotBlank()) onSearchConfirmed(false)
-                                                                }),
+                                                                },
                                                             )
                                                             // Keep this tap outside BasicTextField's focus/selection gesture path.
                                                             // The empty trailing slot reserves the same space in the decoration.
                                                             if (query.text.isNotEmpty()) {
                                                                 IconButton(onClick = {
-                                                                    query = TextFieldValue()
+                                                                    query.setTextAndPlaceCursorAtEnd("")
                                                                     submitSearch("")
                                                                     onSearchConfirmed(true)
                                                                 }, modifier = Modifier.align(Alignment.CenterEnd)) {

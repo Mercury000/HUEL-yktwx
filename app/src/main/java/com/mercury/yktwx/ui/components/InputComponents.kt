@@ -1,18 +1,27 @@
 package com.mercury.yktwx.ui.components
 
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldBuffer
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.password
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.VisualTransformation
 import top.yukonga.miuix.kmp.basic.TextField
 
 /** Keep selection and IME composition locally when a parent echoes only the text. */
@@ -22,11 +31,11 @@ internal fun DigitTextField(
     modifier: Modifier = Modifier, enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
+    masked: Boolean = false,
     useLabelAsPlaceholder: Boolean = true,
 ) {
     StableTextField(value, onValueChange, label, modifier, enabled, keyboardOptions, keyboardActions,
-        visualTransformation = visualTransformation, useLabelAsPlaceholder = useLabelAsPlaceholder) { it.digitsOnly(maxDigits) }
+        masked = masked, useLabelAsPlaceholder = useLabelAsPlaceholder) { it.digitsOnly(maxDigits) }
 }
 
 /** Recipient identifiers retain cursor offsets when pasted characters are filtered. */
@@ -73,32 +82,85 @@ internal fun StableTextField(value: String, onValueChange: (String) -> Unit, lab
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     saveText: Boolean = false,
     useLabelAsPlaceholder: Boolean = true,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
+    masked: Boolean = false,
     trailingIcon: (@Composable () -> Unit)? = null,
     acceptText: (String) -> Boolean = { true },
     transform: (TextFieldValue) -> TextFieldValue = { it }) {
     // Passwords and codes must not survive through a text field's private state. Safe device input
     // can save its cursor; phone/recipient drafts are restored by their owning model.
-    val draftState = if (saveText) rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(value, TextRange(value.length)))
-    } else remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    var draft by draftState
+    val draftState = if (saveText) rememberTextFieldState(value) else remember { TextFieldState(value) }
     var externalValue by remember { mutableStateOf(value) }
     if (value != externalValue) {
         externalValue = value
         // Parent acknowledgements keep selection/composition; resets and presets replace the draft.
-        if (draft.text != value) draft = TextFieldValue(value, TextRange(value.length))
+        if (draftState.text != value) draftState.setTextAndPlaceCursorAtEnd(value)
     }
-    TextField(draft, onValueChange = { next ->
-        val transformed = transform(next)
-        if (acceptText(transformed.text)) {
-            draft = transformed
-            if (draft.text != value) onValueChange(draft.text)
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val currentTransform by rememberUpdatedState(transform)
+    val currentAcceptText by rememberUpdatedState(acceptText)
+    val inputTransformation = remember {
+        object : InputTransformation {
+            override fun TextFieldBuffer.transformInput() {
+                val current = TextFieldValue(asCharSequence().toString(), selection = selection)
+                val next = currentTransform(current)
+                if (!currentAcceptText(next.text)) {
+                    revertAllChanges()
+                    return
+                }
+                if (next != current) {
+                    if (next.text != current.text) replace(0, length, next.text)
+                    selection = TextRange(
+                        next.selection.start.coerceIn(0, length),
+                        next.selection.end.coerceIn(0, length),
+                    )
+                }
+                // Notify during the edit so callers observe the new text in the same event, matching
+                // the value-based TextField contract.
+                if (next.text != externalValue) latestOnValueChange(next.text)
+            }
         }
-    }, label = label, singleLine = true, useLabelAsPlaceholder = useLabelAsPlaceholder, enabled = enabled,
+    }
+    val keyboardActionHandler = remember(keyboardActions, keyboardOptions.imeAction) {
+        val callback = when (keyboardOptions.imeAction) {
+            ImeAction.Default, ImeAction.Done -> keyboardActions.onDone
+            ImeAction.Go -> keyboardActions.onGo
+            ImeAction.Next -> keyboardActions.onNext
+            ImeAction.Previous -> keyboardActions.onPrevious
+            ImeAction.Search -> keyboardActions.onSearch
+            ImeAction.Send -> keyboardActions.onSend
+            else -> null
+        }
+        callback?.let { action ->
+            KeyboardActionHandler { performDefaultAction ->
+                action(DefaultKeyboardActionScope(performDefaultAction))
+            }
+        }
+    }
+    // The state-based field masks through outputTransformation, which does not carry the
+    // Password semantics that PasswordVisualTransformation used to add.
+    val fieldModifier = modifier.trackInputFocus(enabled).let {
+        if (masked) it.semantics { password() } else it
+    }
+    TextField(state = draftState, label = label, lineLimits = TextFieldLineLimits.SingleLine,
+        useLabelAsPlaceholder = useLabelAsPlaceholder, enabled = enabled,
         colors = appearanceTextFieldColors(),
-        modifier = modifier.trackInputFocus(enabled), keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
-        visualTransformation = visualTransformation, trailingIcon = trailingIcon)
+        modifier = fieldModifier, keyboardOptions = keyboardOptions,
+        onKeyboardAction = keyboardActionHandler, inputTransformation = inputTransformation,
+        outputTransformation = if (masked) PasswordMaskTransformation else null, trailingIcon = trailingIcon)
+}
+
+private class DefaultKeyboardActionScope(private val performDefaultAction: () -> Unit) : KeyboardActionScope {
+    override fun defaultKeyboardAction(imeAction: ImeAction) = performDefaultAction()
+}
+
+private object PasswordMaskTransformation : OutputTransformation {
+    override fun TextFieldBuffer.transformOutput() {
+        // Replace one code point at a time: a whole-range replace makes every interior cursor
+        // offset ambiguous, which collapses it to the start of the text.
+        for (index in 0 until length) {
+            if (asCharSequence()[index] != '\u2022') replace(index, index + 1, "\u2022")
+        }
+    }
 }
 
 internal fun TextFieldValue.digitsOnly(maxDigits: Int): TextFieldValue =

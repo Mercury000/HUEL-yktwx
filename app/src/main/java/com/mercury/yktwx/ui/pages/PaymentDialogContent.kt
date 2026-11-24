@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import com.mercury.yktwx.data.FormField
 import androidx.compose.runtime.*
@@ -202,8 +204,8 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
                 }
             }
             if (config?.allowCustom != false) PaymentControlPlaceholder {
-                TextField(value = "", onValueChange = {}, label = paymentAmountLabel(config),
-                    useLabelAsPlaceholder = true, singleLine = true, enabled = false,
+                TextField(state = rememberTextFieldState(), label = paymentAmountLabel(config),
+                    useLabelAsPlaceholder = true, lineLimits = TextFieldLineLimits.SingleLine, enabled = false,
                     modifier = Modifier.trackInputFocus(false).fillMaxWidth())
             }
         }

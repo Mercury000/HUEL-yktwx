@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.preview.PreviewNotes
 import com.mercury.yktwx.preview.UiPreview
@@ -65,21 +64,21 @@ fun CardPasswordDialog(state: CardPasswordUiState, onDismiss: () -> Unit, onSele
                 if (next != oldPassword) { oldPassword = next; onInputEdited(FormField.OldPassword) }
             },
                 label = "原查询密码", maxDigits = 6, useLabelAsPlaceholder = false, enabled = enabled,
-                visualTransformation = PasswordVisualTransformation(),
+                masked = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth())
             DigitTextField(value = newPassword, onValueChange = { next ->
                 if (next != newPassword) { newPassword = next; onInputEdited(FormField.NewPassword) }
             },
                 label = "新查询密码（6 位数字）", maxDigits = 6, useLabelAsPlaceholder = false, enabled = enabled,
-                visualTransformation = PasswordVisualTransformation(),
+                masked = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth())
             DigitTextField(value = confirmation, onValueChange = { next ->
                 if (next != confirmation) { confirmation = next; onInputEdited(FormField.Confirmation) }
             },
                 label = "确认新查询密码", maxDigits = 6, useLabelAsPlaceholder = false, enabled = enabled,
-                visualTransformation = PasswordVisualTransformation(),
+                masked = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }), modifier = Modifier.fillMaxWidth())
             InlineErrorGroup(error, 12.dp) {

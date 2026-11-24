@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.sp
@@ -181,7 +180,7 @@ private fun CardStateDialog(state: CardServiceUiState, onDismiss: () -> Unit, on
                     onValueChange = { next ->
                         if (next != password) { password = next; onInputEdited(FormField.Password) }
                     }, label = "校园卡查询密码", maxDigits = 6, useLabelAsPlaceholder = false,
-                    enabled = show && !display.loading, visualTransformation = PasswordVisualTransformation(),
+                    enabled = show && !display.loading, masked = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
             } else {
                 if (!display.loading && card == null && display.error == null) Text(
