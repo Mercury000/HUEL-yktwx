@@ -36,6 +36,7 @@ class AppBenchmarks(private val compilation: CompilationMode) {
     ) {
         device.visitMainPages()
         device.visitBillDetail()
+        device.visitBillOverlays()
         device.scrollBills()
     }
 

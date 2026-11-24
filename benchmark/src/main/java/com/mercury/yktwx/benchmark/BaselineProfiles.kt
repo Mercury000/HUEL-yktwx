@@ -24,6 +24,7 @@ class BaselineProfiles {
         startFixture()
         device.visitMainPages()
         device.visitBillDetail()
+        device.visitBillOverlays()
         device.scrollBills()
     }
 
