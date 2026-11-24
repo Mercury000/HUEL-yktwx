@@ -67,7 +67,7 @@ data class WaterUnlock(val messageId: String, val orderNo: String)
 // amount is a device consumption field with unknown units, not a displayed payment amount.
 data class WaterReading(val status: Int?, val workStatus: Int?, val orderNo: String, val zeroConsumption: Boolean = false,
     val positiveConsumption: Boolean = false) {
-    fun ended(device: LifeDevice): Boolean = if (device.isShower) status in setOf(3, 5) else status == 5 && workStatus == 1
+    fun ended(): Boolean = status == 3 || status == 5
 }
 data class WaterMessage(val state: String, val code: String)
 class LifeDeviceException(message: String, val loginExpired: Boolean = false,
@@ -102,8 +102,8 @@ interface LifeDeviceService {
     suspend fun unlock(skuId: String, token: String): WaterUnlock
     suspend fun unlockShower(skuId: String, token: String): WaterUnlock { throw LifeDeviceException("淋浴启动暂不可用") }
     suspend fun message(messageId: String, token: String): WaterMessage?
-    suspend fun water(skuId: String, token: String): WaterReading
-    suspend fun shower(skuId: String, token: String): WaterReading { throw LifeDeviceException("淋浴状态暂不可用") }
+    suspend fun water(skuId: String, token: String): WaterReading?
+    suspend fun shower(skuId: String, token: String): WaterReading? { throw LifeDeviceException("淋浴状态暂不可用") }
     suspend fun endWater(goodsId: String, token: String)
     suspend fun endShower(goodsId: String, orderNo: String, token: String) { throw LifeDeviceException("结束淋浴暂不可用") }
     suspend fun finishSupported(goodsId: String, token: String): Boolean? = null

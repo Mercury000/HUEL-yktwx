@@ -71,7 +71,7 @@ class LifeDevicesViewModelTest {
         var messageResult = WaterMessage("OK", "0")
         var stopGate: CompletableDeferred<Unit>? = null
         var createGate: CompletableDeferred<Unit>? = null
-        var reading = WaterReading(1, 2, "order-1")
+        var reading: WaterReading? = WaterReading(1, 2, "order-1")
         var waterReads = 0
         var holdEnd = false
         var createFailure = false
@@ -102,7 +102,7 @@ class LifeDevicesViewModelTest {
             if (lostUnlock) throw java.io.IOException("lost response")
             return WaterUnlock("message-1", "order-1")
         }
-        override suspend fun shower(skuId: String, token: String): WaterReading {
+        override suspend fun shower(skuId: String, token: String): WaterReading? {
             showerReads++; waterGate?.await()
             if (waterFailure) throw java.io.IOException("offline")
             return reading
@@ -112,12 +112,15 @@ class LifeDevicesViewModelTest {
             showerStopCalls++; stopGate?.await()
             if (!holdEnd) reading = showerEndReading
         }
-        override suspend fun water(skuId: String, token: String): WaterReading {
+        override suspend fun water(skuId: String, token: String): WaterReading? {
             waterReads++; waterGate?.await()
             if (waterFailure) throw java.io.IOException("offline")
             return reading
         }
-        override suspend fun endWater(goodsId: String, token: String) { stopCalls++; stopGate?.await(); if (!holdEnd) reading = WaterReading(5, 1, "order-1", zeroConsumption) }
+        override suspend fun endWater(goodsId: String, token: String) {
+            stopCalls++; stopGate?.await()
+            if (!holdEnd) reading = WaterReading(5, 1, "order-1", zeroConsumption, !zeroConsumption)
+        }
         override suspend fun createAfterPay(orderNo: String, token: String): String {
             afterPayOrders.add(orderNo)
             createCalls++
@@ -361,6 +364,22 @@ class LifeDevicesViewModelTest {
         assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
     }
 
+    @Test fun showerStartupReadsShowerOnceThenUsesSharedWaterEvenWhileStatusIsPending() = runTest(dispatcher) {
+        val api = showerApi().apply { reading = null }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model)
+        model.startWater(); runCurrent()
+        assertEquals(1, api.showerReads); assertEquals(0, api.waterReads)
+        assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
+        advanceTimeBy(1500); runCurrent()
+        assertEquals(1, api.showerReads); assertEquals(1, api.waterReads)
+        assertNull(model.state.value.error)
+        api.reading = WaterReading(1, 2, "order-1")
+        advanceTimeBy(1500); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        assertEquals(1, api.showerReads); assertEquals(2, api.waterReads)
+    }
+
     @Test fun showerStatusThreeSettlesPositiveConsumptionForOriginalOrder() = runTest(dispatcher) {
         val api = showerApi().apply { showerEndReading = WaterReading(3, null, "order-1", positiveConsumption = true) }
         val model = model(api, Store(LifeAccount("13800000000", "test-token")))
@@ -390,10 +409,10 @@ class LifeDevicesViewModelTest {
         assertEquals(1, api.showerStopCalls); assertEquals(1, api.showerUnlockCalls)
     }
 
-    @Test fun showerForeignOrderAtStopIsRemovedWithoutSendingEndOrPayment() = runTest(dispatcher) {
+    @Test fun showerForeignOrderBeforeEndIsRemovedWithoutSendingEndOrPayment() = runTest(dispatcher) {
         val api = showerApi(); val model = model(api, Store(LifeAccount("13800000000", "test-token")))
         prepare(model); model.startWater(); runCurrent()
-        api.reading = WaterReading(3, 1, "other-order", positiveConsumption = true)
+        api.reading = WaterReading(1, 2, "other-order")
         model.stopWater(); runCurrent()
         assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(model.state.value.water)
         assertEquals(0, api.showerStopCalls); assertEquals(0, api.createCalls)
@@ -416,8 +435,9 @@ class LifeDevicesViewModelTest {
             orderNo = "order-1", startedAtMillis = 90_000, sessionId = "saved-shower")
         val model = model(api, Store(LifeAccount("13800000000", "test-token"), saved)); runCurrent()
         assertEquals(saved.copy(phase = WaterPhase.Running), model.state.value.waterSessions.single())
-        assertEquals(1, api.showerReads); assertEquals(0, api.showerUnlockCalls); assertEquals(0, api.showerStopCalls)
-        model.environment(true); runCurrent(); assertTrue(api.waterReads > 0); model.environment(false)
+        assertEquals(0, api.showerReads); assertEquals(1, api.waterReads)
+        assertEquals(0, api.showerUnlockCalls); assertEquals(0, api.showerStopCalls)
+        model.environment(true); runCurrent(); assertTrue(api.waterReads > 1); model.environment(false)
     }
 
     @Test fun startAndStopKeepOneOrderAndNeverFinishFromAButtonClickAlone() = runTest(dispatcher) {
@@ -476,8 +496,48 @@ class LifeDevicesViewModelTest {
         model.environment(false)
     }
 
-    @Test fun mismatchedDeviceOrderDuringStartCannotBecomeRunningOrEnded() = runTest(dispatcher) {
-        val api = Api().apply { reading = WaterReading(5, 1, "different-order") }
+    @Test fun nullWaterStatusKeepsTheSessionPollingUntilTheOrderEnds() = runTest(dispatcher) {
+        val api = Api()
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.environment(true); model.startWater(); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        api.reading = null
+        advanceTimeBy(1500); runCurrent()
+        assertEquals(WaterPhase.Running, model.state.value.water?.phase)
+        assertNull(model.state.value.error); assertEquals(1, model.state.value.waterSessions.size)
+        api.reading = WaterReading(5, 1, "order-1", zeroConsumption = true)
+        advanceTimeBy(1500); runCurrent()
+        assertEquals(WaterPhase.Ended, model.state.value.water?.phase)
+        assertTrue(model.state.value.water!!.finalized)
+        assertNull(model.state.value.error)
+        assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
+        model.environment(false)
+    }
+
+    @Test fun officialEndStatusesIgnoreWorkStatusAndRequirePositiveIdentifyForAfterPay() = runTest(dispatcher) {
+        val cases = listOf(
+            WaterReading(3, null, "", positiveConsumption = true) to false,
+            WaterReading(3, 1, "order-1", zeroConsumption = true) to false,
+            WaterReading(3, null, "order-1", positiveConsumption = true) to true,
+            WaterReading(5, null, "") to false,
+        )
+        for ((reading, createsPayment) in cases) {
+            val api = Api()
+            val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+            prepare(model); model.environment(true); model.startWater(); runCurrent()
+            api.reading = reading
+            advanceTimeBy(1500); runCurrent()
+            assertEquals(WaterPhase.Ended, model.state.value.water?.phase)
+            assertTrue(model.state.value.water!!.finalized)
+            assertNull(model.state.value.error)
+            assertEquals(if (createsPayment) listOf(reading.orderNo) else emptyList(), api.afterPayOrders)
+            assertEquals(if (createsPayment) 1 else 0, api.syncCalls)
+            model.environment(false); viewModels.clear()
+        }
+    }
+
+    @Test fun mismatchedDeviceOrderBeforeAnyEndStatusCannotBecomeRunning() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(1, 1, "different-order") }
         val model = model(api, Store(LifeAccount("13800000000", "test-token")))
         prepare(model); model.startWater(); runCurrent()
         assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
@@ -507,6 +567,7 @@ class LifeDevicesViewModelTest {
         val cases = listOf(
             savedRunning(WaterPhase.Ended) to WaterReading(1, 2, "order-1"),
             savedRunning() to WaterReading(5, 1, "order-1"),
+            savedRunning() to WaterReading(3, null, ""),
             savedRunning() to WaterReading(1, 2, "another-order"),
             savedRunning().copy(orderNo = "") to WaterReading(1, 2, "order-1"),
         )
@@ -526,7 +587,7 @@ class LifeDevicesViewModelTest {
     }
 
     @Test fun restartRetainsKnownOrdersWhenStatusIsUnknownAndLaterQueriesRecoverThem() = runTest(dispatcher) {
-        for (reading in listOf(WaterReading(1, 2, ""), WaterReading(null, null, "order-1"))) {
+        for (reading in listOf(null, WaterReading(1, 2, ""), WaterReading(null, null, "order-1"))) {
             val api = Api().apply { this.reading = reading }
             val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
             val model = model(api, store); runCurrent()
@@ -542,24 +603,106 @@ class LifeDevicesViewModelTest {
             restarted.environment(false)
         }
     }
-    @Test fun unknownStatusWithKnownWaterOrderCanBeDeletedWithoutSendingStop() = runTest(dispatcher) {
+    @Test fun unknownStatusWithKnownOrderIsImmediatelyDismissibleWithoutStoppingPolling() = runTest(dispatcher) {
         for (shower in listOf(false, true)) {
             val session = savedRunning().let { if (shower) it.copy(device = it.device.copy(category = "08")) else it }
             val api = Api().apply { reading = WaterReading(null, null, "order-1") }
             val store = Store(LifeAccount("13800000000", "test-token"), session)
             val model = model(api, store); runCurrent()
-            assertTrue(model.state.value.sessionErrors.containsKey(session.sessionId))
-            if (shower) assertTrue(api.showerReads > 0)
-            api.reading = WaterReading(1, 2, "order-1"); api.waterGate = CompletableDeferred()
+            val error = model.state.value.sessionErrors[session.sessionId]
+            assertNotNull(error)
+            assertTrue(model.state.value.waterSessions.single().canDismissRecord(error))
+            if (shower) { assertEquals(0, api.showerReads); assertEquals(1, api.waterReads) }
             model.environment(true); runCurrent()
+            val reads = api.waterReads
+            advanceTimeBy(1500); runCurrent()
+            assertTrue(api.waterReads > reads)
+            assertNotNull(model.state.value.sessionErrors[session.sessionId])
+            api.reading = WaterReading(1, 2, "order-1"); api.waterGate = CompletableDeferred()
+            advanceTimeBy(1500); runCurrent()
             model.dismissSession(LifeFeature.Water, session.sessionId); runCurrent()
             api.waterGate!!.complete(Unit); runCurrent()
             assertNull(store.savedSession); assertTrue(model.state.value.waterSessions.isEmpty())
             assertEquals(0, api.stopCalls); assertEquals(0, api.showerStopCalls); assertEquals(0, api.createCalls)
             val restarted = model(api, store); runCurrent()
             assertTrue(restarted.state.value.waterSessions.isEmpty())
-            model.environment(false)
+            model.environment(false); viewModels.clear()
         }
+    }
+
+    @Test fun blankOrderIsImmediatelyDismissibleButDoesNotStopPolling() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(1, 2, "") }
+        val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
+        val model = model(api, store); runCurrent()
+        val error = model.state.value.sessionErrors["saved-water"]
+        assertNotNull(error)
+        assertTrue(model.state.value.waterSessions.single().canDismissRecord(error))
+        model.environment(true); runCurrent()
+        val reads = api.waterReads
+        advanceTimeBy(1500); runCurrent()
+        assertTrue(api.waterReads > reads)
+        assertNotNull(model.state.value.sessionErrors["saved-water"])
+        model.environment(false)
+    }
+
+    @Test fun unknownStatusClearsTheStatusExceptionWhenTheDeviceReturnsToAKnownState() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(null, null, "order-1") }
+        val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
+        val model = model(api, store); runCurrent()
+        assertNotNull(model.state.value.sessionErrors["saved-water"])
+        model.environment(true); runCurrent()
+        api.reading = WaterReading(1, 2, "order-1")
+        advanceTimeBy(1500); runCurrent()
+        assertNull(model.state.value.sessionErrors["saved-water"])
+        assertEquals(WaterPhase.Running, model.state.value.waterSessions.single().phase)
+        model.environment(false)
+    }
+
+    @Test fun terminalForeignOrderNeverSettlesTheSavedOrder() = runTest(dispatcher) {
+        for (status in listOf(3, 5)) {
+            val api = Api().apply { reading = WaterReading(status, 1, "another-order", positiveConsumption = true) }
+            val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
+            val model = model(api, store); runCurrent()
+            assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+            assertEquals(emptyList<String>(), api.afterPayOrders)
+            assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
+            assertEquals(0, api.stopCalls); assertEquals(0, api.unlockCalls)
+            viewModels.clear()
+        }
+    }
+
+    @Test fun terminalForeignOrderWhileStartingIsReportedAndNeverSettles() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(3, 1, "another-order", positiveConsumption = true) }
+        val model = model(api, Store(LifeAccount("13800000000", "test-token")))
+        prepare(model); model.startWater(); runCurrent()
+        assertEquals(WaterPhase.Starting, model.state.value.water?.phase)
+        assertEquals("设备订单已变化，请在胖乖生活核对", model.state.value.error)
+        assertEquals(1, model.state.value.waterSessions.size)
+        assertEquals(emptyList<String>(), api.afterPayOrders)
+        assertEquals(0, api.createCalls); assertEquals(0, api.syncCalls)
+        assertEquals(0, api.stopCalls)
+    }
+
+    @Test fun recoveredTerminalStatusSettlesPaymentBeforeDroppingTheSavedSession() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(5, 1, "order-1", positiveConsumption = true) }
+        val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
+        val model = model(api, store); runCurrent()
+        assertEquals(listOf("order-1"), api.afterPayOrders)
+        assertEquals(1, api.createCalls); assertEquals(1, api.syncCalls)
+        assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
+    }
+
+    @Test fun failedRecoveredSettlementKeepsEndedSessionDismissibleWithoutRepeatingCommands() = runTest(dispatcher) {
+        val api = Api().apply { reading = WaterReading(3, null, "order-1", positiveConsumption = true); createFailure = true }
+        val store = Store(LifeAccount("13800000000", "test-token"), savedRunning())
+        val model = model(api, store); runCurrent()
+        val ended = model.state.value.waterSessions.single()
+        assertEquals(WaterPhase.Ended, ended.phase); assertFalse(ended.finalized)
+        val error = model.state.value.sessionErrors[ended.sessionId]
+        assertNotNull(error); assertTrue(ended.canDismissRecord(error))
+        assertEquals(1, api.createCalls); assertEquals(0, api.syncCalls)
+        model.dismissSession(LifeFeature.Water, ended.sessionId); runCurrent()
+        assertTrue(model.state.value.waterSessions.isEmpty()); assertNull(store.savedSession)
     }
 
     @Test fun verifiedSessionSurvivesNetworkFailureAndNormalBackgroundReturn() = runTest(dispatcher) {

@@ -227,6 +227,15 @@ class LifeDeviceApiTest {
         assertEquals(4, calls.size)
     }
 
+    @Test fun nullWaterAndShowerSyncDataAreValidPendingReads() = runBlocking {
+        val service = api(mapOf(
+            "/goods/water/sync" to """{"code":0,"data":null}""",
+            "/goods/shower/sync" to """{"code":0,"data":null}"""
+        ), mutableListOf())
+        assertNull(service.water("33", "test-token"))
+        assertNull(service.shower("33", "test-token"))
+    }
+
     @Test fun zeroDeviceConsumptionIsExplicitAndMissingAmountIsNotZero() = runBlocking {
         for ((amount, zero) in listOf("0" to true, "\"0.00\"" to true, "null" to false, "1" to false,
             null to false, "\"unknown\"" to false)) {
@@ -308,7 +317,7 @@ class LifeDeviceApiTest {
         assertEquals(WaterUnlock("shower-message", "shower-order"), unlock)
         assertEquals(WaterReading(1, 2, unlock.orderNo), service.shower("outlet-1", "test-token"))
         service.endShower("shower-device", unlock.orderNo, "test-token")
-        assertTrue(service.water("outlet-1", "test-token").zeroConsumption)
+        assertTrue(service.water("outlet-1", "test-token")!!.zeroConsumption)
         assertEquals(mapOf("skuId" to "outlet-1", "promotions" to LifeDeviceProtocol.Promotions, "token" to "test-token"),
             calls.single { it.url.path.endsWith("unlock") }.form())
         assertEquals(mapOf("goodsId" to "shower-device", "orderNo" to unlock.orderNo, "token" to "test-token"),

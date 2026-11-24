@@ -126,6 +126,7 @@ class LifeDevicesViewModel internal constructor(
     private var restoreTask: Job? = null
     private var waterTask: Job? = null
     private var waterPollTask: Job? = null
+    private val waterSyncReads = mutableMapOf<String, Int>()
     private var laundryPollTask: Job? = null
     private val laundryApi = api as? LifeLaundryService
     private var laundryTask: Job? = null
@@ -181,7 +182,7 @@ class LifeDevicesViewModel internal constructor(
                 }
                 requestedFeature = null; requestedScan = false; requestedSessionId = null
                 pendingDeviceSerial = null; pendingOverlay = null
-                sessionErrors.clear(); accountVerifier.cleared()
+                sessionErrors.clear(); waterSyncReads.clear(); accountVerifier.cleared()
                 mutable.update { LifeDevicesUiState(restoring = false, entryRequest = it.entryRequest) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(accountError = failure(e)) } }
@@ -266,6 +267,7 @@ class LifeDevicesViewModel internal constructor(
                 error = if (it.laundry?.sessionId == sessionId && it.feature == feature) null else it.error) }
         }
         sessionErrors.remove(sessionId)
+        waterSyncReads.remove(sessionId)
         dismissedSessionIds.add(sessionId)
         mutable.update { it.copy(sessionErrors = sessionErrors.toMap()) }
         viewModelScope.launch {
@@ -362,7 +364,7 @@ class LifeDevicesViewModel internal constructor(
                 analytics.loginResult(analyticsAttempt, AnalyticsPlatform.Panggui)
                 if (ownerPhone.isNotBlank() && ownerPhone != next.phone) {
                     waterPollTask?.cancel(); laundryPollTask?.cancel(); waterTask?.cancel(); laundryTask?.cancel(); quoteTask?.cancel()
-                    sessionErrors.clear()
+                    sessionErrors.clear(); waterSyncReads.clear()
                     mutable.update { it.copy(water = null, laundry = null, waterSessions = emptyList(), laundrySessions = emptyList(),
                         device = null, selectedSkuId = "", laundryQuote = null, paymentLaunch = null, paymentFeedback = null) }
                 }
@@ -577,57 +579,80 @@ class LifeDevicesViewModel internal constructor(
         scan()
     }
     private suspend fun waitForWater(token: String) {
-        repeat(20) {
-            readWater(token)
-            val phase = mutable.value.water?.phase
-            if (phase == null || phase == WaterPhase.Running || phase == WaterPhase.Ended || mutable.value.water?.fault != null) return
-            delay(1500)
+        repeat(WaterReadLimit) {
+            if (readWater(token)) return
+            val session = mutable.value.water
+            if (session == null || session.phase == WaterPhase.Running || session.phase == WaterPhase.Ended || session.fault != null) return
+            delay(WaterReadDelayMillis)
         }
-        throw LifeDeviceException("设备响应较慢，请留意现场状态并重试")
+        throw LifeDeviceException(WaterSlowMessage)
     }
-    private suspend fun readWater(token: String, sessionId: String? = mutable.value.water?.sessionId) {
-        var session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
-        if (session.phase == WaterPhase.Ended) { finalizeWater(token, sessionId); return }
+    /**
+     * Returns true once the session reaches a definitive state. Protocol-pending message/empty data
+     * keeps polling; readings this client cannot interpret enter the local status exception so X stays available.
+     */
+    private suspend fun readWater(token: String, sessionId: String? = mutable.value.water?.sessionId,
+        restoring: Boolean = false, candidate: WaterSession? = null): Boolean {
+        var session = candidate ?: mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return true
+        val id = session.sessionId
+        if (session.phase == WaterPhase.Ended) { finalizeWater(token, id); return true }
         if (session.orderNo.isBlank()) throw LifeDeviceException("启动请求未返回${session.device.waterAction}订单，请在胖乖生活查看")
         if (session.phase == WaterPhase.Starting && session.messageId.isNotBlank()) {
             val message = api.message(session.messageId, token)
-            if (message == null) return
+            if (message == null) return false
             // Official DeviceStartupAct/StartStatusAct: OK (case insensitive) OR code 05.
             // All other combinations continue polling; a numeric code alone is not a fault.
-            if (!message.state.equals("OK", ignoreCase = true) && message.code != "05") return
+            if (!message.state.equals("OK", ignoreCase = true) && message.code != "05") return false
         }
-        // Official showers use shower/sync at startup, then water/sync for the same outlet/order.
-        val reading = if (session.device.isShower && session.phase == WaterPhase.Starting) api.shower(session.skuId, token)
-            else api.water(session.skuId, token)
-        if (account?.token != token) return
-        session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
+        // Official shower startup calls shower/sync once; every later observation, including
+        // pending/empty data, uses the shared water/sync endpoint.
+        val firstShowerRead = session.device.isShower && session.phase == WaterPhase.Starting && waterSyncReads[id] == null
+        val reading = if (firstShowerRead) api.shower(session.skuId, token) else api.water(session.skuId, token)
+        if (firstShowerRead) waterSyncReads[id] = 1
+        if (account?.token != token) return true
+        // A recovered candidate is not in the list until this read saves it; keep it unless it was dismissed meanwhile.
+        session = mutable.value.waterSessions.firstOrNull { it.sessionId == id }
+            ?: if (candidate != null && id !in dismissedSessionIds) session else return true
+        if (reading == null) return false
+        if (reading.ended()) {
+            // Official settles the order identified by the device. This client can only settle its
+            // saved order, so a terminal reading for another order must never settle this one.
+            if (reading.orderNo.isNotBlank() && reading.orderNo != session.orderNo) {
+                if (session.phase == WaterPhase.Starting)
+                    throw LifeDeviceException("设备订单已变化，请在胖乖生活核对")
+                // A recovery candidate is not in the list yet; the final recovery persist drops it.
+                if (mutable.value.waterSessions.any { it.sessionId == id }) removeWaterSession(id)
+                else { waterSyncReads.remove(id); sessionErrors.remove(id) }
+                return true
+            }
+            // Official treats 3/5 as terminal; a blank identity means no payable after-pay order.
+            val noPayment = !(reading.positiveConsumption && reading.orderNo.isNotBlank())
+            saveSession(session.copy(phase = WaterPhase.Ended, endedAtMillis = now(), finalized = noPayment),
+                restoring = restoring)
+            if (noPayment) sessionError(LifeFeature.Water, session.sessionId, null)
+            else finalizeWater(token, session.sessionId)
+            return true
+        }
+        if (reading.status == 6) {
+            saveSession(session.copy(fault = "设备异常，请更换设备使用"), restoring = restoring)
+            sessionError(LifeFeature.Water, session.sessionId, "设备异常，请更换设备使用")
+            return true
+        }
         if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回${session.device.waterAction}订单，请重试")
         if (reading.orderNo != session.orderNo) {
             if (session.phase == WaterPhase.Starting) throw LifeDeviceException("设备订单已变化，请在胖乖生活核对")
             // The device now reports another order; stop tracking ours without finalizing or controlling it.
             removeWaterSession(session.sessionId)
-            return
+            return true
         }
-        when {
-            reading.workStatus == 2 && reading.status == 1 -> {
-                val next = session.copy(phase = if (session.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
-                    startedAtMillis = session.startedAtMillis ?: now(), creationUncertain = false, fault = null)
-                if (next != session) saveSession(next)
-                sessionError(LifeFeature.Water, session.sessionId, null)
-            }
-            reading.ended(session.device) -> {
-                // The zero-consumption capture ends here without creating a payable after-pay order.
-                val noPayment = if (session.device.isShower) !reading.positiveConsumption else reading.zeroConsumption
-                saveSession(session.copy(phase = WaterPhase.Ended, endedAtMillis = now(), finalized = noPayment))
-                if (noPayment) sessionError(LifeFeature.Water, session.sessionId, null)
-                else finalizeWater(token, session.sessionId)
-            }
-            session.device.isShower && reading.status == 6 -> {
-                saveSession(session.copy(fault = "设备异常，请更换设备使用"))
-                sessionError(LifeFeature.Water, session.sessionId, "设备异常，请更换设备使用")
-            }
-            else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
+        if (reading.workStatus == 2 && reading.status == 1) {
+            val next = session.copy(phase = if (session.phase == WaterPhase.Stopping) WaterPhase.Stopping else WaterPhase.Running,
+                startedAtMillis = session.startedAtMillis ?: now(), creationUncertain = false, fault = null)
+            if (next != session || candidate != null) saveSession(next, restoring = restoring)
+            sessionError(LifeFeature.Water, session.sessionId, null)
+            return true
         }
+        throw LifeDeviceException("暂时无法读取设备状态，请重试")
     }
     private suspend fun finalizeWater(token: String, sessionId: String? = mutable.value.water?.sessionId) {
         var session = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId } ?: return
@@ -679,12 +704,13 @@ class LifeDevicesViewModel internal constructor(
         mutable.update { it.copy(sessionErrors = sessionErrors.toMap(), error = if (it.feature == feature) message else it.error) }
     }
     private suspend fun removeWaterSession(id: String) {
+        waterSyncReads.remove(id)
         mutable.update { it.copy(waterSessions = it.waterSessions.filterNot { session -> session.sessionId == id },
             water = it.water?.takeUnless { session -> session.sessionId == id }) }
         sessionErrors.remove(id)
         persistSessions()
     }
-    /** Verify saved progress once; failed reads retain an entry without replaying commands. */
+    /** Verify saved progress once; unreadable states keep the local exception and normal polling continues. */
     private suspend fun recoverWaterSessions(token: String, candidates: List<WaterSession>) {
         if (account?.token != token) return
         for (session in candidates) {
@@ -693,30 +719,32 @@ class LifeDevicesViewModel internal constructor(
                 if (session.orderNo.isBlank()) {
                     saveSession(session.copy(phase = WaterPhase.Starting, creationUncertain = true), restoring = true)
                 } else {
-                    val reading = if (session.device.isShower) api.shower(session.skuId, token) else api.water(session.skuId, token)
+                    val definitive = readWater(token, session.sessionId, restoring = true, candidate = session)
                     if (session.sessionId in dismissedSessionIds) continue
                     if (account?.token != token) return
-                    if (reading.orderNo.isBlank()) throw LifeDeviceException("设备未返回${session.device.waterAction}订单，请重试")
-                    if (reading.orderNo == session.orderNo) {
-                        when {
-                            reading.status == 1 && reading.workStatus == 2 -> {
-                                val running = session.copy(phase = WaterPhase.Running,
-                                    startedAtMillis = session.startedAtMillis ?: now(), endedAtMillis = null,
-                                    creationUncertain = false, fault = null)
-                                mutable.update { it.copy(waterSessions = it.waterSessions + running,
-                                    water = if (it.restoring && it.water == null && !it.scanning && it.scannedSerial == null) running else it.water) }
-                            }
-                            reading.ended(session.device) -> Unit
-                            session.device.isShower && reading.status == 6 ->
-                                saveSession(session.copy(fault = "设备异常，请更换设备使用"), restoring = true)
-                            else -> throw LifeDeviceException("暂时无法读取设备状态，请重试")
-                        }
+                    var current = mutable.value.waterSessions.firstOrNull { it.sessionId == session.sessionId }
+                    if (current == null) {
+                        // Protocol-pending reads save nothing; retain the stored record so polling can continue.
+                        if (!definitive) saveSession(session, restoring = true)
+                        continue
                     }
+                    // A restored stop attempt may have been lost; only a live stop task keeps Stopping.
+                    if (current.phase == WaterPhase.Stopping && definitive && current.fault == null) {
+                        current = current.copy(phase = WaterPhase.Running)
+                        saveSession(current, restoring = true)
+                    }
+                    if (current.phase == WaterPhase.Ended && current.finalized)
+                        removeWaterSession(current.sessionId)
+                    if (current.phase == WaterPhase.Running && mutable.value.restoring && mutable.value.water == null &&
+                        !mutable.value.scanning && mutable.value.scannedSerial == null)
+                        mutable.update { it.copy(water = current) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (account?.token != token) return
-                saveSession(session, restoring = true)
+                // A failed finalization already saved the terminal phase; do not overwrite it with the stale record.
+                if (mutable.value.waterSessions.none { it.sessionId == session.sessionId })
+                    saveSession(session, restoring = true)
                 sessionError(LifeFeature.Water, session.sessionId, failure(e))
                 mutable.update { if (it.feature == LifeFeature.Water && it.water == null && !it.scanning && it.scannedSerial == null)
                     it.copy(error = failure(e)) else it }
@@ -734,7 +762,7 @@ class LifeDevicesViewModel internal constructor(
         if (mutable.value.waterSessions.none { it.active || it.phase == WaterPhase.Ended && !it.finalized }) return
         val token = account!!.token
         waterPollTask = viewModelScope.launch {
-            if (waitBeforeFirstRead) delay(1500)
+            if (waitBeforeFirstRead) delay(WaterReadDelayMillis)
             while (isActive && foreground && account?.token == token) {
                 val sessions = mutable.value.waterSessions.filter { it.active ||
                     it.phase == WaterPhase.Ended && !it.finalized && sessionErrors[it.sessionId] == null }
@@ -745,7 +773,7 @@ class LifeDevicesViewModel internal constructor(
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) { sessionError(LifeFeature.Water, session.sessionId, failure(e)); if (expired(e)) return@launch }
                 }
-                delay(1500)
+                delay(WaterReadDelayMillis)
             }
         }
     }
@@ -1231,5 +1259,11 @@ class LifeDevicesViewModel internal constructor(
         is LifeDeviceException -> e.message ?: "操作失败，请重试"
         is com.mercury.yktwx.data.YktException -> "无法保存账号或服务进度，请检查设备存储"
         else -> "连接失败，请检查网络后重试"
+    }
+    private companion object {
+        /** Existing cap for the interactive start/stop wait; background polling continues separately. */
+        const val WaterReadLimit = 20
+        const val WaterReadDelayMillis = 1500L
+        const val WaterSlowMessage = "设备响应较慢，请留意现场状态并重试"
     }
 }

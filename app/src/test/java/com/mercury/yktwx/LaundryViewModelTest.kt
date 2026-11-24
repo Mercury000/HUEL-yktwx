@@ -178,7 +178,7 @@ class LaundryViewModelTest {
         override suspend fun selectAfterPay(token: String) { error("No after pay") }
         override suspend fun unlock(skuId: String, token: String): WaterUnlock = error("No water unlock")
         override suspend fun message(messageId: String, token: String): WaterMessage? = error("No water sync")
-        override suspend fun water(skuId: String, token: String): WaterReading {
+        override suspend fun water(skuId: String, token: String): WaterReading? {
             waterReads++
             if (waterFails) throw java.io.IOException("offline water")
             return waterReading ?: error("No water read")

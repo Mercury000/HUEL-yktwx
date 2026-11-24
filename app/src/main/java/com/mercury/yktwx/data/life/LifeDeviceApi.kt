@@ -141,14 +141,15 @@ class LifeDeviceApi(
         val data = post("/machine/msg/sync", mapOf("msgId" to messageId), token) ?: return null
         return data.obj().let { WaterMessage(it.text("state"), it.text("code")) }
     }
-    override suspend fun water(skuId: String, token: String): WaterReading {
+    override suspend fun water(skuId: String, token: String): WaterReading? {
         return readingAt("/goods/water/sync", skuId, token)
     }
-    override suspend fun shower(skuId: String, token: String): WaterReading = readingAt("/goods/shower/sync", skuId, token)
-    private suspend fun readingAt(path: String, skuId: String, token: String): WaterReading {
-        val data = post(path, mapOf("skuId" to skuId), token).obj()
-        val amount = data.text("amount").toBigDecimalOrNull()
-        return WaterReading(data.text("status").toIntOrNull(), data.text("workStatus").toIntOrNull(), data.text("identify"),
+    override suspend fun shower(skuId: String, token: String): WaterReading? = readingAt("/goods/shower/sync", skuId, token)
+    private suspend fun readingAt(path: String, skuId: String, token: String): WaterReading? {
+        val data = post(path, mapOf("skuId" to skuId), token) ?: return null
+        val body = data.obj()
+        val amount = body.text("amount").toBigDecimalOrNull()
+        return WaterReading(body.text("status").toIntOrNull(), body.text("workStatus").toIntOrNull(), body.text("identify"),
             amount?.signum() == 0, amount?.signum() == 1)
     }
     override suspend fun endWater(goodsId: String, token: String) {
