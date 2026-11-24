@@ -19,6 +19,9 @@
     <string name="blur_top_bar">顶栏模糊</string>
     <string name="swipe_back">滑动返回</string>
     <string name="nav_transition_style">转场风格</string>
+    <string name="nav_transition_miuix">Miuix</string>
+    <string name="nav_transition_aosp">AOSP</string>
+    <string name="nav_transition_expansion">展开</string>
     <string name="payment_screenshot_title">请勿截图使用付款码</string>
     <string name="payment_screenshot_content">仅限本人使用，外传可能造成损失</string>
     <string name="payment_screenshot_acknowledge">知道了</string>

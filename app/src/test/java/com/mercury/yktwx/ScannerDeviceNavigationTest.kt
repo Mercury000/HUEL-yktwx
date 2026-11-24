@@ -103,7 +103,7 @@ class ScannerDeviceNavigationTest {
     }
 
     @Test fun scannerArrivalShowsTheDeviceWithoutMovingEitherPage() {
-        for (selectedStyle in 0..1) {
+        for (selectedStyle in 0..2) {
             compose.runOnIdle { style = selectedStyle; origin = LifeEntryOrigin.Scanner }
             val originalLeft = left(main)
             compose.mainClock.autoAdvance = false
@@ -203,7 +203,7 @@ class ScannerDeviceNavigationTest {
     }
 
     @Test fun deviceSideSwipeFollowsTheSwipeBackSetting() {
-        for (selectedStyle in 0..1) {
+        for (selectedStyle in 0..2) {
             compose.runOnIdle { swipeEnabled = false }
             open(selectedStyle)
             device.assertIsDisplayed()

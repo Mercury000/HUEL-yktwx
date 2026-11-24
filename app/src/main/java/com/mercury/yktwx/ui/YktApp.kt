@@ -624,7 +624,7 @@ private fun MainContent(
         // with Activity creation and the window transition.
         runCatching { ProcessCameraProvider.getInstance(context) }
         try {
-            val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 1)
+            val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 2)
             val motion = ScannerWindowMotion.forStyle(transitionStyle)
             val appearance = ScannerAppearance(
                 themeMode = settings.themeMode.value,
@@ -681,25 +681,34 @@ private fun MainContent(
             LifeProvider.Hellobike -> hellobikeModel.checkAccount(force = true)
         }
     }
+    // Sources and navigation must use the same complete key; expansion matches routes by value.
+    fun lifeSessionRoute(provider: LifeProvider, feature: LifeFeature, sessionId: String): Screen.LifeDevice =
+        Screen.LifeDevice(provider, feature, sessionId = sessionId,
+            account = when (provider) {
+                LifeProvider.Panggui -> lifeModel.restorationOwner
+                LifeProvider.Hui798 -> hui798Model.restorationOwner
+                LifeProvider.Hellobike -> hellobikeModel.restorationOwner
+            }, skuId = if (provider == LifeProvider.Panggui) when (feature) {
+                LifeFeature.Water -> lifeState.waterSessions.firstOrNull { it.sessionId == sessionId }?.skuId
+                LifeFeature.Laundry -> lifeState.laundrySessions.firstOrNull { it.sessionId == sessionId }?.skuId
+                LifeFeature.Ride -> null
+            }?.takeIf(String::isNotBlank) else null)
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         lifeModel.openSession(feature, sessionId)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Panggui, feature, sessionId = sessionId,
-            account = lifeModel.restorationOwner), LifeEntryOrigin.User)
+        navigation.showLife(lifeSessionRoute(LifeProvider.Panggui, feature, sessionId), LifeEntryOrigin.User)
     }
     fun openHui798Session(id: String) {
         if (!isActive || hui798State.busy) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hui798Model.openSession(id)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = id,
-            account = hui798Model.restorationOwner), LifeEntryOrigin.User)
+        navigation.showLife(lifeSessionRoute(LifeProvider.Hui798, LifeFeature.Water, id), LifeEntryOrigin.User)
     }
     fun openHellobikeSession(id: String) {
         if (!isActive || hellobikeState.busy || hellobikeState.paymentInFlight || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
         hellobikeModel.openSession(id)
-        navigation.showLife(Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = id,
-            account = hellobikeModel.restorationOwner), LifeEntryOrigin.User)
+        navigation.showLife(lifeSessionRoute(LifeProvider.Hellobike, LifeFeature.Ride, id), LifeEntryOrigin.User)
     }
     LaunchedEffect(scannerResult, isActive, navigation.scope, foreground, lifeState.restoring, hui798State.restoring,
         hellobikeState.restoring) {
@@ -937,15 +946,20 @@ private fun MainContent(
                                                             else -> "用水中"
                                                         }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
                                                         progress = if (session.active) null else 1f, dismissible = session.canDismissRecord(hui798State.sessionErrors[session.sessionId]),
-                                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
+                                                        onOpen = { openHui798Session(session.sessionId) },
+                                                        route = lifeSessionRoute(LifeProvider.Hui798, LifeFeature.Water, session.sessionId),
+                                                        onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
                                                         hellobikeState.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Ride,
                                                             hellobikeState.sessionErrors[session.sessionId]?.let { "状态异常" } ?: session.title,
                                                             "哈啰单车", session.region?.label.orEmpty().ifBlank { "哈啰" }, "hellobike-${session.sessionId}",
                                                             completed = session.dismissible, progress = if (session.dismissible) 1f else null,
                                                             dismissible = session.canDismissRecord(hellobikeState.sessionErrors[session.sessionId]),
-                                                            onOpen = { openHellobikeSession(session.sessionId) }, onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
+                                                            onOpen = { openHellobikeSession(session.sessionId) },
+                                                            route = lifeSessionRoute(LifeProvider.Hellobike, LifeFeature.Ride, session.sessionId),
+                                                            onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
                                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
                                                     lifeSessionErrors = lifeState.sessionErrors,
+                                                    lifeSessionRoute = { feature, sessionId -> lifeSessionRoute(LifeProvider.Panggui, feature, sessionId) },
                                                     onOpenLifeSession = ::openLifeSession,
                                                     onDismissLifeSession = lifeModel::dismissSession,
                                                     onUnlost = {

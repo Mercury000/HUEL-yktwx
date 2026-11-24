@@ -19,6 +19,9 @@
     <string name="blur_top_bar">Blur Top Bar</string>
     <string name="swipe_back">Swipe Back</string>
     <string name="nav_transition_style">Transition Style</string>
+    <string name="nav_transition_miuix">Miuix</string>
+    <string name="nav_transition_aosp">AOSP</string>
+    <string name="nav_transition_expansion">Expansion</string>
     <string name="payment_screenshot_title">Do not use payment code screenshots</string>
     <string name="payment_screenshot_content">For your use only. Sharing may cause financial loss.</string>
     <string name="payment_screenshot_acknowledge">Got it</string>

@@ -14,7 +14,11 @@ import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun miuixNavigationTransition(style: Int): NavTransition =
-    if (style == 1) CrossActivityTransition else NavTransitions.MiuixDefault
+    when (style) {
+        2 -> NavTransitions.Expansion
+        1 -> CrossActivityTransition
+        else -> NavTransitions.MiuixDefault
+    }
 
 /**
  * Reveal a device route that is already presented by ScannerActivity or by state restoration

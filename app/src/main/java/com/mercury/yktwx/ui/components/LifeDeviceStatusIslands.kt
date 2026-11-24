@@ -43,6 +43,8 @@ import top.yukonga.miuix.kmp.material.GlassShape
 import androidx.compose.foundation.shape.CornerSize
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** The B design: one light island per device, floating above the payment page's navigation. */
@@ -51,7 +53,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
     onOpenSession: (LifeFeature, String) -> Unit, onDismiss: (LifeFeature, String) -> Unit,
     settings: ThemeSettings, modifier: Modifier = Modifier, enabled: Boolean = true,
     nowMillis: () -> Long = System::currentTimeMillis, additionalEntries: List<LifeDeviceStatusEntry> = emptyList(),
-    sessionErrors: Map<String, String> = emptyMap()) {
+    sessionErrors: Map<String, String> = emptyMap(), routeForSession: (LifeFeature, String) -> NavKey? = { _, _ -> null }) {
     var now by remember { mutableLongStateOf(nowMillis()) }
     val latestClock by rememberUpdatedState(nowMillis)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -81,7 +83,8 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                 WaterPhase.Stopping -> "正在结束"
                 else -> "${session.device.waterAction}中"
             }.let { session.fault ?: it }, session.device.name.ifBlank { session.device.waterAction }, session.device.shopName,
-                session.sessionId, completed = false, dismissible = session.canDismissRecord(sessionErrors[session.sessionId])))
+                session.sessionId, completed = false, dismissible = session.canDismissRecord(sessionErrors[session.sessionId]),
+                route = routeForSession(LifeFeature.Water, session.sessionId)))
         }
         laundrySessions.filter { session -> !session.islandDismissed && session.phase !in setOf(LaundryPhase.Checking, LaundryPhase.Closed) &&
             session.completionReminderDeadlineMillis()?.let { now < it } != false }.forEach { session ->
@@ -105,7 +108,8 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
                     end?.takeIf { it > start && it > now }?.let {
                         ((now - start).toFloat() / (it - start)).coerceIn(0f, .99f)
                     }
-                }, dismissible = session.canDismissRecord(sessionErrors[session.sessionId])))
+                }, dismissible = session.canDismissRecord(sessionErrors[session.sessionId]),
+                route = routeForSession(LifeFeature.Laundry, session.sessionId)))
         }
         addAll(additionalEntries.filterNot { it.feature != LifeFeature.Laundry && it.completed })
     }
@@ -115,7 +119,7 @@ internal fun LifeDeviceStatusIslands(waterSessions: List<WaterSession>, laundryS
 data class LifeDeviceStatusEntry(val feature: LifeFeature, val title: String, val subtitle: String,
     val location: String, val sessionId: String, val completed: Boolean,
     val remainingMinutes: Long? = null, val timeElapsed: Boolean = false, val progress: Float? = null,
-    val onOpen: (() -> Unit)? = null, val onDismiss: (() -> Unit)? = null,
+    val onOpen: (() -> Unit)? = null, val route: NavKey? = null, val onDismiss: (() -> Unit)? = null,
     val dismissible: Boolean = completed)
 
 @Composable
@@ -209,7 +213,10 @@ private fun StatusIsland(entry: LifeDeviceStatusEntry, enabled: Boolean, width: 
     }
     Surface(Modifier.width(width).testTag("life-session-${entry.sessionId}")
         .shadow(4.dp, CircleShape, ambientColor = Color(0xFF2B4161).copy(alpha = .08f),
-            spotColor = Color(0xFF2B4161).copy(alpha = .08f)).then(material),
+            spotColor = Color(0xFF2B4161).copy(alpha = .08f)).then(material)
+            .then(if (entry.route != null) Modifier.navTransitionSource(entry.route,
+                cornerRadius = 0.dp, containerColor = surface, shape = CircleShape,
+                sourceKey = "life-session-${entry.sessionId}") else Modifier),
         shape = CircleShape, color = Color.Transparent, border = BorderStroke(.5.dp, border), contentColor = ink) {
         Row(Modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             ActionSurface({ if (enabled) { entry.onOpen?.invoke() ?: onOpen(entry.feature, entry.sessionId) } },

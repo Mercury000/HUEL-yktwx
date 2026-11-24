@@ -59,11 +59,14 @@ import com.mercury.yktwx.data.BillType
 import com.mercury.yktwx.data.ReadFailureKind
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
+import top.yukonga.miuix.kmp.nav.transition.NavTransitionCorners
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -370,7 +373,8 @@ fun BillPage(
                                         } else {
                                             if (state.statsVisible) {
                                                 billStatsContent(state.stats, ::selectType, onRefreshStats, onOpenDetail,
-                                                    motion, requestedState.stats.type, includeTabs = false)
+                                                    motion, requestedState.stats.type, includeTabs = false,
+                                                    detailRoute = { billDetailRoute(it, requestedState) })
                                             } else {
                                                 billMotionItem("summary", motion) {
                                                     BillSummaryCard(state)
@@ -483,7 +487,10 @@ fun BillPage(
                                                                             AnimatedVisibility(visibleState = visible,
                                                                                 enter = expandVertically(tween(ContentMotion.Insert, easing = ContentMotion.Easing), expandFrom = Alignment.Top)) {
                                                                                 Column(recordArrivalModifier(resultState.listUpdateId, animateArrival, appended, index)) {
-                                                                                    BillRow(record) {
+                                                                                    val topCorner = if (index == 0) 22.dp else 0.dp
+                                                                                    val bottomCorner = if (index == group.records.lastIndex) 22.dp else 0.dp
+                                                                                    BillRow(record, billDetailRoute(record, state),
+                                                                                        NavTransitionCorners(topCorner, topCorner, bottomCorner, bottomCorner)) {
                                                                                         if (queryMotion.accepts(currentState)) onOpenDetail(record)
                                                                                     }
                                                                                     if (index != group.records.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
@@ -571,8 +578,11 @@ private fun BillSummaryCard(state: BillUiState) {
 }
 
 @Composable
-private fun BillRow(record: BillRecord, onClick: () -> Unit) {
-    ActionSurface(onClick = onClick, shape = RectangleShape, modifier = Modifier.fillMaxWidth().testTag("bill-record")) {
+private fun BillRow(record: BillRecord, route: AppRoute.BillDetail, corners: NavTransitionCorners, onClick: () -> Unit) {
+    ActionSurface(onClick = onClick, shape = RectangleShape,
+        modifier = Modifier.fillMaxWidth().testTag("bill-record").navTransitionSource(route,
+            cornerRadius = 0.dp, containerColor = MiuixTheme.colorScheme.surfaceContainer, corners = corners,
+            sourceKey = "bill-${record.stableId}")) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -596,6 +606,10 @@ private fun BillRow(record: BillRecord, onClick: () -> Unit) {
         }
     }
 }
+
+internal fun billDetailRoute(record: BillRecord, state: BillUiState): AppRoute.BillDetail =
+    AppRoute.BillDetail(com.mercury.yktwx.state.BillReference(record.stableId,
+        com.mercury.yktwx.state.BillPeriod.from(if (state.statsVisible) state.stats.period else state.dateFilter)))
 
 @Composable
 private fun BillFooter(state: BillUiState, onLoadMore: () -> Unit) {
