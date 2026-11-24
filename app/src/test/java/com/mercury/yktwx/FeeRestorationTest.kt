@@ -107,14 +107,37 @@ class FeeRestorationTest {
         changed.confirmRoomAction(); assertEquals(0, changedFees.commands)
     }
 
+    @Test fun fixedMeterKindSurvivesRecreationAndDoesNotLeakToAnotherEntryOrOwner() {
+        for (kind in listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning)) {
+            val handle = SavedStateHandle(); val before = model(handle); open(before); select(before)
+            val room = before.state.value.currentRoom!!
+            before.open(FeeProject.Zhengdong, "owner", false, room, meterKind = kind)
+            await { !before.state.value.loading }
+            before.updateForm(FeeFormDraft(amount = "29.50", amountStep = true, methodCode = "TSM"))
+            val saved = handle.recreated(); val otherOwnerSaved = handle.recreated(); models.clear()
+            val fees = Fees(); val after = model(saved, fees); restore(after)
+            assertEquals(kind, after.entry.value?.meterKind)
+            assertEquals(room.selections, after.entry.value?.fixed)
+            assertEquals("29.50", after.form.value.amount)
+            assertEquals("TSM", after.form.value.methodCode)
+            assertEquals(0, fees.commands)
+            val other = model(otherOwnerSaved, owner = "another-owner")
+            other.accountChanged("another-owner"); other.restoreIfNeeded(true, true)
+            assertNull(other.entry.value)
+            after.dismiss(); assertNull(after.entry.value)
+            open(after); assertNull(after.entry.value?.meterKind)
+        }
+    }
+
     @Test fun missingFixedOptionReturnsToEditableTargetAndFailedReadKeepsDraftForRetry() {
         val handle = SavedStateHandle(); val before = model(handle); open(before); select(before)
-        before.open(FeeProject.Zhengdong, "owner", false, before.state.value.currentRoom)
+        before.open(FeeProject.Zhengdong, "owner", false, before.state.value.currentRoom, meterKind = DormMeterKind.Lighting)
         await { !before.state.value.loading }
         before.updateForm(FeeFormDraft(amount = "29", amountStep = true, methodCode = "TSM"))
         val missingSaved = handle.recreated(); val failureSaved = handle.recreated(); models.clear()
         val missingFees = Fees().apply { roomId = "different-room" }; val missing = model(missingSaved, missingFees); restore(missing)
         assertNull(missing.entry.value?.fixed); assertFalse(missing.form.value.amountStep)
+        assertNull(missing.entry.value?.meterKind)
         assertEquals(mapOf("campus" to "c"), missing.state.value.selections)
         assertNotNull(missing.state.value.error)
         val failureFees = Fees().apply { failRead = true }; val failure = model(failureSaved, failureFees); restore(failure)

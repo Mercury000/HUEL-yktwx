@@ -6,7 +6,8 @@ import com.mercury.yktwx.data.*
 import kotlinx.serialization.Serializable
 
 @Serializable
-internal data class FeeEntry(val project: FeeProject, val fixed: Map<String, String>? = null, val saveOnly: Boolean = false)
+internal data class FeeEntry(val project: FeeProject, val fixed: Map<String, String>? = null, val saveOnly: Boolean = false,
+    val meterKind: DormMeterKind? = null)
 
 @Serializable
 internal data class FeeFormDraft(

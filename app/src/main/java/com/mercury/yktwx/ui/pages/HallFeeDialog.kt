@@ -68,6 +68,7 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
     savedDraft: FeeFormDraft? = null,
     onDraftChanged: ((FeeFormDraft) -> Unit)? = null,
     fixedSelection: Map<String, String>? = fixedTarget?.selections,
+    meterKind: DormMeterKind? = null,
 ) {
     val session = rememberOverlaySession(visible)
     val form = rememberWhileShown(visible && state.stage == FeeStage.Query,
@@ -97,14 +98,10 @@ internal fun HallFeeDialog(state: FeeUiState, visible: Boolean, project: FeeProj
         config?.project == displayProject &&
         (fixedSelection == null || fixedSelection == state.currentRoom?.selections)
     val orderAmount = state.order?.pending?.amountCents ?: state.paymentRetry?.amountCents ?: cents ?: 0
-    val meterName = fixedTarget?.let { target ->
-        when (project) {
-            FeeProject.FamilyElectric -> "电费"
-            FeeProject.FamilyWater -> "水费"
-            else -> target.names.values.lastOrNull()?.let {
-                DormMeterDiscovery.kind(it).takeUnless { kind -> kind == DormMeterKind.Other }?.label
-            }
-        }
+    val meterName = when (project) {
+        FeeProject.FamilyElectric -> "电费"
+        FeeProject.FamilyWater -> "水费"
+        else -> meterKind?.label
     }
     val paymentTitle = if (project?.network == true) "校园网充值" else meterName?.plus("充值") ?: project?.hallTitle ?: "水电缴费"
     val requestedPage = when {

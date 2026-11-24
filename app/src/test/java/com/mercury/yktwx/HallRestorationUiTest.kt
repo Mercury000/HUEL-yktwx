@@ -7,12 +7,15 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.mercury.yktwx.data.DormRoom
+import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
+import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.pages.HallPage
 import com.mercury.yktwx.ui.pages.HallRoomSheet
 import com.mercury.yktwx.ui.themeSettingsFixture
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +29,29 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class HallRestorationUiTest {
     @get:Rule val compose = createAndroidComposeRule<HiltUiTestActivity>()
+
+    @After fun cleanup() { compose.activity.viewModelStore.clear() }
+
+    @Test fun shellKeepsTheClickedMeterTitleWhenItsCompositionIsRestored() {
+        val restorer = StateRestorationTester(compose)
+        val app = compose.activity.application
+        val settings = themeSettingsFixture(app).apply { setTheme(1); setFloating(false) }
+        val payments = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
+        restorer.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payments, bills) } }
+        compose.onNode(hasText("大厅") and hasClickAction()).performClick()
+        for (kind in listOf(DormMeterKind.Lighting, DormMeterKind.AirConditioning)) {
+            val title = "${kind.label}充值"
+            compose.onNodeWithText(title).performClick()
+            compose.onNodeWithTag("hall-payment-content").assertIsDisplayed()
+            compose.onAllNodesWithText(title).assertCountEquals(2)
+            restorer.emulateSavedInstanceStateRestore()
+            compose.onNodeWithTag("hall-payment-content").assertIsDisplayed()
+            compose.onAllNodesWithText(title).assertCountEquals(2)
+            compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+            compose.onNodeWithTag("hall-payment-content").assertDoesNotExist()
+        }
+    }
 
     @Test fun hallEntryTemporaryTabAndAddPageSurviveRecreation() {
         val restorer = StateRestorationTester(compose)

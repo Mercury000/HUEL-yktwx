@@ -217,13 +217,14 @@ class FeeViewModel internal constructor(
         load(restored.entry!!.project, owner, mutable.value.preview, restore = restored)
     }
 
-    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
+    fun open(project: FeeProject, username: String, preview: Boolean, requestedRoom: FeeRoomBinding? = null,
+        saveOnly: Boolean = false, meterKind: DormMeterKind? = null) {
         accountChanged(username, preview)
         dismiss()
         fixedHallTarget = requestedRoom != null
         owner = username
         operationIdentity = repository.identity(username)
-        entryMutable.value = FeeEntry(project, requestedRoom?.selections, saveOnly)
+        entryMutable.value = FeeEntry(project, requestedRoom?.selections, saveOnly, meterKind)
         formMutable.value = FeeFormDraft(amountStep = !saveOnly && (requestedRoom != null || project.network))
         load(project, username, preview, requestedRoom)
     }
@@ -286,7 +287,7 @@ class FeeViewModel internal constructor(
                 if (generation == attempt && restore != null && (mutable.value.query == null || changedSelection)) {
                     // A missing option must leave an editable target form, including former fixed targets.
                     fixedHallTarget = false
-                    entryMutable.value = entry.value?.copy(fixed = null)
+                    entryMutable.value = entry.value?.copy(fixed = null, meterKind = null)
                     formMutable.value = form.value.copy(amountStep = false, saveCommon = false, bindingPending = false)
                     if (changedSelection) mutable.value = copy(mutable.value, query = null,
                         error = mutable.value.error ?: "原房间选项已失效，请重新选择")

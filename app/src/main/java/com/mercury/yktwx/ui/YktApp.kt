@@ -56,6 +56,7 @@ import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.FeeRoomBinding
+import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.ReadEnvironment
@@ -819,13 +820,14 @@ private fun MainContent(
         }
         if (current != route) navigation.updateLife(current)
     }
-    fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
+    fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false,
+        meterKind: DormMeterKind? = null) {
         if (!isActive) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
         rechargeModel.dismiss()
         cardModel.dismiss()
         passwordModel.dismiss()
-        feeModel.open(project, state.username, state.preview, requestedRoom, saveOnly)
+        feeModel.open(project, state.username, state.preview, requestedRoom, saveOnly, meterKind)
     }
     fun openBillStats() {
         if (!isActive) return
@@ -983,7 +985,9 @@ private fun MainContent(
                                                     dorm = dormState,
                                                     isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
                                                     onRefreshDorm = dormModel::refresh,
-                                                    onOpenDormFee = { project, target -> openFee(project, target) },
+                                                    onOpenDormFee = { project, target, kind ->
+                                                        openFee(project, target, meterKind = kind)
+                                                    },
                                                     onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
                                                     onAddRoom = { openFee(it, saveOnly = true) },
                                                     feeOpening = feeOpening, feeOpeningTarget = feeTarget,
@@ -1054,6 +1058,7 @@ private fun MainContent(
                                     HallFeeDialog(
                                         state = feeState, visible = isActive && dormPaymentVisible,
                                         project = feeProject, fixedTarget = feeTarget, saveOnly = feeSaveOnly,
+                                        meterKind = feeEntry?.meterKind,
                                         onDismiss = feeModel::dismiss,
                                         onSelect = feeModel::select,
                                         onRetry = feeModel::retry,

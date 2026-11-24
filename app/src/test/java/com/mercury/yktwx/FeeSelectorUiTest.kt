@@ -76,6 +76,7 @@ class FeeSelectorUiTest {
                 val draft by current.form.collectAsState()
                 SideEffect { renderedLoading = state.loading }
                 HallFeeDialog(state, entry != null, entry?.project, state.currentRoom, fixedSelection = entry?.fixed,
+                    meterKind = entry?.meterKind,
                     savedDraft = draft, onDraftChanged = current::updateForm, onDismiss = current::dismiss,
                     onSelect = current::select, onRetry = current::retry, onCreate = current::createWithMethod,
                     onMethod = current::chooseMethod, onPayAccount = current::payAccount, onCancelPayment = current::cancelPayment,
@@ -85,7 +86,7 @@ class FeeSelectorUiTest {
             } } } }
             val target = FeeRoomBinding.from(listOf(FeeLevel("campus", 1, "校区"), FeeLevel("room", 2, "房间")),
                 mapOf("campus" to "c", "room" to "r"), mapOf("campus" to "原校区名称", "room" to "原房间名称"))!!
-            compose.runOnIdle { current.open(FeeProject.Zhengdong, "owner", false, target) }
+            compose.runOnIdle { current.open(FeeProject.Zhengdong, "owner", false, target, meterKind = DormMeterKind.Lighting) }
             compose.waitUntil(5000) { shadowOf(Looper.getMainLooper()).idle(); !current.state.value.loading }
             assertNull(current.state.value.error)
             assertNotNull(current.state.value.query)
@@ -103,6 +104,7 @@ class FeeSelectorUiTest {
             }
             compose.onNode(hasSetTextAction()).performTextReplacement("29.50")
             compose.onNodeWithText("微信").performClick()
+            compose.onNodeWithText("照明充值").assertIsDisplayed()
             lateinit var saved: SavedStateHandle
             compose.runOnIdle { saved = handle.recreated(); current = model(saved) }
             restorer.emulateSavedInstanceStateRestore()
@@ -115,6 +117,7 @@ class FeeSelectorUiTest {
                 compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size == 1
             }
             compose.onNode(hasSetTextAction()).assertTextContains("29.50")
+            compose.onNodeWithText("照明充值").assertIsDisplayed()
             assertEquals("TSM", current.form.value.methodCode)
             compose.onNodeWithText("充值 ¥ 29.50").assertIsEnabled()
             assertEquals(0, services.sumOf { it.commands })
