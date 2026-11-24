@@ -255,8 +255,9 @@ private fun JsonObject.required(name: String) = text(name).takeIf { it.isNotBlan
 private fun Any?.obj() = this as? JsonObject ?: throw LifeDeviceException("响应的 data 不是 JSON 对象")
 internal fun JsonArray.objects(): List<JsonObject> = indices.map { objectValue(it) }
 private fun Any?.channels(): List<LifePayChannel> = (this as? JsonArray ?: throw LifeDeviceException("设备未返回支付方式"))
-    .objects().map { LifePayChannel(it.required("method"), it.text("methodName"), it.booleanOrNull("canChecked"),
-        it.booleanOrNull("needOpenFlag"), it.text("remark").ifBlank { it.text("notUseRemark") }.ifBlank { null }, it.text("link").ifBlank { null }) }
+    .objects().map { LifePayChannel(it.required("method"), it.text("methodName"), it.booleanOrNull("canChecked") ?: true,
+        it.booleanOrNull("needOpenFlag") ?: false, it.text("remark").ifBlank { it.text("notUseRemark") }.ifBlank { null },
+        it.text("link").ifBlank { null }) }
 private fun String.validPrice(): String = takeIf { toBigDecimalOrNull()?.let { price -> price.signum() >= 0 && price.scale() <= 2 } == true }
     ?: throw LifeDeviceException("价格信息异常，请在胖乖生活核对")
 internal fun lifeTimestamp(value: String): Long? = runCatching {

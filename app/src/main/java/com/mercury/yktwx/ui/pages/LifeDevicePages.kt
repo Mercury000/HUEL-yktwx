@@ -362,7 +362,7 @@ private fun WaterPaymentDetails(device: LifeDevice, showOptions: Boolean = false
             LifeDeviceField("免密状态") {
                 val usable = channel.available == true && channel.needsOpen == false
                 val green = lifeSuccessInk()
-                Text(if (channel.needsOpen == true) "需开通" else if (usable) "可使用" else if (channel.available == false) "不可用" else "未知",
+                Text(if (channel.needsOpen) "需开通" else if (usable) "可使用" else "不可用",
                     Modifier.clip(RoundedCornerShape(6.dp)).background(if (usable) lifeSuccessFill() else DashboardPalette.field)
                         .padding(horizontal = 7.dp, vertical = 3.dp), fontSize = 10.sp, color = if (usable) green else DashboardPalette.muted)
             }

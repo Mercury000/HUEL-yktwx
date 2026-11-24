@@ -14,8 +14,8 @@ enum class LifeFeature(val title: String) { Water("接水"), Laundry("洗衣"), 
 
 @Serializable data class LifeSku(val id: String, val name: String, val available: Boolean?, val price: String = "", val feature: String = "",
     val minutes: Int? = null)
-@Serializable data class LifePayChannel(val method: String, val name: String, val available: Boolean?,
-    val needsOpen: Boolean?, val remark: String? = null, val link: String? = null)
+@Serializable data class LifePayChannel(val method: String, val name: String, val available: Boolean = true,
+    val needsOpen: Boolean = false, val remark: String? = null, val link: String? = null)
 
 /** Route shopId and detail shopId have different meanings in the captured protocol. */
 @Serializable data class LifeDevice(

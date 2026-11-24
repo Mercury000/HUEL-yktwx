@@ -39,7 +39,7 @@ class LifeDeviceAccountStoreTest {
     @Test fun unknownWaterDeletionErasesOwnedRecordAfterExpiryAndPreservesOtherProgressAndUnknownFields() {
         val records = Records(); val store = LifeDeviceAccountStore(records); store.saveAccount(account)
         val unknownDevice = device.copy(category = "04", bluetooth = null, supportsFinish = null,
-            skus = listOf(LifeSku("water", "接水", null)), channels = listOf(LifePayChannel("15", "支付宝", null, null)))
+            skus = listOf(LifeSku("water", "接水", null)), channels = listOf(LifePayChannel("15", "支付宝")))
         val unknown = WaterSession(unknownDevice, "water", WaterPhase.Starting, startSent = true, creationUncertain = true)
         val running = unknown.copy(sessionId = "running", phase = WaterPhase.Running, orderNo = "order-2", creationUncertain = false)
         store.saveWaterSessions(listOf(unknown, running))

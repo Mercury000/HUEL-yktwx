@@ -247,7 +247,7 @@ class LifeDeviceApiTest {
         "/payChannelRoute/afterPay" to """{"code":0,"data":[{"method":15,"methodName":"支付宝支付","useStatus":true,"needOpenFlag":false},{"method":53,"methodName":"云闪付免密支付","useStatus":true,"needOpenFlag":false}]}""",
     )
 
-    @Test fun absentCapabilityFieldsStayUnknownAndDoNotInventADeviceOrChannelRejection() = runBlocking {
+    @Test fun absentChannelCapabilityFieldsUseOfficialDefaultsAndDoNotInventARejection() = runBlocking {
         val responses = showerResponses().toMutableMap()
         responses["/goods/normal/details"] = responses.getValue("/goods/normal/details")
             .replace(",\"isBluetooth\":0", "").replace(",\"supportAppUserFinish\":true", "")
@@ -257,7 +257,7 @@ class LifeDeviceApiTest {
             .replace(",\"useStatus\":true", "").replace(",\"needOpenFlag\":false", "")
         val device = api(responses, mutableListOf()).device("test-shower-sn", "test-token")
         assertNull(device.bluetooth); assertNull(device.supportsFinish); assertNull(device.skus.single().available)
-        assertNull(device.alipay!!.available); assertNull(device.alipay!!.needsOpen); assertNull(device.startError)
+        assertEquals(true, device.alipay!!.available); assertEquals(false, device.alipay!!.needsOpen); assertNull(device.startError)
     }
     @Test fun absentHealthResultDoesNotInventAFaultAndPromotionMetadataDoesNotBlockAQuote() = runBlocking {
         for (data in listOf("null", "{}", "{\"msgId\":\"sync-1\"}")) {
