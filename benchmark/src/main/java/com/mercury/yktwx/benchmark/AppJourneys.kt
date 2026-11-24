@@ -80,6 +80,19 @@ internal fun UiDevice.visitBillDetail() {
     waitForIdle()
 }
 
+internal fun UiDevice.visitBillOverlays() {
+    selectTab("账单", 2)
+    await(By.res("bill-date-selector")).click()
+    await(By.res("bill-date-dialog"))
+    pressBack()
+    await(By.res("bill-list"))
+    await(By.res("bill-filter-button")).click()
+    await(By.res("bill-filter-sheet"))
+    pressBack()
+    await(By.res("bill-list"))
+    waitForIdle()
+}
+
 internal fun UiDevice.scrollBills() {
     val list = await(By.res("bill-list"))
     // BillPage routes gestures through its nested scroll layer, rather than LazyColumn.

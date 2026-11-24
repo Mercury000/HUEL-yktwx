@@ -282,7 +282,8 @@ fun BillPage(
                                 onDateSelected = onDateSelected, isActive = isActive,
                                 modifier = Modifier.testTag("bill-date-selector")) {
                                 if (!state.statsVisible) Box {
-                                    IconButton(onClick = { showFilter = true }) {
+                                    IconButton(onClick = { showFilter = true },
+                                        modifier = Modifier.testTag("bill-filter-button")) {
                                         Icon(MiuixIcons.Filter, "筛选账单", Modifier.size(19.dp),
                                             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                                     }
@@ -660,6 +661,7 @@ private fun BillFilterSheet(
         show = show,
         title = "筛选账单",
         onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("bill-filter-sheet"),
         // Cover the main tab bar, not just the nested bill page.
         renderInRootScaffold = true,
     ) {
