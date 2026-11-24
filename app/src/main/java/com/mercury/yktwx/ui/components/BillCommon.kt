@@ -211,17 +211,18 @@ internal fun BillDateSelector(
     filter: BillDateFilter,
     minimumDate: LocalDate,
     onDateSelected: (BillDateFilter) -> Unit,
-    modifier: Modifier = Modifier,
+    selectorModifier: Modifier = Modifier,
     isActive: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     var showSheet by rememberSaveable(isActive) { mutableStateOf(false) }
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).heightIn(min = 44.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ActionSurface(onClick = { showSheet = true }, enabled = isActive,
+                modifier = selectorModifier,
                 feedbackStyle = PressFeedbackStyle.Content) {
                 Row(
                     Modifier.padding(vertical = 12.dp),

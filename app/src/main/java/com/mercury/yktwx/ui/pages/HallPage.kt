@@ -57,7 +57,7 @@ fun HallPage(
     dorm: DormUiState = DormUiState(),
     isActive: Boolean = false,
     onRefreshDorm: () -> Unit = {},
-    onOpenDormFee: (FeeProject, FeeRoomBinding) -> Unit = { project, _ -> onOpenFee(project) },
+    onOpenDormFee: (FeeProject, FeeRoomBinding, DormMeterKind?) -> Unit = { project, _, _ -> onOpenFee(project) },
     onSelectRoom: (Int) -> Unit = {},
     onRemoveRoom: (DormRoom) -> Unit = {},
     onAddRoom: (FeeProject) -> Unit = onOpenFee,
@@ -153,7 +153,8 @@ fun HallPage(
 
 @Composable
 private fun UtilityCard(state: DormUiState, opening: FeeProject?, openingTarget: FeeRoomBinding?, onRefresh: () -> Unit,
-    onSwitch: () -> Unit, onAdd: () -> Unit, onTemporaryPay: () -> Unit, onPay: (FeeProject, FeeRoomBinding) -> Unit) {
+    onSwitch: () -> Unit, onAdd: () -> Unit, onTemporaryPay: () -> Unit,
+    onPay: (FeeProject, FeeRoomBinding, DormMeterKind?) -> Unit) {
     Card(Modifier.fillMaxWidth().testTag("hall-utility-card"), cornerRadius = 24.dp) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -287,7 +288,7 @@ private fun UtilityPlaceholder() {
 
 @Composable
 private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget: FeeRoomBinding?, onChoose: (FeeProject) -> Unit,
-    onPay: (FeeProject, FeeRoomBinding) -> Unit, readError: ReadError? = null, interactive: Boolean = true) {
+    onPay: (FeeProject, FeeRoomBinding, DormMeterKind?) -> Unit, readError: ReadError? = null, interactive: Boolean = true) {
     Column {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -342,7 +343,7 @@ private fun DormRoomContent(room: DormRoom, opening: FeeProject?, openingTarget:
                         }
                     }
                     ActionSurface(
-                        onClick = { onPay(project, meter.room) },
+                        onClick = { onPay(project, meter.room, meter.kind) },
                         enabled = interactive && !feeEntryOpening(opening, openingTarget, project, meter.room),
                         modifier = Modifier.fillMaxWidth().then(
                             if (room.meters.size == 1) Modifier.testTag("utility-single-recharge") else Modifier),

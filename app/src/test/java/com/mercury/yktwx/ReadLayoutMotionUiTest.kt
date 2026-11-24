@@ -70,7 +70,7 @@ class ReadLayoutMotionUiTest {
         val settings = themeSettingsFixture(compose.activity.application)
         val current = mutableStateOf(DormUiState(network = ready.network, roomsLoaded = false))
         var paid: FeeRoomBinding? = null
-        content { HallPage(settings, 0.dp, dorm = current.value, onOpenDormFee = { _, room -> paid = room }) }
+        content { HallPage(settings, 0.dp, dorm = current.value, onOpenDormFee = { _, room, _ -> paid = room }) }
         val before = bounds("hall-utility-card")
         val following = bounds("hall-network-card").top
         val binding = ready.rooms.first().binding

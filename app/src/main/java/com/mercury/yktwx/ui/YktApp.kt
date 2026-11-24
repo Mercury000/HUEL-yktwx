@@ -56,6 +56,7 @@ import com.mercury.yktwx.analytics.*
 import com.mercury.yktwx.AppUpdateUiState
 import com.mercury.yktwx.DormUiState
 import com.mercury.yktwx.data.FeeRoomBinding
+import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.data.CampusCardAction
 import com.mercury.yktwx.data.FeeProject
 import com.mercury.yktwx.data.ReadEnvironment
@@ -392,6 +393,7 @@ private fun MainContent(
     onInstallUpdate: () -> Unit,
 ) {
     val context = LocalContext.current
+    var feeMeterKind by remember { mutableStateOf<DormMeterKind?>(null) }
     var scannerScope by rememberSaveable { mutableStateOf<String?>(null) }
     var scannerOpen by rememberSaveable(navigation.scope) { mutableStateOf(false) }
     var scannerResult by rememberSaveable(stateSaver = LifeScannerResult.StateSaver) { mutableStateOf<LifeScannerResult?>(null) }
@@ -575,7 +577,10 @@ private fun MainContent(
         }
     }
     LaunchedEffect(isActive) {
-        if (!isActive) feeModel.dismiss()
+        if (!isActive) {
+            feeMeterKind = null
+            feeModel.dismiss()
+        }
     }
     LaunchedEffect(isActive, foregroundState, networkState.value.online, feeEntry) {
         feeModel.restoreIfNeeded(isActive && foreground, state.preview || networkState.value.online == true)
@@ -810,9 +815,11 @@ private fun MainContent(
         }
         if (current != route) navigation.updateLife(current)
     }
-    fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false) {
+    fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false,
+        meterKind: DormMeterKind? = null) {
         if (!isActive) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
+        feeMeterKind = meterKind
         rechargeModel.dismiss()
         cardModel.dismiss()
         passwordModel.dismiss()
@@ -975,7 +982,9 @@ private fun MainContent(
                                                     dorm = dormState,
                                                     isActive = isActive && pagerState.currentPage == 1 && layers.isEmpty(),
                                                     onRefreshDorm = dormModel::refresh,
-                                                    onOpenDormFee = { project, target -> openFee(project, target) },
+                                                    onOpenDormFee = { project, target, kind ->
+                                                        openFee(project, target, meterKind = kind)
+                                                    },
                                                     onSelectRoom = dormModel::selectRoom, onRemoveRoom = dormModel::remove,
                                                     onAddRoom = { openFee(it, saveOnly = true) },
                                                     feeOpening = feeOpening, feeOpeningTarget = feeTarget,
@@ -1046,7 +1055,8 @@ private fun MainContent(
                                     HallFeeDialog(
                                         state = feeState, visible = isActive && dormPaymentVisible,
                                         project = feeProject, fixedTarget = feeTarget, saveOnly = feeSaveOnly,
-                                        onDismiss = feeModel::dismiss,
+                                        meterKind = feeMeterKind,
+                                        onDismiss = { feeMeterKind = null; feeModel.dismiss() },
                                         onSelect = feeModel::select,
                                         onRetry = feeModel::retry,
                                         onRoomAction = feeModel::requestRoomAction, onConfirmRoomAction = feeModel::confirmRoomAction,
@@ -1059,7 +1069,7 @@ private fun MainContent(
                                         onPayAccount = feeModel::payAccount, onCancelPayment = feeModel::cancelPayment, onInputEdited = feeModel::inputEdited,
                                         onContinuePayment = feeModel::continuePayment,
                                         onCheck = feeModel::checkResult,
-                                        onFinish = feeModel::dismiss,
+                                        onFinish = { feeMeterKind = null; feeModel.dismiss() },
                                         savedDraft = feeDraft, onDraftChanged = feeModel::updateForm,
                                         fixedSelection = feeEntry?.fixed,
                                     )

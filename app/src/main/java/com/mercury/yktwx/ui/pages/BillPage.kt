@@ -279,7 +279,7 @@ fun BillPage(
                             Spacer(Modifier.height(12.dp))
                             BillDateSelector(filter = state.dateFilter, minimumDate = BillListMinimumDate,
                                 onDateSelected = onDateSelected, isActive = isActive,
-                                modifier = Modifier.testTag("bill-date-selector")) {
+                                selectorModifier = Modifier.testTag("bill-date-selector")) {
                                 if (!state.statsVisible) Box {
                                     IconButton(onClick = { showFilter = true },
                                         modifier = Modifier.testTag("bill-filter-button")) {

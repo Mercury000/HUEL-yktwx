@@ -267,7 +267,7 @@ class HallPreviewTest {
                     Scaffold {
                         HallPage(settings, 0.dp, dorm = state, isActive = true,
                             onOpenFee = { temporaryProject = it }, onAddRoom = { addedProject = it },
-                            onOpenDormFee = { project, target ->
+                            onOpenDormFee = { project, target, _ ->
                             paidProject = project; paidTarget = target
                         }, onSelectRoom = { index ->
                             state = DormUiState(multiple.rooms, loaded = true, selectedIndex = index, network = multiple.network)
