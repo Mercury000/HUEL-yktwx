@@ -12,9 +12,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.glass.GlassCard
+import top.yukonga.miuix.kmp.glass.GlassCardDefaults
 import top.yukonga.miuix.kmp.glass.GlassDialogButton
 import top.yukonga.miuix.kmp.glass.GlassDialogButtonDefaults
 import top.yukonga.miuix.kmp.glass.GlassDialogButtonRole
+import top.yukonga.miuix.kmp.glass.GlassTextFieldDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
@@ -26,8 +29,23 @@ internal fun glassControlFill(): Color {
 
 @Composable
 internal fun appearanceTextFieldColors(): TextFieldColors = if (LocalGlassOverlay.current)
-    TextFieldDefaults.textFieldColors(backgroundColor = glassControlFill())
+    GlassTextFieldDefaults.textFieldColors()
 else TextFieldDefaults.textFieldColors()
+
+@Composable
+internal fun AppTextField(
+    state: androidx.compose.foundation.text.input.TextFieldState,
+    modifier: Modifier = Modifier,
+    label: String = "",
+    useLabelAsPlaceholder: Boolean = false,
+    enabled: Boolean = true,
+    lineLimits: androidx.compose.foundation.text.input.TextFieldLineLimits = androidx.compose.foundation.text.input.TextFieldLineLimits.Default,
+    colors: TextFieldColors = appearanceTextFieldColors(),
+) {
+    TextField(state = state, modifier = modifier, label = label,
+        useLabelAsPlaceholder = useLabelAsPlaceholder, enabled = enabled,
+        lineLimits = lineLimits, colors = colors)
+}
 
 @Composable
 private fun overlayButtonColors(colors: ButtonColors): ButtonColors = when {
@@ -79,7 +97,11 @@ internal fun AppCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val neutral = colors.color == CardDefaults.defaultColors().color || colors.color == DashboardPalette.field
-    val resolved = if (LocalGlassOverlay.current && neutral) colors.copy(color = glassControlFill()) else colors
-    Card(modifier, cornerRadius, insideMargin, resolved, pressFeedbackType, showIndication, holdDownState,
-        onClick, onLongPress, content)
+    if (LocalGlassOverlay.current && neutral) {
+        GlassCard(modifier, cornerRadius, insideMargin, GlassCardDefaults.colors(contentColor = colors.contentColor),
+            pressFeedbackType, showIndication, holdDownState, onClick, onLongPress, content)
+    } else {
+        Card(modifier, cornerRadius, insideMargin, colors, pressFeedbackType, showIndication, holdDownState,
+            onClick, onLongPress, content)
+    }
 }

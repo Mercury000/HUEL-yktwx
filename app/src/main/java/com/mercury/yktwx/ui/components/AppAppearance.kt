@@ -32,8 +32,6 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.glass.*
 import top.yukonga.miuix.kmp.layout.*
-import top.yukonga.miuix.kmp.layout.DialogMotion
-import top.yukonga.miuix.kmp.layout.SheetMotion
 import top.yukonga.miuix.kmp.material.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back

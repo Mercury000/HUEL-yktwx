@@ -2,6 +2,7 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppButton as Button
 import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppTextField
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
@@ -204,7 +205,7 @@ internal fun PaymentAmountPlaceholder(modifier: Modifier = Modifier, config: Rec
                 }
             }
             if (config?.allowCustom != false) PaymentControlPlaceholder {
-                TextField(state = rememberTextFieldState(), label = paymentAmountLabel(config),
+                AppTextField(state = rememberTextFieldState(), label = paymentAmountLabel(config),
                     useLabelAsPlaceholder = true, lineLimits = TextFieldLineLimits.SingleLine, enabled = false,
                     modifier = Modifier.trackInputFocus(false).fillMaxWidth())
             }
