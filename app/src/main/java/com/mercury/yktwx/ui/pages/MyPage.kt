@@ -39,7 +39,9 @@ import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.data.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -126,7 +128,9 @@ internal fun MyPage(
                                 updateNotice()
                                 ActionSurface(onClick = onProfile, shape = RoundedCornerShape(20.dp),
                                     feedbackStyle = PressFeedbackStyle.Group,
-                                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }) {
+                                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人信息" }
+                                        .navTransitionSource(AppRoute.Profile, cornerRadius = 20.dp,
+                                            containerColor = MiuixTheme.colorScheme.surface, sourceKey = "my-profile")) {
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         key(payment.username, state.profile?.sno.takeUnless { customAvatar }) {
                                             ProfileAvatar(state.avatar, 66.dp, customAvatar, avatarImage, avatarPending)
@@ -205,7 +209,8 @@ internal fun MyPage(
                                         HorizontalDivider(color = MiuixTheme.colorScheme.onPrimary.copy(alpha = .16f))
                                         ActionSurface(onClick = onAccount, shape = RoundedCornerShape(12.dp),
                                             feedbackStyle = PressFeedbackStyle.Group, feedbackColor = foreground,
-                                            modifier = Modifier.fillMaxWidth()) {
+                                            modifier = Modifier.fillMaxWidth().navTransitionSource(AppRoute.Account,
+                                                cornerRadius = 12.dp, containerColor = primary, sourceKey = "my-account")) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(AppIcons.CampusCard, null, Modifier.size(15.dp), tint = if (dark) foreground else foreground.copy(alpha = .8f))
                                                 UpdatedText(payment.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f),
@@ -255,8 +260,12 @@ internal fun MyPage(
                                     enabled = !passwordLoading, onClick = { onCardAction(CampusCardAction.ChangePassword) })
                             }
                         }
-                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "应用设置", startAction = { ServiceIcon(AppIcons.Settings) }, onClick = onSettings) } }
-                        item { Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) { DashboardPreference(title = "关于财小通", startAction = { ServiceIcon(AppIcons.Info) }, onClick = onAbout) } }
+                        item { Card(Modifier.fillMaxWidth().navTransitionSource(AppRoute.Settings, cornerRadius = 24.dp,
+                            containerColor = MiuixTheme.colorScheme.surface, sourceKey = "my-settings"), cornerRadius = 24.dp) {
+                            DashboardPreference(title = "应用设置", startAction = { ServiceIcon(AppIcons.Settings) }, onClick = onSettings) } }
+                        item { Card(Modifier.fillMaxWidth().navTransitionSource(AppRoute.About, cornerRadius = 24.dp,
+                            containerColor = MiuixTheme.colorScheme.surface, sourceKey = "my-about"), cornerRadius = 24.dp) {
+                            DashboardPreference(title = "关于财小通", startAction = { ServiceIcon(AppIcons.Info) }, onClick = onAbout) } }
                         }
                     }
                 }

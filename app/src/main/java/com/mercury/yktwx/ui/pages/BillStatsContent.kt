@@ -19,7 +19,9 @@ import com.mercury.yktwx.BillStatsState
 import com.mercury.yktwx.data.BillDateMode
 import com.mercury.yktwx.data.BillRecord
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun LazyListScope.billStatsTabs(stats: BillStatsState, onTypeChange: (Int) -> Unit,
@@ -44,7 +46,7 @@ internal fun BillStatsTypeTabs(selectedType: Int, onTypeChange: (Int) -> Unit) {
 
 internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange: (Int) -> Unit, onRetry: () -> Unit,
     onOpenDetail: (BillRecord) -> Unit, motion: BillContentMotion? = null, selectedType: Int = stats.type,
-    includeTabs: Boolean = true) {
+    includeTabs: Boolean = true, detailRoute: ((BillRecord) -> AppRoute.BillDetail)? = null) {
     if (includeTabs) billStatsTabs(stats, onTypeChange, motion, selectedType)
     else if (stats.error != null && stats.loaded) billMotionItem("stats-notice", motion) {
         ReadNotice(readError(stats.error, stats.errorKind), cached = true, topSpacing = 0.dp)
@@ -98,7 +100,7 @@ internal fun LazyListScope.billStatsContent(stats: BillStatsState, onTypeChange:
         BillLoadingCard("正在加载单笔排行")
     } else if (stats.ranking.isNotEmpty() || stats.rankingError != null) billMotionItem("ranking", motion) {
         Column {
-            if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail)
+            if (stats.ranking.isNotEmpty()) StatsRanking(stats.ranking, onOpenDetail, detailRoute)
             ReadNotice(readError(stats.rankingError.takeIf { stats.ranking.isNotEmpty() }, stats.rankingErrorKind), cached = true)
             if (stats.ranking.isEmpty() && stats.rankingError != null)
                 Card(Modifier.fillMaxWidth()) { ReadUnavailable(checkNotNull(readError(stats.rankingError, stats.rankingErrorKind))) }
@@ -157,7 +159,8 @@ private fun fullDate(date: java.time.LocalDate): String =
     "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
 
 @Composable
-private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -> Unit) {
+private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -> Unit,
+    detailRoute: ((BillRecord) -> AppRoute.BillDetail)?) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
             Text(
@@ -167,7 +170,11 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
                 fontWeight = FontWeight.SemiBold,
             )
             ranking.forEachIndexed { index, record ->
-                ActionSurface(onClick = { onOpenDetail(record) }, shape = RectangleShape, modifier = Modifier.fillMaxWidth()) {
+                val route = detailRoute?.invoke(record)
+                ActionSurface(onClick = { onOpenDetail(record) }, shape = RectangleShape,
+                    modifier = Modifier.fillMaxWidth().then(if (route != null) Modifier.navTransitionSource(route,
+                        cornerRadius = 0.dp, containerColor = MiuixTheme.colorScheme.surface,
+                        sourceKey = "bill-ranking-${record.stableId}") else Modifier)) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,

@@ -56,6 +56,7 @@ import com.mercury.yktwx.ui.ThemeSettings
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Scan
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
@@ -71,6 +72,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList(),
     hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
     lifeSessionErrors: Map<String, String> = emptyMap(),
+    lifeSessionRoute: (LifeFeature, String) -> NavKey? = { _, _ -> null },
     lifeLoginExpired: Boolean = false, hui798LoginExpired: Boolean = false,
     hellobikeLoginExpired: Boolean = false, showScanAction: Boolean = true, isVisible: Boolean = isActive) {
     // Restoration can precede the shell's first read; show code loading without card verification.
@@ -352,7 +354,8 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                 .padding(bottom = (bottomPadding - 20.dp).coerceAtLeast(8.dp), start = 16.dp, end = 16.dp)
                 .imePadding().fillMaxWidth(),
             enabled = isActive && !showEnlarged,
-            nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries, sessionErrors = lifeSessionErrors)
+            nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries, sessionErrors = lifeSessionErrors,
+            routeForSession = lifeSessionRoute)
         }
     }
 }

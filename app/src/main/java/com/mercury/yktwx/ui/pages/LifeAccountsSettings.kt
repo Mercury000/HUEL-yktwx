@@ -11,7 +11,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -43,7 +45,9 @@ internal fun LifeAccountsSettingsCard(accounts: List<ManagedLifeAccount>, active
                 summary = account.connection.error?.takeIf { account.connection.status in setOf(LifeAccountStatus.Unverified, LifeAccountStatus.Expired) }
                     ?: account.connection.phone.ifBlank { account.services },
                 onClick = { if (active) onClick(account) }, enabled = !account.busy && (!account.restoring || account.connection.hasAccount),
-                modifier = Modifier.testTag("${account.tag}-account-row"),
+                modifier = Modifier.testTag("${account.tag}-account-row").then(
+                    if (account.provider == LifeProvider.Hellobike) Modifier.navTransitionSource(AppRoute.HellobikeAccount,
+                        containerColor = MiuixTheme.colorScheme.surface, sourceKey = "settings-hellobike") else Modifier),
                 endActions = { Text(account.status, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) })
         }
     }

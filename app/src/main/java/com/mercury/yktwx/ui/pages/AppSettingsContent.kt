@@ -16,10 +16,13 @@ import com.mercury.yktwx.R
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.components.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun AppSettingsContent(
@@ -62,7 +65,9 @@ internal fun AppSettingsContent(
         item { SmallTitle("通用") }
         item {
             Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
-                ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme)
+                ArrowPreference(title = stringResource(R.string.theme_title), onClick = onTheme,
+                    modifier = Modifier.navTransitionSource(AppRoute.Theme,
+                        containerColor = MiuixTheme.colorScheme.surface, sourceKey = "settings-theme"))
                 SwitchPreference(title = stringResource(R.string.payment_brightness),
                     checked = settings.paymentBrightness.value, onCheckedChange = settings::setPaymentBrightness,
                     modifier = Modifier.testTag("payment-brightness-switch"))

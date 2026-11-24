@@ -40,7 +40,7 @@ internal class LegacyPreferencesMigration internal constructor(
             floatingBottomBar = boolean("floating_bottom_bar"), floatingBottomBarStyle = integer("floating_bottom_bar_style").coerceIn(0, 1),
             blurBottomBar = boolean("blur_bottom_bar"), blurTopBar = boolean("blur_top_bar"),
             glassStyle = false,
-            swipeBack = boolean("swipe_back"), navTransitionStyle = integer("nav_transition_style").coerceIn(0, 1),
+            swipeBack = boolean("swipe_back"), navTransitionStyle = integer("nav_transition_style").coerceIn(0, 2),
             paymentMotionDetection = boolean("payment_motion_detection"), paymentBrightness = boolean("payment_brightness", true),
             automaticUpdates = boolean("automatic_updates", true),
             pangguiLoginNoticeDismissed = boolean("panggui_login_notice_dismissed"), hui798LoginNoticeDismissed = boolean("hui798_login_notice_dismissed"),

@@ -17,8 +17,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import com.mercury.yktwx.ui.components.RestorableDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
-private val NavTransitionStyleOptions = listOf("Miuix", "AOSP")
-
 @Composable
 fun ThemeSettingsPage(
     modifier: Modifier = Modifier,
@@ -55,6 +53,12 @@ fun ThemeSettingsPage(
         stringResource(R.string.floating_bottom_bar_style_default),
         stringResource(R.string.floating_bottom_bar_style_ios),
         stringResource(R.string.floating_bottom_bar_style_glass),
+    )
+
+    val navTransitionStyleOptions = listOf(
+        stringResource(R.string.nav_transition_miuix),
+        stringResource(R.string.nav_transition_aosp),
+        stringResource(R.string.nav_transition_expansion),
     )
 
     LazyColumn(
@@ -112,8 +116,8 @@ fun ThemeSettingsPage(
                     )
                     RestorableDropdownPreference(
                         title = stringResource(R.string.nav_transition_style),
-                        items = NavTransitionStyleOptions,
-                        selectedIndex = navTransitionStyle.value.coerceIn(NavTransitionStyleOptions.indices),
+                        items = navTransitionStyleOptions,
+                        selectedIndex = navTransitionStyle.value.coerceIn(navTransitionStyleOptions.indices),
                         onSelectedIndexChange = onNavTransitionStyleChange,
                     )
                     SwitchPreference(

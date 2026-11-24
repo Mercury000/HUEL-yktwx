@@ -148,7 +148,7 @@ class ScannerActivity : ComponentActivity() {
         private const val ExtraTransitionStyle = "scanner.transition_style"
         internal fun intent(context: Context, transitionStyle: Int, appearance: ScannerAppearance): Intent =
             appearance.writeTo(Intent(context, ScannerActivity::class.java)
-                .putExtra(ExtraTransitionStyle, transitionStyle.coerceIn(0, 1)))
+                .putExtra(ExtraTransitionStyle, transitionStyle.coerceIn(0, 2)))
     }
 }
 

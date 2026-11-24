@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.BuildConfig
 import com.mercury.yktwx.R
 import com.mercury.yktwx.ui.components.SectionTitle
+import com.mercury.yktwx.ui.nav.AppRoute
 import com.mercury.yktwx.ui.components.effect.BgEffectBackground
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -78,6 +79,7 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.nav.transition.navTransitionSource
 
 // ---------------------------------------------------------------------------
 // Structure copied from the miuix example app's AboutPage (example/shared/src/
@@ -277,6 +279,8 @@ internal fun AboutPage(
                                 ArrowPreference(
                                     title = stringResource(R.string.about_references),
                                     onClick = onOpenReferences,
+                                    modifier = Modifier.navTransitionSource(AppRoute.References,
+                                        containerColor = MiuixTheme.colorScheme.surface, sourceKey = "about-references"),
                                 )
                             }
                             Spacer(Modifier.height(12.dp))

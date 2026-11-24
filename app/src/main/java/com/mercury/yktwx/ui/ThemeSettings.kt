@@ -21,7 +21,7 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     val blurTopBar = ui { it.blurTopBar }
     val glassStyle = ui { it.glassStyle }
     val swipeBack = ui { it.swipeBack }
-    val navTransitionStyle = option(0..1) { it.navTransitionStyle }
+    val navTransitionStyle = option(0..2) { it.navTransitionStyle }
     val paymentMotionDetection = ui { it.paymentMotionDetection }
     val paymentBrightness = ui { it.paymentBrightness }
     val automaticUpdates = ui { it.automaticUpdates }
@@ -58,7 +58,7 @@ class ThemeSettings internal constructor(internal val repository: AppPreferences
     fun setBlurTop(v: Boolean) = change { it.copy(blurTopBar = v) }
     fun setGlassStyle(v: Boolean) = change { it.copy(glassStyle = v) }
     fun setSwipeBack(v: Boolean) = change { it.copy(swipeBack = v) }
-    fun setNavTransitionStyle(v: Int) = change { it.copy(navTransitionStyle = v.coerceIn(0, 1)) }
+    fun setNavTransitionStyle(v: Int) = change { it.copy(navTransitionStyle = v.coerceIn(0, 2)) }
     fun setPaymentMotionDetection(v: Boolean) = change { it.copy(paymentMotionDetection = v) }
     fun setPaymentBrightness(v: Boolean) = change { it.copy(paymentBrightness = v) }
     fun setAutomaticUpdates(v: Boolean) = change { it.copy(automaticUpdates = v) }

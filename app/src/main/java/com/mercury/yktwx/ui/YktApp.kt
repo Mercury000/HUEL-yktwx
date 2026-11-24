@@ -624,7 +624,7 @@ private fun MainContent(
         // with Activity creation and the window transition.
         runCatching { ProcessCameraProvider.getInstance(context) }
         try {
-            val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 1)
+            val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 2)
             val motion = ScannerWindowMotion.forStyle(transitionStyle)
             val appearance = ScannerAppearance(
                 themeMode = settings.themeMode.value,
@@ -937,15 +937,21 @@ private fun MainContent(
                                                             else -> "用水中"
                                                         }, session.device.name, "慧生活798", "hui798-${session.sessionId}", !session.active,
                                                         progress = if (session.active) null else 1f, dismissible = session.canDismissRecord(hui798State.sessionErrors[session.sessionId]),
-                                                        onOpen = { openHui798Session(session.sessionId) }, onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
+                                                        onOpen = { openHui798Session(session.sessionId) },
+                                                        route = Screen.LifeDevice(LifeProvider.Hui798, LifeFeature.Water, sessionId = session.sessionId),
+                                                        onDismiss = { hui798Model.dismissSession(session.sessionId) }) } +
                                                         hellobikeState.sessions.map { session -> LifeDeviceStatusEntry(LifeFeature.Ride,
                                                             hellobikeState.sessionErrors[session.sessionId]?.let { "状态异常" } ?: session.title,
                                                             "哈啰单车", session.region?.label.orEmpty().ifBlank { "哈啰" }, "hellobike-${session.sessionId}",
                                                             completed = session.dismissible, progress = if (session.dismissible) 1f else null,
                                                             dismissible = session.canDismissRecord(hellobikeState.sessionErrors[session.sessionId]),
-                                                            onOpen = { openHellobikeSession(session.sessionId) }, onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
+                                                            onOpen = { openHellobikeSession(session.sessionId) },
+                                                            route = Screen.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride, sessionId = session.sessionId),
+                                                            onDismiss = { hellobikeModel.dismissSession(session.sessionId) }) },
                                                     waterSessions = lifeState.waterSessions, laundrySessions = lifeState.laundrySessions,
                                                     lifeSessionErrors = lifeState.sessionErrors,
+                                                    lifeSessionRoute = { feature, sessionId -> Screen.LifeDevice(LifeProvider.Panggui, feature,
+                                                        sessionId = sessionId, account = lifeModel.restorationOwner) },
                                                     onOpenLifeSession = ::openLifeSession,
                                                     onDismissLifeSession = lifeModel::dismissSession,
                                                     onUnlost = {
