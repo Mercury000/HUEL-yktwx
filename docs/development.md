@@ -14,9 +14,9 @@
 
 缺少生活服务配置的 debug 包仍可编译，对应平台无法登录。Actions 通过同名 Secrets 注入接口配置，release 缺少 798 签名配置时失败，PR 不注入接口 Secrets。统计开关规则见[使用统计](analytics.md)。
 
-依赖版本由 `gradle/libs.versions.toml` 维护。Miuix 使用 Maven Central 的 `0.9.5-beta02`，不再依赖 GitHub Packages 凭证；该版本要求 Compose `1.13.0-rc01`，Android 端通过 Compose BOM `2026.11.01` 对齐到 `1.13.0`。升级说明见 [Miuix changelog](https://github.com/compose-miuix-ui/miuix/releases/tag/v0.9.5-beta02)。密钥、签名和真实支付数据不提交。
+依赖版本由 `gradle/libs.versions.toml` 维护。Miuix 使用 Maven Central 的 `0.9.5-beta04`，不再依赖 GitHub Packages 凭证；该版本要求 Compose `1.13.0-rc01`，Android 端通过 Compose BOM `2026.11.01` 对齐到 `1.13.0`。升级说明见 [Miuix changelog](https://github.com/compose-miuix-ui/miuix/releases/tag/v0.9.5-beta04)。密钥、签名和真实支付数据不提交。
 
-Miuix beta02 的 Android AAR 要求 `compileSdk` 至少为 37.2。`BlurTopAppBar` 已成为内部 API，应用改用公开的 `TopAppBarLayout`，保留原有的标题透明度联动并向 `titleBlurRadius` 传入 `0.dp`。
+Miuix beta04 的 Android AAR 要求 `compileSdk` 至少为 37.2。`BlurTopAppBar` 已成为内部 API，应用改用公开的 `TopAppBarLayout`，保留原有的标题透明度联动并向 `titleBlurRadius` 传入 `0.dp`。
 
 ## 构建与预览
 
