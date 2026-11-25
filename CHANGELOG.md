@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.5.4](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.3...v1.5.4) (2026-11-25)
+
+
+### Features
+
+* **nav:** 接入组件展开转场 ([b6e3068](https://github.com/Mercury000/HUEL-yktwx/commit/b6e30683bbc863c8ae6a6bf47aff993c6d4795b1))
+* **ui:** 对齐玻璃控件材质 ([373decb](https://github.com/Mercury000/HUEL-yktwx/commit/373decbab47b067945459ba4b7f624e61951b312))
+* **ui:** 接入 miuix beta04 动效 ([0e48b7d](https://github.com/Mercury000/HUEL-yktwx/commit/0e48b7d154ca5a39afe53e2e6abd0133ab9622b1))
+
+
+### Bug Fixes
+
+* **bill:** 覆盖排行末行按动反馈留白 ([dcfc216](https://github.com/Mercury000/HUEL-yktwx/commit/dcfc21633a032a05d775fc47ed43f66ae478f6ce))
+* **fee:** 使用入口电表类型显示充值标题 ([5ec8767](https://github.com/Mercury000/HUEL-yktwx/commit/5ec87679a45c9435ac632f20ffe480af36d6f50a))
+* **pangguai:** 按官方状态机处理接水与淋浴轮询 ([34555fa](https://github.com/Mercury000/HUEL-yktwx/commit/34555fa14d1f05d0f574b75a3e451669c6b05826))
+* **pangguai:** 按官方默认值解析支付渠道状态 ([bba057f](https://github.com/Mercury000/HUEL-yktwx/commit/bba057fc118b1ee85daecd4bde49958aa8c34406))
+
+
+### Performance Improvements
+
+* **profile:** 更新应用启动与常用操作编译资料 ([#18](https://github.com/Mercury000/HUEL-yktwx/issues/18)) ([b1cb2ef](https://github.com/Mercury000/HUEL-yktwx/commit/b1cb2ef43a955c75914d1cc8b656404ff3dd06c1))
+* **profile:** 补采玻璃弹层动效 ([758f9af](https://github.com/Mercury000/HUEL-yktwx/commit/758f9afb0c907966943f8197ffe563981b617ae7))
+
+
+### Miscellaneous Chores
+
+* release 1.5.4 ([7468be9](https://github.com/Mercury000/HUEL-yktwx/commit/7468be97fd03885c80931a0e1fd068839af4ccc5))
+
 ## [1.5.3](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.2...v1.5.3) (2026-11-22)
 
 
