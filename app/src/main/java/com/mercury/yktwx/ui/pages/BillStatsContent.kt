@@ -162,7 +162,7 @@ private fun fullDate(date: java.time.LocalDate): String =
 @Composable
 private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -> Unit,
     detailRoute: ((BillRecord) -> AppRoute.BillDetail)?) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().testTag("bill-stats-ranking")) {
         Column(Modifier.fillMaxWidth()) {
             Text(
                 "单笔排行",
@@ -173,12 +173,12 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
             ranking.forEachIndexed { index, record ->
                 val route = detailRoute?.invoke(record)
                 val bottomCorner = if (index == ranking.lastIndex) CardDefaults.CornerRadius else 0.dp
-                Column(Modifier.fillMaxWidth().then(if (route != null) Modifier.navTransitionSource(route,
+                ActionSurface(onClick = { onOpenDetail(record) }, shape = RectangleShape,
+                    modifier = Modifier.fillMaxWidth().then(if (route != null) Modifier.navTransitionSource(route,
                         cornerRadius = 0.dp, containerColor = MiuixTheme.colorScheme.surfaceContainer,
                         corners = NavTransitionCorners(0.dp, 0.dp, bottomCorner, bottomCorner),
                         sourceKey = "bill-ranking-${record.stableId}") else Modifier)) {
-                    ActionSurface(onClick = { onOpenDetail(record) }, shape = RectangleShape,
-                        modifier = Modifier.fillMaxWidth()) {
+                    Column {
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -209,9 +209,9 @@ private fun StatsRanking(ranking: List<BillRecord>, onOpenDetail: (BillRecord) -
                                 color = if (record.income) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                             )
                         }
+                        // Keep the original inset inside both press feedback and the source outline.
+                        if (index == ranking.lastIndex) Spacer(Modifier.height(4.dp))
                     }
-                    // Include the card's existing bottom inset in the last source's outline.
-                    if (index == ranking.lastIndex) Spacer(Modifier.height(4.dp))
                 }
                 if (index != ranking.lastIndex) HorizontalDivider(Modifier.padding(start = 74.dp))
             }

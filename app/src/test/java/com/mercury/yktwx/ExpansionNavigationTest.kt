@@ -1,9 +1,16 @@
 package com.mercury.yktwx
 
 import androidx.activity.BackEventCompat
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModel
@@ -14,8 +21,10 @@ import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.state.BillPeriod
 import com.mercury.yktwx.ui.YktApp
+import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.nav.AppRoute
 import com.mercury.yktwx.ui.pages.billDetailRoute
+import com.mercury.yktwx.ui.pages.billStatsContent
 import com.mercury.yktwx.ui.themeSettingsFixture
 import kotlinx.coroutines.Dispatchers
 import org.junit.After
@@ -27,6 +36,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.time.LocalDate
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.navBackStackOf
+import top.yukonga.miuix.kmp.nav.transition.NavTransitions
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Exercise the production shell's source keys, click callbacks and subsequent route sync. */
 @RunWith(RobolectricTestRunner::class)
@@ -162,6 +176,62 @@ class ExpansionNavigationTest {
     private fun frames(count: Int) = repeat(count) {
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
+    }
+
+    @Test fun lastRankingRowExpandsAndReturnsAfterItsSourceIncludesTheBottomInset() {
+        val period = BillDateFilter(BillDateMode.Month, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))
+        val stats = PreviewData.billStats(period, 2)
+        val state = PreviewData.billState(period).copy(statsVisible = true, stats = stats)
+        val routes = navBackStackOf(AppRoute.Main)
+        compose.setContent {
+            AppTheme(ColorSchemeMode.Dark) {
+                NavDisplay(routes, Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
+                    transition = NavTransitions.Expansion) {
+                    entry<AppRoute.Main> {
+                        LazyColumn(Modifier.fillMaxSize().testTag("bill-stats-list")) {
+                            billStatsContent(stats, {}, {}, { routes.add(billDetailRoute(it, state)) },
+                                includeTabs = false, detailRoute = { billDetailRoute(it, state) })
+                        }
+                    }
+                    entry<AppRoute.BillDetail> {
+                        Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface))
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("bill-stats-list").performScrollToIndex(3)
+        val record = stats.ranking.last()
+        val expected = billDetailRoute(record, state)
+        val row = compose.onNode(hasText(record.resume) and hasClickAction())
+        row.assertIsDisplayed().assertIsEnabled()
+        val cardBounds = compose.onNodeWithTag("bill-stats-ranking").fetchSemanticsNode().boundsInRoot
+        val rowBounds = row.fetchSemanticsNode().boundsInRoot
+        assertEquals("The last clickable row must cover the card's bottom inset", cardBounds.bottom, rowBounds.bottom, 1f)
+        val sampleX = cardBounds.center.x.toInt()
+        val sampleY = (cardBounds.bottom - 2f).toInt()
+        val idlePixel = compose.onRoot().captureToImage().toPixelMap()[sampleX, sampleY]
+        val list = compose.onNodeWithTag("bill-stats-list")
+        fun listLeft() = list.fetchSemanticsNode().layoutInfo.coordinates.localToRoot(Offset.Zero).x
+        val originalLeft = listLeft()
+        compose.mainClock.autoAdvance = false
+        try {
+            row.performTouchInput { down(center) }
+            frames(20)
+            val pressedPixel = compose.onRoot().captureToImage().toPixelMap()[sampleX, sampleY]
+            assertTrue("Press feedback must also shade the card's bottom inset: $idlePixel -> $pressedPixel",
+                pressedPixel.red > idlePixel.red + .003f)
+            row.performTouchInput { up() }
+            frames(4)
+            assertEquals("The ranking source must expand instead of falling back to a slide", originalLeft, listLeft(), 1f)
+            compose.runOnIdle { assertEquals(expected, routes.last()) }
+            frames(40)
+            compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+            frames(9)
+            assertEquals("Return must retain the ranking source", originalLeft, listLeft(), 1f)
+            frames(40)
+            compose.runOnIdle { assertEquals(listOf(AppRoute.Main), routes.toList()) }
+            compose.onNode(hasText(record.resume) and hasClickAction()).assertIsDisplayed()
+        } finally { compose.mainClock.autoAdvance = true }
     }
 
     @Test fun rankingSourceUsesTheStatisticsPeriodWhenItDiffersFromTheList() {
