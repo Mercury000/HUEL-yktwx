@@ -194,6 +194,27 @@ class Hui798ViewModelTest {
         assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(deviceRoute.copy(deviceId = "invalid"), true, next))
         assertEquals(0, api.starts); assertEquals(0, api.ends); assertEquals(0, api.smsRequests)
     }
+    @Test fun busyProviderDefersSessionRestoreUntilTheCommandFinishes() = runTest(dispatcher) {
+        // The first recovery read fails so the cached session stays unconfirmed without a gate;
+        // the gate then belongs to the user-visible refresh that must keep the page waiting.
+        val api = Api().apply { reading = Hui798Reading(1, clock); deviceUseFailure = IOException("fixture temporary") }
+        val model = model(api, Store(account, listOf(running()))); runCurrent()
+        assertTrue(model.state.value.sessions.any { it.sessionId == running().sessionId })
+        api.deviceUseFailure = null
+        val gate = CompletableDeferred<Unit>()
+        api.deviceUseGate = gate
+        model.openSession(running().sessionId); runCurrent()
+        model.refreshState(); runCurrent()
+        assertTrue(model.state.value.busy)
+        val route = AppRoute.LifeDevice(LifeProvider.Hui798, LifeFeature.Water,
+            sessionId = running().sessionId, account = account.phone)
+        assertEquals(LifeRouteRestore.WaitingForIdle, restoreLifeRoute(route, true, model))
+        assertEquals(0, api.ends)
+        api.deviceUseGate = null; gate.complete(Unit); runCurrent()
+        assertFalse(model.state.value.busy)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, true, model))
+        assertEquals(0, api.starts); assertEquals(0, api.ends)
+    }
     @Test fun anotherLocalRunningDeviceDoesNotRejectStartingTheScannedIdleDevice() = runTest(dispatcher) {
         val api = Api().apply { reading = Hui798Reading(1, clock) }
         val model = model(api, Store(account, listOf(running()))); runCurrent()

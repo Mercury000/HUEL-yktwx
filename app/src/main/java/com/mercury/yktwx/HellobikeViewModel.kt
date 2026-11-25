@@ -422,8 +422,8 @@ class HellobikeViewModel internal constructor(
         }
         return true
     }
-    fun openDevice(bikeNo: String) {
-        if (!HellobikeDeviceCode.validIdentifier(bikeNo) || mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight) return
+    fun openDevice(bikeNo: String): Boolean {
+        if (!HellobikeDeviceCode.validIdentifier(bikeNo) || mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight) return false
         pendingBike = bikeNo; deviceSelection++; deviceGeneration++; deviceTask?.cancel()
         deviceLocationAction = null
         mutable.update { it.copy(scannedBikeNo = bikeNo, selectedSessionId = null, precheck = null, closeProof = null,
@@ -431,15 +431,18 @@ class HellobikeViewModel internal constructor(
             loadingDevice = false, locationPermissionRequired = false, locationPermissionBlocked = false,
             error = null, officialRequired = false, paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList()) }
         if (!mutable.value.restoring && account != null && foreground && visible) prepareBike(bikeNo)
+        return true
     }
-    fun openSession(id: String) {
-        if (mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight || mutable.value.sessions.none { it.sessionId == id }) return
+    fun openSession(id: String): Boolean {
+        if (mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight ||
+            mutable.value.sessions.none { it.sessionId == id }) return false
         pendingBike = null; deviceSelection++; deviceGeneration++; deviceTask?.cancel()
         deviceLocationAction = null
         mutable.update { it.copy(selectedSessionId = id, scannedBikeNo = null, precheck = null, closeProof = null,
             temporaryLockProof = null, checkingTemporaryLock = false,
             loadingDevice = false, locationPermissionRequired = false, error = errors[id], paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList()) }
         if (visible && foreground) refreshState()
+        return true
     }
     private fun prepareBike(bikeNo: String) {
         val owner = account ?: return

@@ -490,6 +490,21 @@ class HellobikeViewModelTest {
         assertEquals(LifeRouteRestore.WaitingForNetwork, restoreLifeRoute(deviceRoute, false, next))
         assertEquals(0, api.smsCalls); assertEquals(0, api.createCalls); assertEquals(0, api.closeCalls); assertEquals(0, api.payCalls)
     }
+    @Test fun busyRideCommandDefersSessionRestoreUntilItFinishes() = bikeTest {
+        val api = FakeHellobikeService().apply { createdRideGuid = "new-ride-guid" }
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession)))
+        vehicle(model)
+        api.createGate = CompletableDeferred()
+        model.startRide()
+        assertTrue(model.state.value.busy)
+        val route = AppRoute.LifeDevice(LifeProvider.Hellobike, LifeFeature.Ride,
+            sessionId = fixtureBikeSession.sessionId, account = model.restorationOwner)
+        assertEquals(LifeRouteRestore.WaitingForIdle, restoreLifeRoute(route, true, model))
+        assertEquals(0, api.closeCalls)
+        api.createGate!!.complete(Unit); runCurrent()
+        assertFalse(model.state.value.busy)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, true, model))
+    }
     @Test fun startCommitsItsRecordBeforeOneCreateAndRequiresAQueriedRideToShowRunning() = bikeTest {
         val records = BikeRecords(); val store = records.store(); val api = FakeHellobikeService(); val model = model(api, store)
         vehicle(model)

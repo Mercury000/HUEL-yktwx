@@ -187,6 +187,51 @@ class LifeDevicesViewModelTest {
         assertEquals(LifeRouteRestore.Missing, restoreLifeRoute(laundryRoute.copy(sessionId = "missing"), false, after))
         assertEquals(0, api.unlockCalls); assertEquals(0, api.stopCalls); assertEquals(0, api.createCalls)
     }
+    @Test fun busyProviderDefersRouteRestoreUntilTheCommandFinishes() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store(LifeAccount("13800000000", "test-token"))); prepare(model)
+        api.deviceGate = CompletableDeferred()
+        model.startWater(); runCurrent()
+        assertTrue(model.state.value.waterBusy)
+        val route = AppRoute.LifeDevice(deviceId = device.serial, account = model.restorationOwner)
+        assertEquals(LifeRouteRestore.WaitingForIdle, restoreLifeRoute(route, true, model))
+        assertEquals(0, api.unlockCalls)
+        api.deviceGate!!.complete(Unit); runCurrent()
+        assertFalse(model.state.value.waterBusy)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, true, model))
+    }
+    @Test fun restoredScanningRouteOpensTheUnifiedScannerWithoutAnAccount() = runTest(dispatcher) {
+        val api = Api(); val model = model(api, Store()); runCurrent()
+        val route = AppRoute.LifeDevice(account = model.restorationOwner)
+        assertEquals(LifeRouteRestore.Restored, restoreLifeRoute(route, false, model))
+        assertTrue(model.state.value.scanning)
+        assertEquals(0, api.loginCalls); assertEquals(0, api.deviceCalls)
+    }
+    @Test fun expiredAccountSelectsTheRequestedLaundrySessionBeforeOpeningLogin() = runTest(dispatcher) {
+        val account = LifeAccount("13800000000", "test-token")
+        val washer = device.copy(id = "washer", category = "00", payment = "before")
+        val laundry = LaundrySession(washer, "wash-sku", "2.00", "2", LaundryPhase.Running,
+            orderNo = "wash-order", sessionId = "wash-session")
+        val store = Store(account).apply { savedLaundry = listOf(laundry, laundry.copy(sessionId = "other-session")) }
+        val api = Api().apply { afterPayExpired = true }
+        val model = model(api, store)
+        prepare(model); model.startWater(); runCurrent()
+        assertNull(store.savedAccount)
+        assertEquals(LifeFeature.Water, model.state.value.feature)
+        assertTrue(model.openSession(LifeFeature.Laundry, laundry.sessionId))
+        val route = AppRoute.LifeDevice(feature = LifeFeature.Laundry, sessionId = laundry.sessionId,
+            account = account.phone, skuId = laundry.skuId)
+        val selected = model.state.value
+        assertTrue(selected.loginVisible)
+        assertFalse(selected.scanning)
+        assertEquals(LifeFeature.Laundry, selected.feature)
+        assertEquals(washer, selected.device)
+        assertEquals(laundry.skuId, selected.selectedSkuId)
+        assertEquals(route, projectLifeRoute(route, selected, model.restorationOwner))
+        model.phoneChanged(account.phone); model.codeChanged("123456"); model.login(); runCurrent()
+        assertFalse(model.state.value.loginVisible)
+        assertEquals(laundry.sessionId, model.state.value.laundry?.sessionId)
+        assertEquals(0, api.unlockCalls)
+    }
     @Test fun explicitlyRejectedWaterStartClearsProgressAndAnotherClickReachesTheServer() = runTest(dispatcher) {
         val api = Api().apply { unlockFailure = LifeDeviceException("设备拒绝启动", businessRejected = true) }
         val store = Store(LifeAccount("13800000000", "test-token")); val model = model(api, store)

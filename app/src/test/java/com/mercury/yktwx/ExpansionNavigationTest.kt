@@ -1,5 +1,6 @@
 package com.mercury.yktwx
 
+import android.app.Activity
 import androidx.activity.BackEventCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -27,12 +28,14 @@ import com.mercury.yktwx.ui.pages.billDetailRoute
 import com.mercury.yktwx.ui.pages.billStatsContent
 import com.mercury.yktwx.ui.themeSettingsFixture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.time.LocalDate
@@ -55,6 +58,56 @@ class ExpansionNavigationTest {
     @Test fun pangguiLaundryIslandExpandsAndReturnsAfterRouteSync() = island(LifeProvider.Panggui, LifeFeature.Laundry)
     @Test fun hui798IslandExpandsWithItsAccountIdentity() = island(LifeProvider.Hui798, LifeFeature.Water)
     @Test fun hellobikeIslandExpandsWithItsAccountIdentity() = island(LifeProvider.Hellobike, LifeFeature.Ride)
+
+    @Test fun scannerResultDoesNotNavigateWhileTheProviderUnlinks() {
+        val app = compose.activity.application
+        val io = StandardTestDispatcher()
+        val model = hui798ViewModelFixture(app, hui798ApiFixture(client = { error("No network in navigation fixtures") }),
+            object : Hui798Store {
+                override fun account() = Hui798Account("fixture-hui-owner", "fixture-token", "fixture-user")
+                override fun sessions() = emptyList<Hui798Session>()
+                override fun saveAccount(account: Hui798Account) = Unit
+                override fun saveSessions(sessions: List<Hui798Session>) = Unit
+                override fun clearAccount() = Unit
+            }, io = io)
+        compose.activity.viewModelStore.put("androidx.lifecycle.ViewModelProvider.DefaultKey:" + model.javaClass.name, model)
+        val settings = themeSettingsFixture(app).apply { setTheme(1); setFloating(false) }
+        val payment = paymentViewModelFixture(app).apply { initialize(true) }
+        val bills = billViewModelFixture(app).apply { initialize(true) }
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { YktApp(settings, payment, bills) } }
+        compose.waitUntil(10_000) {
+            io.scheduler.runCurrent()
+            !model.state.value.restoring && compose.onAllNodesWithTag("payment-scan-button").fetchSemanticsNodes().isNotEmpty()
+        }
+        val navigation = ViewModelProvider(compose.activity)[AppNavigationViewModel::class.java]
+        val scan = compose.onNodeWithTag("payment-scan-button")
+        val code = "12345678"
+        fun returnScan() {
+            val request = shadowOf(compose.activity).nextStartedActivityForResult
+            assertEquals(ScannerActivity::class.java.name, request.intent.component?.className)
+            compose.activity.activityResultRegistry.dispatchResult(request.requestCode, Activity.RESULT_OK,
+                LifeScannerResult(code, LifeProvider.Hui798).toIntent())
+        }
+        scan.performClick()
+        compose.runOnIdle {
+            assertTrue(model.removeAccount())
+            assertTrue(model.state.value.accountBusy)
+            returnScan()
+        }
+        frames(4)
+        compose.runOnIdle {
+            assertEquals(listOf(AppRoute.Main), navigation.backStack.toList())
+            assertNull(model.state.value.scannedDeviceId)
+        }
+        compose.waitUntil(5_000) { io.scheduler.runCurrent(); !model.state.value.accountBusy }
+        scan.performClick()
+        compose.runOnIdle { returnScan() }
+        frames(4)
+        compose.runOnIdle {
+            assertEquals(AppRoute.LifeDevice(LifeProvider.Hui798, deviceId = code), navigation.backStack.last())
+            assertEquals(code, model.state.value.scannedDeviceId)
+        }
+    }
 
     private fun island(provider: LifeProvider, feature: LifeFeature) {
         val app = compose.activity.application
@@ -111,18 +164,55 @@ class ExpansionNavigationTest {
         val navigation = ViewModelProvider(compose.activity)[AppNavigationViewModel::class.java]
         val card = compose.onNodeWithTag("payment-code-card", useUnmergedTree = true)
         fun cardLeft() = card.fetchSemanticsNode().layoutInfo.coordinates.localToRoot(Offset.Zero).x
+        if (provider == LifeProvider.Panggui) {
+            // A stale scanner error must not leak into the expanded session's first frames.
+            compose.runOnIdle {
+                life.pageVisible(true)
+                life.scan()
+                life.scanned("not-a-device")
+            }
+            frames(2)
+            compose.runOnIdle { assertEquals("未知设备", life.state.value.error) }
+        }
         val originalLeft = cardLeft()
+        val sessionId = when (provider) {
+            LifeProvider.Panggui -> if (feature == LifeFeature.Water) water.sessionId else laundry.sessionId
+            LifeProvider.Hui798 -> huiSession.sessionId
+            LifeProvider.Hellobike -> fixtureBikeSession.sessionId
+        }
+        val pageTag = when (provider) {
+            LifeProvider.Panggui -> "life-device-page"
+            LifeProvider.Hui798 -> "hui798-device-page"
+            LifeProvider.Hellobike -> "hellobike-device-page"
+        }
         compose.mainClock.autoAdvance = false
         try {
             compose.onNodeWithTag("life-status-${feature.name.lowercase()}").performClick()
-            frames(4)
+            var destinationFrames = 0
+            repeat(4) {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+                if (provider == LifeProvider.Panggui) {
+                    compose.runOnIdle { assertNull(shadowOf(compose.activity).nextStartedActivityForResult) }
+                    if (compose.onAllNodesWithTag("life-device-route", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) {
+                        destinationFrames++
+                        val progressTitle = if (feature == LifeFeature.Water) "接水进度" else "洗衣进度"
+                        assertTrue("The destination must compose the requested session in frame ${it + 1}",
+                            compose.onAllNodes(hasText(progressTitle) and hasAnyAncestor(hasTestTag("life-device-top-bar")),
+                                useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+                    }
+                }
+            }
+            if (provider == LifeProvider.Panggui) assertTrue("The destination must compose during expansion", destinationFrames > 0)
             assertEquals("Expansion must keep the covered page still, instead of falling back to a slide",
                 originalLeft, cardLeft(), 1f)
             val route = compose.runOnIdle { navigation.backStack.last() as AppRoute.LifeDevice }
             assertEquals(provider, route.provider)
+            assertEquals(sessionId, route.sessionId)
             assertNotNull(route.account)
             if (provider == LifeProvider.Panggui) assertEquals(if (feature == LifeFeature.Water) water.skuId else laundry.skuId, route.skuId)
             frames(40)
+            compose.onNodeWithTag(pageTag, useUnmergedTree = true).assertIsDisplayed()
             compose.runOnIdle {
                 compose.activity.onBackPressedDispatcher.apply {
                     dispatchOnBackStarted(BackEventCompat(0f, 400f, 0f, BackEventCompat.EDGE_LEFT))
@@ -139,6 +229,7 @@ class ExpansionNavigationTest {
             assertEquals("Ordinary return must shrink to the island instead of using slide parallax", originalLeft, cardLeft(), 1f)
             frames(40)
             compose.runOnIdle { assertEquals(listOf(AppRoute.Main), navigation.backStack.toList()) }
+            compose.onAllNodesWithTag(pageTag, useUnmergedTree = true).assertCountEquals(0)
             compose.onNodeWithTag("life-status-${feature.name.lowercase()}").assertIsEnabled()
             if (provider == LifeProvider.Panggui && feature == LifeFeature.Water) {
                 compose.onNodeWithTag("life-status-water").performClick()

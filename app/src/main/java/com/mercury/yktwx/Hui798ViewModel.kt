@@ -268,13 +268,13 @@ class Hui798ViewModel internal constructor(
         }
     }
 
-    fun openDevice(id: String) {
-        if (mutable.value.accountBusy) return
-        if (mutable.value.busy) return
+    fun openDevice(id: String): Boolean {
+        if (mutable.value.accountBusy || mutable.value.busy) return false
         pendingDeviceId = id; generation++; deviceTask?.cancel()
         mutable.update { it.copy(device = null, scannedDeviceId = id, deviceReady = false, deviceInUse = false,
             loadingDevice = false, selectedSessionId = null, error = null) }
         if (!mutable.value.restoring && account != null) loadDevice(id)
+        return true
     }
     internal val restorationOwner: String? get() = ownerPhone.takeIf(String::isNotBlank)
     fun refreshDevice() {
@@ -313,13 +313,14 @@ class Hui798ViewModel internal constructor(
             }
         }
     }
-    fun openSession(id: String) {
-        if (mutable.value.busy) return
-        val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
+    fun openSession(id: String): Boolean {
+        if (mutable.value.busy || mutable.value.accountBusy) return false
+        val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return false
         generation++; deviceTask?.cancel(); pendingDeviceId = null
         mutable.update { it.copy(device = session.device, scannedDeviceId = null, selectedSessionId = id, deviceReady = false,
             deviceInUse = false, loadingDevice = false, error = sessionErrors[id]) }
         resumeSessions()
+        return true
     }
     fun dismissSession(id: String) {
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return

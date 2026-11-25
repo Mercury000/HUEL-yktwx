@@ -65,6 +65,7 @@ import com.mercury.yktwx.data.UsageNotice
 import com.mercury.yktwx.data.PreferencesLoadState
 import com.mercury.yktwx.data.WechatRechargeLaunch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -103,6 +104,11 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private enum class AuthPage : NavKey { Restoring, Login, Main }
+
+private fun <T> StateFlow<T>.observeLatest(collected: State<T>): T {
+    collected.value
+    return value
+}
 
 @Composable
 fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: BillViewModel, consent: UsageConsent? = null,
@@ -411,12 +417,15 @@ private fun MainContent(
     val avatarState by avatarModel.state.collectAsStateWithLifecycle()
     val collectedDormState by dormModel.state.collectAsStateWithLifecycle()
     val lifeModel: LifeDevicesViewModel = viewModel()
-    val lifeState by lifeModel.state.collectAsStateWithLifecycle()
+    val lifeCollected = lifeModel.state.collectAsStateWithLifecycle()
+    val lifeState by lifeCollected
     val hui798Model: Hui798ViewModel = viewModel()
-    val hui798State by hui798Model.state.collectAsStateWithLifecycle()
+    val hui798Collected = hui798Model.state.collectAsStateWithLifecycle()
+    val hui798State by hui798Collected
     val hellobikeModel: HellobikeViewModel = viewModel(key = "hellobike-${state.preview}")
     LaunchedEffect(hellobikeModel, state.preview) { hellobikeModel.initialize(state.preview) }
-    val hellobikeState by hellobikeModel.state.collectAsStateWithLifecycle()
+    val hellobikeCollected = hellobikeModel.state.collectAsStateWithLifecycle()
+    val hellobikeState by hellobikeCollected
     val hellobikeCardsState by hellobikeModel.cards.state.collectAsStateWithLifecycle()
     val pangguiConnection by lifeModel.accountConnection.collectAsStateWithLifecycle()
     val hui798Connection by hui798Model.accountConnection.collectAsStateWithLifecycle()
@@ -613,18 +622,21 @@ private fun MainContent(
     fun close() {
         if (isActive) navigation.close()
     }
-    fun openLifeScanner() {
-        if (!isActive ||
-            scannerOpen ||
-            lifeState.waterBusy || lifeState.laundryBusy || hui798State.busy || hellobikeState.busy ||
-            lifeState.paymentLaunch != null || hellobikeState.paymentInFlight) return
-        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
+    fun lifeCommandRunning(): Boolean {
+        val panggui = lifeModel.state.value
+        val bike = hellobikeModel.state.value
+        return panggui.waterBusy || panggui.laundryBusy || panggui.paymentLaunch != null ||
+            hui798Model.state.value.busy || bike.busy || bike.paymentInFlight
+    }
+    fun openLifeScanner(): Boolean {
+        if (!isActive || scannerOpen || lifeCommandRunning()) return false
+        if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return false
         scannerOpen = true
         scannerScope = navigation.scope
         // The provider future is process-owned; requesting it here overlaps CameraX setup
         // with Activity creation and the window transition.
         runCatching { ProcessCameraProvider.getInstance(context) }
-        try {
+        return try {
             val transitionStyle = settings.navTransitionStyle.value.coerceIn(0, 2)
             val motion = ScannerWindowMotion.forStyle(transitionStyle)
             val appearance = ScannerAppearance(
@@ -640,10 +652,12 @@ private fun MainContent(
                     motion.openExit,
                 ),
             )
+            true
         } catch (_: Exception) {
             scannerOpen = false
             scannerScope = null
             Toast.makeText(context, "无法启动相机", Toast.LENGTH_SHORT).show()
+            false
         }
     }
     fun connectLifeAccount() {
@@ -697,18 +711,18 @@ private fun MainContent(
     fun openLifeSession(feature: LifeFeature, sessionId: String) {
         if (!isActive) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        lifeModel.openSession(feature, sessionId)
+        if (!lifeModel.openSession(feature, sessionId)) return
         navigation.showLife(lifeSessionRoute(LifeProvider.Panggui, feature, sessionId), LifeEntryOrigin.User)
     }
     fun openHui798Session(id: String) {
         if (!isActive || hui798State.busy) return
         if (!allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        hui798Model.openSession(id)
+        if (!hui798Model.openSession(id)) return
         navigation.showLife(lifeSessionRoute(LifeProvider.Hui798, LifeFeature.Water, id), LifeEntryOrigin.User)
     }
     fun openHellobikeSession(id: String) {
         if (!isActive || hellobikeState.busy || hellobikeState.paymentInFlight || !allowOnlineEntry(context, networkState.value.online, state.preview)) return
-        hellobikeModel.openSession(id)
+        if (!hellobikeModel.openSession(id)) return
         navigation.showLife(lifeSessionRoute(LifeProvider.Hellobike, LifeFeature.Ride, id), LifeEntryOrigin.User)
     }
     LaunchedEffect(scannerResult, isActive, navigation.scope, foreground, lifeState.restoring, hui798State.restoring,
@@ -719,12 +733,6 @@ private fun MainContent(
             scannerResult = null
             return@LaunchedEffect
         }
-        if (hui798State.busy || lifeState.waterBusy || lifeState.laundryBusy || hellobikeState.busy ||
-            hellobikeState.paymentInFlight) {
-            scannerResult = null
-            Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
-            return@LaunchedEffect
-        }
         val route = result.route()
         if (route == null) {
             scannerResult = null
@@ -733,18 +741,20 @@ private fun MainContent(
         }
         // An Activity result can arrive after process recreation, before the platform store loads.
         val restoring = when (route.provider) {
-            LifeProvider.Panggui -> lifeState.restoring
-            LifeProvider.Hui798 -> hui798State.restoring
-            LifeProvider.Hellobike -> hellobikeState.restoring
+            LifeProvider.Panggui -> lifeModel.state.value.restoring
+            LifeProvider.Hui798 -> hui798Model.state.value.restoring
+            LifeProvider.Hellobike -> hellobikeModel.state.value.restoring
         }
         if (restoring) return@LaunchedEffect
         scannerResult = null
-        when (route.provider) {
-            LifeProvider.Panggui -> {
-                lifeModel.restoreDevice(route.feature, route.code, null)
-            }
+        val opened = !lifeCommandRunning() && when (route.provider) {
+            LifeProvider.Panggui -> lifeModel.restoreDevice(route.feature, route.code, null)
             LifeProvider.Hui798 -> hui798Model.openDevice(route.code)
             LifeProvider.Hellobike -> hellobikeModel.openDevice(route.code)
+        }
+        if (!opened) {
+            Toast.makeText(context, "正在处理请求，请稍后重试", Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
         }
         navigation.showLife(Screen.LifeDevice(route.provider, route.feature, deviceId = route.code,
             account = when (route.provider) {
@@ -770,7 +780,10 @@ private fun MainContent(
         LifeProvider.Hui798 -> hui798Model.restorationOwner
         LifeProvider.Hellobike -> hellobikeModel.restorationOwner
     }
-    LaunchedEffect(lifeRoute, lifeStoreReady, lifeOwner, foreground, isActive, network.online) {
+    // Provider state is part of the key so a temporary busy command is retried when it becomes idle;
+    // a busy provider is a temporary refusal, not proof that the saved record is gone.
+    LaunchedEffect(lifeRoute, lifeStoreReady, lifeOwner, foreground, isActive, network.online,
+        lifeState, hui798State, hellobikeState) {
         val route = lifeRoute ?: return@LaunchedEffect
         if (!isActive || !foreground || !lifeStoreReady) return@LaunchedEffect
         if (!navigation.needsLifeRestore(route)) {
@@ -788,7 +801,7 @@ private fun MainContent(
         }
         when (result) {
             LifeRouteRestore.Restored -> navigation.lifeRestored()
-            LifeRouteRestore.WaitingForAccount, LifeRouteRestore.WaitingForNetwork -> Unit
+            LifeRouteRestore.WaitingForAccount, LifeRouteRestore.WaitingForNetwork, LifeRouteRestore.WaitingForIdle -> Unit
             LifeRouteRestore.AccountChanged, LifeRouteRestore.Missing -> {
                 when (route.provider) {
                     LifeProvider.Panggui -> lifeModel.discardRestoredPayment()
@@ -802,22 +815,15 @@ private fun MainContent(
         }
     }
 
-    // Keep stable route parameters in sync as a device becomes an order. No business calls here.
-    LaunchedEffect(lifeRoute, lifeState, hui798State, hellobikeState) {
+    // Route is a one-way projection of state; it never gates rendering or state transitions.
+    LaunchedEffect(lifeRoute, lifeStoreReady, lifeOwner, isActive, lifeState, hui798State, hellobikeState) {
         val route = lifeRoute ?: return@LaunchedEffect
         if (!isActive || !lifeStoreReady || navigation.needsLifeRestore(route) || route.account != null && route.account != lifeOwner) return@LaunchedEffect
         val current = when (route.provider) {
-            LifeProvider.Panggui -> {
-                val session = if (lifeState.feature == LifeFeature.Water) lifeState.water?.sessionId else lifeState.laundry?.sessionId
-                Screen.LifeDevice(feature = lifeState.feature, sessionId = session.takeUnless { lifeState.scanning },
-                    deviceId = lifeState.scannedSerial.takeIf { !lifeState.scanning && session == null },
-                    account = lifeModel.restorationOwner, skuId = lifeState.selectedSkuId.takeIf(String::isNotBlank))
-            }
-            LifeProvider.Hui798 -> route.copy(sessionId = hui798State.selectedSessionId,
-                deviceId = hui798State.scannedDeviceId.takeIf { hui798State.selectedSessionId == null }, account = hui798Model.restorationOwner)
-            LifeProvider.Hellobike -> route.copy(sessionId = hellobikeState.selectedSessionId,
-                deviceId = hellobikeState.scannedBikeNo.takeIf { hellobikeState.selectedSessionId == null }, account = hellobikeModel.restorationOwner)
-        }
+            LifeProvider.Panggui -> projectLifeRoute(route, lifeModel.state.value, lifeOwner)
+            LifeProvider.Hui798 -> projectLifeRoute(route, hui798Model.state.value, lifeOwner)
+            LifeProvider.Hellobike -> projectLifeRoute(route, hellobikeModel.state.value, lifeOwner)
+        } ?: return@LaunchedEffect
         if (current != route) navigation.updateLife(current)
     }
     fun openFee(project: FeeProject, requestedRoom: FeeRoomBinding? = null, saveOnly: Boolean = false,
@@ -894,11 +900,12 @@ private fun MainContent(
                 effects = navigationEffects,
             ) {
                 appEntries(swipeDirection, lifeTransition) { screen ->
-                    Box(Modifier.fillMaxSize().mainNavigationPageInsets()) {
+                    Box(Modifier.fillMaxSize().mainNavigationPageInsets()
+                        .then(if (screen is Screen.LifeDevice) Modifier.testTag("life-device-route") else Modifier)) {
                         if (screen == Screen.Main) {
                             BarBlurHost(settings.blurBottomBar.value, false) {
                                 MainNavigationScaffold(settings, tabs.selectedPage, tabs::animateToPage, railOutside = true,
-                                    onScan = ::openLifeScanner,
+                                    onScan = { openLifeScanner() },
                                     scanEnabled = isActive && !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy &&
                                         !hellobikeState.busy && lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight)
                                     { padding ->
@@ -927,7 +934,7 @@ private fun MainContent(
                                                     rechargeLoading = rechargeState.loading && !rechargeState.visible,
                                                     isActive = paymentPageSelected && !paymentPageCovered,
                                                     isVisible = paymentPageSelected,
-                                                    onScan = ::openLifeScanner,
+                                                    onScan = { openLifeScanner() },
                                                     showScanAction = !settings.floatingBottomBar.value || shouldShowMainNavigationRail(settings),
                                                     scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&
                                                         lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight,
@@ -1107,22 +1114,35 @@ private fun MainContent(
                                         Button(::close) { Text("返回") }
                                     }
                                 } else when (screen.provider) {
-                                    LifeProvider.Hui798 -> Hui798DevicePage(hui798State, settings, hui798Model,
-                                        active = isActive && backStack.lastOrNull() == screen, onScan = ::openLifeScanner, onBack = ::close)
-                                    LifeProvider.Hellobike -> HellobikeDevicePage(hellobikeState, settings, hellobikeModel,
-                                        active = isActive && backStack.lastOrNull() == screen, onScan = ::openLifeScanner, onBack = ::close)
-                                    LifeProvider.Panggui -> if (lifeState.scanning) {
-                                        // Old saved scan routes and exception rescans use the same Activity entry.
-                                        LaunchedEffect(screen, isActive, foreground) {
-                                            if (isActive && foreground && backStack.lastOrNull() == screen) {
-                                                openLifeScanner()
-                                                navigation.close()
+                                    LifeProvider.Hui798 -> Hui798DevicePage(hui798Model.state.observeLatest(hui798Collected), settings, hui798Model,
+                                        active = isActive && backStack.lastOrNull() == screen, onScan = { openLifeScanner() }, onBack = ::close)
+                                    LifeProvider.Hellobike -> HellobikeDevicePage(hellobikeModel.state.observeLatest(hellobikeCollected), settings, hellobikeModel,
+                                        active = isActive && backStack.lastOrNull() == screen, onScan = { openLifeScanner() }, onBack = ::close)
+                                    LifeProvider.Panggui -> {
+                                        val state = lifeModel.state.observeLatest(lifeCollected)
+                                        if (state.scanning) {
+                                            // Old saved scan routes and exception rescans use the same Activity entry.
+                                            // Only leave the page once the camera really opened; otherwise keep a retry.
+                                            var scannerFailed by remember(screen) { mutableStateOf(false) }
+                                            fun requestScanner() {
+                                                scannerFailed = !openLifeScanner()
+                                                if (!scannerFailed) navigation.close()
                                             }
-                                        }
-                                        Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface))
-                                    } else LifeDevicePage(lifeState, settings, lifeModel,
-                                        active = isActive && backStack.lastOrNull() == screen, onBack = ::close,
-                                        onRequestScan = ::openLifeScanner)
+                                            LaunchedEffect(screen, isActive, foreground) {
+                                                if (isActive && foreground && backStack.lastOrNull() == screen) requestScanner()
+                                            }
+                                            Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
+                                                contentAlignment = Alignment.Center) {
+                                                if (scannerFailed) Button(onClick = {
+                                                    // A restored true from a dead process must not block an explicit retry.
+                                                    scannerOpen = false
+                                                    requestScanner()
+                                                }) { Text("重新扫码") }
+                                            }
+                                        } else LifeDevicePage(state, settings, lifeModel,
+                                            active = isActive && backStack.lastOrNull() == screen, onBack = ::close,
+                                            onRequestScan = { openLifeScanner() })
+                                    }
                                 }
                                 else -> SecondaryPage(
                                     screen = screen,

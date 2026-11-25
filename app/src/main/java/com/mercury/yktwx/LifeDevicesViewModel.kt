@@ -110,7 +110,9 @@ class LifeDevicesViewModel internal constructor(
 
     /** Restore a device selection by its service identifier, without scanning or starting it. */
     internal fun restoreDevice(feature: LifeFeature, serial: String, skuId: String?): Boolean {
-        if (mutable.value.restoring || feature == LifeFeature.Ride || LifeDeviceCode.identify(serial)?.first != feature) return false
+        val state = mutable.value
+        if (state.restoring || state.accountBusy || state.waterBusy || state.laundryBusy || state.paymentLaunch != null ||
+            feature == LifeFeature.Ride || LifeDeviceCode.identify(serial)?.first != feature) return false
         scan()
         restoredSkuId = skuId
         mutable.update { it.copy(feature = feature) }
@@ -228,19 +230,27 @@ class LifeDevicesViewModel internal constructor(
         scan()
         mutable.update { it.copy(entryRequest = it.entryRequest + 1) }
     }
-    fun openSession(feature: LifeFeature, sessionId: String) {
-        if (mutable.value.waterBusy || mutable.value.laundryBusy || mutable.value.paymentLaunch != null) return
-        val water = mutable.value.waterSessions.firstOrNull { it.sessionId == sessionId }
-        val laundry = mutable.value.laundrySessions.firstOrNull { it.sessionId == sessionId }
-        if (feature == LifeFeature.Water && water == null || feature == LifeFeature.Laundry && laundry == null) return
+    fun openSession(feature: LifeFeature, sessionId: String): Boolean {
+        val state = mutable.value
+        if (state.restoring || state.accountBusy || state.waterBusy || state.laundryBusy || state.paymentLaunch != null) return false
+        val water = state.waterSessions.firstOrNull { feature == LifeFeature.Water && it.sessionId == sessionId }
+        val laundry = state.laundrySessions.firstOrNull { feature == LifeFeature.Laundry && it.sessionId == sessionId }
+        val device = water?.device ?: laundry?.device ?: return false
+        val loginRequired = account == null
         pendingDeviceSerial = null
         requestedScan = false
-        requestedSessionId = sessionId
+        requestedFeature = feature.takeIf { loginRequired }
+        requestedSessionId = sessionId.takeIf { loginRequired }
         scanGeneration++; deviceTask?.cancel(); quoteTask?.cancel()
-        mutable.update { if (feature == LifeFeature.Water) it.copy(water = water) else it.copy(laundry = laundry) }
-        open(feature)
-        mutable.update { it.copy(scanning = false, scannedSerial = null, loadingDevice = false, quoteLoading = false, error = sessionErrors[sessionId]) }
-        if (account != null) requestedSessionId = null
+        mutable.update { it.copy(feature = feature, entryRequest = it.entryRequest + 1,
+            water = water ?: it.water, laundry = laundry ?: it.laundry,
+            device = device, selectedSkuId = water?.skuId ?: laundry?.skuId.orEmpty(),
+            scanning = false, scannedSerial = null, loadingDevice = false, quoteLoading = false,
+            error = sessionErrors[sessionId], laundryQuote = null, paymentVisible = false, paymentFeedback = null,
+            loginVisible = loginRequired, loginError = if (loginRequired) null else it.loginError,
+            code = if (loginRequired) "" else it.code) }
+        if (!loginRequired) resumeSessions()
+        return true
     }
     fun dismissSession(feature: LifeFeature, sessionId: String) {
         val value = mutable.value
@@ -1163,7 +1173,9 @@ class LifeDevicesViewModel internal constructor(
                 if (it.phase == LaundryPhase.Creating && it.createSent && it.orderNo.isBlank()) it.copy(creationUncertain = true) else it
             } }
         mutable.update { it.copy(laundry = if (!it.scanning && it.scannedSerial == null)
-            restored.lastOrNull { session -> !session.islandDismissed } else it.laundry, laundrySessions = restored) }
+            restored.firstOrNull { session -> session.sessionId == it.laundry?.sessionId }
+                ?: restored.lastOrNull { session -> !session.islandDismissed }
+            else it.laundry, laundrySessions = restored) }
         if (restored != saved) persistence.withLock { withContext(io) { store.saveLaundrySessions(restored) } }
     }
     private suspend fun createLaundrySession(session: LaundrySession, token: String, service: LifeLaundryService): LaundrySession {
