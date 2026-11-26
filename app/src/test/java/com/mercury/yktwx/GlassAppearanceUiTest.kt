@@ -261,8 +261,8 @@ class GlassAppearanceUiTest {
                 Scaffold {
                     AppearanceBackdropContent {
                         Box(Modifier.fillMaxSize().background(Color(0xFFB9D8F4)))
-                        PaymentSheet(true, "照明充值", {}) {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        PaymentSheet(true, "照明充值", {}) { headerPadding ->
+                            Column(Modifier.fillMaxWidth().padding(headerPadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 PaymentAmountForm(config, amount, { amount = it }, listOf("一卡通", "微信"),
                                     selected, { selected = it }, busy, true, null, { submits++ })
                             }
@@ -309,8 +309,8 @@ class GlassAppearanceUiTest {
                 Scaffold {
                     AppearanceBackdropContent {
                         Box(Modifier.fillMaxSize().background(top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface))
-                        PaymentSheet(true, "筛选选项与充值金额", {}) {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        PaymentSheet(true, "筛选选项与充值金额", {}) { headerPadding ->
+                            Column(Modifier.fillMaxWidth().padding(headerPadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     BillFilterPill("全部", selected, enabled) { selected = true; choices++ }
                                     BillFilterPill("消费", !selected, enabled) { selected = false; choices++ }
@@ -352,8 +352,8 @@ class GlassAppearanceUiTest {
                 Scaffold {
                     AppearanceBackdropContent {
                         Box(Modifier.fillMaxSize().background(top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface))
-                        PaymentSheet(true, "房间与支付方式", {}) {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        PaymentSheet(true, "房间与支付方式", {}) { headerPadding ->
+                            Column(Modifier.fillMaxWidth().padding(headerPadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 HallNeutralTabs(listOf("一卡通", "微信"), selected, enabled) { selected = it }
                                 PaymentSelectionCard(false, {}, enabled = enabled) { color -> Text("未选房间", color = color) }
                                 CompactButton("购买", {}, enabled = enabled)

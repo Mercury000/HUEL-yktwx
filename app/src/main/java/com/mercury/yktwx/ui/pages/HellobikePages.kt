@@ -2,7 +2,6 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import com.mercury.yktwx.ui.components.AppButton as Button
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import android.content.Context
 import android.content.Intent
@@ -334,8 +333,10 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                 colors = ButtonDefaults.buttonColorsPrimary()) { Text("确认还车") }
         }
     }
-    OverlayBottomSheet(show = active && help, startAction = { SheetTitle("骑行帮助") }, onDismissRequest = { help = false }, renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    AppScrollableBottomSheet(show = active && help, startAction = { SheetTitle("骑行帮助") },
+        onDismissRequest = { help = false }) { headerPadding ->
+        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(headerPadding),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("扫描哈啰普通单车二维码后，会按官方规则直接开锁；官方要求确认时才显示确认开锁。请在车辆旁扫码并留意锁具。骑行中支持的车辆可临时锁车，锁车期间继续计费，时限结束后自动开锁。骑行中可从付款页状态卡返回；离开页面不会还车。停好车辆后点击还车，按哈啰返回的要求决定是否需要再次确认，并留意锁具是否关闭。骑行结束后核对本笔费用，支持平台返回的余额、支付宝和普通银联。需要实名认证、蓝牙、异常停车或其他支付方式时，请在哈啰处理，返回后刷新原订单。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             OfficialHellobikeLink(enabled = currentActive && help)

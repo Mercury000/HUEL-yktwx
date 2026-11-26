@@ -134,6 +134,36 @@ internal fun AppOverlayBottomSheet(
         content = { OverlayAppearanceContent(glass, content) })
 }
 
+/** Apply the supplied header padding inside the scrollable content, not around its viewport. */
+@Composable
+internal fun AppScrollableBottomSheet(
+    show: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, title: String? = null,
+    startAction: @Composable (() -> Unit)? = null, insideMargin: DpSize = BottomSheetDefaults.insideMargin,
+    allowDismiss: Boolean = true, scrollOffset: (() -> Float)? = null,
+    onDismissFinished: (() -> Unit)? = null, headerBottomContent: (@Composable () -> Unit)? = null,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    if (!rememberOverlayMounted(show)) return
+    if (LocalGlassStyle.current) {
+        val latestOffset by rememberUpdatedState(scrollOffset)
+        val readOffset = remember { { latestOffset?.invoke() ?: 0f } }
+        GlassBottomSheet(show = show, backdrop = LocalAppearanceBackdrop.current, onDismissRequest = onDismissRequest,
+            modifier = modifier, title = title, startAction = startAction, insideMargin = insideMargin,
+            allowDismiss = allowDismiss, containerColor = BottomSheetDefaults.backgroundColor(),
+            onDismissFinished = onDismissFinished,
+            headerBottomContent = { headerBottomContent?.let { OverlayAppearanceContent(true, it) } },
+            scrollOffset = if (scrollOffset != null) readOffset else null) { padding ->
+            OverlayAppearanceContent(true) { content(padding) }
+        }
+    } else {
+        AppOverlayBottomSheet(show = show, onDismissRequest = onDismissRequest, modifier = modifier,
+            title = title, startAction = startAction, insideMargin = insideMargin, allowDismiss = allowDismiss,
+            onDismissFinished = onDismissFinished) {
+            content(PaddingValues(0.dp))
+        }
+    }
+}
+
 @Composable
 internal fun AppTopAppBar(
     title: String, modifier: Modifier = Modifier, color: Color = MiuixTheme.colorScheme.surface,

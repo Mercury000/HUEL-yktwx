@@ -2,12 +2,11 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import com.mercury.yktwx.ui.components.AppButton as Button
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppScrollableBottomSheet
 import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
@@ -30,6 +29,7 @@ import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.components.RecipientIdentifierTextField
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.SheetPageContent
+import com.mercury.yktwx.ui.components.SheetPageScroll
 import com.mercury.yktwx.ui.components.ReadLayout
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.rememberWhileShown
@@ -77,8 +77,9 @@ private fun RecipientRechargeSheet(
     val targetPage = rememberWhileShown(show,
         if (state.recipients.isNotEmpty()) RecipientSheetPage.Amount else RecipientSheetPage.Query)
     val keyboard = LocalSoftwareKeyboardController.current
-    OverlayBottomSheet(show = show, title = "代人充值", onDismissRequest = onDismiss,
-        renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
+    val pageScroll = remember(session, targetPage) { SheetPageScroll() }
+    AppScrollableBottomSheet(show = show, title = "代人充值", onDismissRequest = onDismiss,
+        insideMargin = DpSize(20.dp, 12.dp), scrollOffset = pageScroll.offset) { headerPadding ->
         key(session) {
     // Only presentation data survives dismissal; the captcha key stays in live state.
     val display = rememberWhileShown(show, state.copy(captcha = null))
@@ -94,7 +95,7 @@ private fun RecipientRechargeSheet(
         SheetPageContent(targetPage,
             Modifier.bottomSheetSafeArea()) { page, interactive ->
         val enabled = interactive && show && !display.loading
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+        Column(Modifier.fillMaxWidth().verticalScroll(pageScroll.rememberState(interactive)).padding(headerPadding).padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (page == RecipientSheetPage.Amount) {
                 display.recipients.forEach { recipient ->

@@ -1,7 +1,6 @@
 package com.mercury.yktwx.ui.components
 
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -20,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mercury.yktwx.data.UsageNotice
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.glass.GlassBottomSheetDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal fun noticeParagraph(text: String) = buildAnnotatedString {
@@ -35,11 +35,14 @@ internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (()
     saving: Boolean = false, error: String? = null) {
     val session = rememberOverlaySession(show)
     val currentAgree by rememberUpdatedState(onAgree)
-    OverlayBottomSheet(show = show, startAction = { SheetTitle(UsageNotice.Title) },
+    val scroll = key(session) { rememberLazyListState() }
+    val blurRampPx = with(LocalDensity.current) { GlassBottomSheetDefaults.ProgressiveBlurRampDistance.toPx() }
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle(UsageNotice.Title) },
         onDismissRequest = { if (!saving) onDismiss() },
-        allowDismiss = !saving, renderInRootScaffold = true) {
+        allowDismiss = !saving, scrollOffset = {
+            if (scroll.firstVisibleItemIndex == 0) scroll.firstVisibleItemScrollOffset.toFloat() else blurRampPx
+        }) { headerPadding ->
         key(session) {
-            val scroll = rememberLazyListState()
             val readToEnd by remember(scroll) {
                 derivedStateOf {
                     val layout = scroll.layoutInfo
@@ -51,7 +54,7 @@ internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (()
             Column(Modifier.fillMaxWidth().heightIn(max = LocalWindowInfo.current.containerDpSize.height * .75f)
                 .bottomSheetSafeArea(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).testTag("usage-notice-body"),
-                    state = scroll, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    state = scroll, contentPadding = headerPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     itemsIndexed(UsageNotice.paragraphs) { index, paragraph ->
                         Text(noticeParagraph(paragraph), Modifier.fillMaxWidth().testTag("usage-notice-paragraph-$index"),
                             fontSize = 14.sp, lineHeight = 23.sp)

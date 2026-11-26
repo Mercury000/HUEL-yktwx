@@ -67,7 +67,9 @@ class AvatarEditorUiTest {
         val file = File(compose.activity.cacheDir, "fictional-avatar.png")
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
-        return Uri.fromFile(file)
+        val uri = Uri.parse("content://test.avatar/fictional-avatar.png")
+        shadowOf(compose.activity.contentResolver).registerInputStreamSupplier(uri) { file.inputStream() }
+        return uri
     }
 
     private fun pick(uri: Uri?) {

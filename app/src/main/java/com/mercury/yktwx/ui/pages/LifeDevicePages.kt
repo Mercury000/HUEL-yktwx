@@ -7,7 +7,6 @@ import com.mercury.yktwx.ui.components.AppButton as Button
 import com.mercury.yktwx.ui.components.AppIconButton as IconButton
 import com.mercury.yktwx.ui.components.AppSmallTopAppBar as SmallTopAppBar
 import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -90,9 +89,11 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
 internal fun LifeAccountLoginSheet(show: Boolean, title: String, tag: String, onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit) {
     val session = rememberOverlaySession(show)
-    OverlayBottomSheet(show = show, startAction = { SheetTitle(title) }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    val scroll = key(session) { rememberScrollState() }
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle(title) }, onDismissRequest = onDismiss,
+        scrollOffset = { scroll.value.toFloat() }) { headerPadding ->
         key(session) {
-            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).testTag(tag),
+            Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(scroll).padding(headerPadding).testTag(tag),
                 verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
         }
     }
@@ -246,9 +247,8 @@ internal fun LifeScannerPage(state: LifeDevicesUiState, active: Boolean,
 @Composable
 private fun ScannerHelpSheet(show: Boolean, onDismiss: () -> Unit) {
     if (!rememberOverlayMounted(show)) return
-    OverlayBottomSheet(show = show, startAction = { SheetTitle("扫码帮助") }, onDismissRequest = onDismiss,
-        renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle("扫码帮助") }, onDismissRequest = onDismiss) { headerPadding ->
+        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(headerPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。也可手动输入设备编号；出现平台选项时，选择设备上的平台。已有服务进度可从付款页的状态卡查看。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
@@ -516,7 +516,9 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
     // The sheet content is hosted by the root scaffold, so composition locals from the
     // scanner page do not reach it. Re-provide the scanner backdrop around the content.
     val sheetBackdrop = LocalAppearanceBackdrop.current
-    OverlayBottomSheet(show = show, startAction = { SheetTitle("输入设备编号") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    val scroll = key(rememberOverlaySession(show)) { rememberScrollState() }
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle("输入设备编号") }, onDismissRequest = onDismiss,
+        scrollOffset = { scroll.value.toFloat() }) { headerPadding ->
         CompositionLocalProvider(LocalAppearanceBackdrop provides sheetBackdrop) {
             val value = rememberWhileShown(show, serial)
             val candidates = remember(value) { UnifiedDeviceCode.manualCandidates(value) }
@@ -530,7 +532,7 @@ private fun LifeManualDeviceSheet(show: Boolean, state: LifeDevicesUiState, seri
             // Own the sheet's height transition so the platform row expands into place instead
             // of snapping the drawer taller in one frame.
             ReadLayout(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+                Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(scroll).padding(headerPadding),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("填写设备显示屏或贴纸上的编号，识别后核对设备。", fontSize = 12.sp, lineHeight = 20.sp, color = DashboardPalette.muted)
                     DeviceCodeTextField(value, onValue, label = "设备编号", enabled = show && !state.loadingDevice,
@@ -563,9 +565,10 @@ private fun LifeDeviceHelpSheet(show: Boolean, state: LifeDevicesUiState, model:
     onScan: () -> Unit, onDismiss: () -> Unit,
     retryFeedback: RetryFeedbackState) {
     if (!rememberOverlayMounted(show)) return
-    OverlayBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") }, onDismissRequest = onDismiss, renderInRootScaffold = true) {
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle(if (state.scanning) "扫码帮助" else "${state.feature.title}帮助") },
+        onDismissRequest = onDismiss) { headerPadding ->
         val display = rememberWhileShown(show, state)
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(headerPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (state.scanning) "扫描胖乖接水、淋浴、洗衣、慧生活798用水设备或哈啰单车上的二维码，识别后自动进入对应界面。也可手动输入设备编号；出现平台选项时，选择设备上的平台。已有服务进度可从付款页的状态卡查看。"
                 else if (state.feature == LifeFeature.Water) "扫码后核对设备，放稳容器再开始。接好后点击结束接水；离开页面不会自动停止设备。费用请在胖乖生活或支付宝查询。"

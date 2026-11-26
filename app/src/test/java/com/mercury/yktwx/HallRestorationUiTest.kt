@@ -11,6 +11,7 @@ import com.mercury.yktwx.data.DormMeterKind
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.AppTheme
 import com.mercury.yktwx.ui.YktApp
+import com.mercury.yktwx.ui.components.AppearanceBackdropContent
 import com.mercury.yktwx.ui.pages.HallPage
 import com.mercury.yktwx.ui.pages.HallRoomSheet
 import com.mercury.yktwx.ui.themeSettingsFixture
@@ -69,6 +70,29 @@ class HallRestorationUiTest {
         restorer.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("新增绑定").assertIsDisplayed()
         compose.onNodeWithText("房间管理").assertDoesNotExist()
+    }
+
+    @Test fun glassRoomTabsStayPinnedAndCanSwitchPagesAfterScrolling() {
+        val room = PreviewData.hallState().rooms.single()
+        val longList = DormUiState(rooms = List(20) { room }, loaded = true)
+        compose.setContent { AppTheme(glassStyle = true) { Scaffold {
+            AppearanceBackdropContent { HallRoomSheet(longList, true, {}, {}, {}, {}, {}) }
+        } } }
+        val roomTab = compose.onNodeWithText("房间管理").assertIsDisplayed()
+        val temporaryTab = compose.onNodeWithText("临时缴费").assertIsDisplayed()
+        val firstRoom = compose.onNodeWithTag("hall-room-0").assertIsDisplayed()
+        val tabBounds = roomTab.fetchSemanticsNode().boundsInRoot
+        val firstTop = firstRoom.fetchSemanticsNode().boundsInRoot.top
+        assertTrue(firstTop >= tabBounds.bottom)
+
+        compose.onNodeWithTag("hall-room-content").performTouchInput {
+            swipeUp(startY = height * .86f, endY = height * .4f)
+        }
+        assertTrue(firstRoom.fetchSemanticsNode().boundsInRoot.top < firstTop)
+        assertEquals(tabBounds, roomTab.fetchSemanticsNode().boundsInRoot)
+        temporaryTab.performClick()
+        compose.onNodeWithText("郑东宿舍电费").assertIsDisplayed()
+        temporaryTab.assertIsDisplayed()
     }
 
     @Test fun removalRestoresByIdentityAfterReloadAndMissingRoomClosesConfirmation() {

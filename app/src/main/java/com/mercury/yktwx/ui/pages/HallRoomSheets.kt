@@ -2,7 +2,6 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppCard as Card
 import com.mercury.yktwx.ui.components.AppButton as Button
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
@@ -10,7 +9,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
@@ -180,23 +178,32 @@ internal fun HallRoomSheet(state: DormUiState, visible: Boolean,
         if (!visible || state.roomsLoaded && !state.loading && removal == null) removalId = null
     }
     val busy = state.managing
-    OverlayBottomSheet(show = visible, onDismissRequest = onDismiss,
+    val pageScroll = remember(session.id, session.page) { SheetPageScroll() }
+    val glass = LocalGlassStyle.current
+    val tabs: @Composable (RoomSheetPage, Boolean) -> Unit = { page, enabled ->
+        HallNeutralTabs(listOf("房间管理", "临时缴费"), if (page == RoomSheetPage.Temporary) 1 else 0, enabled) {
+            session.page = if (it == 1) RoomSheetPage.Temporary else RoomSheetPage.Rooms
+        }
+    }
+    AppScrollableBottomSheet(show = visible, onDismissRequest = onDismiss,
         startAction = {
             key(session.id) { SheetTitle(if (session.page == RoomSheetPage.Add) "新增绑定" else "切换房间 / 临时缴费") }
         },
-        renderInRootScaffold = true, insideMargin = DpSize(20.dp, 12.dp)) {
+        insideMargin = DpSize(20.dp, 12.dp), scrollOffset = pageScroll.offset,
+        headerBottomContent = {
+            if (session.page != RoomSheetPage.Add) Box(Modifier.padding(bottom = 14.dp)) {
+                tabs(session.page, visible && !busy)
+            }
+        }) { headerPadding ->
         key(session.id) { SheetPageContent(
             targetPage = session.page,
             modifier = Modifier.fillMaxWidth().testTag("hall-room-content").bottomSheetSafeArea(),
         ) { page, interactive ->
             val adding = page == RoomSheetPage.Add
             val enabled = visible && !busy && interactive
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+            Column(Modifier.fillMaxWidth().verticalScroll(pageScroll.rememberState(interactive)).padding(headerPadding),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (!adding) HallNeutralTabs(listOf("房间管理", "临时缴费"),
-                    if (page == RoomSheetPage.Temporary) 1 else 0) {
-                    if (enabled) session.page = if (it == 1) RoomSheetPage.Temporary else RoomSheetPage.Rooms
-                }
+                if (!glass && !adding) tabs(page, enabled)
                 if (page == RoomSheetPage.Rooms) {
                     InlineErrorGroup(state.error, 14.dp) {
                         ReadContent(state.rooms.isEmpty() && !state.roomsLoaded, Modifier.fillMaxWidth(), pending = { it }) { reading ->

@@ -2,7 +2,6 @@ package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppCard as Card
 import com.mercury.yktwx.ui.components.AppButton as Button
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -142,9 +141,9 @@ internal fun WaterDevicePage(state: WaterDeviceUiState, settings: ThemeSettings,
             }
         }
     }
-    OverlayBottomSheet(show = active && help, startAction = { SheetTitle("${state.action}帮助") },
-        onDismissRequest = { help = false }, renderInRootScaffold = true) {
-        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+    AppScrollableBottomSheet(show = active && help, startAction = { SheetTitle("${state.action}帮助") },
+        onDismissRequest = { help = false }) { headerPadding ->
+        Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(headerPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(state.help, fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -9,10 +9,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +73,20 @@ internal fun SheetTitle(title: String?) {
         if (text != null) Text(text, modifier = Modifier.fillMaxWidth(),
             fontSize = MiuixTheme.textStyles.title4.fontSize,
             fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+    }
+}
+
+/** Only the incoming page drives the native header while two pages are laid out for a transition. */
+@Stable
+internal class SheetPageScroll {
+    private var activeScroll by mutableStateOf<ScrollState?>(null)
+    val offset: () -> Float = { activeScroll?.value?.toFloat() ?: 0f }
+
+    @Composable
+    fun rememberState(interactive: Boolean): ScrollState {
+        val scroll = rememberScrollState()
+        if (interactive) SideEffect { activeScroll = scroll }
+        return scroll
     }
 }
 

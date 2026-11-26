@@ -7,7 +7,7 @@ import com.mercury.yktwx.ui.components.AppButton as Button
 import com.mercury.yktwx.ui.components.AppTabRowWithContour as TabRowWithContour
 import com.mercury.yktwx.ui.components.AppIconButton as IconButton
 import com.mercury.yktwx.ui.components.AppTopAppBar as TopAppBar
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppScrollableBottomSheet
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -657,17 +657,17 @@ private fun BillFilterSheet(
     var min by rememberSaveable(session) { mutableStateOf(appliedFrom?.let(::moneyInput).orEmpty()) }
     var max by rememberSaveable(session) { mutableStateOf(appliedTo?.let(::moneyInput).orEmpty()) }
     var error by remember(session) { mutableStateOf<String?>(null) }
-    OverlayBottomSheet(
+    val scroll = key(session) { rememberScrollState() }
+    AppScrollableBottomSheet(
         show = show,
         title = "筛选账单",
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("bill-filter-sheet"),
-        // Cover the main tab bar, not just the nested bill page.
-        renderInRootScaffold = true,
-    ) {
+        scrollOffset = { scroll.value.toFloat() },
+    ) { headerPadding ->
         ReadLayout(Modifier.fillMaxWidth()) {
         Column(
-            Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()).padding(20.dp),
+            Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(scroll).padding(headerPadding).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text("交易类型", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)

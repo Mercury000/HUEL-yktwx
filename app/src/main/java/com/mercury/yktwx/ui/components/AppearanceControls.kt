@@ -29,7 +29,7 @@ internal fun glassControlFill(): Color {
 
 @Composable
 internal fun appearanceTextFieldColors(): TextFieldColors = if (LocalGlassOverlay.current)
-    GlassTextFieldDefaults.textFieldColors()
+    GlassTextFieldDefaults.textFieldColors(labelColor = MiuixTheme.colorScheme.onSurfaceVariantSummary)
 else TextFieldDefaults.textFieldColors()
 
 @Composable

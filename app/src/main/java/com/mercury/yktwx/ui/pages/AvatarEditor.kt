@@ -1,7 +1,7 @@
 package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppScrollableBottomSheet
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
@@ -36,6 +35,7 @@ import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.rememberWhileShown
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.SheetPageContent
+import com.mercury.yktwx.ui.components.SheetPageScroll
 import com.mercury.yktwx.ui.components.SheetTitle
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -66,14 +66,16 @@ internal fun AvatarEditor(model: AvatarViewModel, state: AvatarUiState, official
     val currentShow by rememberUpdatedState(show)
     val page = if (display.draft != null) AvatarEditorPage.Crop else AvatarEditorPage.Choose
     val session = rememberOverlaySession(show)
-    OverlayBottomSheet(show = show, startAction = { SheetTitle(if (page == AvatarEditorPage.Crop) "裁剪头像" else "头像") },
-        onDismissRequest = model::dismiss, renderInRootScaffold = true,
-        onDismissFinished = { if (!currentShow) exitingDisplay = AvatarUiState() }) {
+    val pageScroll = remember(session, page) { SheetPageScroll() }
+    AppScrollableBottomSheet(show = show, startAction = { SheetTitle(if (page == AvatarEditorPage.Crop) "裁剪头像" else "头像") },
+        onDismissRequest = model::dismiss, scrollOffset = pageScroll.offset,
+        onDismissFinished = { if (!currentShow) exitingDisplay = AvatarUiState() }) { headerPadding ->
         key(session) {
             SheetPageContent(page) { displayedPage, interactive ->
                 val content = rememberWhileShown(show && page == displayedPage, display)
                 val enabled = interactive && show && !state.loading && !state.saving && !state.restoring
-                Column(Modifier.fillMaxWidth().bottomSheetSafeArea().verticalScroll(rememberScrollState()),
+                Column(Modifier.fillMaxWidth().bottomSheetSafeArea()
+                    .verticalScroll(pageScroll.rememberState(interactive)).padding(headerPadding),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     val draft = if (displayedPage == AvatarEditorPage.Crop) content.draft else null
                     if (draft == null) {

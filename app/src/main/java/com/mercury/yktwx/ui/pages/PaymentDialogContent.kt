@@ -1,13 +1,12 @@
 package com.mercury.yktwx.ui.pages
 
 import com.mercury.yktwx.ui.components.AppButton as Button
-import com.mercury.yktwx.ui.components.AppOverlayBottomSheet as OverlayBottomSheet
+import com.mercury.yktwx.ui.components.AppScrollableBottomSheet
 import com.mercury.yktwx.ui.components.AppTextField
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
@@ -53,6 +52,7 @@ import com.mercury.yktwx.ui.components.SheetTitle
 import com.mercury.yktwx.ui.components.rememberOverlaySession
 import com.mercury.yktwx.ui.components.ReadLayout
 import com.mercury.yktwx.ui.components.SheetPageContent
+import com.mercury.yktwx.ui.components.SheetPageScroll
 import com.mercury.yktwx.ui.components.bottomSheetSafeArea
 import com.mercury.yktwx.ui.components.rememberOverlayMounted
 import com.mercury.yktwx.ui.components.rememberWhileShown
@@ -63,10 +63,11 @@ import top.yukonga.miuix.kmp.theme.LocalContentColor
 /** All payment flows keep the same native sheet host, title and outer insets. */
 @Composable
 internal fun PaymentSheet(show: Boolean, title: String?, onDismissRequest: () -> Unit,
-    insideMargin: DpSize = DpSize(20.dp, 12.dp), content: @Composable () -> Unit) {
+    insideMargin: DpSize = DpSize(20.dp, 12.dp), scrollOffset: (() -> Float)? = null,
+    content: @Composable (PaddingValues) -> Unit) {
     val session = rememberOverlaySession(show)
-    OverlayBottomSheet(show = show, startAction = { key(session) { SheetTitle(title) } },
-        onDismissRequest = onDismissRequest, renderInRootScaffold = true, insideMargin = insideMargin) { content() }
+    AppScrollableBottomSheet(show = show, startAction = { key(session) { SheetTitle(title) } },
+        onDismissRequest = onDismissRequest, insideMargin = insideMargin, scrollOffset = scrollOffset, content = content)
 }
 
 /** One host for payment forms and results: lifecycle, page motion, scroll, insets and spacing. */
@@ -81,9 +82,11 @@ internal fun <T : Enum<T>> PaymentSheetPages(show: Boolean, page: T, isResultPag
     val displayTitle = rememberWhileShown(show, title)
     val currentContent by rememberUpdatedState(content)
     val currentShowing by rememberUpdatedState(show)
-    PaymentSheet(show, displayTitle, onDismissRequest, insideMargin = DpSize(0.dp, 0.dp)) {
+    val pageScroll = remember(session, targetPage) { SheetPageScroll() }
+    PaymentSheet(show, displayTitle, onDismissRequest, insideMargin = DpSize(0.dp, 0.dp),
+        scrollOffset = pageScroll.offset) { headerPadding ->
         key(session) { SheetPageContent(currentPage, Modifier.bottomSheetSafeArea()) { shownPage, interactive ->
-            Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            Column(modifier.fillMaxWidth().verticalScroll(pageScroll.rememberState(interactive)).padding(headerPadding)
                 .then(if (isResultPage(shownPage)) Modifier.padding(horizontal = 24.dp)
                     else Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {

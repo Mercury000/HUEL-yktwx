@@ -5,6 +5,9 @@ import com.mercury.yktwx.ui.usageConsentFixture
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
@@ -16,6 +19,7 @@ import com.mercury.yktwx.ui.UsageConsent
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.pages.LoginPage
+import com.mercury.yktwx.ui.components.AppearanceBackdropContent
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -170,5 +174,35 @@ class UsageNoticeUiTest {
         compose.onNodeWithTag("usage-notice-body").performTouchInput { swipeDown(durationMillis = 300) }
         compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
         assertEquals(0, accepted)
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
+    fun glassNoticeKeepsItsHeaderAndActionsPinnedWhileReadingAndResetsOnReopen() {
+        var show by mutableStateOf(true)
+        var accepted = 0
+        compose.setContent { AppTheme(glassStyle = true) {
+            Scaffold { AppearanceBackdropContent { UsageNoticeSheet(show, { show = false }, { accepted++ }) } }
+        } }
+        val title = compose.onNodeWithText(UsageNotice.Title).assertIsDisplayed()
+        val titleBounds = title.fetchSemanticsNode().boundsInRoot
+        val firstParagraph = compose.onNodeWithTag("usage-notice-paragraph-0").assertIsDisplayed()
+        assertTrue(firstParagraph.fetchSemanticsNode().boundsInRoot.top >= titleBounds.bottom)
+        val decline = compose.onNodeWithText("不同意").assertIsDisplayed()
+        val declineBounds = decline.fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
+
+        repeat(5) { compose.onNodeWithTag("usage-notice-body").performTouchInput { swipeUp(durationMillis = 300) } }
+        val confirm = compose.onNodeWithText("同意并继续").assertIsDisplayed().assertIsEnabled()
+        assertEquals(titleBounds, title.fetchSemanticsNode().boundsInRoot)
+        assertEquals(declineBounds, decline.fetchSemanticsNode().boundsInRoot)
+        assertEquals(0, accepted)
+        confirm.performClick()
+        assertEquals(1, accepted)
+
+        decline.performClick()
+        compose.onNodeWithTag("usage-notice-body").assertDoesNotExist()
+        compose.runOnIdle { show = true }
+        firstParagraph.assertIsDisplayed()
+        compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
     }
 }
