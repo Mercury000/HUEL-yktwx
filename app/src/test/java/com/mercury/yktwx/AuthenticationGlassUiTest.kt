@@ -144,6 +144,7 @@ class AuthenticationGlassUiTest {
             assertNull(usageConsentFixture(app).confirmationHint)
             assertNull(credentials)
             assertNull(session)
+            compose.onNodeWithTag("usage-consent-page").assertDoesNotExist()
             compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
             if (readNotice) {
                 compose.onNodeWithTag("usage-notice-body").performScrollToIndex(UsageNotice.paragraphs.lastIndex)

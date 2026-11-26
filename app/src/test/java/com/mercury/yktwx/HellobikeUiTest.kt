@@ -812,20 +812,18 @@ class HellobikeUiTest {
         } finally { compose.mainClock.autoAdvance = true }
         assertEquals(0, api.smsCalls)
     }
-    @Test fun dismissingHellobikeReminderKeepsOtherProvidersAndSettingsAccountMetadata() {
+    @Test fun onlyHellobikeShowsAReloginBannerWhenItsAccountExpires() {
         val settings = settings()
         var chosen: LifeProvider? = null
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
-            PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {}, lifeLoginRequired = true, hui798LoginRequired = true,
-                hellobikeLoginRequired = true, onHellobikeLogin = { chosen = LifeProvider.Hellobike })
+            PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
+                hellobikeLoginExpired = true, onHellobikeLogin = { chosen = LifeProvider.Hellobike })
         } } } }
         compose.onNodeWithTag("hellobike-login-notice").performScrollTo().performClick()
         assertEquals(LifeProvider.Hellobike, chosen)
-        compose.onNodeWithTag("hellobike-login-notice-dismiss").performClick()
-        compose.waitUntil(5000) { settings.hellobikeLoginNoticeDismissed.value }
-        compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("hellobike-login-notice").assertDoesNotExist()
-        compose.onNodeWithTag("life-login-notice").assertExists(); compose.onNodeWithTag("hui798-login-notice").assertExists()
+        compose.onNodeWithTag("hellobike-login-notice-dismiss").assertDoesNotExist()
+        compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
+        compose.onNodeWithTag("hui798-login-notice").assertDoesNotExist()
         val managed = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection())
         assertEquals("哈啰", managed.name); assertEquals("单车骑行", managed.services); assertEquals("hellobike", managed.tag)
     }

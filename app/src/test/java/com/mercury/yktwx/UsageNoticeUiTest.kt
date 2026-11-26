@@ -19,6 +19,7 @@ import com.mercury.yktwx.ui.UsageConsent
 import com.mercury.yktwx.ui.ThemeSettings
 import com.mercury.yktwx.ui.YktApp
 import com.mercury.yktwx.ui.pages.LoginPage
+import com.mercury.yktwx.ui.pages.UsageConsentPage
 import com.mercury.yktwx.ui.components.AppearanceBackdropContent
 import com.mercury.yktwx.ui.components.UsageNoticeSheet
 import kotlinx.coroutines.runBlocking
@@ -161,6 +162,28 @@ class UsageNoticeUiTest {
         compose.onNodeWithTag("usage-notice-body").assertDoesNotExist()
         assertFalse(payments.state.value.needsLogin)
         assertEquals(1, ShadowToast.shownToastCount())
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")
+    fun standaloneNoticeKeepsActionsPinnedAndRequiresExplicitAgreement() {
+        var rejected = 0
+        var accepted = 0
+        compose.setContent { AppTheme {
+            UsageConsentPage(false, null, onReject = { rejected++ }, onAgree = { accepted++ })
+        } }
+        val reject = compose.onNodeWithText("拒绝并退出").assertIsDisplayed().assertIsEnabled()
+        val agree = compose.onNodeWithTag("usage-consent-agree").assertTextEquals("上滑并阅读").assertIsDisplayed().assertIsNotEnabled()
+        val footer = agree.fetchSemanticsNode().boundsInRoot
+        reject.performClick()
+        assertEquals(1, rejected)
+        capture("privacy-page-light")
+        end()
+        agree.assertTextEquals("同意并继续").assertIsDisplayed().assertIsEnabled()
+        assertEquals(footer, agree.fetchSemanticsNode().boundsInRoot)
+        capture("privacy-page-read-light")
+        assertEquals(0, accepted)
+        agree.performClick()
+        assertEquals(1, accepted)
     }
 
     @Test @Config(qualifiers = "zh-rCN-w360dp-h740dp-xxhdpi")

@@ -24,7 +24,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** A passive, scrollable update hint. The small close glyph has its own full touch target. */
 @Composable
 internal fun InlineUpdateNotice(state: AppUpdateUiState, onOpen: () -> Unit, onDismiss: () -> Unit,
-    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 12.dp) {
+    topSpacing: Dp = 0.dp, bottomSpacing: Dp = 12.dp, enabled: Boolean = true) {
     val release = rememberWhileShown(state.noticeVisible, state.release)
     FeedbackTransition(state.noticeVisible && release != null, topSpacing = topSpacing, bottomSpacing = bottomSpacing) {
         val foreground = MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -33,7 +33,7 @@ internal fun InlineUpdateNotice(state: AppUpdateUiState, onOpen: () -> Unit, onD
             else MiuixTheme.colorScheme.primary.copy(alpha = .06f)
         Row(Modifier.fillMaxWidth().background(background, RoundedCornerShape(12.dp)),
             verticalAlignment = Alignment.CenterVertically) {
-            ActionSurface(onClick = onOpen, enabled = state.noticeVisible,
+            ActionSurface(onClick = onOpen, enabled = enabled && state.noticeVisible,
                 shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
                 modifier = Modifier.weight(1f).testTag("app-update-notice"), feedbackColor = accent) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
@@ -44,7 +44,7 @@ internal fun InlineUpdateNotice(state: AppUpdateUiState, onOpen: () -> Unit, onD
                         overflow = TextOverflow.Ellipsis, color = foreground)
                 }
             }
-            ActionSurface(onClick = onDismiss, enabled = state.noticeVisible,
+            ActionSurface(onClick = onDismiss, enabled = enabled && state.noticeVisible,
                 modifier = Modifier.size(44.dp).testTag("dismiss-update-notice"),
                 shape = RoundedCornerShape(12.dp), feedbackColor = foreground) {
                 Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {

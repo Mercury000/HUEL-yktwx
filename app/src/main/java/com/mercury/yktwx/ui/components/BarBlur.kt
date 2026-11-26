@@ -48,6 +48,7 @@ internal fun floatingBarColor(): Color = if (isSystemInDarkTheme())
 internal fun BarBlurHost(
     bottomBarBlurEnabled: Boolean,
     topBarBlurEnabled: Boolean,
+    modifier: Modifier = Modifier.fillMaxSize(),
     content: @Composable () -> Unit,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
@@ -65,7 +66,7 @@ internal fun BarBlurHost(
         LocalTopBarBlurEnabled provides topBarBlurEnabled,
         LocalBarBlurBackdrop provides backdrop,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = modifier) {
             content()
         }
     }

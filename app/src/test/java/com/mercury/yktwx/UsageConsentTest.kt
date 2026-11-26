@@ -50,6 +50,20 @@ class UsageConsentTest {
         assertFalse(usageConsentFixture(prefs, "different-body-hash").accepted)
     }
 
+    @Test fun setupResumesAfterRestartUntilExplicitCompletion() = runBlocking {
+        val prefs = context.getSharedPreferences("setup-usage-test", Context.MODE_PRIVATE)
+        usageConsentFixture(prefs, UsageNotice.hash).acceptForSetup()
+        val resumed = usageConsentFixture(prefs, UsageNotice.hash)
+        assertTrue(resumed.accepted)
+        assertTrue(resumed.setupPending)
+        assertFalse(resumed.needsFirstRunNotice)
+        resumed.finishSetup()
+        val completed = usageConsentFixture(prefs, UsageNotice.hash)
+        assertTrue(completed.accepted)
+        assertFalse(completed.setupPending)
+        assertFalse(completed.needsFirstRunNotice)
+    }
+
     @Test fun failedPersistenceCannotMarkTheNoticeAsAccepted() {
         val prefs = context.getSharedPreferences("failed-usage-test", Context.MODE_PRIVATE)
         val failing = object : android.content.SharedPreferences by prefs {
@@ -71,6 +85,8 @@ class UsageConsentTest {
     @Test fun noticeHistoryDistinguishesUpdatesFromLogoutWithoutRetainingConsent() = runBlocking {
         val prefs = context.getSharedPreferences("usage-history-test", Context.MODE_PRIVATE)
         assertNull(usageConsentFixture(prefs, "first-body").confirmationHint)
+        assertTrue(usageConsentFixture(prefs, "first-body").needsFirstRunNotice)
+        assertFalse(usageConsentFixture(prefs, "first-body", previousLogin = true).needsFirstRunNotice)
         assertEquals("使用前需阅读并同意使用须知。", usageConsentFixture(prefs, "first-body", previousLogin = true).confirmationHint)
         val first = usageConsentFixture(prefs, "first-body")
         first.accept(); first.revoke()
@@ -78,10 +94,12 @@ class UsageConsentTest {
         assertEquals(0, prefs.getLong("accepted_at", 0))
         val returning = usageConsentFixture(prefs, "first-body")
         assertFalse(returning.accepted)
+        assertFalse(returning.needsFirstRunNotice)
         assertNull(returning.confirmationHint)
         assertNull(first.confirmationHint)
         val changed = usageConsentFixture(prefs, "second-body")
         assertFalse(changed.accepted)
+        assertFalse(changed.needsFirstRunNotice)
         assertEquals("使用须知已更新，请重新阅读并同意后使用。", changed.confirmationHint)
         changed.accept()
         assertNull(changed.confirmationHint)

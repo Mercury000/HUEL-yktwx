@@ -3,6 +3,7 @@ package com.mercury.yktwx.ui.components
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
@@ -31,6 +32,28 @@ internal fun noticeParagraph(text: String) = buildAnnotatedString {
 }
 
 @Composable
+internal fun rememberUsageNoticeReadToEnd(scroll: LazyListState): State<Boolean> = remember(scroll) {
+    derivedStateOf {
+        val layout = scroll.layoutInfo
+        val last = layout.visibleItemsInfo.lastOrNull()
+        layout.totalItemsCount == UsageNotice.paragraphs.size && last?.index == layout.totalItemsCount - 1 &&
+            last.offset + last.size <= layout.viewportEndOffset && !scroll.canScrollForward
+    }
+}
+
+@Composable
+internal fun UsageNoticeBody(scroll: LazyListState, modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp)) {
+    LazyColumn(modifier.fillMaxWidth().testTag("usage-notice-body"), state = scroll, contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        itemsIndexed(UsageNotice.paragraphs) { index, paragraph ->
+            Text(noticeParagraph(paragraph), Modifier.fillMaxWidth().testTag("usage-notice-paragraph-$index"),
+                fontSize = 14.sp, lineHeight = 23.sp)
+        }
+    }
+}
+
+@Composable
 internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (() -> Unit)? = null,
     saving: Boolean = false, error: String? = null) {
     val session = rememberOverlaySession(show)
@@ -43,23 +66,10 @@ internal fun UsageNoticeSheet(show: Boolean, onDismiss: () -> Unit, onAgree: (()
             if (scroll.firstVisibleItemIndex == 0) scroll.firstVisibleItemScrollOffset.toFloat() else blurRampPx
         }) { headerPadding ->
         key(session) {
-            val readToEnd by remember(scroll) {
-                derivedStateOf {
-                    val layout = scroll.layoutInfo
-                    val last = layout.visibleItemsInfo.lastOrNull()
-                    layout.totalItemsCount == UsageNotice.paragraphs.size && last?.index == layout.totalItemsCount - 1 &&
-                        last.offset + last.size <= layout.viewportEndOffset && !scroll.canScrollForward
-                }
-            }
+            val readToEnd by rememberUsageNoticeReadToEnd(scroll)
             Column(Modifier.fillMaxWidth().heightIn(max = LocalWindowInfo.current.containerDpSize.height * .75f)
                 .bottomSheetSafeArea(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).testTag("usage-notice-body"),
-                    state = scroll, contentPadding = headerPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    itemsIndexed(UsageNotice.paragraphs) { index, paragraph ->
-                        Text(noticeParagraph(paragraph), Modifier.fillMaxWidth().testTag("usage-notice-paragraph-$index"),
-                            fontSize = 14.sp, lineHeight = 23.sp)
-                    }
-                }
+                UsageNoticeBody(scroll, Modifier.weight(1f, fill = false), contentPadding = headerPadding)
                 InlineErrorGroup(error, 18.dp) {
                     if (onAgree != null) {
                         val measurer = rememberTextMeasurer()

@@ -177,6 +177,22 @@ internal fun MainNavigationScaffold(
 }
 
 @Composable
+internal fun MainNavigationPreview(settings: ThemeSettings, content: @Composable () -> Unit) {
+    if (shouldShowMainNavigationRail(settings)) {
+        Box(Modifier.fillMaxWidth().height(218.dp)) {
+            MainNavigationHost(settings, 0, {}) {
+                Box(Modifier.fillMaxSize().mainNavigationPageInsets()) { content() }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxWidth()) {
+            content()
+            BottomNavigation(settings, 0, {}, onScan = {}, scanEnabled = true)
+        }
+    }
+}
+
+@Composable
 internal fun MainNavigationRail(selected: Int, expanded: Boolean, onSelected: (Int) -> Unit) {
     val state = rememberNavigationRailState(
         initialValue = if (expanded) NavigationRailValue.Expanded else NavigationRailValue.Collapsed,

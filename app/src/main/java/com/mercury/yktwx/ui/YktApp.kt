@@ -126,6 +126,8 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
         val session by viewModel.sessionState.collectAsStateWithLifecycle()
         val authenticated = if (state.preview) !state.needsLogin else session.username != null
         val agreed = consent?.accepted != false
+        val firstRunNotice = consent?.needsFirstRunNotice == true
+        val showSetup = firstRunNotice || agreed && consent?.setupPending == true
         val updateModel: AppUpdateViewModel = viewModel()
         val updateState by updateModel.state.collectAsStateWithLifecycle()
         val updateInstall = rememberUpdateInstallAction(updateModel)
@@ -134,22 +136,32 @@ fun YktApp(settings: ThemeSettings, viewModel: PaymentViewModel, billViewModel: 
             allowed = consent?.accepted == true && !state.preview && !LocalInspectionMode.current,
             channel = settings.updateChannel.value)
         val activity = LocalActivity.current
+        val exitApp: () -> Unit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() }
         Scaffold(modifier = Modifier.semantics { testTagsAsResourceId = true }) {
           AppearanceBackdropContent {
             if (!updateState.ready) {
                 PreferencesEntry(updateState.loadFailure, updateModel::retryLoading)
-            } else if (!agreed) {
+            } else if (!agreed && !firstRunNotice) {
                 // Life model constructors recover orders over the network. Defer the
                 // business composition, navigation and payment launches until agreement.
                 ConsentEntryPage(settings, state, authenticated)
-            } else if (updateState.required) {
+            } else if (agreed && updateState.required) {
                 Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface))
                 AppUpdateDialog(updateState, onDownload = updateInstall, onDismiss = {})
             } else {
-                ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState, updateInstall)
+                OobeExit(showSetup, home = {
+                    ApprovedApp(settings, viewModel, billViewModel, consent, state, authenticated, updateModel, updateState, updateInstall)
+                }) { active ->
+                    if (consent != null) FirstRunSetup(settings, consent, viewModel, state, authenticated, exitApp, active,
+                        updateNotice = { interactive ->
+                            InlineUpdateNotice(updateState.copy(noticeVisible = agreed && updateState.noticeVisible),
+                                updateModel::openDetails, updateModel::dismissNotice, bottomSpacing = 18.dp, enabled = interactive)
+                        })
+                    if (active && agreed) AppUpdateDialog(updateState, onSkip = updateModel::skip, onDownload = updateInstall,
+                        onDismiss = updateModel::ignore)
+                }
             }
-            if (consent != null && updateState.ready) RequiredUsageConsent(consent,
-                onExit = { if (onExit != null) onExit() else activity?.finishAndRemoveTask() })
+            if (consent != null && !showSetup && updateState.ready) RequiredUsageConsent(consent, onExit = exitApp)
           }
         }
     }
@@ -342,7 +354,7 @@ private fun RequiredUsageConsent(consent: UsageConsent, onExit: () -> Unit) {
         }
     }
     fun exit() { if (!saving && !consent.accepted) onExit() }
-    UsageNoticeSheet(show = !consent.accepted, onDismiss = ::exit, saving = saving, error = error, onAgree = {
+    fun agree() {
         if (!saving && !consent.accepted) {
             saving = true; error = null
             scope.launch {
@@ -352,7 +364,8 @@ private fun RequiredUsageConsent(consent: UsageConsent, onExit: () -> Unit) {
                 finally { saving = false }
             }
         }
-    })
+    }
+    UsageNoticeSheet(show = !consent.accepted, onDismiss = ::exit, saving = saving, error = error, onAgree = ::agree)
     BackHandler(enabled = !consent.accepted) { exit() }
 }
 
@@ -938,13 +951,10 @@ private fun MainContent(
                                                     showScanAction = !settings.floatingBottomBar.value || shouldShowMainNavigationRail(settings),
                                                     scanEnabled = !lifeState.waterBusy && !lifeState.laundryBusy && !hui798State.busy && !hellobikeState.busy &&
                                                         lifeState.paymentLaunch == null && !hellobikeState.paymentInFlight,
-                                                    lifeLoginRequired = !lifeState.restoring && lifeState.connectedPhone.isBlank(),
                                                     lifeLoginExpired = pangguiConnection.status == LifeAccountStatus.Expired,
                                                     onLifeLogin = ::connectLifeAccount,
-                                                    hui798LoginRequired = !hui798State.restoring && !hui798State.connected,
                                                     hui798LoginExpired = hui798Connection.status == LifeAccountStatus.Expired,
                                                     onHui798Login = ::connectHui798Account,
-                                                    hellobikeLoginRequired = !hellobikeState.restoring && !hellobikeState.connected,
                                                     hellobikeLoginExpired = hellobikeConnection.status == LifeAccountStatus.Expired,
                                                     onHellobikeLogin = ::connectHellobikeAccount,
                                                     additionalLifeEntries = hui798State.sessions.filter { it.active }.map { session -> LifeDeviceStatusEntry(LifeFeature.Water,

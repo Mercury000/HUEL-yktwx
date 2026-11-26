@@ -19,12 +19,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
-import android.widget.Toast
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -48,7 +46,6 @@ import com.mercury.yktwx.PaymentUiState
 import com.mercury.yktwx.R
 import com.mercury.yktwx.data.PaymentCodeProblem
 import com.mercury.yktwx.data.life.LifeFeature
-import com.mercury.yktwx.data.life.LifeProvider
 import com.mercury.yktwx.data.life.WaterSession
 import com.mercury.yktwx.data.life.LaundrySession
 import com.mercury.yktwx.ui.components.*
@@ -63,14 +60,14 @@ import java.util.Locale
 @Composable
 fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: Dp, onRefresh: () -> Unit, onRecharge: () -> Unit = {}, rechargeLoading: Boolean = false, onUnlost: () -> Unit = {}, unlostLoading: Boolean = false, unlostEnabled: Boolean = true, isActive: Boolean = true, updateNotice: @Composable () -> Unit = {},
     onScan: () -> Unit = {}, scanEnabled: Boolean = true,
-    lifeLoginRequired: Boolean = false, onLifeLogin: () -> Unit = {},
+    onLifeLogin: () -> Unit = {},
     waterSessions: List<WaterSession> = emptyList(), laundrySessions: List<LaundrySession> = emptyList(),
     onOpenLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
     onDismissLifeSession: (LifeFeature, String) -> Unit = { _, _ -> },
     lifeNowMillis: () -> Long = System::currentTimeMillis,
-    hui798LoginRequired: Boolean = false, onHui798Login: () -> Unit = {},
+    onHui798Login: () -> Unit = {},
     additionalLifeEntries: List<LifeDeviceStatusEntry> = emptyList(),
-    hellobikeLoginRequired: Boolean = false, onHellobikeLogin: () -> Unit = {},
+    onHellobikeLogin: () -> Unit = {},
     lifeSessionErrors: Map<String, String> = emptyMap(),
     lifeSessionRoute: (LifeFeature, String) -> NavKey? = { _, _ -> null },
     lifeLoginExpired: Boolean = false, hui798LoginExpired: Boolean = false,
@@ -150,25 +147,13 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
-    val context = LocalContext.current
-    fun dismissLoginNotice(provider: LifeProvider) {
-        if (!isActive) return
-        settings.dismissLifeLoginNotice(provider)
-        Toast.makeText(context, "可在设置 → 生活服务账户中登录", Toast.LENGTH_SHORT).show()
-    }
-    val lifeStatus: @Composable () -> Unit = {
-        InlineLifeLoginNotice(lifeLoginExpired || lifeLoginRequired && !settings.pangguiLoginNoticeDismissed.value,
-            onLifeLogin, enabled = isActive,
-            text = if (lifeLoginExpired) "胖乖生活登录失效，请重新登录" else "登录胖乖生活，扫码接水、淋浴或洗衣",
-            onDismiss = if (lifeLoginExpired) null else ({ dismissLoginNotice(LifeProvider.Panggui) }))
-        InlineLifeLoginNotice(hui798LoginExpired || hui798LoginRequired && !settings.hui798LoginNoticeDismissed.value,
-            onHui798Login, enabled = isActive,
-            text = if (hui798LoginExpired) "慧生活798登录失效，请重新登录" else "登录慧生活798，扫码用水", tag = "hui798-login-notice",
-            onDismiss = if (hui798LoginExpired) null else ({ dismissLoginNotice(LifeProvider.Hui798) }))
-        InlineLifeLoginNotice(hellobikeLoginExpired || hellobikeLoginRequired && !settings.hellobikeLoginNoticeDismissed.value,
-            onHellobikeLogin, enabled = isActive,
-            text = if (hellobikeLoginExpired) "哈啰登录失效，请重新登录" else "登录哈啰，扫码骑行", tag = "hellobike-login-notice",
-            onDismiss = if (hellobikeLoginExpired) null else ({ dismissLoginNotice(LifeProvider.Hellobike) }))
+    val lifeLoginNotices: @Composable () -> Unit = {
+        InlineLifeLoginNotice(lifeLoginExpired, onLifeLogin, enabled = isActive,
+            text = "胖乖生活登录失效，请重新登录")
+        InlineLifeLoginNotice(hui798LoginExpired, onHui798Login, enabled = isActive,
+            text = "慧生活798登录失效，请重新登录", tag = "hui798-login-notice")
+        InlineLifeLoginNotice(hellobikeLoginExpired, onHellobikeLogin, enabled = isActive,
+            text = "哈啰登录失效，请重新登录", tag = "hellobike-login-notice")
     }
     val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
         additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
@@ -215,7 +200,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             item {
                                 Column {
                                     updateNotice()
-                                    lifeStatus()
+                                    lifeLoginNotices()
                                     ReadUnavailable(checkNotNull(displayedError), Modifier.fillParentMaxHeight())
                                 }
                             }
@@ -223,7 +208,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                         item {
                             PageReadNotice(networkError, 16.dp, errorMaxLines = Int.MAX_VALUE) {
                             updateNotice()
-                            lifeStatus()
+                            lifeLoginNotices()
                             FeedbackTransition(lost, bottomSpacing = 16.dp) {
                                 InlineError("当前卡片已挂失，可能无法支付，点击解挂",
                                     Modifier.testTag("payment-lost-notice").heightIn(min = 48.dp)
@@ -304,41 +289,7 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
                             }
                         }
                         item {
-                            Card(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
-                                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(AppIcons.CampusCard, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                        UpdatedText(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), numeric = false, fontSize = 11.sp,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                    }
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                                            // A fixed text baseline reserves the balance row's
-                                            // height even while only a small spinner is shown.
-                                            Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
-                                                color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
-                                            ReadContent((state.busy && state.account == null) to state.account?.balanceCents,
-                                                pending = { it.first }, contentKey = { it.first }) { (reading, balance) ->
-                                            if (reading) {
-                                                DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
-                                                    lineHeight = 38.sp, sample = "¥ 0.00")
-                                            } else {
-                                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                UpdatedText(
-                                                    balance?.let(::money) ?: "—", prefix = "¥ ", identity = state.account?.account,
-                                                    modifier = Modifier.weight(1f, fill = false),
-                                                    fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
-                                                )
-                                                BalanceReadIndicator(state.balanceLoading || state.accountLoading)
-                                                }
-                                            }
-                                            }
-                                        }
-                                        CompactButton("充值", onClick = onRecharge,
-                                            enabled = !rechargeLoading)
-                                    }
-                                }
-                            }
+                            PaymentBalanceCard(state, rechargeLoading, onRecharge)
                         }
                         if (UiPreview.enabled && state.preview) item { PreviewNotes.Payment(state.problem != null) }
                         }
@@ -356,6 +307,45 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
             enabled = isActive && !showEnlarged,
             nowMillis = lifeNowMillis, additionalEntries = additionalLifeEntries, sessionErrors = lifeSessionErrors,
             routeForSession = lifeSessionRoute)
+        }
+    }
+}
+
+@Composable
+internal fun PaymentBalanceCard(state: PaymentUiState, rechargeLoading: Boolean, onRecharge: () -> Unit,
+    modifier: Modifier = Modifier) {
+    Card(modifier.fillMaxWidth(), cornerRadius = 24.dp) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(AppIcons.CampusCard, null, Modifier.size(14.dp), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                UpdatedText(state.account?.name ?: "统一账户", Modifier.padding(start = 6.dp).weight(1f), numeric = false, fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    // A fixed text baseline reserves the balance row's
+                    // height even while only a small spinner is shown.
+                    Text("¥ 0.00", fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
+                        color = Color.Transparent, modifier = Modifier.clearAndSetSemantics {})
+                    ReadContent((state.busy && state.account == null) to state.account?.balanceCents,
+                        pending = { it.first }, contentKey = { it.first }) { (reading, balance) ->
+                        if (reading) {
+                            DashboardPlaceholder(30.sp, Modifier.fillMaxWidth(), fraction = .48f,
+                                lineHeight = 38.sp, sample = "¥ 0.00")
+                        } else {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                UpdatedText(
+                                    balance?.let(::money) ?: "—", prefix = "¥ ", identity = state.account?.account,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
+                                )
+                                BalanceReadIndicator(state.balanceLoading || state.accountLoading)
+                            }
+                        }
+                    }
+                }
+                CompactButton("充值", onClick = onRecharge, enabled = !rechargeLoading)
+            }
         }
     }
 }

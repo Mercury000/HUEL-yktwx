@@ -90,7 +90,7 @@ class LifeDeviceUiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
             val state by model.state.collectAsState()
             if (state.entryRequest == 0L) PaymentPage(PreviewData.paymentState(false), theme, 0.dp, {},
-                lifeLoginRequired = true, hui798LoginRequired = true, onScan = model::openUnifiedScan)
+                onScan = model::openUnifiedScan)
             else LifeDevicePage(state, theme, model, active = true, onBack = {})
             LifeDeviceLoginSheet(state, model, active = true)
         } } } }
@@ -139,7 +139,7 @@ class LifeDeviceUiTest {
                 AppTheme { Scaffold {
                     val state by model.state.collectAsState()
                     PaymentPage(PreviewData.paymentState(false), settings(), 0.dp, {},
-                        lifeLoginRequired = true, onLifeLogin = model::connectAccount, scanEnabled = false)
+                        lifeLoginExpired = true, onLifeLogin = model::connectAccount, scanEnabled = false)
                     LifeDeviceLoginSheet(state, model, active = true)
                 } }
             }

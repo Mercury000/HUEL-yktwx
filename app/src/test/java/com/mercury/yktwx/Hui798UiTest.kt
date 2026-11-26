@@ -91,7 +91,7 @@ class Hui798UiTest {
             AppTheme(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) { Scaffold {
                 val state by model.state.collectAsState()
                 PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
-                    hui798LoginRequired = true, onHui798Login = model::connectAccount, scanEnabled = false)
+                    hui798LoginExpired = true, onHui798Login = model::connectAccount, scanEnabled = false)
                 Hui798LoginSheet(state, model, active = true)
             } }
         } }
@@ -286,7 +286,7 @@ class Hui798UiTest {
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
-                    lifeLoginRequired = true, onScan = { scans++ },
+                    onScan = { scans++ },
                     onOpenLifeSession = { _, _ -> pangguiCallbacks++ }, onDismissLifeSession = { _, _ -> pangguiCallbacks++ },
                     additionalLifeEntries = if (!present) emptyList() else listOf(LifeDeviceStatusEntry(LifeFeature.Water,
                         if (complete) "已完成" else "用水中", "五号楼饮水机", "慧生活798", "hui798-session", complete,

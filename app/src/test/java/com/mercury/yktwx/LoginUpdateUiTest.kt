@@ -92,7 +92,7 @@ class LoginUpdateUiTest {
         }
     }
 
-    @Test fun consentGatesCachedNoticeAndCheckingWhileLoginFieldsSurviveItsDismissal() {
+    @Test fun consentGatesUpdatesAndTheOptionalNoticeStaysOnTheAccountPage() {
         val store = store().apply { cacheRelease(update.release) }
         val consent = consent()
         val settings = settings()
@@ -102,6 +102,8 @@ class LoginUpdateUiTest {
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
         assertEquals(0, checks)
+        compose.onNodeWithContentDescription("开始设置").performClick()
+        compose.onNodeWithTag("usage-consent-page").assertIsDisplayed()
         compose.onNodeWithText("上滑并阅读").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("usage-notice-body").performScrollToIndex(UsageNotice.paragraphs.lastIndex)
         compose.onNodeWithText("同意并继续").assertIsEnabled()
@@ -111,20 +113,26 @@ class LoginUpdateUiTest {
         compose.waitUntil(5_000) { consent.accepted && checks == 1 }
         compose.waitForIdle()
         assertTrue("No successful login is needed", payments.state.value.needsLogin)
-        compose.onNodeWithTag("app-update-notice").assertIsDisplayed()
+        val campus = compose.onNodeWithTag("oobe-campus-row")
+        val notice = compose.onNode(hasTestTag("app-update-notice") and hasAnyAncestor(hasTestTag("oobe-accounts")))
+        notice.assertIsDisplayed()
+        compose.onNodeWithTag("oobe-login-drawer").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
-        val notice = compose.onNodeWithTag("app-update-notice").fetchSemanticsNode().boundsInRoot
-        val initialGap = notice.top - compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot.bottom
-        assertTrue(notice.top >= compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot.bottom)
-        assertTrue(notice.bottom <= compose.onNodeWithText("学号 / 工号").fetchSemanticsNode().boundsInRoot.top)
+        val rowWithNotice = campus.getUnclippedBoundsInRoot()
+        assertTrue(notice.getUnclippedBoundsInRoot().bottom <= rowWithNotice.top)
         capture("login-update-light")
         compose.runOnIdle { settings.setTheme(2) }
         capture("login-update-dark")
         compose.runOnIdle { settings.setTheme(1) }
 
-        compose.onNodeWithText("学号 / 工号").performTextInput("202600000001")
-        compose.onNodeWithText("密码").performTextInput("fictional-password")
-        compose.onNodeWithTag("app-update-notice").performClick()
+        campus.performClick()
+        compose.onNodeWithTag("oobe-login-drawer").assertIsDisplayed()
+        compose.onNodeWithText("学号 / 工号").assertIsDisplayed()
+        compose.onNode(hasTestTag("app-update-notice") and hasAnyAncestor(hasTestTag("oobe-login-drawer")))
+            .assertDoesNotExist()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("oobe-login-drawer").assertDoesNotExist()
+        notice.performClick()
         compose.onNodeWithTag("app-update-dialog").assertIsDisplayed()
         compose.onNodeWithText("忽略").performClick()
         compose.onNodeWithTag("app-update-notice").assertIsDisplayed()
@@ -132,13 +140,30 @@ class LoginUpdateUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
-        compose.onNodeWithText("学号 / 工号").assertTextContains("202600000001")
-        compose.onNodeWithText("密码").assertTextContains("fictional-password")
-        val hiddenGap = compose.onNodeWithText("学号 / 工号").fetchSemanticsNode().boundsInRoot.top -
-            compose.onNodeWithText("河南财经政法大学").fetchSemanticsNode().boundsInRoot.bottom
-        assertEquals("Hidden notice must leave no extra space", initialGap, hiddenGap, 1f)
+        assertTrue(campus.getUnclippedBoundsInRoot().top < rowWithNotice.top)
         assertFalse("Dismissal is shared and persisted", store.canNotify(update.release!!.versionCode, System.currentTimeMillis()))
         assertEquals(1, checks)
+    }
+
+    @Test fun updateNoticeSlidesOutWithTheOobeAccountPageWithoutBeingDismissed() {
+        val consent = consent().apply { runBlocking { acceptForSetup() } }
+        val model = appUpdateViewModelFixture(compose.activity.application, store().apply { cacheRelease(update.release) }, { update })
+        content(model, consent, settings())
+        val notice = compose.onNodeWithTag("app-update-notice", useUnmergedTree = true)
+        notice.assertIsDisplayed().assertIsEnabled()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onNodeWithContentDescription("返回").performClick()
+            compose.mainClock.advanceTimeBy(80)
+            notice.assertIsDisplayed().assertIsNotEnabled()
+            compose.onNodeWithTag("dismiss-update-notice", useUnmergedTree = true).assertIsNotEnabled()
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.onNodeWithTag("usage-consent-page").assertIsDisplayed()
+        notice.assertDoesNotExist()
+        compose.onNodeWithText("继续").performClick()
+        notice.assertIsDisplayed().assertIsEnabled()
     }
 
     @Test fun failedLoginDoesNotCancelThePendingUpdateOrLoseRetryInformation() {
@@ -192,6 +217,7 @@ class LoginUpdateUiTest {
         assertNull(store.cachedRelease())
         compose.onNodeWithTag("app-update-notice").assertDoesNotExist()
         compose.onNodeWithTag("app-update-dialog").assertDoesNotExist()
+        compose.onNodeWithTag("usage-consent-page").assertDoesNotExist()
         compose.onNodeWithText("上滑并阅读").assertIsNotEnabled()
     }
 

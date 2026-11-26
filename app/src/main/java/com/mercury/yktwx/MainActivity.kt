@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
                 return@setContent
             }
             val agreed = preview || consent.accepted
-            LaunchedEffect(agreed, updateState.required) {
+            LaunchedEffect(agreed, !preview && consent.setupPending, updateState.required) {
                 initializePayment(preview)
                 modelsInitialized = true
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
@@ -105,9 +105,9 @@ class MainActivity : ComponentActivity() {
         if (preferences.state.value !is PreferencesLoadState.Ready) return true
         val state = updateViewModel.state.value
         if (!state.ready && state.loadFailure == null) return true
+        if (!preview && (!consent.accepted || consent.setupPending)) return false
         val payment = viewModel.state.value
         if (payment.restoringLogin) return true
-        if (!preview && !consent.accepted) return false
         if (payment.needsLogin || state.required) return false
         return !navigationViewModel.readyFor(payment.username.orEmpty(), payment.preview)
     }
@@ -115,7 +115,8 @@ class MainActivity : ComponentActivity() {
         viewModel.initialize(preview, previewLost = UiPreview.enabled && preview && UiPreview.lostRequested(intent))
     }
     private fun businessAllowed() = modelsInitialized && preferences.readyOrNull() != null &&
-        (preview || consent.accepted) && updateViewModel.state.value.ready && !updateViewModel.state.value.required
+        (preview || consent.accepted && !consent.setupPending) &&
+        updateViewModel.state.value.ready && !updateViewModel.state.value.required
     private fun startBusiness() {
         if (businessStarted || !businessAllowed()) return
         businessStarted = true

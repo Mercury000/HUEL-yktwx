@@ -20,6 +20,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import com.mercury.yktwx.data.life.*
 import com.mercury.yktwx.preview.PreviewData
 import com.mercury.yktwx.ui.*
+import com.mercury.yktwx.ui.nav.AppRoute
 import com.mercury.yktwx.ui.pages.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -29,13 +30,14 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import org.robolectric.shadows.ShadowToast
 import com.mercury.yktwx.analytics.AnalyticsFixtures
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureHttp
 import com.mercury.yktwx.data.fixtureLifeDeviceApi
 import com.mercury.yktwx.data.fixtureHui798Api
 import kotlinx.coroutines.Dispatchers
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import java.io.File
 import java.io.ByteArrayInputStream
@@ -117,25 +119,25 @@ class LifeAccountsUiTest {
         var showSettings by mutableStateOf(false)
         var login: LifeProvider? = null
         compose.setContent {
-            val pgState by pg.state.collectAsState()
-            val huiState by hui.state.collectAsState()
-            val bikeState by bike.state.collectAsState()
             val pgConnection by pg.accountConnection.collectAsState()
             val huiConnection by hui.accountConnection.collectAsState()
             val bikeConnection by bike.accountConnection.collectAsState()
             LaunchedEffect(Unit) { bike.initialize(preview = false); bike.environment(true) }
-            if (showSettings) SettingsFixture(listOf(
-                ManagedLifeAccount(LifeProvider.Panggui, pgConnection),
-                ManagedLifeAccount(LifeProvider.Hui798, huiConnection),
-                ManagedLifeAccount(LifeProvider.Hellobike, bikeConnection)), onLogin = { login = it })
-            else CompositionLocalProvider(LocalInspectionMode provides true) {
+            if (showSettings) {
+                val routes = remember { navBackStackOf(AppRoute.Settings) }
+                NavDisplay(routes) {
+                    entry<AppRoute.Settings> {
+                        SettingsFixture(listOf(
+                            ManagedLifeAccount(LifeProvider.Panggui, pgConnection),
+                            ManagedLifeAccount(LifeProvider.Hui798, huiConnection),
+                            ManagedLifeAccount(LifeProvider.Hellobike, bikeConnection)), onLogin = { login = it })
+                    }
+                }
+            } else CompositionLocalProvider(LocalInspectionMode provides true) {
                 AppTheme(ColorSchemeMode.Light) {
                     PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {},
-                        lifeLoginRequired = !pgState.restoring && pgState.connectedPhone.isBlank(),
                         lifeLoginExpired = pgConnection.status == LifeAccountStatus.Expired,
-                        hui798LoginRequired = !huiState.restoring && !huiState.connected,
                         hui798LoginExpired = huiConnection.status == LifeAccountStatus.Expired,
-                        hellobikeLoginRequired = !bikeState.restoring && !bikeState.connected,
                         hellobikeLoginExpired = bikeConnection.status == LifeAccountStatus.Expired,
                         onHellobikeLogin = { login = LifeProvider.Hellobike })
                 }
@@ -177,7 +179,6 @@ class LifeAccountsUiTest {
             AppTheme(ColorSchemeMode.Light) {
                 PaymentPage(PreviewData.paymentState(false).copy(code = null, account = null,
                     error = "付款码暂不可用", busy = false), settings, 0.dp, {},
-                    lifeLoginRequired = true, hui798LoginRequired = true, hellobikeLoginRequired = true,
                     lifeLoginExpired = expired, hui798LoginExpired = expired, hellobikeLoginExpired = expired,
                     onLifeLogin = { logins += LifeProvider.Panggui },
                     onHui798Login = { logins += LifeProvider.Hui798 },
@@ -200,24 +201,17 @@ class LifeAccountsUiTest {
         tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed() }
     }
 
-    @Test fun paymentDismissesOnlyChosenReminderAndKeepsSettingsLoginAvailable() {
+    @Test fun paymentDoesNotShowLoginBannersForUnconnectedAccounts() {
         val settings = settings()
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) {
             AppTheme(ColorSchemeMode.Light) {
-                PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {}, lifeLoginRequired = true, hui798LoginRequired = true)
+                PaymentPage(PreviewData.paymentState(false), settings, 0.dp, {})
             }
         } }
         compose.onNodeWithTag("payment-code-card").assertIsDisplayed()
-        compose.onNodeWithTag("life-login-notice-dismiss").performClick()
-        compose.waitForIdle()
-        assertTrue(settings.pangguiLoginNoticeDismissed.value)
-        assertFalse(settings.hui798LoginNoticeDismissed.value)
-        assertEquals("可在设置 → 生活服务账户中登录", ShadowToast.getTextOfLatestToast())
-        compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
-        compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
-        compose.onNodeWithTag("payment-code-card").assertIsDisplayed()
-        assertTrue(settings().pangguiLoginNoticeDismissed.value)
+        listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice").forEach {
+            compose.onNodeWithTag(it).assertDoesNotExist()
+        }
         capture("payment-light")
     }
 

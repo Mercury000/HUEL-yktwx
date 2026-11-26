@@ -137,9 +137,9 @@ private fun ConsentRow(accepted: Boolean, enabled: Boolean, onToggle: () -> Unit
 }
 
 @Composable
-private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
-    updateNotice: @Composable () -> Unit,
-    consentRow: (@Composable () -> Unit)? = null) {
+internal fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, agreed: Boolean, onInputEdited: (FormField) -> Unit,
+    updateNotice: @Composable () -> Unit = {},
+    consentRow: (@Composable () -> Unit)? = null, showHeading: Boolean = true) {
     var username by rememberSaveable { mutableStateOf(state.username) }
     // Never rememberSaveable the password: no plaintext in SavedState/Bundle.
     var password by remember { mutableStateOf("") }
@@ -159,8 +159,10 @@ private fun LoginForm(state: PaymentUiState, onLogin: (String, String) -> Unit, 
         }
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text("登录校园一卡通", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-        Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        if (showHeading) {
+            Text("登录校园一卡通", fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+            Text("河南财经政法大学", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
         Column(Modifier.fillMaxWidth()) {
             updateNotice()
             DigitTextField(value = username, onValueChange = { next ->

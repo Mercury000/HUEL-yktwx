@@ -724,12 +724,12 @@ class LifeDeviceStatusUiTest {
 
     @Test fun inlineLoginReminderSharesUpdateStyleAndDisappearsAfterConnection() {
         val settings = themeSettingsFixture(compose.activity.application).apply { setTheme(1) }
-        var loginRequired by mutableStateOf(true)
+        var loginExpired by mutableStateOf(true)
         var clicks = 0
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme {
             MainNavigationScaffold(settings, 0, {}) { padding ->
                 PaymentPage(PreviewData.paymentState(false), settings, padding.calculateBottomPadding() + 28.dp, {},
-                    lifeLoginRequired = loginRequired, onLifeLogin = { clicks++ },
+                    lifeLoginExpired = loginExpired, onLifeLogin = { clicks++ },
                     updateNotice = { InlineUpdateNotice(AppUpdateUiState(noticeVisible = true,
                         release = UpdateRelease(7, "1.3.0", "", "https://example.com/update")), {}, {}) })
             }
@@ -743,7 +743,7 @@ class LifeDeviceStatusUiTest {
         assertTrue(update.bottom < notice.top)
         compose.onNodeWithTag("life-login-notice").performClick(); assertEquals(1, clicks)
         capture("payment-inline-login")
-        compose.runOnIdle { loginRequired = false }
+        compose.runOnIdle { loginExpired = false }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("payment-scan-button").assertIsEnabled()

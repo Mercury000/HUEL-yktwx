@@ -6,6 +6,11 @@ SonyPods is licensed under GNU GPL v3; CaiXiaoTong is distributed under the same
 A complete GPL v3 copy is included in LICENSE. Provide corresponding source with
 any APK redistribution. No SonyPods original project files were modified.
 
+The first-run animations follow the visual behavior, timings and shader
+parameters of ReChronoRain/HyperCeiler's provision module at
+dec72e9f8a08a9a03cbbbfc833f0b37c3418cfef. The implementation uses Compose
+and Android RuntimeShader instead of the upstream activity and Folme code.
+
 Apache-2.0 components and adaptation references:
 - compose-miuix-ui/miuix, including blur, glass, material and icons
 - AndroidX / Jetpack Compose

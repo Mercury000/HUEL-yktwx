@@ -39,6 +39,7 @@ fun ThemeSettingsPage(
     navTransitionStyle: State<Int> = mutableStateOf(0),
     onNavTransitionStyleChange: (Int) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
+    preview: (@Composable () -> Unit)? = null,
 ) {
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
@@ -71,15 +72,16 @@ fun ThemeSettingsPage(
             end = 12.dp,
         ),
     ) {
+        if (preview != null) item { Box(Modifier.padding(bottom = 12.dp)) { preview() } }
         item {
             // Keep the existing empty space outside the card, while allowing a short
             // settings page to scroll beneath the header (the demo's About body does this too).
             Box {
                 // fillParentMaxHeight excludes LazyColumn content padding; add it back
                 // outside the sizing modifier so the body occupies the whole viewport.
-                Spacer(Modifier.padding(bottom = contentPadding.calculateTopPadding() +
+                if (preview == null) Spacer(Modifier.padding(bottom = contentPadding.calculateTopPadding() +
                     contentPadding.calculateBottomPadding() + 24.dp).fillParentMaxHeight())
-                Card {
+                Card(Modifier.testTag("theme-settings-card")) {
                     RestorableDropdownPreference(
                         title = stringResource(R.string.theme_mode_title),
                         items = themeOptions,
