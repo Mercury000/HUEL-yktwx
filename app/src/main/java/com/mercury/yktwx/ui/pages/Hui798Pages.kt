@@ -32,7 +32,6 @@ internal fun Hui798LoginSheet(state: Hui798UiState, model: Hui798ViewModel, acti
     LifeAccountLoginSheet(show, if (state.changingAccount) "更换慧生活798账户" else "登录慧生活798", "hui798-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
         val display = rememberWhileShown(show, state)
         val enabled = show && !display.loggingIn && !display.sendingCode
-        Text("使用慧生活798账号扫码用水", fontSize = 13.sp, color = DashboardPalette.muted)
         DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11, enabled = enabled,
             modifier = Modifier.fillMaxWidth().testTag("hui798-login-phone"),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))

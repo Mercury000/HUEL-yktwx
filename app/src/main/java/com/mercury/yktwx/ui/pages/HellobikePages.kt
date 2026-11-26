@@ -80,7 +80,6 @@ internal fun HellobikeLoginSheet(state: HellobikeUiState, model: HellobikeViewMo
                         TextButton("换一张", model::refreshSlider, enabled = enabled, modifier = Modifier.testTag("hellobike-slider-refresh"))
                     }
                 } else {
-                    Text("使用哈啰账号扫码骑行", fontSize = 13.sp, color = DashboardPalette.muted)
                     DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11, enabled = enabled,
                         modifier = Modifier.fillMaxWidth().testTag("hellobike-login-phone"),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))

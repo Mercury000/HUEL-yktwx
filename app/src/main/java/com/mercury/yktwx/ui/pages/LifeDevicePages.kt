@@ -63,7 +63,6 @@ internal fun LifeDeviceLoginSheet(state: LifeDevicesUiState, model: LifeDevicesV
     LifeAccountLoginSheet(show, if (state.changingAccount) "更换胖乖生活账户" else "登录胖乖生活", "life-login-sheet", { keyboard?.hide(); model.dismissLogin() }) {
         val display = rememberWhileShown(show, state)
         val enabled = show && !display.loggingIn && !display.sendingCode
-        Text("接水、淋浴与洗衣共用此账号", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         DigitTextField(display.phone, model::phoneChanged, label = "手机号", maxDigits = 11,
             enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("life-login-phone"),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next))
