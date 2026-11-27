@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.5](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.4...v1.5.5) (2026-11-27)
+
+
+### Features
+
+* **oobe:** 接入首次启动引导 ([a5430ba](https://github.com/Mercury000/HUEL-yktwx/commit/a5430baeda8b92e3cdb1c47f0a1e31dfc329387b))
+* **ui:** 接入 Miuix RC01 抽屉渐进模糊 ([9264017](https://github.com/Mercury000/HUEL-yktwx/commit/92640170f22689fff8745bde35b241e70abe1e44))
+
+
+### Bug Fixes
+
+* **life:** 修复哈啰开锁后误判骑行结束 ([6843084](https://github.com/Mercury000/HUEL-yktwx/commit/68430848e17734301c8aca902b290e91a77c562a))
+* **life:** 允许关闭生活服务登录失效横幅 ([696bbe6](https://github.com/Mercury000/HUEL-yktwx/commit/696bbe613dc6e82cda0743e8e625ad2c83c4e450))
+* **life:** 恢复哈啰骑行费查单与续付流程 ([9e284ed](https://github.com/Mercury000/HUEL-yktwx/commit/9e284edd3614d9b2132144687e8adb029bd0ed50))
+* **nav:** 防止生活会话首帧沿用旧状态 ([ba1e524](https://github.com/Mercury000/HUEL-yktwx/commit/ba1e5243cb454fe1d4f21091f4a2fc606d924dfe))
+* **ui:** 将默认导航样式更名为原版 ([abecf71](https://github.com/Mercury000/HUEL-yktwx/commit/abecf71c358ce9080abf9837355501144cefbe00))
+* **ui:** 恢复玻璃输入框默认标签色 ([e6eefd7](https://github.com/Mercury000/HUEL-yktwx/commit/e6eefd7687d87e20c3bc0be2a611692c2ac0691c))
+* **ui:** 移除哈啰页面和抽屉的外跳链接 ([de7a6bb](https://github.com/Mercury000/HUEL-yktwx/commit/de7a6bb5a9f96cfa654ee9630fbdbf1fbbbc9525))
+* **ui:** 移除生活服务登录抽屉的多余说明 ([c855ee5](https://github.com/Mercury000/HUEL-yktwx/commit/c855ee597e2d1f675530682d6120313167624d7c))
+
+
+### Miscellaneous Chores
+
+* release 1.5.5 ([3e7b672](https://github.com/Mercury000/HUEL-yktwx/commit/3e7b672ff7212b08951c8a6996105074c7f2c848))
+
 ## [1.5.4](https://github.com/Mercury000/HUEL-yktwx/compare/v1.5.3...v1.5.4) (2026-11-25)
 
 
