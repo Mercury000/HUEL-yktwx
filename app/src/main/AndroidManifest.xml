@@ -16,7 +16,6 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="alipays" />
         </intent>
-        <package android:name="com.jingyao.easybike" />
         <package android:name="com.unionpay" />
         <package android:name="com.unionpay.tsmservice" />
         <package android:name="com.unionpay.tsmservice.mi" />

@@ -597,8 +597,8 @@ class HellobikeUiTest {
         assertTrue("Product stays compact", bounds.height < 120 * compose.activity.resources.displayMetrics.density)
         assertTrue(compose.onNodeWithTag("hellobike-buy-month").fetchSemanticsNode().boundsInRoot.left > bounds.center.x)
         snapshot("account-compact-cards-light")
-        compose.onNodeWithTag("hellobike-product-rules-month").assertTextEquals(product.description).assertIsDisplayed()
-        compose.onNodeWithTag("hellobike-user-rules-my-card").assertTextEquals(card.description).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-product-rules-month", useUnmergedTree = true).assertTextEquals(product.description).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-user-rules-my-card", useUnmergedTree = true).assertTextEquals(card.description).assertIsDisplayed()
         compose.onNodeWithTag("hellobike-card-purchase-record").assertDoesNotExist()
         compose.runOnIdle { paymentShown = true }
         compose.mainClock.advanceTimeBy(1000)
@@ -619,7 +619,7 @@ class HellobikeUiTest {
         compose.runOnIdle { approved = false }
         compose.onNodeWithTag("hellobike-buy-month").assertDoesNotExist()
         compose.onNodeWithText("学生认证后可购买").assertIsDisplayed()
-        compose.onNodeWithText("前往哈啰").assertIsDisplayed()
+        compose.onNodeWithText("前往哈啰").assertDoesNotExist()
         compose.onNodeWithTag("hellobike-account-page").performScrollToIndex(0)
         snapshot("account-compact-empty-unapproved-light")
         compose.runOnIdle { dark = true }
@@ -807,6 +807,7 @@ class HellobikeUiTest {
         compose.onNodeWithTag("hellobike-payment-sheet").assertDoesNotExist()
         compose.onNodeWithTag("hellobike-primary-action").assertDoesNotExist()
         compose.onNodeWithText("连接失败，请检查网络后重试").assertExists()
+        compose.onNodeWithText("打开哈啰").assertDoesNotExist()
         val gate = CompletableDeferred<Unit>()
         compose.runOnIdle { queryGate = gate }
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))

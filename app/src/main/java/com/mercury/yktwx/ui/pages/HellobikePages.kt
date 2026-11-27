@@ -3,12 +3,8 @@ package com.mercury.yktwx.ui.pages
 import com.mercury.yktwx.ui.components.AppTextButton as TextButton
 import com.mercury.yktwx.ui.components.AppButton as Button
 import com.mercury.yktwx.ui.components.AppOverlayDialog as OverlayDialog
-import android.content.Context
-import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.SystemClock
-import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -26,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -98,7 +93,6 @@ internal fun HellobikeLoginSheet(state: HellobikeUiState, model: HellobikeViewMo
                         }
                     }
                 }
-                if (display.loginOfficialRequired && display.loginError != null) OfficialHellobikeLink(enabled = enabled)
             }
         }
     }
@@ -307,7 +301,6 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
                         identity = model.restorationOwner to (display.selectedSessionId ?: display.scannedBikeNo),
                         retryFeedback = retryFeedback, showProgress = false)
                 }
-                if (display.officialRequired) item { OfficialHellobikeLink(enabled = interactive) }
             }
         }
     }
@@ -342,7 +335,6 @@ internal fun HellobikeDevicePage(state: HellobikeUiState, settings: ThemeSetting
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("扫描哈啰普通单车二维码后，会按官方规则直接开锁；官方要求确认时才显示确认开锁。请在车辆旁扫码并留意锁具。骑行中支持的车辆可临时锁车，锁车期间继续计费，时限结束后自动开锁。骑行中可从付款页状态卡返回；离开页面不会还车。停好车辆后点击还车，按哈啰返回的要求决定是否需要再次确认，并留意锁具是否关闭。骑行结束后自动核对费用，支持平台返回的余额、支付宝和普通银联。需要实名认证、蓝牙、异常停车或其他支付方式时，请在哈啰处理。",
                 fontSize = 13.sp, lineHeight = 22.sp, color = DashboardPalette.muted)
-            OfficialHellobikeLink(enabled = currentActive && help)
             Button({ help = false }, Modifier.fillMaxWidth(), enabled = currentActive && help, colors = ButtonDefaults.buttonColorsPrimary()) { Text("知道了") }
         }
     }
@@ -358,7 +350,6 @@ private data class HellobikePaymentResultDisplay(val phase: RechargePhase, val l
 private fun HellobikeRecoveryNotice(model: HellobikeViewModel, enabled: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LifeDeviceNoticeCard("请核对原订单", "本机的部分骑行记录无法恢复。请在哈啰核对未结束的骑行和待付费用，再继续使用。", "hellobike-recovery-notice")
-        OfficialHellobikeLink(enabled)
         TextButton("已在哈啰核对", model::acknowledgeRecovery, enabled = enabled,
             modifier = Modifier.fillMaxWidth().testTag("hellobike-recovery-acknowledge"))
     }
@@ -408,21 +399,5 @@ internal fun HellobikePaymentSheet(show: Boolean, state: HellobikeUiState, model
                 },
                 modifier = Modifier.testTag("hellobike-pay-submit"), preserveError = true, onCancel = model::dismissPayment)
         }
-        if (currentState.officialRequired || shownPage == HellobikePaymentPage.Result && currentState.paymentFeedback?.phase == RechargePhase.TimedOut ||
-            !currentState.paymentLoading && shownPage == HellobikePaymentPage.Methods &&
-            currentState.payOptions.none { it.channel.available == true }) OfficialHellobikeLink(enabled = enabled)
     }
-}
-
-@Composable
-internal fun OfficialHellobikeLink(enabled: Boolean, color: androidx.compose.ui.graphics.Color = DashboardPalette.muted, label: String = "打开哈啰") {
-    val context = LocalContext.current
-    DashboardLink(label, { openHellobike(context) }, enabled = enabled, arrow = false,
-        modifier = Modifier.testTag("hellobike-official"), color = color)
-}
-private fun openHellobike(context: Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage("com.jingyao.easybike")
-        ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://m.hellobike.com/AppHelloBikeMainH5/latest/index.html"))
-    try { context.startActivity(intent) }
-    catch (_: Exception) { Toast.makeText(context, "请打开哈啰核对本次订单", Toast.LENGTH_SHORT).show() }
 }

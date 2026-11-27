@@ -153,7 +153,7 @@ internal fun HellobikeAccountContent(modifier: Modifier, padding: PaddingValues,
                             AccountCardMode.Cards -> shown.products.forEach { product -> key(product.key) {
                                 HellobikeProductCard(product, enabled && current, { model.cards.choose(product.key) })
                             } }
-                            AccountCardMode.Auth -> HellobikeStudentNotice(shown, enabled && current)
+                            AccountCardMode.Auth -> HellobikeStudentNotice(shown)
                             else -> Unit
                         }
                         if (mode == AccountCardMode.Error || mode == AccountCardMode.Cards)
@@ -248,15 +248,11 @@ private fun AccountSectionVisibility(visible: Boolean, content: @Composable () -
 }
 
 @Composable
-private fun HellobikeStudentNotice(state: HellobikeCardsState, enabled: Boolean) {
+private fun HellobikeStudentNotice(state: HellobikeCardsState) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("hellobike-campus-auth-notice"), cornerRadius = 16.dp) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(when { state.auditError != null -> "认证状态暂未确认"; state.audit?.authState == 1 -> "等待学生认证审核"; else -> "学生认证后可购买" }, fontSize = 14.sp)
-                if (state.auditError != null) Text(state.auditError, fontSize = 12.sp, lineHeight = 18.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            }
-            OfficialHellobikeLink(enabled, color = MiuixTheme.colorScheme.primary, label = "前往哈啰")
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(when { state.auditError != null -> "认证状态暂未确认"; state.audit?.authState == 1 -> "等待学生认证审核"; else -> "学生认证后可购买" }, fontSize = 14.sp)
+            if (state.auditError != null) Text(state.auditError, fontSize = 12.sp, lineHeight = 18.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
     }
 }
@@ -339,10 +335,9 @@ private fun HellobikeUserCardContent(card: HellobikeUserCard, enabled: Boolean, 
                         card.remainDay?.let { Text("剩余 $it 天", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                     }
                 }
-                if (card.renewable) {
-                    if (card.businessType == 1) CompactButton("续费", onRenew,
+                if (card.renewable && card.businessType == 1) {
+                    CompactButton("续费", onRenew,
                         Modifier.widthIn(min = 70.dp).testTag("hellobike-renew-${card.guid}"), enabled = enabled)
-                    else OfficialHellobikeLink(enabled, label = "续费")
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
