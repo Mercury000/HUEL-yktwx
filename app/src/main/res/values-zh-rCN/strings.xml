@@ -12,7 +12,7 @@
     <string name="floating_bottom_bar">悬浮导航</string>
     <string name="blur_bottom_bar">导航模糊</string>
     <string name="floating_bottom_bar_style">导航样式</string>
-    <string name="floating_bottom_bar_style_default">默认</string>
+    <string name="floating_bottom_bar_style_default">原版</string>
     <string name="floating_bottom_bar_style_ios">iOS</string>
     <string name="floating_bottom_bar_style_glass">OS4</string>
     <string name="glass_style">玻璃风格</string>

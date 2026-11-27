@@ -12,7 +12,7 @@
     <string name="floating_bottom_bar">Floating Navigation</string>
     <string name="blur_bottom_bar">Navigation Blur</string>
     <string name="floating_bottom_bar_style">Navigation Style</string>
-    <string name="floating_bottom_bar_style_default">Default</string>
+    <string name="floating_bottom_bar_style_default">Original</string>
     <string name="floating_bottom_bar_style_ios">iOS</string>
     <string name="floating_bottom_bar_style_glass">OS4</string>
     <string name="glass_style">Glass style</string>
