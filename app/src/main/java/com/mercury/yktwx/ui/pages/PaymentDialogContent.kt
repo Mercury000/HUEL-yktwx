@@ -370,10 +370,11 @@ internal fun PaymentResultContent(
             textAlign = TextAlign.Center,
         )
         AnimatedInlineError(detail.takeIf { queryError }, topSpacing = 16.dp, preserveMessage = preserveError)
-        if (!queryError && !busy && !failed && phase != RechargePhase.Paid && detail != null) {
+        val resultNote = detail.takeUnless { phase == RechargePhase.Paid }
+        if (!queryError && !busy && !failed && resultNote != null) {
             Spacer(Modifier.height(12.dp))
             Text(
-                detail,
+                resultNote,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 13.sp, textAlign = TextAlign.Center,
             )

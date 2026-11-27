@@ -130,6 +130,7 @@ internal open class FakeHellobikeService : HellobikeService {
         if (!holdTemporary) reading = HellobikeRideReading.Ride(session.rideGuid, session.bikeNo, if (unlock) 0 else 1,
             userGuid = account.userGuid, temporaryLockSupported = true)
     }
+    override suspend fun paymentTradeStatus(account: HellobikeAccount, session: HellobikeSession) = HellobikeTradeStatus.Ready
     override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail {
         detailCalls++; detailFailure?.let { throw it }; return detail.copy(rideGuid = session.rideGuid)
     }

@@ -90,12 +90,16 @@ data class HellobikeOrderReading(val rideStatus: Int?, val subStatus: Int?, val 
 @Serializable enum class HellobikePhase { Opening, Riding, Closing, Ended }
 @Serializable enum class HellobikeTemporaryAction { Lock, Unlock }
 @Serializable enum class HellobikeSettlement { Unknown, Pending, Paying, Paid, Closed }
+@Serializable enum class HellobikePaymentExit { Cancelled, LaunchFailed, Failed }
+enum class HellobikeTradeStatus { Preparing, Ready, Unknown }
 @Serializable data class HellobikePayOrder(val guid: String, val amount: String, val orderId: String = "", val businessType: String = "1") {
     override fun toString() = "HellobikePayOrder([redacted])"
 }
 @Serializable data class HellobikePaymentAttempt(val orders: List<HellobikePayOrder>, val channel: String,
     val sentAtMillis: Long, val extension: JsonObject = JsonObject(emptyMap()), val confirmedGuids: Set<String> = emptySet(),
-    val displayAmount: String? = null) {
+    val displayAmount: String? = null, val retryableExit: HellobikePaymentExit? = null,
+    val billedOrders: List<HellobikePayOrder>? = null) {
+    val allOrdersConfirmed: Boolean get() = orders.isNotEmpty() && orders.all { it.guid in confirmedGuids }
     override fun toString() = "HellobikePaymentAttempt([redacted])"
 }
 @Serializable data class HellobikeSession(
@@ -110,6 +114,7 @@ data class HellobikeOrderReading(val rideStatus: Int?, val subStatus: Int?, val 
     val temporarilyLocked: Boolean = false, val temporaryLockSupported: Boolean = false,
     val temporaryAction: HellobikeTemporaryAction? = null,
     val unlockConfirmed: Boolean = false,
+    val tradeId: String = "",
 ) {
     val riding: Boolean get() = phase != HellobikePhase.Ended
     val settled: Boolean get() = phase == HellobikePhase.Ended && settlement == HellobikeSettlement.Paid
@@ -127,7 +132,7 @@ data class HellobikeOrderReading(val rideStatus: Int?, val subStatus: Int?, val 
             HellobikeSettlement.Closed -> "订单已关闭"
             HellobikeSettlement.Pending -> "待支付"
             HellobikeSettlement.Paying -> "支付结果待确认"
-            HellobikeSettlement.Unknown -> "费用待确认"
+            HellobikeSettlement.Unknown -> if (paymentAttempt?.allOrdersConfirmed == true) "付款已确认，账单待同步" else "费用待确认"
         }
     }
     override fun toString() = "HellobikeSession([redacted])"
@@ -146,7 +151,7 @@ data class HellobikePayComponent(val channel: String, val status: String, val or
 
 class HellobikeException(message: String, val loginExpired: Boolean = false, val rejected: Boolean = false,
     val officialRequired: Boolean = false, val storageFailure: Boolean = false,
-    val rideMayHaveStarted: Boolean = false) : Exception(message)
+    val rideMayHaveStarted: Boolean = false, val paymentQuoteChanged: Boolean = false) : Exception(message)
 internal class HellobikeLocationPermissionRequired : Exception()
 
 interface HellobikeLocationService { suspend fun current(): HellobikePosition }
@@ -175,6 +180,7 @@ interface HellobikeService : HellobikeCardService {
         region: HellobikeRegion): Int = (ridingInfo(account) as? HellobikeRideReading.Ride)?.takeIf {
             it.rideGuid == session.rideGuid && it.bikeNo == session.bikeNo && (it.userGuid == null || it.userGuid == account.userGuid)
         }?.status ?: throw HellobikeException("车辆状态尚未确认，请重新查询")
+    suspend fun paymentTradeStatus(account: HellobikeAccount, session: HellobikeSession): HellobikeTradeStatus
     suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail
     suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail): List<HellobikePayOption>
     suspend fun pay(account: HellobikeAccount, session: HellobikeSession, orders: List<HellobikePayOrder>, option: HellobikePayOption): HellobikePayComponent

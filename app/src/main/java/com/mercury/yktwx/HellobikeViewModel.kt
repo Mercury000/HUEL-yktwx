@@ -33,6 +33,7 @@ data class HellobikeUiState(
     val temporaryLockProof: HellobikeTemporaryLockProof? = null, val checkingTemporaryLock: Boolean = false,
     val paymentVisible: Boolean = false, val paymentLoading: Boolean = false, val payDetail: HellobikePayDetail? = null,
     val payOptions: List<HellobikePayOption> = emptyList(), val paymentFeedback: LifePaymentFeedback? = null,
+    val paymentNotice: String? = null,
     val paymentLaunch: LifePaymentLaunch? = null, val paymentInFlight: Boolean = false,
     val paymentMethod: String? = null,
     val paymentRestorePending: Boolean = false,
@@ -40,7 +41,14 @@ data class HellobikeUiState(
 ) {
     val connected: Boolean get() = connectedPhone.isNotBlank()
     val session: HellobikeSession? get() = sessions.firstOrNull { it.sessionId == selectedSessionId }
+    val canShowPayment: Boolean get() = session?.let { ride ->
+        ride.phase == HellobikePhase.Ended && ride.settlement == HellobikeSettlement.Pending && ride.paymentAttempt == null &&
+            payDetail?.let { it.rideGuid == ride.rideGuid && it.payable } == true
+    } == true
 }
+
+private val HellobikePayDetail.payable: Boolean
+    get() = settlement == HellobikeSettlement.Pending && unsupported == null && orders.isNotEmpty()
 
 /** Platform state stays separate; accounts, transport, payment bridges and presentation use shared app facilities. */
 @HiltViewModel
@@ -113,6 +121,7 @@ class HellobikeViewModel internal constructor(
     private data class LocationPermissionOwner(val account: HellobikeAccount, val selection: Long, val bikeNo: String?, val sessionId: String?)
     private var locationPermissionOwner: LocationPermissionOwner? = null
     private val persistence = Mutex()
+    private val paymentQueries = Mutex()
     private val pendingScanRecords = mutableMapOf<String, Pair<HellobikeAccount, HellobikeSession>>()
     private val errors = mutableMapOf<String, String>()
     private var restoreTask: Job? = null
@@ -380,7 +389,7 @@ class HellobikeViewModel internal constructor(
                                 selectedSessionId = it.selectedSessionId?.takeIf { id -> saved.sessions.any { session -> session.sessionId == id } },
                                 precheck = null, closeProof = null, error = null, officialRequired = false, accountError = null,
                                 paymentLaunch = null, paymentInFlight = false, paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList(),
-                                paymentRestorePending = false, paymentMethod = null,
+                                paymentRestorePending = false, paymentMethod = null, paymentNotice = null,
                                 recoveryRequired = saved.recoveryRequired) }
                             cards.bind(saved.cardPurchases[next.userGuid])
                             verifier.verified(next.maskedPhone)
@@ -440,7 +449,8 @@ class HellobikeViewModel internal constructor(
         deviceLocationAction = null
         mutable.update { it.copy(selectedSessionId = id, scannedBikeNo = null, precheck = null, closeProof = null,
             temporaryLockProof = null, checkingTemporaryLock = false,
-            loadingDevice = false, locationPermissionRequired = false, error = errors[id], paymentVisible = false, paymentFeedback = null, payDetail = null, payOptions = emptyList()) }
+            loadingDevice = false, locationPermissionRequired = false, error = errors[id], paymentVisible = false, paymentFeedback = null,
+            paymentNotice = null, payDetail = null, payOptions = emptyList()) }
         if (visible && foreground) refreshState()
         return true
     }
@@ -730,7 +740,7 @@ class HellobikeViewModel internal constructor(
     }
     private fun canCommand(): Boolean = foreground && visible && !mutable.value.restoring && !mutable.value.accountBusy &&
         !mutable.value.busy && !mutable.value.loadingDevice && !mutable.value.locating && !mutable.value.loggingIn && !mutable.value.paymentInFlight && !cards.occupied && account != null
-    private fun runCommand(owner: HellobikeAccount, requirePage: Boolean = true, block: suspend () -> Unit) {
+    private fun runCommand(owner: HellobikeAccount, requirePage: Boolean = true, paymentSessionId: String? = null, block: suspend () -> Unit) {
         val value = mutable.value
         if ((!canCommand() && requirePage) || !foreground || value.restoring || value.busy || value.accountBusy ||
             value.loggingIn || value.paymentInFlight || cards.occupied || commandTask?.isActive == true) return
@@ -740,11 +750,17 @@ class HellobikeViewModel internal constructor(
         commandTask = viewModelScope.launch {
             try { previousReads.joinAll(); ensureOwner(owner); if (requirePage) ensureCommandVisible(); block() }
             catch (e: CancellationException) {
-                if (account == owner && !mutable.value.accountBusy) markUncertain(owner)
+                if (account == owner && !mutable.value.accountBusy) {
+                    paymentSessionId?.let { paymentQueryIncomplete(it, "付款结果尚未确认") }
+                    markUncertain(owner)
+                }
                 throw e
             }
             catch (e: Exception) {
-                if (account == owner) { markUncertain(owner); report(e, mutable.value.selectedSessionId); expired(e, owner) }
+                if (account == owner) {
+                    paymentSessionId?.let { paymentQueryIncomplete(it, failure(e)) }
+                    markUncertain(owner); report(e, paymentSessionId ?: mutable.value.selectedSessionId); expired(e, owner)
+                }
             } finally {
                 commandTask = null
                 if (account == owner) mutable.update { it.copy(busy = false, loadingDevice = false, paymentLoading = false) }
@@ -757,8 +773,6 @@ class HellobikeViewModel internal constructor(
         if (session.phase in setOf(HellobikePhase.Opening, HellobikePhase.Closing) || session.temporaryAction != null) {
             try { saveSession(owner, session.copy(uncertain = true)) } catch (_: Exception) { /* The pre-command record remains recoverable. */ }
         }
-        if (session.paymentAttempt != null && !session.settled) feedback(session.sessionId, RechargePhase.Checking,
-            detail = "支付结果尚未确认，请查询原订单")
     }
     private fun ensureCommandVisible() {
         if (!foreground || !visible) throw CancellationException("Device page left before command submission")
@@ -831,6 +845,7 @@ class HellobikeViewModel internal constructor(
             }
             val existing = sameRide ?: mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId }
             val committed = when {
+                existing?.dismissible == true && !session.dismissible -> existing
                 existing?.phase == HellobikePhase.Ended && session.phase != HellobikePhase.Ended -> existing
                 sameRide == null -> session
                 sameRide.phase != HellobikePhase.Opening -> sameRide
@@ -913,8 +928,14 @@ class HellobikeViewModel internal constructor(
         val before = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         if (before.phase == HellobikePhase.Opening) { readOpening(owner, before); return }
         if (before.phase == HellobikePhase.Ended) {
-            if (before.paymentAttempt != null && !before.dismissible && !mutable.value.paymentInFlight) queryPayment(owner, id)
-            else readSettlement(owner, id)
+            if (before.paymentAttempt != null && !before.dismissible) {
+                if (!mutable.value.paymentInFlight) queryPayment(owner, id)
+            } else {
+                val detail = readSettlement(owner, id)
+                val selected = mutable.value
+                if (detail?.payable == true && visible && selected.paymentVisible &&
+                    selected.selectedSessionId == id && selected.payOptions.isEmpty()) loadPaymentOptions(owner, before, detail)
+            }
             return
         }
         // Query the submitted order even while ride discovery still returns a cached active ride.
@@ -1013,26 +1034,58 @@ class HellobikeViewModel internal constructor(
             sessionErrors = errors.toMap(), error = if (it.selectedSessionId == session.sessionId) null else it.error, officialRequired = false) }
         readSettlement(owner, session.sessionId)
     }
-    private suspend fun readSettlement(owner: HellobikeAccount, id: String): HellobikePayDetail? {
+    private suspend fun readSettlement(owner: HellobikeAccount, id: String, checkTrade: Boolean = true,
+        waitForBill: Boolean = false): HellobikePayDetail? {
         val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return null
         if (session.phase != HellobikePhase.Ended || session.dismissible) return null
+        val knownBill = session.tradeId.isNotBlank() && session.settlement == HellobikeSettlement.Pending
+        if (checkTrade && !knownBill && !awaitPaymentBill(owner, session, waitForBill)) return null
         val detail = api.payDetail(owner, session); ensureOwner(owner)
-        val attempt = session.paymentAttempt
+        if (detail.rideGuid != session.rideGuid) throw HellobikeException("费用记录与本笔骑行不一致")
+        val current = mutable.value.sessions.firstOrNull { it.sessionId == id && !it.dismissible } ?: return null
+        if (current.paymentAttempt != session.paymentAttempt || current.tradeId != session.tradeId) return null
+        val attempt = current.paymentAttempt
         val settlement = when {
             detail.settlement in setOf(HellobikeSettlement.Paid, HellobikeSettlement.Closed) -> detail.settlement
-            attempt != null && attempt.orders.firstOrNull()?.guid in attempt.confirmedGuids -> HellobikeSettlement.Unknown
+            attempt?.confirmedGuids?.isNotEmpty() == true -> HellobikeSettlement.Unknown
             attempt != null -> HellobikeSettlement.Paying
             else -> detail.settlement
         }
-        saveSession(owner, session.copy(settlement = settlement, amount = detail.amount ?: session.amount))
+        val saved = saveSession(owner, current.copy(settlement = settlement, amount = detail.amount ?: current.amount,
+            tradeId = detail.tradeId.ifBlank { current.tradeId }))
+        if (saved.settlement != settlement) return null
         if (detail.unsupported != null) errors[id] = detail.unsupported
         else if (detail.settlement != HellobikeSettlement.Unknown) errors.remove(id)
         mutable.update { it.copy(sessionErrors = errors.toMap(), error = if (it.selectedSessionId == id) errors[id] else it.error) }
         if (detail.settlement == HellobikeSettlement.Paid) feedback(id, RechargePhase.Paid)
         if (detail.settlement == HellobikeSettlement.Closed) feedback(id, RechargePhase.Failed, detail = "订单已关闭，请在哈啰查看费用记录")
         if (mutable.value.selectedSessionId == id) mutable.update { it.copy(payDetail = detail,
+            payOptions = if (it.payDetail == detail) it.payOptions else emptyList(),
+            paymentVisible = it.paymentVisible && (!saved.dismissible || saved.settled && attempt != null),
+            paymentNotice = it.paymentNotice.takeUnless { saved.dismissible },
             officialRequired = detail.unsupported != null || detail.settlement == HellobikeSettlement.Closed) }
         return detail
+    }
+    private suspend fun awaitPaymentBill(owner: HellobikeAccount, session: HellobikeSession, waitForBill: Boolean): Boolean {
+        val reads = if (waitForBill) 20 else 1
+        repeat(reads) { index ->
+            if (index > 0) {
+                delay(2000)
+                if (!visible || !mutable.value.paymentVisible || mutable.value.selectedSessionId != session.sessionId) return false
+            }
+            ensureOwner(owner)
+            val status = api.paymentTradeStatus(owner, session); ensureOwner(owner)
+            if (status == HellobikeTradeStatus.Ready) return true
+            if (index == 0) {
+                val current = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId && !it.dismissible }
+                if (current == null || current.tradeId != session.tradeId || current.paymentAttempt != session.paymentAttempt) return false
+                if (current.paymentAttempt == null && current.settlement != HellobikeSettlement.Unknown)
+                    saveSession(owner, current.copy(settlement = HellobikeSettlement.Unknown))
+                if (mutable.value.selectedSessionId == session.sessionId) mutable.update { it.copy(payDetail = null, payOptions = emptyList()) }
+            }
+            if (status != HellobikeTradeStatus.Preparing) throw HellobikeException("暂未取得骑行费用状态")
+        }
+        return false
     }
     private suspend fun pollCommand(owner: HellobikeAccount, id: String) {
         val opening = mutable.value.sessions.firstOrNull { it.sessionId == id }?.phase == HellobikePhase.Opening
@@ -1091,7 +1144,7 @@ class HellobikeViewModel internal constructor(
             mutable.value.sessions.none { !it.dismissible }) return
         pollTask = viewModelScope.launch {
             if (wait) delay(6000)
-            while (isActive && foreground && account == owner) {
+            while (isActive && foreground && account == owner && mutable.value.sessions.any { !it.dismissible }) {
                 if (!mutable.value.busy && !mutable.value.loadingDevice && !mutable.value.paymentInFlight) {
                     for (session in mutable.value.sessions.filterNot { it.dismissible }) {
                         try { readSession(owner, session.sessionId) }
@@ -1106,46 +1159,85 @@ class HellobikeViewModel internal constructor(
     fun showPayment() {
         val owner = account ?: return; val session = mutable.value.session ?: return
         if (!canCommand() || session.phase != HellobikePhase.Ended || session.dismissible) return
-        mutable.update { it.copy(paymentVisible = true, paymentLoading = true, paymentFeedback = null, payOptions = emptyList(), error = null) }
-        runCommand(owner) {
-            if (session.paymentAttempt != null) { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId); return@runCommand }
-            val detail = readSettlement(owner, session.sessionId) ?: return@runCommand
-            if (detail.settlement == HellobikeSettlement.Paid) { feedback(session.sessionId, RechargePhase.Paid); return@runCommand }
+        mutable.update { it.copy(paymentVisible = true, paymentLoading = true, payOptions = emptyList(), error = null,
+            paymentFeedback = session.paymentAttempt?.let { LifePaymentFeedback(session.sessionId, RechargePhase.Checking, loading = true) }) }
+        runCommand(owner, paymentSessionId = session.sessionId) {
+            if (mutable.value.session?.paymentAttempt != null) { queryPayment(owner, session.sessionId); return@runCommand }
+            mutable.update { it.copy(paymentFeedback = null) }
+            val checkout = mutable.value
+            val detail = (if (checkout.canShowPayment) checkout.payDetail else readSettlement(owner, session.sessionId, waitForBill = true))
+                ?: return@runCommand
             if (detail.unsupported != null) throw HellobikeException(detail.unsupported, officialRequired = true)
+            if (!detail.payable) return@runCommand
             val current = mutable.value.session ?: return@runCommand
-            val options = api.payChannels(owner, current, detail); ensureOwner(owner)
-            mutable.update { it.copy(payDetail = detail, payOptions = options, paymentLoading = false) }
+            loadPaymentOptions(owner, current, detail)
         }
     }
+    private suspend fun loadPaymentOptions(owner: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail) {
+        val options = api.payChannels(owner, session, detail); ensureOwner(owner)
+        val payable = options.filter { it.channel.available == true && it.channel.needsOpen != true }
+        if (mutable.value.selectedSessionId == session.sessionId && mutable.value.paymentVisible && mutable.value.payDetail == detail &&
+            mutable.value.session?.settlement == HellobikeSettlement.Pending) mutable.update { it.copy(payDetail = detail,
+            payOptions = options, paymentLoading = false,
+            paymentMethod = it.paymentMethod?.takeIf { method -> payable.any { option -> option.selectionId == method } }
+                ?: (payable.firstOrNull { option -> option.defaultSelected } ?: payable.firstOrNull())?.selectionId) }
+    }
     fun dismissPayment() { pendingOverlay = null; mutable.update { it.copy(paymentVisible = false, paymentRestorePending = false) } }
+    fun continueCancelledPayment() {
+        val checkout = mutable.value
+        if (!canCommand() || !checkout.paymentVisible || !checkout.canShowPayment || checkout.paymentFeedback?.cancelled != true) return
+        mutable.update { it.copy(paymentFeedback = null) }
+    }
     fun pay(channel: String) {
         val owner = account ?: return; val session = mutable.value.session ?: return; val detail = mutable.value.payDetail ?: return
         val option = mutable.value.payOptions.singleOrNull { it.selectionId == channel } ?: return
-        if (!canCommand() || !mutable.value.paymentVisible || session.phase != HellobikePhase.Ended || session.dismissible ||
-            session.paymentAttempt != null || option.channel.available != true || option.channel.needsOpen == true) return
+        if (!canCommand() || !mutable.value.paymentVisible || mutable.value.paymentFeedback != null ||
+            session.phase != HellobikePhase.Ended || session.dismissible ||
+            session.settlement != HellobikeSettlement.Pending || session.paymentAttempt != null ||
+            detail.settlement != HellobikeSettlement.Pending || detail.orders.isEmpty() ||
+            option.channel.available != true || option.channel.needsOpen == true) return
         val analyticsAttempt = analytics.begin()
-        runCommand(owner) {
-            // Official cashier submits the displayed request and selected channel.
-            // Eligibility and price changes are decided by the payment response.
-            val selected = option
-            val orders = if (detail.orders.size == 1) listOf(detail.orders.single().copy(amount = selected.amount)) else detail.orders
-            val attempt = HellobikePaymentAttempt(orders, selected.channel.method, now(), selected.extension, displayAmount = selected.amount)
+        runCommand(owner, paymentSessionId = session.sessionId) {
+            val latestBill = readSettlement(owner, session.sessionId, checkTrade = false) ?: return@runCommand
             val current = mutable.value.session ?: return@runCommand
+            if (current.sessionId != session.sessionId || current.settlement != HellobikeSettlement.Pending || current.paymentAttempt != null ||
+                !mutable.value.paymentVisible || latestBill.unsupported != null) return@runCommand
+            if (latestBill != detail) {
+                mutable.update { it.copy(paymentNotice = "费用已更新，请确认后付款", paymentLoading = true) }
+                loadPaymentOptions(owner, current, latestBill)
+                return@runCommand
+            }
+            val orders = latestBill.orders
+            val attempt = HellobikePaymentAttempt(orders, option.channel.method, now(), option.extension,
+                displayAmount = option.amount, billedOrders = orders)
             saveSession(owner, current.copy(settlement = HellobikeSettlement.Paying, paymentAttempt = attempt))
+            mutable.update { it.copy(payOptions = emptyList(), paymentNotice = null) }
             feedback(session.sessionId, RechargePhase.Creating, loading = true); ensureOwner(owner); ensureCommandVisible()
             analytics.submitted(analyticsAttempt, AnalyticsFeature.HellobikePayment)
-            val component = try { api.pay(owner, current, orders, selected) }
+            val component = try { api.pay(owner, current, orders, option) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikePayment, AnalyticsError.from(e)); throw e
+                analytics.operationFailed(analyticsAttempt, AnalyticsFeature.HellobikePayment, AnalyticsError.from(e))
+                if (e !is HellobikeException || !e.paymentQuoteChanged) throw e
+                val rejected = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId && it.paymentAttempt == attempt && !it.dismissible }
+                    ?: return@runCommand
+                saveSession(owner, rejected.copy(settlement = HellobikeSettlement.Unknown, paymentAttempt = null))
+                if (mutable.value.selectedSessionId == session.sessionId) mutable.update { it.copy(paymentFeedback = null,
+                    paymentNotice = "付款金额或优惠已变化，请核对后再付款", paymentLoading = it.paymentVisible) }
+                val refreshed = readSettlement(owner, session.sessionId, checkTrade = false) ?: return@runCommand
+                if (refreshed.settlement == HellobikeSettlement.Pending && mutable.value.paymentVisible) {
+                    val bill = mutable.value.sessions.firstOrNull { it.sessionId == session.sessionId } ?: return@runCommand
+                    loadPaymentOptions(owner, bill, refreshed)
+                }
+                return@runCommand
             }
             ensureOwner(owner)
             val pending = mutable.value.session ?: return@runCommand
             saveSession(owner, pending.copy(paymentAttempt = attempt.copy(orders = component.orders, channel = component.channel, extension = component.extension)))
-            if (component.channel !in HellobikeSupportedChannels) throw HellobikeException("服务端返回的支付方式需要在哈啰处理，请先查询本笔结果", officialRequired = true)
+            if (component.channel !in HellobikeSupportedChannels) throw HellobikeException("服务端返回的支付方式需要在哈啰处理", officialRequired = true)
             if (component.channel == "003") { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId, polling = true) }
             else {
-                val payload = component.payload?.takeIf(String::isNotBlank) ?: throw HellobikeException("支付凭据尚未取得，请查询原订单")
+                val payload = component.payload?.takeIf(String::isNotBlank) ?: throw HellobikeException("支付凭据尚未取得")
                 val id = ++paymentCounter
                 launchedPayment = PaymentOwner(owner, session.sessionId, id)
                 paymentAnalyticsAttempt = analyticsAttempt
@@ -1167,62 +1259,144 @@ class HellobikeViewModel internal constructor(
         if (status == "launch_failed" || status == "6002")
             analytics.operationFailed(paymentAnalyticsAttempt, AnalyticsFeature.HellobikePayment, AnalyticsError.External)
         paymentAnalyticsAttempt = null
-        mutable.update { it.copy(paymentLaunch = null, paymentInFlight = false) }
-        feedback(binding.sessionId, RechargePhase.Checking, detail = when (status) {
-            "launch_failed" -> "未能打开支付应用，请先查询本笔结果"
-            "cancel", "6001" -> "已返回，请查询本笔付款结果"
-            else -> "正在核对本笔付款结果"
-        })
-        if (foreground) checkPayment(binding.sessionId, polling = true)
+        mutable.update { it.copy(paymentLaunch = null) }
+        feedback(binding.sessionId, RechargePhase.Checking, loading = true)
+        viewModelScope.launch {
+            commandTask?.join()
+            val session = mutable.value.sessions.firstOrNull { it.sessionId == binding.sessionId && !it.dismissible }
+            val attempt = session?.paymentAttempt
+            val exit = when (status) {
+                "launch_failed" -> HellobikePaymentExit.LaunchFailed
+                "cancel", "6001" -> HellobikePaymentExit.Cancelled
+                "4000" -> HellobikePaymentExit.Failed.takeIf { attempt?.channel == "001" }
+                "fail" -> HellobikePaymentExit.Failed.takeIf { attempt?.channel == "1201" }
+                else -> null
+            }
+            try {
+                if (session != null && attempt != null && exit != null && attempt.confirmedGuids.isEmpty())
+                    saveSession(binding.account, session.copy(paymentAttempt = attempt.copy(retryableExit = exit)))
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (account == binding.account) report(e, binding.sessionId) }
+            finally { if (account == binding.account) mutable.update { it.copy(paymentInFlight = false) } }
+            if (account == binding.account && foreground) checkPayment(binding.sessionId, polling = exit == null)
+        }
     }
-    fun checkPayment(id: String? = mutable.value.selectedSessionId, polling: Boolean = false) {
+    private fun checkPayment(id: String, polling: Boolean) {
         val owner = account ?: return; val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         if (!foreground || mutable.value.busy || mutable.value.accountBusy || mutable.value.paymentInFlight || session.phase != HellobikePhase.Ended) return
-        runCommand(owner, requirePage = false) { feedback(session.sessionId, RechargePhase.Checking, loading = true); queryPayment(owner, session.sessionId, polling) }
+        runCommand(owner, requirePage = false, paymentSessionId = session.sessionId) {
+            if (mutable.value.sessions.none { it.sessionId == session.sessionId && !it.dismissible && it.paymentAttempt != null }) return@runCommand
+            feedback(session.sessionId, RechargePhase.Checking, loading = true)
+            queryPayment(owner, session.sessionId, polling)
+        }
     }
-    private suspend fun queryPayment(owner: HellobikeAccount, id: String, polling: Boolean = false) {
-        try { readSettlement(owner, id) }
-        catch (e: CancellationException) { throw e }
-        catch (e: HellobikeException) { if (e.loginExpired || e.officialRequired) throw e }
-        catch (_: Exception) { /* The persisted payment identifiers remain queryable independently. */ }
-        var session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
+    private suspend fun queryPayment(owner: HellobikeAccount, id: String, polling: Boolean = false): Unit = paymentQueries.withLock {
+        if (mutable.value.sessions.none { it.sessionId == id && !it.dismissible && it.paymentAttempt != null }) return
+        var billError: Exception? = null
+        suspend fun refreshBill(): HellobikePayDetail? = try {
+            readSettlement(owner, id, checkTrade = false).also { billError = null }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (e is HellobikeException && e.loginExpired) throw e
+            billError = e
+            null
+        }
+        refreshBill()
+        val session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         if (session.settled) { feedback(id, RechargePhase.Paid); return }
         if (session.settlement == HellobikeSettlement.Closed) {
             feedback(id, RechargePhase.Failed, detail = "订单已关闭，请在哈啰查看费用记录"); return
         }
-        val attempt = session.paymentAttempt
-        if (attempt == null) { feedback(id, RechargePhase.Checking, detail = "费用尚未确认，请刷新订单或在哈啰查看"); return }
-        val order = attempt.orders.firstOrNull() ?: return
+        var attempt = session.paymentAttempt ?: return
+        if (attempt.allOrdersConfirmed) {
+            if (session.settlement != HellobikeSettlement.Unknown)
+                saveSession(owner, session.copy(settlement = HellobikeSettlement.Unknown))
+            feedback(id, RechargePhase.Paid)
+            return
+        }
+        if (attempt.orders.isEmpty()) {
+            feedback(id, RechargePhase.TimedOut, detail = "缺少原付款单号")
+            return
+        }
+        val exit = attempt.retryableExit
         var confirmed = attempt.confirmedGuids
         var lastError: Exception? = null
         // Query once, then retry at most three times at three-second intervals.
         repeat(if (polling) 4 else 1) { index ->
             if (index > 0) delay(3000)
             ensureOwner(owner)
-            try { confirmed = if (api.paymentPaid(owner, order, attempt.extension)) confirmed + order.guid else confirmed - order.guid }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) {
-                confirmed = confirmed - order.guid
-                lastError = e
-                if (e is HellobikeException && (e.loginExpired || e.officialRequired)) throw e
-            }
-            ensureOwner(owner)
-            session = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
-            if (order.guid in confirmed) {
-                saveSession(owner, session.copy(settlement = HellobikeSettlement.Unknown,
-                    paymentAttempt = attempt.copy(confirmedGuids = confirmed)))
-                try { readSettlement(owner, id) }
+            lastError = null
+            for (checked in attempt.orders) {
+                if (checked.guid in confirmed) continue
+                val paid = try { api.paymentPaid(owner, checked, attempt.extension) }
                 catch (e: CancellationException) { throw e }
-                catch (e: Exception) { report(e, id); expired(e, owner) }
-                feedback(id, RechargePhase.Paid, detail = "付款已确认，骑行费用以哈啰订单记录为准")
+                catch (e: Exception) {
+                    lastError = e
+                    if (e is HellobikeException && e.loginExpired) throw e
+                    false
+                }
+                ensureOwner(owner)
+                val latest = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
+                if (latest.dismissible || latest.paymentAttempt != attempt) return
+                if (!paid) continue
+                confirmed = confirmed + checked.guid
+                attempt = attempt.copy(confirmedGuids = confirmed, retryableExit = null)
+                saveSession(owner, latest.copy(settlement = HellobikeSettlement.Unknown, paymentAttempt = attempt))
+            }
+            if (attempt.allOrdersConfirmed) {
+                refreshBill()
+                if (mutable.value.sessions.firstOrNull { it.sessionId == id }?.settlement != HellobikeSettlement.Closed)
+                    feedback(id, RechargePhase.Paid)
                 return
             }
         }
-        saveSession(owner, session.copy(settlement = HellobikeSettlement.Paying, paymentAttempt = attempt.copy(confirmedGuids = confirmed)))
-        feedback(id, RechargePhase.TimedOut, detail = lastError?.let(::failure) ?: "支付结果尚未确认，请继续查询原订单")
+        val detail = refreshBill()
+        val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
+        if (current.dismissible || current.paymentAttempt != attempt) return
+        if (confirmed.isEmpty() && (exit != null || lastError == null) && detail?.canRetry(attempt, current.rideGuid) == true) {
+            val notice = "未能打开支付应用".takeIf { exit == HellobikePaymentExit.LaunchFailed }
+            val pending = saveSession(owner, current.copy(settlement = HellobikeSettlement.Pending, paymentAttempt = null))
+            val showOptions = visible && mutable.value.paymentVisible && mutable.value.selectedSessionId == id
+            val cancelledResult = if (showOptions && exit == HellobikePaymentExit.Cancelled)
+                LifePaymentFeedback(id, RechargePhase.Failed, detail = "原订单仍待支付", cancelled = true) else null
+            if (mutable.value.selectedSessionId == id) mutable.update { it.copy(
+                paymentFeedback = cancelledResult, paymentNotice = notice, payOptions = emptyList(), paymentLoading = showOptions) }
+            if (showOptions) {
+                try { loadPaymentOptions(owner, pending, detail) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { report(e, id); expired(e, owner) }
+                finally { if (mutable.value.selectedSessionId == id) mutable.update { it.copy(paymentLoading = false) } }
+            }
+            return
+        }
+        val settlement = if (confirmed.isEmpty()) HellobikeSettlement.Paying else HellobikeSettlement.Unknown
+        saveSession(owner, current.copy(settlement = settlement, paymentAttempt = attempt.copy(confirmedGuids = confirmed,
+            retryableExit = exit.takeIf { confirmed.isEmpty() })))
+        val queryError = lastError ?: billError
+        if (queryError is HellobikeException && queryError.officialRequired) report(queryError, id)
+        if (exit == HellobikePaymentExit.Cancelled && confirmed.isEmpty() && visible && mutable.value.paymentVisible) {
+            feedback(id, RechargePhase.Failed, detail = "原订单状态待确认", cancelled = true)
+            return
+        }
+        feedback(id, RechargePhase.TimedOut, detail = queryError?.let(::failure) ?: detail?.unsupported ?: when {
+            confirmed.isNotEmpty() -> null
+            detail?.settlement == HellobikeSettlement.Pending -> "待支付账单与本次付款项目不一致"
+            else -> null
+        })
     }
-    private fun feedback(id: String, phase: RechargePhase, loading: Boolean = false, detail: String? = null) {
-        if (mutable.value.selectedSessionId == id) mutable.update { it.copy(paymentFeedback = LifePaymentFeedback(id, phase, loading, detail)) }
+    private fun HellobikePayDetail.canRetry(attempt: HellobikePaymentAttempt, originalRideGuid: String): Boolean {
+        if (originalRideGuid.isBlank() || rideGuid != originalRideGuid || !payable) return false
+        if (attempt.retryableExit != null) return true
+        val original = attempt.billedOrders ?: attempt.orders
+        return original.size == orders.size && orders.map { it.guid to it.businessType }.toSet().size == orders.size &&
+            original.map { it.guid to it.businessType }.toSet() == orders.map { it.guid to it.businessType }.toSet()
+    }
+    private fun paymentQueryIncomplete(id: String, detail: String) {
+        if (mutable.value.sessions.any { it.sessionId == id && it.paymentAttempt != null && !it.dismissible } &&
+            mutable.value.paymentFeedback?.phase != RechargePhase.Paid) feedback(id, RechargePhase.TimedOut, detail = detail)
+    }
+    private fun feedback(id: String, phase: RechargePhase, loading: Boolean = false, detail: String? = null, cancelled: Boolean = false) {
+        if (mutable.value.selectedSessionId == id) mutable.update { it.copy(paymentFeedback = LifePaymentFeedback(id, phase, loading, detail, cancelled)) }
     }
     private fun report(e: Exception, id: String? = mutable.value.selectedSessionId) {
         val message = failure(e)

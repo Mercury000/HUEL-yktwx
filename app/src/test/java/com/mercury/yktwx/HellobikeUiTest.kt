@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Looper
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,6 +25,7 @@ import com.mercury.yktwx.ui.themeSettingsFixture
 import com.mercury.yktwx.data.MemoryPreferences
 import com.mercury.yktwx.data.HttpFixture
 import com.mercury.yktwx.data.fixtureHttp
+import com.mercury.yktwx.data.parseArray
 import com.mercury.yktwx.data.parseObject
 import com.mercury.yktwx.data.stringValue
 import com.mercury.yktwx.preview.PreviewData
@@ -35,16 +37,24 @@ import com.mercury.yktwx.ui.components.InlineErrorGroup
 import com.mercury.yktwx.ui.pages.*
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.time.Duration
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.serialization.json.JsonObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -744,57 +754,202 @@ class HellobikeUiTest {
         compose.onNodeWithTag("hellobike-primary-action").assertTextContains("查询车辆状态"); capture("closing-$theme")
         val ended = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Pending, endedAtMillis = 1_300_000, amount = "2.00")
         val ending = rideState.copy(sessions = listOf(ended), payDetail = fixtureBikeDetail)
+        compose.runOnIdle { snapshot = ending.copy(loadingDevice = true) }
+        compose.onNodeWithTag("hellobike-primary-action").assertIsDisplayed().assertIsNotEnabled().assertTextContains("正在查询费用…")
+        compose.onNodeWithTag("hellobike-action-progress", useUnmergedTree = true).assertExists()
         compose.runOnIdle { snapshot = ending }
+        compose.onNodeWithTag("hellobike-primary-action").assertIsEnabled().assertTextContains("支付")
         compose.onNodeWithText("本笔费用已结清").assertDoesNotExist(); capture("ended-$theme")
         compose.runOnIdle { snapshot = ending.copy(paymentVisible = true, payOptions = api.channels) }
         compose.onNodeWithTag("hellobike-pay-submit").assertIsEnabled(); capture("payment-$theme")
-        compose.runOnIdle { snapshot = ending.copy(paymentVisible = true,
+        val pendingPayment = ending.copy(
             sessions = listOf(ended.copy(settlement = HellobikeSettlement.Paying, paymentAttempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "001", 1_000_000))),
-            paymentFeedback = LifePaymentFeedback(ended.sessionId, RechargePhase.TimedOut, false, "支付结果尚未确认，请查询原订单")) }
-        compose.onNodeWithText("查询结果").assertIsEnabled().assertIsDisplayed(); compose.onNodeWithText("支付成功").assertDoesNotExist()
-        // Prime PixelCopy's retained shader layers after the page transition; its first
-        // complete-window draw can omit new child layers under Robolectric.
-        capture("payment-pending-$theme", "hellobike-payment-sheet")
-        val query = compose.onNodeWithText("查询结果").captureToImage().asAndroidBitmap()
-        val pixels = IntArray(query.width * query.height).also { query.getPixels(it, 0, query.width, 0, 0, query.width, query.height) }
-        assertTrue("The query action must paint its primary button background", pixels.any {
-            Color.blue(it) > 150 && Color.blue(it) - Color.red(it) > 50
-        })
-        val resultImage = capture("payment-pending-$theme", "hellobike-payment-sheet")
-        val queryBounds = compose.onNodeWithText("查询结果").fetchSemanticsNode().boundsInRoot
-        val sheetBounds = compose.onNodeWithTag("hellobike-payment-sheet").fetchSemanticsNode().boundsInRoot
-        val queryBackground = resultImage.getPixel((queryBounds.left - sheetBounds.left + queryBounds.width * .2f).toInt(),
-            (queryBounds.center.y - sheetBounds.top).toInt())
-        assertTrue("The complete payment result sheet must also draw the query button",
-            Color.blue(queryBackground) > 150 && Color.blue(queryBackground) - Color.red(queryBackground) > 50)
+            paymentFeedback = LifePaymentFeedback(ended.sessionId, RechargePhase.TimedOut))
+        compose.runOnIdle { snapshot = pendingPayment.copy(loadingDevice = true) }
+        compose.onNodeWithTag("hellobike-primary-action").assertIsDisplayed().assertIsNotEnabled().assertTextContains("正在查询付款结果…")
+        compose.runOnIdle { snapshot = pendingPayment }
+        compose.onNodeWithTag("hellobike-payment-sheet").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-primary-action").assertDoesNotExist()
+        assertTrue(compose.onAllNodesWithText("支付结果待确认").fetchSemanticsNodes().isNotEmpty())
+        capture("payment-pending-$theme")
         compose.runOnIdle { snapshot = ending.copy(sessions = listOf(ended.copy(settlement = HellobikeSettlement.Paid))) }
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithText("本笔费用已结清").assertExists(); capture("paid-$theme")
+        compose.onNodeWithTag("hellobike-primary-action").assertDoesNotExist()
         assertEquals(0, api.readCalls); assertEquals(0, api.payCalls); assertEquals(0, api.createCalls)
     }
     @Test fun lightDeviceAndPaymentStagesUseSharedCardsProgressAndPaymentControls() { scenes(false) }
     @Test @Config(qualifiers = "w412dp-h915dp-night-xhdpi")
     fun darkDeviceAndPaymentStagesUseSharedCardsProgressAndPaymentControls() { scenes(true) }
 
-    @Test fun anOutgoingPaymentDrawerDisablesQueriesBeforeItsExitMotionFinishes() {
+    @Test fun pendingRidePaymentChecksAutomaticallyOnTheRidePageBeforeOfferingPayment() {
+        var queryGate: CompletableDeferred<Unit>? = null
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentPaid(account: HellobikeAccount, order: HellobikePayOrder,
+                extension: kotlinx.serialization.json.JsonObject): Boolean {
+                val gate = queryGate ?: throw IOException("fixture query unavailable")
+                gate.await()
+                return super.paymentPaid(account, order, extension)
+            }
+        }
+        val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying,
+            paymentAttempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "001", 1_000_000))
+        val bike = HellobikeViewModel(api, BikeRecords().store(sessions = listOf(session)), FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("ride-payment", it) }
+        val settings = settings()
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, nowMillis = { 1_300_000 }, elapsedMillis = { 50_000 })
+        } } } }
+        compose.runOnIdle {
+            bike.initialize(false); bike.environment(true); bike.pageVisible(true); bike.openSession(session.sessionId)
+        }
+        compose.onNodeWithTag("hellobike-payment-sheet").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-primary-action").assertDoesNotExist()
+        compose.onNodeWithText("连接失败，请检查网络后重试").assertExists()
+        val gate = CompletableDeferred<Unit>()
+        compose.runOnIdle { queryGate = gate }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        compose.onNodeWithTag("hellobike-payment-sheet").assertDoesNotExist()
+        compose.onNodeWithText("查询结果").assertDoesNotExist()
+        compose.runOnIdle { gate.complete(Unit) }
+        compose.onNodeWithText("查看费用与支付").assertDoesNotExist()
+        val confirmedBillReads = api.detailCalls
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("支付").assertIsEnabled().performClick()
+        assertEquals(confirmedBillReads, api.detailCalls)
+        compose.onNodeWithText("已查到原订单仍待支付，请选择支付方式").assertDoesNotExist()
+        compose.onNodeWithText("支付宝", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("hellobike-pay-submit").assertIsEnabled()
+        assertEquals(0, api.payCalls)
+    }
+
+    @Test fun rideCashierReplaysThePaymentProtocolFromCancellationThroughSettlement() {
+        val ride = fixtureBikeSession.copy(phase = HellobikePhase.Ended)
+        val submissions = AtomicInteger()
+        val settled = AtomicBoolean()
+        val calls = ConcurrentLinkedQueue<Pair<String, JsonObject>>()
+        val transport = fixtureHttp { url -> object : HttpFixture(url) {
+            private val sent = ByteArrayOutputStream()
+            override fun requestBodyStream() = sent
+            override fun bodyStream() = parseObject(sent.toString(Charsets.UTF_8.name())).let { fields ->
+                calls.add(url.host to fields)
+                val data = when (fields.hbText("action")) {
+                    "user.ride.bikeCheck" -> "{}"
+                    "tw.bike.finish.trade.status.check" -> """{"status":20}"""
+                    "user.artemis.pay.page.order.detail" -> {
+                        val status = if (settled.get()) "SUCCESS" else "UNPAID"
+                        """{"rideGuid":"${ride.rideGuid}","tradeId":"fixture-trade","bizType":0,"orderInfo":{"payStatus":"$status","payAmount":"2.00","unpaidPayList":[{"payNo":"${fixtureBikeOrder.guid}","payPrice":"2.00","orderId":"not-a-cashier-order"}]}}"""
+                    }
+                    "com.alphapay.getPayChannel" -> """{"channelList":[{"channelCode":"001","realAmount":"2.00","enableSelect":true}]}"""
+                    "com.alphapay.paymentOrder.pay" -> {
+                        val number = submissions.incrementAndGet()
+                        """{"channel":"001","orders":[{"guid":"returned-$number","orderId":"payment-id-$number","amount":2,"businessType":"1"}],"extension":{"trace":"attempt-$number"},"credential":{"params":"fixture-sdk-$number"}}"""
+                    }
+                    "com.alphapay.facade.orderSingleQuery" ->
+                        """{"payStatus":${if (fields.hbText("guid") == "returned-2") 1 else 0}}"""
+                    else -> throw IOException("Unexpected fixture action: ${fields.hbText("action")}")
+                }
+                """{"code":0,"data":$data}""".byteInputStream()
+            }
+        } }
+        val store = BikeRecords().store(sessions = listOf(ride))
+        val bike = HellobikeViewModel(HellobikeApi(transport), store, FakeBikeLocation(), io = Dispatchers.Main.immediate,
+            now = { 1_300_000 }, elapsed = { 50_000 },
+            analytics = AnalyticsFixtures.from(compose.activity.application)).also { models.put("ride-cashier-replay", it) }
+        val settings = settings()
+        compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
+            val state by bike.state.collectAsState()
+            HellobikeDevicePage(state, settings, bike, true, {}, {}, nowMillis = { 1_300_000 }, elapsedMillis = { 50_000 })
+        } } } }
+        fun awaitCheckout(predicate: (HellobikeUiState) -> Boolean) {
+            compose.waitUntil(10_000) {
+                compose.waitForIdle()
+                bike.state.value.let { predicate(it) || it.error != null }
+            }
+            assertNull("Actions: ${calls.map { it.second.hbText("action") }}", bike.state.value.error)
+        }
+        compose.runOnIdle { bike.initialize(false) }
+        awaitCheckout { !it.restoring }
+        compose.runOnIdle { bike.environment(true); bike.pageVisible(true); assertTrue(bike.openSession(ride.sessionId)) }
+        awaitCheckout { it.session?.settlement == HellobikeSettlement.Pending && !it.loadingDevice }
+        compose.onNodeWithTag("hellobike-primary-action").assertTextContains("支付").performClick()
+        awaitCheckout { it.payOptions.size == 1 && !it.busy }
+
+        fun callback(number: Int, status: String) {
+            awaitCheckout { it.paymentLaunch != null }
+            compose.onNodeWithText("请在支付宝中完成支付").assertIsDisplayed()
+            compose.onNodeWithTag("hellobike-pay-submit").assertDoesNotExist()
+            compose.runOnIdle {
+                val launch = requireNotNull(bike.state.value.paymentLaunch)
+                assertEquals("fixture-sdk-$number", launch.payload)
+                assertEquals("13", launch.method)
+                assertEquals("returned-$number", store.load().sessions.single().paymentAttempt?.orders?.single()?.guid)
+                assertTrue(bike.claimPayment(launch.id))
+                bike.paymentReturned(launch.id, status)
+            }
+        }
+
+        compose.onNodeWithTag("hellobike-pay-submit").performClick()
+        callback(1, "6001")
+        awaitCheckout { it.payOptions.size == 1 && !it.busy }
+        compose.onNodeWithText("本次支付已取消").assertIsDisplayed()
+        compose.onNodeWithText("取消支付").assertIsEnabled()
+        compose.onNodeWithText("查询结果").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-pay-submit").assertDoesNotExist()
+        compose.onNodeWithText("继续支付原订单").assertIsEnabled().performClick()
+        compose.onNodeWithText("本次支付已取消").assertDoesNotExist()
+        assertEquals(1, submissions.get())
+        compose.onNodeWithTag("hellobike-pay-submit").assertIsEnabled().performClick()
+        callback(2, "9000")
+        awaitCheckout { it.paymentFeedback?.phase == RechargePhase.Paid && !it.busy }
+        assertFalse(store.load().sessions.single().settled)
+        assertEquals("付款已确认，账单待同步", store.load().sessions.single().title)
+        compose.onNodeWithText("支付成功").assertIsDisplayed()
+        compose.onNodeWithText("刷新账单").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-pay-submit").assertDoesNotExist()
+        compose.onNodeWithText("完成").performClick()
+        compose.onNodeWithTag("hellobike-payment-sheet").assertDoesNotExist()
+        compose.runOnIdle { settled.set(true) }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        awaitCheckout { it.session?.settled == true }
+        compose.onNodeWithText("本笔费用已结清").assertExists()
+        compose.onNodeWithTag("hellobike-primary-action").assertDoesNotExist()
+        compose.runOnIdle { assertTrue(store.load().sessions.single().settled) }
+
+        val submitted = calls.filter { (_, fields) -> fields.hbText("action") == "com.alphapay.paymentOrder.pay" }
+        assertEquals(2, submitted.size)
+        submitted.forEach { (host, fields) ->
+            assertEquals("api.hellobike.com", host)
+            assertEquals("001", fields.hbText("channel"))
+            val order = parseArray(requireNotNull(fields.hbText("orders"))).single() as JsonObject
+            assertEquals(fixtureBikeOrder.guid, order.hbText("guid"))
+            assertEquals("2.00", order.hbText("amount"))
+            assertNull(order.hbText("orderId"))
+        }
+        val queried = calls.map { it.second }.filter { it.hbText("action") == "com.alphapay.facade.orderSingleQuery" }
+        assertEquals(listOf("returned-1", "returned-2"), queried.map { it.hbText("guid") })
+        assertEquals(listOf("payment-id-1", "payment-id-2"), queried.map { it.hbText("orderId") })
+        assertEquals(listOf("attempt-1", "attempt-2"), queried.map { (it["extension"] as? JsonObject)?.hbText("trace") })
+    }
+
+    @Test fun anOutgoingPaymentDrawerDisablesPaymentBeforeItsExitMotionFinishes() {
         val api = FakeHellobikeService(); val model = model(api)
-        val state = HellobikeUiState(restoring = false, paymentVisible = true, sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)),
-            selectedSessionId = fixtureBikeSession.sessionId, paymentFeedback = LifePaymentFeedback(fixtureBikeSession.sessionId,
-                RechargePhase.Checking, false, "请查询原订单"))
+        val state = HellobikeUiState(restoring = false, paymentVisible = true, sessions = listOf(fixtureBikeSession.copy(
+            phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Pending)),
+            selectedSessionId = fixtureBikeSession.sessionId, payDetail = fixtureBikeDetail, payOptions = api.channels)
         var show by mutableStateOf(true)
         compose.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { AppTheme { Scaffold {
             HellobikePaymentSheet(show, state, model)
         } } } }
-        compose.onNodeWithText("查询结果").assertIsEnabled()
-        capture("payment-query-cold")
+        compose.onNodeWithTag("hellobike-pay-submit").assertIsEnabled()
         compose.mainClock.autoAdvance = false
         try {
             compose.runOnIdle { show = false }
             // Deliver snapshot notifications between parent and root-overlay frames.
             repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-            compose.onNodeWithText("查询结果").assertIsNotEnabled()
+            compose.onNodeWithTag("hellobike-pay-submit").assertIsNotEnabled()
         } finally { compose.mainClock.autoAdvance = true }
-        assertEquals(0, api.queryCalls)
+        assertEquals(0, api.payCalls)
     }
     @Test fun anOutgoingLoginDrawerDisablesSmsBeforeItsExitMotionFinishes() {
         val api = FakeHellobikeService(); val model = model(api)

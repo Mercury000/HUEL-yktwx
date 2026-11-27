@@ -7,9 +7,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.mercury.yktwx.data.life.LifePaymentLaunch
 import com.unionpay.UPPayAssistEx
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -32,6 +34,8 @@ internal class LifeUnionPayContract : ActivityResultContract<LifePaymentLaunch, 
 /** Bridges the SDK's legacy request code to ActivityResultRegistry without persisting its TN. */
 open class LifeUnionPayActivity : ComponentActivity() {
     private var sdkStarted = false
+    private var resumedOnce = false
+    private var returnWait: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +43,7 @@ open class LifeUnionPayActivity : ComponentActivity() {
         // The SDK may still be active after recreation; never submit the same TN again here.
         if (savedInstanceState != null) {
             sdkStarted = savedInstanceState.getBoolean(SdkStarted)
+            resumedOnce = savedInstanceState.getBoolean(ResumedOnce, sdkStarted)
             if (!sdkStarted) complete(null)
             return
         }
@@ -64,6 +69,22 @@ open class LifeUnionPayActivity : ComponentActivity() {
 
     protected open fun startSdk(tn: String): Int = UPPayAssistEx.startPay(this, null, null, tn, "00")
 
+    override fun onResume() {
+        super.onResume()
+        if (sdkStarted && resumedOnce && !isFinishing) {
+            returnWait = lifecycleScope.launch {
+                delay(ReturnWaitMillis)
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) complete(null)
+            }
+        }
+        resumedOnce = true
+    }
+
+    override fun onPause() {
+        returnWait?.cancel()
+        super.onPause()
+    }
+
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
         if (requestCode == SdkRequestCode && (isFinishing || isDestroyed)) return
@@ -73,17 +94,27 @@ open class LifeUnionPayActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(SdkStarted, sdkStarted)
+        outState.putBoolean(ResumedOnce, resumedOnce)
         super.onSaveInstanceState(outState)
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == SdkRequestCode) complete(data?.getStringExtra("pay_result"))
+        if (requestCode == SdkRequestCode) {
+            val status = data?.getStringExtra("pay_result")
+            complete(when {
+                status.equals("success", ignoreCase = true) -> "success"
+                status.equals("cancel", ignoreCase = true) -> "cancel"
+                status.equals("fail", ignoreCase = true) -> "fail"
+                else -> null
+            })
+        }
     }
 
     private fun complete(status: String?) {
         if (isFinishing) return
+        returnWait?.cancel()
         setResult(Activity.RESULT_OK, Intent().putExtra(RequestId, intent.getLongExtra(RequestId, -1))
             .putExtra(PaymentResult, status))
         finish()
@@ -95,5 +126,7 @@ open class LifeUnionPayActivity : ComponentActivity() {
         const val PaymentResult = "life.unionpay.result"
         const val SdkRequestCode = 10
         const val SdkStarted = "life.unionpay.started"
+        private const val ResumedOnce = "life.unionpay.resumed"
+        internal const val ReturnWaitMillis = 1_000L
     }
 }

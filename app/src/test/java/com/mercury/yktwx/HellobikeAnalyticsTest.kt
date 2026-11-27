@@ -103,7 +103,6 @@ class HellobikeAnalyticsTest {
         val id = model.state.value.paymentLaunch!!.id
         assertTrue(model.claimPayment(id)); model.paymentReturned(id, "cancel"); runCurrent()
         advanceTimeBy(12_001); runCurrent(); assertEvents("hellobike_pay_submitted")
-        model.checkPayment(); runCurrent(); assertEvents("hellobike_pay_submitted")
     }
     @Test fun explicitPaymentRejectionCountsOneFailureWithBoundedProperties() = bikeTest {
         val api = FakeHellobikeService().apply { payFailure = HellobikeException("private-order", rejected = true) }

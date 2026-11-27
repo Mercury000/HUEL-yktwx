@@ -139,12 +139,16 @@ class HellobikeViewModelTest {
         assertEquals(listOf(false), api.temporaryCommands); assertEquals(1, api.temporaryVerifyCalls)
         assertEquals(reads, api.readCalls); assertEquals(positions, location.calls)
     }
-    @Test fun paymentSubmitsTheDisplayedCloudRequestWithoutAnExtraLocalPriceDecision() = bikeTest {
+    @Test fun paymentRefreshesChangedBillBeforeRequiringAnotherConfirmation() = bikeTest {
         val api = FakeHellobikeService()
         val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended,
             settlement = HellobikeSettlement.Pending)))
         val model = model(api, store); ended(model)
-        api.detailFailure = IOException("a new preflight would fail")
+        api.detail = fixtureBikeDetail.copy(amount = "3.00", orders = listOf(fixtureBikeOrder.copy(amount = "3.00")))
+        model.pay("001"); runCurrent()
+        assertEquals(0, api.payCalls); assertNull(model.state.value.paymentLaunch)
+        assertEquals("3.00", model.state.value.payDetail?.amount)
+        assertEquals("费用已更新，请确认后付款", model.state.value.paymentNotice)
         model.pay("001"); runCurrent()
         assertEquals(1, api.payCalls); assertNotNull(model.state.value.paymentLaunch)
     }
@@ -1068,6 +1072,84 @@ class HellobikeViewModelTest {
         assertEquals(listOf(fixtureBikeSession), store.load().retainedSessions[fixtureBikeAccount.userGuid])
         assertEquals(0, api.createCalls)
     }
+    @Test fun billGenerationIsCheckedAutomaticallyAndTheDrawerReusesTheTradeIdOnResume() = bikeTest {
+        var tradeStatus = HellobikeTradeStatus.Preparing
+        val tradeIds = mutableListOf<String>()
+        val detailTradeIds = mutableListOf<String>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentTradeStatus(account: HellobikeAccount, session: HellobikeSession): HellobikeTradeStatus {
+                tradeIds += session.tradeId
+                return tradeStatus
+            }
+            override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail {
+                detailTradeIds += session.tradeId
+                return super.payDetail(account, session)
+            }
+        }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+        val model = model(api, store); ready(model); model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        assertEquals(0, api.detailCalls)
+        assertFalse(model.state.value.canShowPayment)
+        assertFalse(model.state.value.paymentVisible)
+        tradeStatus = HellobikeTradeStatus.Ready
+        advanceTimeBy(5999); runCurrent(); assertEquals(0, api.detailCalls)
+        advanceTimeBy(1); runCurrent(); assertEquals(1, api.detailCalls)
+        assertTrue(model.state.value.canShowPayment)
+        model.showPayment(); runCurrent()
+        assertEquals(api.channels, model.state.value.payOptions)
+        assertEquals(fixtureBikeDetail.tradeId, store.load().sessions.single().tradeId)
+        assertEquals(0, api.payCalls)
+
+        val tradeChecks = tradeIds.size
+        model.environment(false); runCurrent()
+        api.detail = fixtureBikeDetail.copy(amount = "3.00", orders = listOf(fixtureBikeOrder.copy(amount = "3.00")))
+        model.environment(true); runCurrent()
+        assertEquals(tradeChecks, tradeIds.size)
+        assertEquals(fixtureBikeDetail.tradeId, detailTradeIds.last())
+        assertEquals("3.00", model.state.value.payDetail?.amount)
+        assertEquals(api.channels, model.state.value.payOptions); assertEquals(0, api.payCalls)
+    }
+    @Test fun paymentDrawerDiscardsStaleQuotesWhenTheRefreshedBillIsNoLongerPayable() = bikeTest {
+        val api = FakeHellobikeService()
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model)
+        model.environment(false); runCurrent()
+        api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Unknown, orders = emptyList())
+        val details = api.detailCalls
+        model.environment(true); runCurrent(); model.pay("001"); runCurrent()
+        assertEquals(details + 1, api.detailCalls); assertEquals(0, api.payCalls)
+        assertTrue(model.state.value.payOptions.isEmpty())
+        assertEquals(HellobikeSettlement.Unknown, model.state.value.session?.settlement)
+    }
+    @Test fun cancelledPaymentCanReopenFromThePendingRideWithoutRegeneratingItsBill() = bikeTest {
+        var tradeChecks = 0
+        var generationAvailable = true
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentTradeStatus(account: HellobikeAccount, session: HellobikeSession): HellobikeTradeStatus {
+                tradeChecks++
+                if (!generationAvailable) throw IOException("fixture generation status unavailable")
+                return HellobikeTradeStatus.Ready
+            }
+        }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+        val model = model(api, store); ended(model); model.pay("001"); runCurrent()
+        val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id))
+        model.dismissPayment(); model.pageVisible(false); model.environment(false); runCurrent()
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        generationAvailable = false
+        val previousTradeChecks = tradeChecks
+        model.environment(true); runCurrent()
+        val pending = store.load().sessions.single()
+        assertEquals(HellobikeSettlement.Pending, pending.settlement); assertNull(pending.paymentAttempt)
+        assertTrue(model.openSession(pending.sessionId)); model.pageVisible(true); runCurrent()
+        model.showPayment(); runCurrent()
+        assertEquals(previousTradeChecks, tradeChecks)
+        assertEquals(api.channels, model.state.value.payOptions); assertNull(model.state.value.paymentFeedback)
+        assertNull(model.state.value.error); assertEquals(1, api.payCalls)
+        model.pay("001"); runCurrent()
+        assertEquals(2, api.payCalls)
+    }
     @Test fun restartQueriesThePersistedPaymentOnceAndNeverLaunchesOrSubmitsItAgain() = bikeTest {
         val attempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "001", 1_000_000)
         val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying, paymentAttempt = attempt)
@@ -1076,12 +1158,13 @@ class HellobikeViewModelTest {
         assertEquals(1, api.queryCalls); assertEquals(setOf(fixtureBikeOrder.guid), api.queriedGuids.toSet())
         assertEquals(0, api.payCalls); assertNull(model.state.value.paymentLaunch); assertFalse(store.load().sessions.single().settled)
     }
-    @Test fun anSdkSuccessCallbackStartsQueriesAndCannotMarkTheRidePaidOrRetryPayment() = bikeTest {
+    @Test fun anSdkSuccessCallbackAloneCannotMarkTheRidePaidOrRetryPayment() = bikeTest {
         val records = BikeRecords(); val store = records.store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
         val api = FakeHellobikeService(); val model = model(api, store); ended(model)
         api.beforePay = { assertNotNull(store.load().sessions.single().paymentAttempt) }
         model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
         assertTrue(model.claimPayment(launch.id)); assertFalse(model.claimPayment(launch.id))
+        api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Unknown, orders = emptyList())
         model.paymentReturned(launch.id, "9000"); runCurrent()
         assertFalse(model.state.value.session!!.settled); assertEquals(RechargePhase.Checking, model.state.value.paymentFeedback?.phase)
         advanceTimeBy(9001); runCurrent(); model.pay("001"); runCurrent()
@@ -1096,6 +1179,278 @@ class HellobikeViewModelTest {
         model.paymentReturned(launch.id + 1, "success"); assertTrue(model.state.value.paymentInFlight)
         assertTrue(model.claimPayment(launch.id)); model.paymentReturned(launch.id, "cancel"); runCurrent()
         assertFalse(model.state.value.paymentInFlight); assertFalse(model.state.value.session!!.settled)
+    }
+    @Test fun explicitPaymentExitsPreserveTheBillAndCancellationRequiresExplicitContinuation() = bikeTest {
+        for (status in listOf("6001", "launch_failed", "4000")) {
+            val api = FakeHellobikeService()
+            val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+            val model = model(api, store); ended(model)
+            model.pay("001"); runCurrent()
+            val launch = model.state.value.paymentLaunch!!
+            assertTrue(model.claimPayment(launch.id))
+            model.environment(false); model.paymentReturned(launch.id, status); runCurrent()
+            assertNotNull(store.load().sessions.single().paymentAttempt?.retryableExit)
+            assertEquals(0, api.queryCalls)
+            model.environment(true); runCurrent()
+            assertEquals(HellobikeSettlement.Pending, store.load().sessions.single().settlement)
+            assertNull(store.load().sessions.single().paymentAttempt)
+            assertTrue(model.state.value.paymentVisible)
+            if (status == "6001") {
+                assertEquals(RechargePhase.Failed, model.state.value.paymentFeedback?.phase)
+                assertTrue(model.state.value.paymentFeedback?.cancelled == true)
+                model.pay("001"); runCurrent(); assertEquals(1, api.payCalls)
+                model.continueCancelledPayment(); runCurrent(); assertEquals(1, api.payCalls)
+            }
+            assertNull(model.state.value.paymentFeedback)
+            assertEquals("未能打开支付应用".takeIf { status == "launch_failed" }, model.state.value.paymentNotice)
+            assertEquals(api.channels, model.state.value.payOptions)
+            assertEquals(1, api.payCalls)
+            model.pay("001"); runCurrent(); assertEquals(2, api.payCalls)
+            model.environment(false); runCurrent()
+        }
+    }
+    @Test fun cancellationDoesNotOfferContinuationUntilTheOriginalBillIsVerifiedAutomatically() = bikeTest {
+        val api = FakeHellobikeService()
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model); model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id))
+        api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Unknown, orders = emptyList())
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        assertTrue(model.state.value.paymentFeedback?.cancelled == true)
+        assertFalse(model.state.value.canShowPayment)
+        model.continueCancelledPayment(); model.pay("001"); runCurrent()
+        assertTrue(model.state.value.paymentFeedback?.cancelled == true); assertEquals(1, api.payCalls)
+
+        api.detail = fixtureBikeDetail; advanceTimeBy(6000); runCurrent()
+        assertTrue(model.state.value.canShowPayment); assertTrue(model.state.value.paymentFeedback?.cancelled == true)
+        model.continueCancelledPayment(); runCurrent()
+        assertNull(model.state.value.paymentFeedback); assertEquals(api.channels, model.state.value.payOptions)
+        assertEquals(1, api.payCalls)
+    }
+    @Test fun explicitPaymentFailureRecoversUsingTheCurrentBillEvenIfTheAttemptQueryFails() = bikeTest {
+        var tradeStatus = HellobikeTradeStatus.Ready
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentTradeStatus(account: HellobikeAccount, session: HellobikeSession) = tradeStatus
+        }.apply { responseChannel = "1201" }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+        val model = model(api, store); ended(model); model.pay("1201"); runCurrent()
+        val launch = model.state.value.paymentLaunch!!
+        assertEquals("52", launch.method); assertTrue(model.claimPayment(launch.id))
+        tradeStatus = HellobikeTradeStatus.Preparing
+        val renewed = fixtureBikeOrder.copy(guid = "renewed-payment")
+        api.detail = fixtureBikeDetail.copy(orders = listOf(renewed))
+        api.queryPaid = { throw IOException("fixture query unavailable") }
+        model.paymentReturned(launch.id, "fail"); runCurrent()
+        assertEquals(listOf(fixtureBikeOrder.guid), api.queriedGuids)
+        assertEquals(HellobikeSettlement.Pending, store.load().sessions.single().settlement)
+        assertNull(store.load().sessions.single().paymentAttempt)
+        assertTrue(model.state.value.paymentVisible); assertNull(model.state.value.paymentFeedback)
+        assertNull(model.state.value.paymentNotice)
+        assertEquals(api.channels, model.state.value.payOptions); assertEquals(1, api.payCalls)
+        model.pay("1201"); runCurrent()
+        assertEquals(2, api.payCalls)
+        assertEquals(listOf(renewed), store.load().sessions.single().paymentAttempt?.billedOrders)
+    }
+    @Test fun anExistingPaymentWithoutACallbackRecoversWhenTheLatestBillContainsTheUnpaidItems() = bikeTest {
+        val attempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "001", 1_000_000)
+        val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying, paymentAttempt = attempt)
+        val store = BikeRecords().store(sessions = listOf(session))
+        val api = FakeHellobikeService().apply { detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Unknown, orders = emptyList()) }
+        val model = model(api, store); ready(model); model.openSession(session.sessionId); runCurrent()
+        assertEquals(HellobikeSettlement.Paying, model.state.value.session?.settlement)
+        assertFalse(model.state.value.canShowPayment)
+        api.queryPaid = { api.detail = fixtureBikeDetail; false }
+        advanceTimeBy(6000); runCurrent()
+        assertEquals(HellobikeSettlement.Pending, store.load().sessions.single().settlement)
+        assertNull(store.load().sessions.single().paymentAttempt)
+        assertNull(model.state.value.paymentNotice)
+        assertFalse(model.state.value.paymentVisible); assertTrue(model.state.value.canShowPayment)
+        model.showPayment(); runCurrent()
+        assertEquals(api.channels, model.state.value.payOptions)
+        assertEquals(0, api.payCalls)
+        model.pay("001"); runCurrent(); assertEquals(1, api.payCalls)
+        assertEquals(listOf(fixtureBikeOrder), model.state.value.session?.paymentAttempt?.orders)
+    }
+    @Test fun ambiguousReturnsAndUnverifiedOrdersCannotUnlockAnotherSubmission() = bikeTest {
+        for (scenario in listOf("unconfirmed-bill", "wrong-ride", "wrong-payment", "query-error")) {
+            val api = object : FakeHellobikeService() {
+                override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession) =
+                    if (scenario == "wrong-ride") detail else super.payDetail(account, session)
+            }
+            val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+            ended(model); model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
+            assertTrue(model.claimPayment(launch.id))
+            when (scenario) {
+                "unconfirmed-bill" -> api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Unknown, orders = emptyList())
+                "wrong-ride" -> api.detail = fixtureBikeDetail.copy(rideGuid = "other-ride", settlement = HellobikeSettlement.Paid)
+                "wrong-payment" -> api.detail = fixtureBikeDetail.copy(orders = listOf(fixtureBikeOrder.copy(guid = "other-payment")))
+                "query-error" -> api.queryPaid = { throw IOException("fixture query unavailable") }
+            }
+            model.paymentReturned(launch.id, null); runCurrent()
+            advanceTimeBy(9001); runCurrent()
+            assertEquals(scenario, RechargePhase.TimedOut, model.state.value.paymentFeedback?.phase)
+            assertNotNull(scenario, model.state.value.session?.paymentAttempt)
+            assertTrue(model.state.value.payOptions.isEmpty()); assertNull(model.state.value.paymentNotice)
+            model.pay("001"); runCurrent(); assertEquals(1, api.payCalls)
+            model.environment(false); runCurrent()
+        }
+    }
+    @Test fun aReturnedPaymentIdentifierIsQueriedButRetryUsesTheOriginalBillItems() = bikeTest {
+        val returnedOrder = fixtureBikeOrder.copy(guid = "returned-payment", orderId = "returned-order-id")
+        val api = object : FakeHellobikeService() {
+            override suspend fun pay(account: HellobikeAccount, session: HellobikeSession, orders: List<HellobikePayOrder>,
+                option: HellobikePayOption) = super.pay(account, session, orders, option).copy(orders = listOf(returnedOrder))
+        }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+        val model = model(api, store); ended(model); model.pay("001"); runCurrent()
+        assertEquals(listOf(fixtureBikeOrder), store.load().sessions.single().paymentAttempt?.billedOrders)
+        val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id))
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        assertEquals(listOf(returnedOrder.guid), api.queriedGuids)
+        assertEquals(HellobikeSettlement.Pending, model.state.value.session?.settlement)
+        assertEquals(api.channels, model.state.value.payOptions); assertEquals(1, api.payCalls)
+    }
+    @Test fun aBillThatBecomesPaidDuringQueryNeverReopensPaymentOptions() = bikeTest {
+        val api = FakeHellobikeService()
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model); model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id))
+        api.queryPaid = { api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Paid); false }
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        assertTrue(model.state.value.session!!.settled)
+        assertEquals(RechargePhase.Paid, model.state.value.paymentFeedback?.phase)
+        assertTrue(model.state.value.payOptions.isEmpty()); assertEquals(1, api.payCalls)
+    }
+    @Test fun aPartialPaymentCannotBeMarkedPaidOrResubmittedEvenIfTheNextQueryShowsNoSuccess() = bikeTest {
+        val orders = listOf(fixtureBikeOrder, fixtureBikeOrder.copy(guid = "second-payment"))
+        val attempt = HellobikePaymentAttempt(orders, "001", 1_000_000)
+        val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying, paymentAttempt = attempt)
+        val store = BikeRecords().store(sessions = listOf(session))
+        val api = FakeHellobikeService().apply {
+            detail = fixtureBikeDetail.copy(orders = orders)
+            queryPaid = { it == orders.first() }
+        }
+        val model = model(api, store); ready(model); model.openSession(session.sessionId); runCurrent()
+        assertEquals(orders.map { it.guid }.toSet(), api.queriedGuids.toSet())
+        assertEquals(setOf(orders.first().guid), store.load().sessions.single().paymentAttempt?.confirmedGuids)
+        api.queryPaid = { false }
+        model.showPayment(); runCurrent()
+        assertEquals(RechargePhase.TimedOut, model.state.value.paymentFeedback?.phase)
+        assertEquals(HellobikeSettlement.Unknown, store.load().sessions.single().settlement)
+        assertTrue(model.state.value.payOptions.isEmpty())
+        assertEquals(0, api.payCalls)
+    }
+    @Test fun aPartialPaymentSurvivesBackgroundingWhileAnotherVoucherIsStillBeingQueried() = bikeTest {
+        val orders = listOf(fixtureBikeOrder, fixtureBikeOrder.copy(guid = "second-payment"))
+        val queryBlocked = CompletableDeferred<Unit>()
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentPaid(account: HellobikeAccount, order: HellobikePayOrder,
+                extension: kotlinx.serialization.json.JsonObject): Boolean {
+                if (order == orders.first()) return true
+                queryBlocked.complete(Unit)
+                awaitCancellation()
+            }
+        }.apply { detail = fixtureBikeDetail.copy(orders = orders) }
+        val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying,
+            paymentAttempt = HellobikePaymentAttempt(orders, "001", 1_000_000))
+        val store = BikeRecords().store(sessions = listOf(session))
+        val model = model(api, store); runCurrent(); model.environment(true); runCurrent()
+        assertTrue(queryBlocked.isCompleted)
+        model.environment(false); runCurrent()
+        assertEquals(setOf(orders.first().guid), store.load().sessions.single().paymentAttempt?.confirmedGuids)
+        assertEquals(HellobikeSettlement.Unknown, store.load().sessions.single().settlement)
+        assertEquals(0, api.payCalls)
+    }
+    @Test fun openingTheRideDuringPaymentRecoveryDoesNotRecheckAnAttemptAlreadyReconciled() = bikeTest {
+        val gate = CompletableDeferred<Unit>()
+        var queriesStarted = 0
+        val api = object : FakeHellobikeService() {
+            override suspend fun paymentPaid(account: HellobikeAccount, order: HellobikePayOrder,
+                extension: kotlinx.serialization.json.JsonObject): Boolean {
+                queriesStarted++
+                gate.await()
+                return super.paymentPaid(account, order, extension)
+            }
+        }
+        val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying,
+            paymentAttempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "001", 1_000_000))
+        val store = BikeRecords().store(sessions = listOf(session))
+        val model = model(api, store); ready(model); model.openSession(session.sessionId); runCurrent()
+        assertEquals(1, queriesStarted)
+        gate.complete(Unit); runCurrent()
+        assertEquals(1, queriesStarted)
+        assertEquals(HellobikeSettlement.Pending, store.load().sessions.single().settlement)
+        model.showPayment(); runCurrent()
+        assertEquals(api.channels, model.state.value.payOptions)
+        assertNull(model.state.value.paymentFeedback)
+        assertEquals(0, api.payCalls)
+    }
+    @Test fun paidServerResultWinsEvenWhenExternalPaymentWasReportedCancelled() = bikeTest {
+        val api = FakeHellobikeService()
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model); model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id))
+        api.queryPaid = { api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Paid); true }
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        assertEquals(RechargePhase.Paid, model.state.value.paymentFeedback?.phase)
+        assertTrue(model.state.value.session!!.settled); assertTrue(model.state.value.payOptions.isEmpty())
+        assertEquals(1, api.payCalls)
+    }
+    @Test fun aFailedChannelRefreshAfterCancellationKeepsTheBillPayableWithoutResubmitting() = bikeTest {
+        var channelsUnavailable = false
+        val api = object : FakeHellobikeService() {
+            override suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail): List<HellobikePayOption> {
+                if (channelsUnavailable) throw IOException("fixture channels unavailable")
+                return super.payChannels(account, session, detail)
+            }
+        }
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model); model.pay("001"); runCurrent(); val launch = model.state.value.paymentLaunch!!
+        assertTrue(model.claimPayment(launch.id)); channelsUnavailable = true
+        model.paymentReturned(launch.id, "6001"); runCurrent()
+        assertNull(model.state.value.session?.paymentAttempt); assertEquals(HellobikeSettlement.Pending, model.state.value.session?.settlement)
+        assertNotNull(model.state.value.error); assertTrue(model.state.value.payOptions.isEmpty()); assertFalse(model.state.value.paymentLoading)
+        channelsUnavailable = false; advanceTimeBy(6000); runCurrent()
+        assertEquals(api.channels, model.state.value.payOptions); assertEquals(1, api.payCalls)
+    }
+    @Test fun rejectedPaymentQuoteRefreshesTheOpenCashierWithoutSubmittingAgain() = bikeTest {
+        var oldChannelAvailable = true
+        val updatedOrder = fixtureBikeOrder.copy(amount = "3.00")
+        val api = object : FakeHellobikeService() {
+            override suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail) =
+                channels.map { option -> option.copy(amount = detail.amount!!,
+                    channel = option.channel.copy(available = option.channel.method != "001" || oldChannelAvailable)) }
+        }
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended)))
+        val model = model(api, store); ended(model)
+        api.beforePay = {
+            api.detail = fixtureBikeDetail.copy(amount = "3.00", orders = listOf(updatedOrder))
+            oldChannelAvailable = false
+        }
+        api.payFailure = HellobikeException("优惠已变化", rejected = true, paymentQuoteChanged = true)
+        model.pay("001"); runCurrent()
+        assertEquals(1, api.payCalls); assertEquals(0, api.queryCalls)
+        assertTrue(model.state.value.paymentVisible); assertNull(model.state.value.paymentFeedback)
+        assertNull(model.state.value.paymentLaunch); assertNull(store.load().sessions.single().paymentAttempt)
+        assertEquals(HellobikeSettlement.Pending, store.load().sessions.single().settlement)
+        assertEquals("3.00", model.state.value.payDetail?.amount)
+        assertEquals("003", model.state.value.paymentMethod)
+        assertNotNull(model.state.value.paymentNotice)
+        api.payFailure = null
+        model.pay("1201"); runCurrent()
+        assertEquals(2, api.payCalls)
+        assertEquals(listOf(updatedOrder), store.load().sessions.single().paymentAttempt?.orders)
+    }
+    @Test fun failedPaymentDispatchShowsAQueryResultInsteadOfLeavingTheDrawerLoading() = bikeTest {
+        val api = FakeHellobikeService().apply { payFailure = HellobikeException("付款请求未确认") }
+        val model = model(api, BikeRecords().store(sessions = listOf(fixtureBikeSession.copy(phase = HellobikePhase.Ended))))
+        ended(model); model.pay("001"); runCurrent()
+        assertEquals(RechargePhase.TimedOut, model.state.value.paymentFeedback?.phase)
+        assertEquals("付款请求未确认", model.state.value.paymentFeedback?.detail)
+        assertFalse(model.state.value.paymentFeedback!!.loading)
+        advanceTimeBy(6000); runCurrent()
+        assertEquals(1, api.queryCalls); assertEquals(1, api.payCalls)
     }
     @Test fun balanceProcessingNeedsAMatchedQueryAndThenRefreshesRideSettlement() = bikeTest {
         val api = FakeHellobikeService()
@@ -1115,7 +1470,7 @@ class HellobikeViewModelTest {
         assertEquals(1, api.queryCalls); assertEquals(setOf(fixtureBikeOrder.guid), saved.paymentAttempt?.confirmedGuids)
         assertFalse(saved.settled); assertEquals(HellobikeSettlement.Unknown, saved.settlement); assertEquals(0, api.payCalls)
     }
-    @Test fun failedCurrentPaymentQueryCannotReuseAPersistedSuccessFlag() = bikeTest {
+    @Test fun aPersistedPaymentReceiptRefreshesTheBillWithoutAssumingSettlementOrRequeryingPayment() = bikeTest {
         val session = fixtureBikeSession.copy(phase = HellobikePhase.Ended, settlement = HellobikeSettlement.Paying,
             paymentAttempt = HellobikePaymentAttempt(listOf(fixtureBikeOrder), "003", 1_000_000,
                 confirmedGuids = setOf(fixtureBikeOrder.guid)))
@@ -1125,9 +1480,18 @@ class HellobikeViewModelTest {
         }
         val store = BikeRecords().store(sessions = listOf(session)); val model = model(api, store)
         runCurrent(); model.environment(true); runCurrent()
-        assertEquals(1, api.queryCalls); assertTrue(store.load().sessions.single().paymentAttempt!!.confirmedGuids.isEmpty())
+        assertEquals(0, api.queryCalls); assertEquals(setOf(fixtureBikeOrder.guid), store.load().sessions.single().paymentAttempt!!.confirmedGuids)
         assertFalse(store.load().sessions.single().settled)
-        assertEquals(HellobikeSettlement.Paying, store.load().sessions.single().settlement); assertEquals(0, api.payCalls)
+        assertEquals(HellobikeSettlement.Unknown, store.load().sessions.single().settlement); assertEquals(0, api.payCalls)
+        model.pageVisible(true); assertTrue(model.openSession(session.sessionId)); runCurrent()
+        model.showPayment(); runCurrent()
+        assertEquals(RechargePhase.Paid, model.state.value.paymentFeedback?.phase)
+        assertTrue(model.state.value.payOptions.isEmpty()); assertEquals(0, api.queryCalls)
+        api.detailFailure = null
+        api.detail = fixtureBikeDetail.copy(settlement = HellobikeSettlement.Paid)
+        advanceTimeBy(6000); runCurrent()
+        assertTrue(store.load().sessions.single().settled)
+        assertEquals(0, api.queryCalls); assertEquals(0, api.payCalls)
     }
     @Test fun previewDoesNotReadSavedCredentialsOrStartLocationAndBusinessRequests() = bikeTest {
         var reads = 0

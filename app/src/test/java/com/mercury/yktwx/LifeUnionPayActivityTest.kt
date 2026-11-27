@@ -43,7 +43,7 @@ class LifeUnionPayActivityTest {
         assertFalse(activity.isFinishing)
         val sdkIntent = Intent(activity, Activity::class.java)
         activity.startActivityForResult(sdkIntent, LifeUnionPayActivity.SdkRequestCode)
-        shadow.receiveResult(sdkIntent, Activity.RESULT_OK, Intent().putExtra("pay_result", "cancel"))
+        shadow.receiveResult(sdkIntent, Activity.RESULT_OK, Intent().putExtra("pay_result", "CANCEL"))
         assertTrue(activity.isFinishing)
         assertEquals(LifeUnionPayResult(17, "cancel"), contract.parseResult(shadow.resultCode, shadow.resultIntent))
         assertFalse(shadow.resultIntent.hasExtra(LifeUnionPayActivity.TransactionNumber))
@@ -76,6 +76,28 @@ class LifeUnionPayActivityTest {
         assertEquals(LifeUnionPayResult(23, "launch_failed"), contract.parseResult(shadow.resultCode, shadow.resultIntent))
         activity.startActivityForResult(Intent(activity, Activity::class.java), LifeUnionPayActivity.SdkRequestCode, null)
         assertNull(shadow.nextStartedActivityForResult)
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun returningWithoutAnSdkResultReleasesTheBridgeWithoutClaimingPaymentFailed() {
+        val contract = LifeUnionPayContract()
+        val controller = Robolectric.buildActivity(UnionPayWithoutPaymentApp::class.java,
+            contract.createIntent(ApplicationProvider.getApplicationContext(), LifePaymentLaunch(29, "ride", "fixture-tn", "52")))
+            .create().start().resume()
+        val activity = controller.get()
+        activity.startActivityForResult(Intent(activity, Activity::class.java), LifeUnionPayActivity.SdkRequestCode)
+        controller.pause().stop()
+        val looper = ShadowLooper.shadowMainLooper()
+        looper.idleFor(Duration.ofSeconds(15))
+        assertFalse(activity.isFinishing)
+        controller.restart().start().resume()
+        val wait = LifeUnionPayActivity.ReturnWaitMillis
+        looper.idleFor(Duration.ofMillis(wait - 1))
+        assertFalse(activity.isFinishing)
+        looper.idleFor(Duration.ofMillis(1))
+        val shadow = shadowOf(activity)
+        assertTrue(activity.isFinishing)
+        assertEquals(LifeUnionPayResult(29, null), contract.parseResult(shadow.resultCode, shadow.resultIntent))
         controller.pause().stop().destroy()
     }
 }
