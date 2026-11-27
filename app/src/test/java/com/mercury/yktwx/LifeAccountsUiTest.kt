@@ -151,9 +151,11 @@ class LifeAccountsUiTest {
         compose.onNodeWithText("胖乖生活登录失效，请重新登录").assertIsDisplayed()
         compose.onNodeWithText("慧生活798登录失效，请重新登录").assertIsDisplayed()
         compose.onNodeWithText("哈啰登录失效，请重新登录").assertIsDisplayed()
-        listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice").forEach {
-            compose.onNodeWithTag("$it-dismiss").assertDoesNotExist()
-        }
+        compose.onNodeWithTag("hellobike-login-notice-dismiss").assertIsDisplayed().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("hellobike-login-notice").assertDoesNotExist()
+        compose.onNodeWithTag("life-login-notice").assertIsDisplayed()
+        compose.onNodeWithTag("hui798-login-notice").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(listOf("/api/acc/stat"), huiReads.toList())
             assertEquals(LifeProvider.Hellobike, login)
@@ -169,9 +171,8 @@ class LifeAccountsUiTest {
         compose.onNodeWithTag("life-account-logout-dialog").assertDoesNotExist()
     }
 
-    @Test fun expiredBannersUpdateOnPaymentFailureAndClearWhenAccountsRecover() {
+    @Test fun expiredBannersCanBeDismissedOnPaymentFailureAndReturnAfterAccountsExpireAgain() {
         val settings = settings()
-        LifeProvider.entries.forEach(settings::dismissLifeLoginNotice)
         var expired by mutableStateOf(false)
         val logins = mutableListOf<LifeProvider>()
         val tags = listOf("life-login-notice", "hui798-login-notice", "hellobike-login-notice")
@@ -188,11 +189,11 @@ class LifeAccountsUiTest {
         tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
         compose.runOnIdle { expired = true }
         tags.forEach { compose.onNodeWithTag(it).assertIsDisplayed().performClick() }
+        tags.forEach { compose.onNodeWithTag("$it-dismiss").assertIsDisplayed().performClick() }
+        compose.mainClock.advanceTimeBy(1000)
+        tags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
         compose.runOnIdle {
             assertEquals(listOf(LifeProvider.Panggui, LifeProvider.Hui798, LifeProvider.Hellobike), logins)
-            assertTrue(settings.pangguiLoginNoticeDismissed.value)
-            assertTrue(settings.hui798LoginNoticeDismissed.value)
-            assertTrue(settings.hellobikeLoginNoticeDismissed.value)
             expired = false
         }
         compose.mainClock.advanceTimeBy(1000)

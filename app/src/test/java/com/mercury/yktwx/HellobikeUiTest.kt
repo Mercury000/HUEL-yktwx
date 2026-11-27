@@ -977,7 +977,7 @@ class HellobikeUiTest {
         } } } }
         compose.onNodeWithTag("hellobike-login-notice").performScrollTo().performClick()
         assertEquals(LifeProvider.Hellobike, chosen)
-        compose.onNodeWithTag("hellobike-login-notice-dismiss").assertDoesNotExist()
+        compose.onNodeWithTag("hellobike-login-notice-dismiss").assertIsDisplayed()
         compose.onNodeWithTag("life-login-notice").assertDoesNotExist()
         compose.onNodeWithTag("hui798-login-notice").assertDoesNotExist()
         val managed = ManagedLifeAccount(LifeProvider.Hellobike, LifeAccountConnection())

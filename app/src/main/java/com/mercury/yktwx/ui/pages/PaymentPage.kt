@@ -147,13 +147,18 @@ fun PaymentPage(state: PaymentUiState, settings: ThemeSettings, bottomPadding: D
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val failureListState = rememberLazyListState()
     val topBarListState = if (initialError != null) failureListState else listState
+    var lifeLoginNoticeDismissed by rememberSaveable(lifeLoginExpired) { mutableStateOf(false) }
+    var hui798LoginNoticeDismissed by rememberSaveable(hui798LoginExpired) { mutableStateOf(false) }
+    var hellobikeLoginNoticeDismissed by rememberSaveable(hellobikeLoginExpired) { mutableStateOf(false) }
     val lifeLoginNotices: @Composable () -> Unit = {
-        InlineLifeLoginNotice(lifeLoginExpired, onLifeLogin, enabled = isActive,
-            text = "胖乖生活登录失效，请重新登录")
-        InlineLifeLoginNotice(hui798LoginExpired, onHui798Login, enabled = isActive,
-            text = "慧生活798登录失效，请重新登录", tag = "hui798-login-notice")
-        InlineLifeLoginNotice(hellobikeLoginExpired, onHellobikeLogin, enabled = isActive,
-            text = "哈啰登录失效，请重新登录", tag = "hellobike-login-notice")
+        InlineLifeLoginNotice(lifeLoginExpired && !lifeLoginNoticeDismissed, onLifeLogin, enabled = isActive,
+            text = "胖乖生活登录失效，请重新登录", onDismiss = { lifeLoginNoticeDismissed = true })
+        InlineLifeLoginNotice(hui798LoginExpired && !hui798LoginNoticeDismissed, onHui798Login, enabled = isActive,
+            text = "慧生活798登录失效，请重新登录", tag = "hui798-login-notice",
+            onDismiss = { hui798LoginNoticeDismissed = true })
+        InlineLifeLoginNotice(hellobikeLoginExpired && !hellobikeLoginNoticeDismissed, onHellobikeLogin, enabled = isActive,
+            text = "哈啰登录失效，请重新登录", tag = "hellobike-login-notice",
+            onDismiss = { hellobikeLoginNoticeDismissed = true })
     }
     val hasLifeSessions = waterSessions.any { it.active } || laundrySessions.isNotEmpty() ||
         additionalLifeEntries.any { it.feature != LifeFeature.Water || !it.completed }
