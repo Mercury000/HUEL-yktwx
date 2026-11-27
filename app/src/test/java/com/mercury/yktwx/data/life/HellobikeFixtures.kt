@@ -39,6 +39,7 @@ internal open class FakeHellobikeService : HellobikeService {
     var createCalls = 0
     var closeCalls = 0
     var preCloseCalls = 0
+    var detailCalls = 0
     var payCalls = 0
     var queryCalls = 0
     var prepareCalls = 0
@@ -129,7 +130,9 @@ internal open class FakeHellobikeService : HellobikeService {
         if (!holdTemporary) reading = HellobikeRideReading.Ride(session.rideGuid, session.bikeNo, if (unlock) 0 else 1,
             userGuid = account.userGuid, temporaryLockSupported = true)
     }
-    override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail { detailFailure?.let { throw it }; return detail.copy(rideGuid = session.rideGuid) }
+    override suspend fun payDetail(account: HellobikeAccount, session: HellobikeSession): HellobikePayDetail {
+        detailCalls++; detailFailure?.let { throw it }; return detail.copy(rideGuid = session.rideGuid)
+    }
     override suspend fun payChannels(account: HellobikeAccount, session: HellobikeSession, detail: HellobikePayDetail) = channels
     override suspend fun pay(account: HellobikeAccount, session: HellobikeSession, orders: List<HellobikePayOrder>, option: HellobikePayOption): HellobikePayComponent {
         beforePay(); payCalls++; payFailure?.let { throw it }

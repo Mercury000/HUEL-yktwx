@@ -918,7 +918,7 @@ class HellobikeViewModel internal constructor(
             return
         }
         // Query the submitted order even while ride discovery still returns a cached active ride.
-        if (before.phase == HellobikePhase.Closing) {
+        if (before.phase == HellobikePhase.Closing && before.rideGuid.isNotBlank()) {
             val ended = try { api.orderEnded(owner, before.rideGuid) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -931,32 +931,32 @@ class HellobikeViewModel internal constructor(
         val reading = api.ridingInfo(owner); ensureOwner(owner)
         val current = mutable.value.sessions.firstOrNull { it.sessionId == id } ?: return
         when (reading) {
-            HellobikeRideReading.NoRide -> if (api.orderEnded(owner, current.rideGuid)) { finishRide(owner, current); return } else {
+            HellobikeRideReading.NoRide -> {
+                if (current.rideGuid.isNotBlank() && api.orderEnded(owner, current.rideGuid)) { finishRide(owner, current); return }
                 mutable.update { it.copy(confirmedSessions = it.confirmedSessions - id) }
                 throw HellobikeException("本笔骑行结果尚未确认，请刷新原订单并在哈啰核对")
             }
             is HellobikeRideReading.Ride -> {
+                if (reading.status == 2) {
+                    if (current.rideGuid.isNotBlank() && reading.rideGuid == current.rideGuid) finishRide(owner, current)
+                    return
+                }
                 // The riding page displays the account's returned order. An older
                 // local snapshot does not add an eligibility check to that response.
                 if (current.phase == HellobikePhase.Closing && reading.rideGuid != current.rideGuid) {
                     discover(owner, reading)
                     return
                 }
-                when (reading.status) {
-                    2 -> { finishRide(owner, current); return }
-                    else -> {
-                        val expectedTemporaryState = current.temporaryAction?.let { if (it == HellobikeTemporaryAction.Lock) 1 else 0 }
-                        val stillPending = expectedTemporaryState != null && expectedTemporaryState != reading.status
-                        saveSession(owner, current.copy(rideGuid = reading.rideGuid, bikeNo = reading.bikeNo,
-                            phase = if (current.phase == HellobikePhase.Closing) HellobikePhase.Closing else HellobikePhase.Riding,
-                            startedAtMillis = current.startedAtMillis ?: reading.seconds?.let { now() - it * 1000 } ?: now(),
-                            seconds = reading.seconds ?: current.seconds, temporarilyLocked = reading.status == 1,
-                            temporaryLockSupported = reading.temporaryLockSupported,
-                            temporaryAction = if (stillPending) current.temporaryAction else null,
-                            uncertain = (current.phase == HellobikePhase.Closing || stillPending) && current.uncertain))
-                        mutable.update { it.copy(confirmedSessions = it.confirmedSessions + id) }
-                    }
-                }
+                val expectedTemporaryState = current.temporaryAction?.let { if (it == HellobikeTemporaryAction.Lock) 1 else 0 }
+                val stillPending = expectedTemporaryState != null && expectedTemporaryState != reading.status
+                saveSession(owner, current.copy(rideGuid = reading.rideGuid.ifBlank { current.rideGuid }, bikeNo = reading.bikeNo,
+                    phase = if (current.phase == HellobikePhase.Closing) HellobikePhase.Closing else HellobikePhase.Riding,
+                    startedAtMillis = current.startedAtMillis ?: reading.seconds?.let { now() - it * 1000 } ?: now(),
+                    seconds = reading.seconds ?: current.seconds, temporarilyLocked = reading.status == 1,
+                    temporaryLockSupported = reading.temporaryLockSupported,
+                    temporaryAction = if (stillPending) current.temporaryAction else null,
+                    uncertain = (current.phase == HellobikePhase.Closing || stillPending) && current.uncertain))
+                mutable.update { it.copy(confirmedSessions = it.confirmedSessions + id) }
             }
         }
         ensureOwner(owner); errors.remove(id)
@@ -971,10 +971,6 @@ class HellobikeViewModel internal constructor(
         ensureOwner(owner)
         val current = mutable.value.sessions.firstOrNull { it.sessionId == identified.sessionId } ?: return identified
         if (current.phase == HellobikePhase.Ended) return current
-        if (reading.ended) {
-            finishRide(owner, current)
-            return mutable.value.sessions.firstOrNull { it.sessionId == current.sessionId } ?: current
-        }
         // The official success callback opens the riding page; that page then reads
         // user.tw.ride.check. This is reached only after a confirmed unlock result,
         // never as a substitute for a missing pre-ride/create ID or a failed command.
@@ -985,7 +981,7 @@ class HellobikeViewModel internal constructor(
             uncertain = false, startedAtMillis = current.startedAtMillis ?: now(), unlockConfirmed = true)
         else current.copy(phase = HellobikePhase.Opening, uncertain = !reading.opening)
         saveSession(owner, updated)
-        val detail = if (!reading.unlocked) reading.detail else null
+        val detail = reading.detail.takeUnless { reading.unlocked || reading.ended }
         if (detail == null) errors.remove(updated.sessionId) else errors[updated.sessionId] = detail
         mutable.update { it.copy(
             sessionErrors = errors.toMap(),
@@ -996,14 +992,10 @@ class HellobikeViewModel internal constructor(
     }
     private suspend fun readConfirmedRiding(owner: HellobikeAccount, confirmed: HellobikeSession): HellobikeSession {
         val ride = api.ridingInfo(owner); ensureOwner(owner)
-        if (ride !is HellobikeRideReading.Ride) return confirmed
+        if (ride !is HellobikeRideReading.Ride || ride.status == 2) return confirmed
         val updated = saveSession(owner, confirmed.copy(rideGuid = ride.rideGuid, bikeNo = ride.bikeNo,
             phase = HellobikePhase.Riding, temporarilyLocked = ride.status == 1,
             temporaryLockSupported = ride.temporaryLockSupported, startedAtMillis = confirmed.startedAtMillis ?: now()))
-        if (ride.status == 2) {
-            finishRide(owner, updated)
-            return mutable.value.sessions.first { it.sessionId == updated.sessionId }
-        }
         errors.remove(updated.sessionId)
         mutable.update { it.copy(confirmedSessions = it.confirmedSessions + updated.sessionId, sessionErrors = errors.toMap(),
             error = if (it.selectedSessionId == updated.sessionId) null else it.error) }

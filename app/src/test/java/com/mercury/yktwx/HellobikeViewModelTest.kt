@@ -192,6 +192,74 @@ class HellobikeViewModelTest {
         assertEquals(HellobikePhase.Riding, model.state.value.session?.phase); assertEquals(0, api.createCalls)
         assertEquals(fixtureBikeSession.rideGuid, store.load().sessions.single().rideGuid)
     }
+    @Test fun overDuringUnlockKeepsPollingWithoutReturningOrFetchingFees() = bikeTest {
+        val api = FakeHellobikeService().apply { orderReading = HellobikeOrderReading(30, null, "历史订单已结束") }
+        val store = BikeRecords().store(); val model = model(api, store)
+        vehicle(model); model.startRide(); runCurrent()
+        assertEquals(HellobikePhase.Opening, store.load().sessions.single().phase)
+        assertNull(model.state.value.error)
+        assertEquals(0, api.detailCalls)
+        assertEquals(listOf(fixtureBikeSession.rideGuid), api.queriedRideGuids)
+        api.orderReading = HellobikeOrderReading(20, 0)
+        advanceTimeBy(1001); runCurrent()
+        assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+        assertEquals(List(2) { fixtureBikeSession.rideGuid }, api.queriedRideGuids)
+        assertEquals(1, api.createCalls); assertEquals(0, api.closeCalls); assertEquals(0, api.detailCalls)
+    }
+    @Test fun repeatedOverWithoutAnOrderIdTimesOutWithoutEndingTheRide() = bikeTest {
+        val api = FakeHellobikeService().apply {
+            createdRideGuid = ""
+            orderReading = HellobikeOrderReading(30, null)
+        }
+        val model = model(api, BikeRecords().store())
+        vehicle(model); model.startRide(); runCurrent()
+        advanceTimeBy(35_001); runCurrent()
+        assertFalse(model.state.value.busy)
+        assertEquals("车辆响应较慢，结果尚未确认，请刷新原订单", model.state.value.error)
+        advanceTimeBy(6000); runCurrent()
+        assertEquals(HellobikePhase.Opening, model.state.value.session?.phase)
+        assertTrue(model.state.value.session!!.uncertain)
+        assertTrue(api.queriedRideGuids.all(String::isBlank))
+        assertEquals(1, api.createCalls); assertEquals(0, api.detailCalls)
+    }
+    @Test fun serverUnlockWithoutAnIdIgnoresAFinishedRideUntilActiveRideInfoArrives() = bikeTest {
+        val api = object : FakeHellobikeService() {
+            override suspend fun prepare(account: HellobikeAccount, bikeNo: String, region: HellobikeRegion, position: HellobikePosition): HellobikePrecheck {
+                orderReading = HellobikeOrderReading(20, 0)
+                reading = riding().copy(rideGuid = "finished-order", status = 2)
+                return super.prepare(account, bikeNo, region, position).copy(orderGuid = "", skipConfirmation = true, serverUnlockStarted = true)
+            }
+        }
+        val store = BikeRecords().store(); val model = model(api, store)
+        ready(model); model.openDevice(fixtureBikeSession.bikeNo); runCurrent()
+        val waiting = store.load().sessions.single()
+        assertTrue(waiting.unlockConfirmed); assertEquals(HellobikePhase.Opening, waiting.phase)
+        assertEquals("", waiting.rideGuid); assertEquals(0, api.detailCalls)
+        api.reading = riding()
+        model.refreshState(); runCurrent()
+        assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+        assertEquals(fixtureBikeSession.rideGuid, model.state.value.session?.rideGuid)
+        assertEquals(listOf(""), api.queriedRideGuids)
+        assertEquals(1, api.prepareCalls); assertEquals(0, api.createCalls); assertEquals(0, api.detailCalls)
+    }
+    @Test fun ridingRefreshOnlyFinishesTheMatchingOrder() = bikeTest {
+        val api = FakeHellobikeService()
+        val store = BikeRecords().store(sessions = listOf(fixtureBikeSession))
+        val model = model(api, store); ready(model)
+        api.reading = riding().copy(rideGuid = "", status = 0)
+        model.openSession(fixtureBikeSession.sessionId); runCurrent()
+        assertEquals(fixtureBikeSession.rideGuid, model.state.value.session?.rideGuid)
+        for (unrelatedGuid in listOf("", "finished-order")) {
+            api.reading = riding().copy(rideGuid = unrelatedGuid, status = 2)
+            model.refreshState(); runCurrent()
+            assertEquals(HellobikePhase.Riding, model.state.value.session?.phase)
+            assertEquals(0, api.detailCalls)
+        }
+        api.reading = riding().copy(status = 2)
+        model.refreshState(); runCurrent()
+        assertEquals(HellobikePhase.Ended, store.load().sessions.single().phase)
+        assertEquals(1, api.detailCalls); assertEquals(0, api.closeCalls)
+    }
     @Test fun temporaryLockVerifiesThenConfirmsAndResumesTheSameRide() = bikeTest {
         val api = FakeHellobikeService().apply { reading = riding().copy(temporaryLockSupported = true) }
         val store = BikeRecords().store(sessions = listOf(fixtureBikeSession)); val model = model(api, store)
